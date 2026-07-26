@@ -1956,15 +1956,8 @@ export async function pushRepoToNostr(
         });
       }
 
-      // NIP-34: one "web" tag with multiple URLs when applicable
+      // NIP-34: one "web" tag with multiple URLs when applicable (docs/websites only — not logo)
       const webVals: string[] = [];
-      if (
-        repo.logoUrl &&
-        (repo.logoUrl.startsWith("http://") ||
-          repo.logoUrl.startsWith("https://"))
-      ) {
-        webVals.push(repo.logoUrl);
-      }
       if (repo.links && Array.isArray(repo.links)) {
         repo.links.forEach((link) => {
           if (

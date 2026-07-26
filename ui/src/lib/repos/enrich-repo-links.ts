@@ -8,10 +8,14 @@
  *    (e.g. gateway-listed). Never invent from owner+d-tag.
  * 4. Push / Settings publish: publish whatever is already on repo.links
  *    (plus optional App link after a real NIP-82 announce).
+ * 5. Forge browse `web` URLs (gitworkshop, GRASP/npub mirrors) are never
+ *    treated as Documentation — see parse-nip34-repo-links.
  *
  * `removeStaleAutoLinks` is a one-shot cleanup for older builds that wrongly
  * invented "GitHub Pages" / "Nostr Pages" rows — not part of the happy path.
  */
+
+import { stripNonDocumentationWebLinks } from "../nostr/parse-nip34-repo-links";
 
 export type EnrichableRepoLink = {
   type:
@@ -203,15 +207,36 @@ export type EnrichRepoLinksInput = {
 /**
  * Merge real link sources into repo.links. Does not invent URLs.
  */
+/**
+ * Merge announcement-parsed links with local Settings / import links.
+ * Drops forge-browse rows; never wipes local links when parse is empty.
+ */
+export function mergeAnnouncementLinksWithLocal(
+  existing: EnrichableRepoLink[] | undefined | null,
+  parsedFromNostr: EnrichableRepoLink[] | undefined | null
+): EnrichableRepoLink[] {
+  const cleanedExisting = stripNonDocumentationWebLinks(
+    removeStaleAutoLinks(existing)
+  ) as EnrichableRepoLink[];
+  const cleanedParsed = stripNonDocumentationWebLinks(
+    parsedFromNostr
+  ) as EnrichableRepoLink[];
+  if (cleanedParsed.length === 0) return cleanedExisting;
+  return mergeRepoLinks(cleanedExisting, cleanedParsed);
+}
+
 export function enrichRepoLinks(
   input: EnrichRepoLinksInput
 ): EnrichableRepoLink[] {
   const clean = input.cleanStaleAutoLinks !== false;
-  const base = clean
+  const afterStale = clean
     ? removeStaleAutoLinks(input.existing, input.sourceUrl)
     : (Array.isArray(input.existing) ? input.existing : []).filter(
         (l) => l?.url
       );
+  const base = stripNonDocumentationWebLinks(
+    afterStale
+  ) as EnrichableRepoLink[];
 
   const additions: EnrichableRepoLink[] = [];
 

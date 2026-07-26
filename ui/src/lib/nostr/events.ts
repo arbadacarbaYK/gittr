@@ -357,14 +357,8 @@ export function buildUnsignedRepositoryEvent(
     /* keep repo.links as-is */
   }
 
-  // NIP-34: Add web tag(s) — prefer one multi-value "web" row per spec
+  // NIP-34: Add web tag(s) — project websites/docs only (not logo; use image separately)
   const webVals: string[] = [];
-  if (
-    repo.logoUrl &&
-    (repo.logoUrl.startsWith("http://") || repo.logoUrl.startsWith("https://"))
-  ) {
-    webVals.push(repo.logoUrl);
-  }
   announcementLinks.forEach((link) => {
     if (
       link.url &&

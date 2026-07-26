@@ -57,6 +57,7 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
   enrichRepoLinks,
+  mergeAnnouncementLinksWithLocal,
   removeAutoNostrPagesLinks,
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
@@ -6948,10 +6949,10 @@ export function RepoCodePage() {
                         contributors.length > 0
                           ? contributors
                           : base.contributors,
-                      ...(Array.isArray(eventRepoData.links) &&
-                      eventRepoData.links.length > 0
-                        ? { links: eventRepoData.links }
-                        : {}),
+                      links: mergeAnnouncementLinksWithLocal(
+                        base.links,
+                        eventRepoData.links
+                      ),
                       ...(eventRepoData.maintainers
                         ? { maintainers: eventRepoData.maintainers }
                         : {}),
@@ -7152,16 +7153,9 @@ export function RepoCodePage() {
                           )
                         : base.clone;
                     const newRelays = eventRepoData.relays || base.relays;
-                    const rawNewLinks =
-                      Array.isArray(eventRepoData.links) &&
-                      eventRepoData.links.length > 0
-                        ? eventRepoData.links
-                        : base.links;
-                    const newLinks = removeStaleAutoLinks(
-                      rawNewLinks,
-                      eventRepoData.sourceUrl ||
-                        base.sourceUrl ||
-                        effectiveSourceUrl
+                    const newLinks = mergeAnnouncementLinksWithLocal(
+                      base.links,
+                      eventRepoData.links
                     );
 
                     // Skip update if nothing changed
@@ -7365,10 +7359,10 @@ export function RepoCodePage() {
                       return {
                         ...base,
                         contributors: mergedContributors,
-                        ...(Array.isArray(eventRepoData.links) &&
-                        eventRepoData.links.length > 0
-                          ? { links: eventRepoData.links }
-                          : {}),
+                        links: mergeAnnouncementLinksWithLocal(
+                          base.links,
+                          eventRepoData.links
+                        ),
                         ...(eventRepoData.publicRead !== undefined
                           ? { publicRead: eventRepoData.publicRead }
                           : {}),
@@ -7414,10 +7408,10 @@ export function RepoCodePage() {
                             eventRepoData.publicWrite !== undefined
                               ? eventRepoData.publicWrite
                               : false,
-                          ...(Array.isArray(eventRepoData.links) &&
-                          eventRepoData.links.length > 0
-                            ? { links: eventRepoData.links }
-                            : {}),
+                          links: mergeAnnouncementLinksWithLocal(
+                            base.links,
+                            eventRepoData.links
+                          ),
                           ...(eventRepoData.lastEventId
                             ? {
                                 lastNostrEventId: eventRepoData.lastEventId,
@@ -7434,10 +7428,10 @@ export function RepoCodePage() {
                         ...(eventRepoData.publicWrite !== undefined
                           ? { publicWrite: eventRepoData.publicWrite }
                           : {}),
-                        ...(Array.isArray(eventRepoData.links) &&
-                        eventRepoData.links.length > 0
-                          ? { links: eventRepoData.links }
-                          : {}),
+                        links: mergeAnnouncementLinksWithLocal(
+                          base.links,
+                          eventRepoData.links
+                        ),
                         ...(eventRepoData.lastEventId
                           ? {
                               lastNostrEventId: eventRepoData.lastEventId,
@@ -7571,9 +7565,10 @@ export function RepoCodePage() {
                   eventRepoData.lastEventCreatedAt =
                     latestEvent.event.created_at;
                   eventRepoData.lastEventId = latestEvent.event.id;
-                  eventRepoData.links = parseRepoLinksFromNip34Tags(
+                  const parsedAnnouncementLinks = parseRepoLinksFromNip34Tags(
                     latestEvent.event.tags
                   );
+                  eventRepoData.links = parsedAnnouncementLinks;
                   broadcastRepoAnnouncementEventId({
                     eventId: latestEvent.event.id,
                     entity: resolvedParams.entity,
@@ -7589,86 +7584,92 @@ export function RepoCodePage() {
                         : 0
                     } link(s)`
                   );
-                  // Apply announcement links (and related metadata) after latest-event
-                  // reparse — covers cold loads where earlier setRepoData was skipped.
-                  if (
-                    Array.isArray(eventRepoData.links) &&
-                    eventRepoData.links.length > 0
-                  ) {
-                    setRepoData((prev: any) => {
-                      const base =
-                        prev ||
-                        ({
-                          entity: resolvedParams.entity,
-                          repo: resolvedParams.repo,
-                          name:
-                            eventRepoData.repositoryName ||
-                            resolvedParams.repo,
-                          readme: "",
-                          files: [],
-                          description: eventRepoData.description || "",
-                          contributors: [],
-                          defaultBranch:
-                            eventRepoData.defaultBranch || "main",
-                          ownerPubkey:
-                            latestEvent.event.pubkey || ownerPubkey || "",
-                        } as StoredRepo);
+                  // Merge announcement links with local Settings / import links.
+                  // Never overwrite with forge-browse-only web tags.
+                  setRepoData((prev: any) => {
+                    const base =
+                      prev ||
+                      ({
+                        entity: resolvedParams.entity,
+                        repo: resolvedParams.repo,
+                        name:
+                          eventRepoData.repositoryName ||
+                          resolvedParams.repo,
+                        readme: "",
+                        files: [],
+                        description: eventRepoData.description || "",
+                        contributors: [],
+                        defaultBranch:
+                          eventRepoData.defaultBranch || "main",
+                        ownerPubkey:
+                          latestEvent.event.pubkey || ownerPubkey || "",
+                      } as StoredRepo);
+                    const mergedLinks = mergeAnnouncementLinksWithLocal(
+                      base.links,
+                      parsedAnnouncementLinks
+                    );
+                    eventRepoData.links = mergedLinks;
+                    if (
+                      prev &&
+                      JSON.stringify(prev.links || []) ===
+                        JSON.stringify(mergedLinks) &&
+                      (!eventRepoData.sourceUrl ||
+                        prev.sourceUrl === eventRepoData.sourceUrl)
+                    ) {
+                      return prev;
+                    }
+                    return {
+                      ...base,
+                      links: mergedLinks,
+                      ...(eventRepoData.sourceUrl
+                        ? { sourceUrl: eventRepoData.sourceUrl }
+                        : {}),
+                      ...(eventRepoData.forkedFrom
+                        ? { forkedFrom: eventRepoData.forkedFrom }
+                        : {}),
+                      lastNostrEventId:
+                        eventRepoData.lastEventId || base.lastNostrEventId,
+                      syncedFromNostr: true,
+                    };
+                  });
+                  // Persist merged links (strip stale forge docs from storage)
+                  try {
+                    const stored = loadStoredRepos();
+                    let changed = false;
+                    const next = stored.map((r) => {
+                      const matchesRepo =
+                        r.repo === resolvedParams.repo ||
+                        r.slug === resolvedParams.repo ||
+                        r.name === resolvedParams.repo;
+                      const matchesEntity =
+                        r.entity === resolvedParams.entity ||
+                        (ownerPubkey &&
+                          r.ownerPubkey &&
+                          r.ownerPubkey.toLowerCase() ===
+                            ownerPubkey.toLowerCase());
+                      if (!(matchesRepo && matchesEntity)) return r;
+                      const mergedLinks = mergeAnnouncementLinksWithLocal(
+                        r.links,
+                        parsedAnnouncementLinks
+                      );
                       if (
-                        prev &&
-                        JSON.stringify(prev.links || []) ===
-                          JSON.stringify(eventRepoData.links)
+                        JSON.stringify(r.links || []) ===
+                        JSON.stringify(mergedLinks)
                       ) {
-                        return prev;
+                        return r;
                       }
+                      changed = true;
                       return {
-                        ...base,
-                        links: eventRepoData.links,
-                        ...(eventRepoData.sourceUrl
-                          ? { sourceUrl: eventRepoData.sourceUrl }
-                          : {}),
-                        ...(eventRepoData.forkedFrom
-                          ? { forkedFrom: eventRepoData.forkedFrom }
-                          : {}),
-                        lastNostrEventId:
-                          eventRepoData.lastEventId || base.lastNostrEventId,
+                        ...r,
+                        links: mergedLinks,
                         syncedFromNostr: true,
+                        lastNostrEventId:
+                          eventRepoData.lastEventId || r.lastNostrEventId,
                       };
                     });
-                    // Persist so the next visit doesn't drop Links (stale local rows)
-                    try {
-                      const stored = loadStoredRepos();
-                      let changed = false;
-                      const next = stored.map((r) => {
-                        const matchesRepo =
-                          r.repo === resolvedParams.repo ||
-                          r.slug === resolvedParams.repo ||
-                          r.name === resolvedParams.repo;
-                        const matchesEntity =
-                          r.entity === resolvedParams.entity ||
-                          (ownerPubkey &&
-                            r.ownerPubkey &&
-                            r.ownerPubkey.toLowerCase() ===
-                              ownerPubkey.toLowerCase());
-                        if (!(matchesRepo && matchesEntity)) return r;
-                        if (
-                          JSON.stringify(r.links || []) ===
-                          JSON.stringify(eventRepoData.links)
-                        ) {
-                          return r;
-                        }
-                        changed = true;
-                        return {
-                          ...r,
-                          links: eventRepoData.links,
-                          syncedFromNostr: true,
-                          lastNostrEventId:
-                            eventRepoData.lastEventId || r.lastNostrEventId,
-                        };
-                      });
-                      if (changed) saveStoredRepos(next);
-                    } catch {
-                      /* ignore */
-                    }
+                    if (changed) saveStoredRepos(next);
+                  } catch {
+                    /* ignore */
                   }
                 }
               }
@@ -19726,11 +19727,10 @@ export function RepoCodePage() {
                                           )
                                             ? eventRepoData.relays
                                             : [],
-                                          links: Array.isArray(
+                                          links: mergeAnnouncementLinksWithLocal(
+                                            [],
                                             eventRepoData.links
-                                          )
-                                            ? eventRepoData.links
-                                            : [],
+                                          ),
                                           // CRITICAL: Preserve privacy status from NIP-34 tags
                                           publicRead:
                                             eventRepoData.publicRead !==
@@ -19792,11 +19792,10 @@ export function RepoCodePage() {
                                         )
                                           ? eventRepoData.relays
                                           : existingRepoAny.relays ?? [],
-                                        links:
-                                          Array.isArray(eventRepoData.links) &&
-                                          eventRepoData.links.length > 0
-                                            ? eventRepoData.links
-                                            : existingRepoAny.links ?? [],
+                                        links: mergeAnnouncementLinksWithLocal(
+                                          existingRepoAny.links,
+                                          eventRepoData.links
+                                        ),
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
@@ -19895,11 +19894,10 @@ export function RepoCodePage() {
                                         )
                                           ? eventRepoData.relays
                                           : [],
-                                        links: Array.isArray(
+                                        links: mergeAnnouncementLinksWithLocal(
+                                          [],
                                           eventRepoData.links
-                                        )
-                                          ? eventRepoData.links
-                                          : [],
+                                        ),
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
