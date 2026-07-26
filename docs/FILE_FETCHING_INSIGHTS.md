@@ -14,7 +14,7 @@ How the UI loads repo trees and file content. Implementation lives in:
 1. Browser `localStorage` (owned / edited repos)
 2. Embedded files in Nostr repo event (legacy/small)
 3. Parallel over `clone[]` / `source`: bridge `GET /api/nostr/repo/files`, or upstream git APIs
-4. GRASP: empty tree or 404 → shallow-clone each working `clone[]` URL via `GET /api/git/repo-files?sourceUrl=…` (shows files from the remote match immediately); then `POST /api/nostr/repo/clone` to mirror on disk and retry bridge; background poll if mirror is slow
+4. GRASP: empty tree or 404 → shallow-clone each working `clone[]` URL via `GET /api/git/repo-files?sourceUrl=…` (shows files from the remote match immediately); then `POST /api/nostr/repo/clone` to mirror on disk and retry bridge; background poll if mirror is slow. **Non-GRASP** HTTP(S) remotes that reuse a `/npub1…/repo` path (home Freebox, NAS, etc.) are classified as **self-hosted** and use `repo-files` only — they are not skipped as “not GRASP”. Well-known GRASP mirrors are **not** inferred until after Nostr EOSE if the announcement still has no `clone` tags.
 5. Nostr subscription for kind 30617 if still missing
 
 **Single file**
