@@ -1335,7 +1335,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6">
+    <div className="mx-auto w-full max-w-none px-0 py-1 sm:py-2">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">

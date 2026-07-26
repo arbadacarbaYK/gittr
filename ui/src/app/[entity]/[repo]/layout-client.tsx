@@ -1657,7 +1657,7 @@ export default function RepoLayoutClient({
       <section
         className={
           pathname.includes("/projects")
-            ? "mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6"
+            ? "mx-auto w-full max-w-[min(98vw,2200px)] px-4 py-6 md:px-6"
             : "mx-auto max-w-[95%] px-4 py-6 md:px-6 xl:max-w-[90%] 2xl:max-w-[85%]"
         }
       >
