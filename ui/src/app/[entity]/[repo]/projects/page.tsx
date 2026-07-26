@@ -785,7 +785,7 @@ export default function ProjectsPage() {
               {item.title}
             </div>
             {preview ? (
-              <p className="mt-1 text-xs leading-relaxed text-gray-500 line-clamp-3 break-words">
+              <p className="mt-1 text-xs leading-relaxed text-gray-500 line-clamp-2 break-words">
                 {preview}
               </p>
             ) : null}
@@ -869,13 +869,13 @@ export default function ProjectsPage() {
     ];
 
     return (
-      <div className="grid min-h-0 grid-cols-1 gap-3 md:h-[calc(100dvh-13rem)] md:grid-cols-3 md:gap-4">
+      <div className="grid min-h-0 grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 md:h-[min(640px,calc(100dvh-15rem))]">
         {columns.map((col) => {
           const items = project.items.filter((item) => item.status === col.status);
           return (
             <div
               key={col.status}
-              className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#383B42] bg-[#171B21] md:min-h-0"
+              className="flex max-h-[70vh] min-h-[240px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#383B42] bg-[#171B21] md:max-h-none md:min-h-0"
               onDragOver={(e) => handleDragOver(e, col.status)}
               onDrop={(e) => handleDrop(e, col.status)}
             >
@@ -899,7 +899,7 @@ export default function ProjectsPage() {
                   </Button>
                 )}
               </div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-2">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain p-2">
                 {items.map((item, index) => (
                   <div key={getProjectItemKey(item, index)}>
                     {renderItem(item)}
