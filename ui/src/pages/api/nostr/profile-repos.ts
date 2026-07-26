@@ -9,6 +9,7 @@ import {
   PLATFORM_STATS_RELAYS,
   withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
+import { preferRepoDisplayName } from "@/lib/repos/merge-profile-repos";
 import { hexPubkeyToNpub } from "@/lib/stats";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -19,6 +20,8 @@ export type ProfileRepoRow = {
   entity: string;
   repo: string;
   name: string;
+  /** From kind 30617 description tag when present */
+  description?: string;
   ownerPubkey: string;
   lastActivity: number;
   syncedFromNostr: boolean;
@@ -27,6 +30,15 @@ export type ProfileRepoRow = {
   /** false = private (gittr public-read:false on 30617). undefined/true = public. */
   publicRead?: boolean;
 };
+
+function tagValue(
+  tags: string[][] | undefined,
+  name: string
+): string | undefined {
+  const row = tags?.find((t) => Array.isArray(t) && t[0] === name);
+  const v = row?.[1];
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
 
 async function resolveOwnerHex(
   input: string
@@ -116,15 +128,24 @@ export default async function handler(
             return;
           }
 
-          let name = repoName;
+          let nameFromContent: string | undefined;
           if (event.kind === KIND_REPOSITORY_NIP34 && event.content) {
             try {
               const parsed = JSON.parse(event.content);
-              if (parsed?.name) name = String(parsed.name);
+              if (parsed?.name) nameFromContent = String(parsed.name);
             } catch {
               /* tags only */
             }
           }
+          const nameFromTag =
+            event.kind === KIND_REPOSITORY_NIP34
+              ? tagValue(event.tags as string[][], "name")
+              : undefined;
+          const descriptionFromTag =
+            event.kind === KIND_REPOSITORY_NIP34
+              ? tagValue(event.tags as string[][], "description")
+              : undefined;
+
           // Prefer announcement (30617) privacy over state (30618) when merging.
           const publicRead =
             event.kind === KIND_REPOSITORY_NIP34
@@ -132,10 +153,23 @@ export default async function handler(
               : existing?.publicRead;
 
           if (!existing || ts >= existing.lastActivity) {
+            const name =
+              event.kind === KIND_REPOSITORY_NIP34
+                ? preferRepoDisplayName(
+                    nameFromTag,
+                    nameFromContent || existing?.name,
+                    repoName
+                  )
+                : preferRepoDisplayName(existing?.name, undefined, repoName);
+
             byKey.set(key, {
               entity: hexPubkeyToNpub(event.pubkey),
               repo: repoName,
               name,
+              description:
+                event.kind === KIND_REPOSITORY_NIP34
+                  ? descriptionFromTag || existing?.description
+                  : existing?.description,
               ownerPubkey: event.pubkey.toLowerCase(),
               lastActivity: ts,
               syncedFromNostr: true,
@@ -148,12 +182,19 @@ export default async function handler(
                     ? existing.publicRead
                     : true,
             });
-          } else if (
-            event.kind === KIND_REPOSITORY_NIP34 &&
-            existing &&
-            existing.publicRead === undefined
-          ) {
-            existing.publicRead = publicRead;
+          } else if (event.kind === KIND_REPOSITORY_NIP34 && existing) {
+            // Older announcement still fills gaps (name/description/privacy)
+            if (!existing.description && descriptionFromTag) {
+              existing.description = descriptionFromTag;
+            }
+            existing.name = preferRepoDisplayName(
+              existing.name,
+              nameFromTag || nameFromContent,
+              repoName
+            );
+            if (existing.publicRead === undefined) {
+              existing.publicRead = publicRead;
+            }
           }
         };
 

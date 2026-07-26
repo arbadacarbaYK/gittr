@@ -41,6 +41,8 @@ import {
 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
+import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -109,47 +111,6 @@ function decodeNpubToHex(entity: string): string | null {
     /* ignore */
   }
   return null;
-}
-
-function profileRepoRowKey(r: {
-  ownerPubkey?: string;
-  repo?: string;
-  slug?: string;
-}): string {
-  return `${(r.ownerPubkey || "").toLowerCase()}/${(
-    r.repo ||
-    r.slug ||
-    ""
-  ).toLowerCase()}`;
-}
-
-function mergeProfileRepoList(prev: any[], next: any[]): any[] {
-  const map = new Map<string, any>();
-  const latestMs = (r: any) =>
-    r.lastNostrEventCreatedAt != null
-      ? r.lastNostrEventCreatedAt * 1000
-      : r.updatedAt || r.createdAt || 0;
-  for (const r of next) map.set(profileRepoRowKey(r), r);
-  for (const r of prev) {
-    const k = profileRepoRowKey(r);
-    const existing = map.get(k);
-    if (!existing || latestMs(r) > latestMs(existing)) {
-      // Keep explicit private from either side when the newer row omitted it
-      const merged = !existing
-        ? r
-        : {
-            ...r,
-            publicRead:
-              r.publicRead === false || existing.publicRead === false
-                ? false
-                : r.publicRead ?? existing.publicRead,
-          };
-      map.set(k, merged);
-    } else if (existing && r.publicRead === false) {
-      map.set(k, { ...existing, publicRead: false });
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => latestMs(b) - latestMs(a));
 }
 
 // Parse NIP-34 repository announcement format (minimal fields needed for lists)
@@ -2298,6 +2259,7 @@ export default function EntityPage({
             entity: string;
             repo: string;
             name: string;
+            description?: string;
             ownerPubkey: string;
             lastActivity: number;
             syncedFromNostr?: boolean;
@@ -2321,6 +2283,7 @@ export default function EntityPage({
               entity: row.entity,
               repo: row.repo,
               name: row.name || row.repo,
+              description: row.description || "",
               ownerPubkey: row.ownerPubkey,
               createdAt: row.lastActivity,
               updatedAt: row.lastActivity,
@@ -4111,8 +4074,14 @@ export default function EntityPage({
                 contributor: "border-green-500/50 bg-green-900/10",
                 forked: "border-orange-500/50 bg-orange-900/10",
               };
+              const ownerHex = (repo.ownerPubkey || "").toLowerCase();
+              const profileHex = (profileHexForFetch || "").toLowerCase();
+              const inferredOwner =
+                ownerHex &&
+                profileHex &&
+                ownerHex === profileHex;
               const userRole = (repo.userRole ||
-                "contributor") as keyof typeof roleColors;
+                (inferredOwner ? "owner" : "contributor")) as keyof typeof roleColors;
               const roleColor = roleColors[userRole] || "border-[#383B42]";
 
               return (
@@ -4192,11 +4161,17 @@ export default function EntityPage({
                             );
                           })()}
                       </div>
-                      {repo.description && (
-                        <p className="text-sm text-gray-400 mt-1 line-clamp-2">
-                          {repo.description}
-                        </p>
-                      )}
+                      {(() => {
+                        const about = repoCardDescriptionText(
+                          repo.description,
+                          repo.repo || repo.slug || repo.name || ""
+                        );
+                        return about ? (
+                          <p className="text-sm text-gray-400 mt-1 line-clamp-2">
+                            {about}
+                          </p>
+                        ) : null;
+                      })()}
                       <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                         {repo.stars !== undefined && (
                           <span>⭐ {repo.stars || 0}</span>
