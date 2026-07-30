@@ -494,6 +494,7 @@ The resolver:
 ## References
 
 - **gittr-helper-tools snippet**: [nip46-remote-signer](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip46-remote-signer) (`signer-resolver.ts` + README)
+- **Related (payments, not signing)**: [nip47-nwc](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip47-nwc) — NIP-47 Wallet Connect is a separate protocol from NIP-46
 - **NIP-46**: https://nips.nostr.com/46
 - **NIP-07**: https://nips.nostr.com/07
 - **NIP-04**: https://nips.nostr.com/04 (Encryption)
@@ -503,6 +504,7 @@ The resolver:
 ## Example Remote Signers
 
 - **LNbits Remote Nostr Signer**: https://shop.lnbits.com/lnbits-remote-nostr-signer
+  - Note: LNbits can also expose **NWC** (NIP-47) for Lightning — that is a different URI/`secret` from the remote-signer bunker. See Settings → Account in gittr and `ui/NWC_IMPLEMENTATION_NOTES.md`.
 - **Nowser Bunker**: https://github.com/haorendashu/nowser (Mobile bunker)
 - **Amber Bunker**: Compatible with NIP-46 standard
 - **Bunker**: https://github.com/soapbox-pub/bunker (Self-hosted)

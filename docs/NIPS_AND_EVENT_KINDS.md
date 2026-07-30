@@ -80,10 +80,23 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Event kind**: **`24133`** — NIP-46 request/response envelope (not to be confused with pure in-browser NIP-07 extensions, which skip `24133` and sign locally).
 - **Also supported**: Classic **NIP-07** browser extensions (Alby, nos2x, Flamingo, etc.) remain a separate code path from NIP-46 but fulfill the same “user signs events” role from the app’s perspective.
 
+### NIP-47: Nostr Wallet Connect (NWC)
+
+- **Purpose**: Control a **Lightning wallet** over Nostr (pay invoices, optionally read balance) without putting wallet credentials on the app server. Encrypted JSON-RPC on kinds **`23194`** (request) / **`23195`** (response).
+- **Not NIP-46**: Remote signer (`bunker://` / `nostrconnect://`, kind `24133`) is for **signing identity events**. NWC (`nostr+walletconnect://`) uses a separate **`secret`** (client key for the wallet connection only). Same “RPC over relays” shape; different URI, keys, and kinds. Products like LNbits may offer both — configure them separately in gittr.
+- **Relay policy (gittr vs common clients)**: Many apps only talk NWC on a **fixed relay pool** and/or **ignore `?relay=`** in the connection string, which locks out wallets that only listen on the URI’s relay. **gittr always opens a direct WebSocket to the `relay` from the NWC URI** for `23194`/`23195`. That relay does **not** need to be in Settings → Relays, and we do **not** fall back to the user’s social/GRASP pool for payments. Details: `ui/NWC_IMPLEMENTATION_NOTES.md`.
+- **Usage in gittr**: Settings → Account → **NWC Send** / **NWC Recv** (`gittr_nwc_send` / `gittr_nwc_recv`). Payment QR / zap flows may call `pay_invoice` client-side; balance probe uses `get_balance` when the wallet supports it. **Secret never leaves the browser** — WebSocket goes straight to the wallet’s relay.
+- **URI**: `nostr+walletconnect://<wallet-pubkey>?relay=wss://…&secret=<hex>` (optional `lud16=`). Host = wallet service pubkey; sign requests with `secret`.
+- **Critical**: Match response `e` tag to the request event id (NIP-47). Ignore other `23195` events.
+- **Zap overlap**: NIP-57 zap **request** may be signed via NIP-07/NIP-46; **paying** the resulting BOLT11 can use NWC Send. Auth signs; wallet pays.
+- **Implementation**: `ui/src/lib/payments/nwc-balance.ts`, `nwc-connection-test.ts`, `ui/src/components/ui/payment-qr.tsx`, notes in `ui/NWC_IMPLEMENTATION_NOTES.md`. Snippet for other implementers: [gittr-helper-tools `nip47-nwc`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?file=snippets/nip47-nwc/README.md&branch=main).
+- **Event kinds**: **`23194`** / **`23195`**.
+
 ### NIP-57: Lightning Zaps
 
 - **Purpose**: Lightning Network payments with zap requests (`9734`) and receipts (`9735`) on relays
 - **Usage**: Owner-only **repository** zaps use a real NIP-57 flow when the recipient’s LNURL-pay endpoint sets `allowsNostr` and `nostrPubkey`. **Bounties**, **pay-to-merge**, and other flows that need fast server-side confirmation keep using **LNbits** (or similar) instead of waiting on gossip for receipts.
+- **Client notes**: Repo zap receive addresses come from the owner’s kind-0 `lud16`/`lnurl` (plus optional repo payment config). A stale `gittr_metadata_cache` that has a display name but no Lightning fields used to skip refetch and look like “no Lightning address.” Full localStorage can also surface misleading zap errors — gittr now refetches missing payment fields, lets `/api/zap/create-invoice` resolve lud16 server-side when the client cache is empty, surfaces real API errors, and prunes the metadata cache on quota errors instead of blaming the recipient.
 - **Event Kind**: `9735` (KIND_ZAP) — the **Your Zaps** page merges live `9735` events from the user’s relay set (filters `#p` / `#P` per NIP-57) with the local `gittr_zaps` ledger and drops duplicate **pending** rows when a matching receipt arrives.
 - **Repo header “Zaps” badge**: subscribes to `9735` with `#p` = repo owner, sums receipts whose embedded zap request matches this repo’s `Zap for entity/repo` text, merges with the local `gittr_zaps` ledger for the same repo (dedupes when a receipt matches a local paid row), so the number reflects the **network** where your relay set delivers receipts, not this browser alone.
 

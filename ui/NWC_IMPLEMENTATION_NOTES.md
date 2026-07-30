@@ -7,6 +7,21 @@ We're implementing NIP-47 directly without external npm packages for full contro
 - **@getalby/sdk** (v6.0.2) - Official Alby SDK with NWC support
 - **applesauce-wallet-connect** (v4.1.0) - NWC implementation for clients and services
 
+## Relay policy (why we differ from many clients)
+
+**Problem:** A lot of NWC UIs only publish/subscribe payment RPC on a **fixed app relay pool** (or a short allow-list of “popular” relays) and **do not use — or do not fall back to — the `relay=` query param in the NWC string**. Wallets that only listen on that URI relay (self-hosted LNbits, Umbrel, custom NWC services) then look “broken”: connect test fails, `pay_invoice` never gets a `23195`, even though the URI is valid.
+
+**gittr rule:** The `relay` inside `nostr+walletconnect://…` is the **sole transport** for NWC.
+
+1. Parse `relay` + `secret` + wallet pubkey from the URI (`nwc-balance.ts`, `nwc-connection-test.ts`, `payment-qr.tsx`).
+2. Open a **browser WebSocket straight to that URL** (client-side only — secret never hits our server).
+3. Do **not** require that relay to appear under Settings → Relays.
+4. Do **not** rewrite NWC traffic onto damus / primal / user GRASP lists “for convenience”.
+
+App relays stay for NIP-34 / zaps / social events. NWC transport stays on the wallet’s advertised relay — same separation we keep for NIP-46 bunker URI relays vs publish relays.
+
+Teaching extract: [gittr-helper-tools `nip47-nwc`](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip47-nwc).
+
 ## NIP-47 Specification Compliance
 
 ### Payment Flow
@@ -128,4 +143,8 @@ const response = await nwc.sendPayment(invoice);
 - Learning/understanding NIP-47 deeply
 
 **Current Status**: We've implemented NIP-47 manually with `e` tag verification. If issues persist, we should consider switching to `@getalby/sdk` or comparing our implementation against theirs to find differences.
+
+## Related: NIP-46 is not NWC
+
+Remote signer auth (**NIP-46**, kinds `24133`) and NWC payments (**NIP-47**, kinds `23194`/`23195`) both use encrypted RPC over relays, but they are separate protocols and secrets. Teaching extract for other apps: [gittr-helper-tools `nip47-nwc`](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip47-nwc). Platform listing: [`docs/NIPS_AND_EVENT_KINDS.md`](../docs/NIPS_AND_EVENT_KINDS.md) § NIP-47.
 

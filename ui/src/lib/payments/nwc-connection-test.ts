@@ -26,7 +26,7 @@ export interface NWCConnectionResult {
 export async function testNWCConnection(
   nwcUri: string
 ): Promise<NWCConnectionResult> {
-  // Parse NWC URI
+  // Parse NWC URI — transport relay is URI `relay=` only (see NWC_IMPLEMENTATION_NOTES.md).
   const normalizedUri = nwcUri.replace(/^nostr\+walletconnect:/, "http:");
   const uri = new URL(normalizedUri);
   const walletPubkey =

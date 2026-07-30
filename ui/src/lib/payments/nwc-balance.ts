@@ -15,7 +15,8 @@ export interface NWCBalanceResult {
 }
 
 export async function getNWCBalance(nwcUri: string): Promise<NWCBalanceResult> {
-  // Parse NWC URI
+  // Parse NWC URI — ALWAYS use `relay` from the connection string (not the app
+  // relay pool). Clients that ignore URI relay= lock out self-hosted wallets.
   const normalizedUri = nwcUri.replace(/^nostr\+walletconnect:/, "http:");
   const uri = new URL(normalizedUri);
   const walletPubkey =
