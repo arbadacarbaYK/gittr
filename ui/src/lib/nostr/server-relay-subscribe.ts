@@ -6,9 +6,9 @@ import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 
 /** Small relay set for server-side stats/metadata — avoids opening 9+ GRASP websockets per request. */
 export const PLATFORM_STATS_RELAYS = [
+  "wss://relay.gittr.space",
   "wss://nos.lol",
   "wss://relay.damus.io",
-  "wss://git.gittr.space",
 ];
 
 export type NostrSubscribeFn = (

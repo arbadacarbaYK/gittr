@@ -43,6 +43,7 @@ export async function fetchRepoAnnouncementMeta(
         const { RelayPool } = await import("nostr-relaypool");
 
         const DEFAULT_RELAYS = [
+          "wss://relay.gittr.space",
           "wss://relay.damus.io",
           "wss://relay.noderunners.network",
           "wss://nos.lol",

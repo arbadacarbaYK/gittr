@@ -795,6 +795,15 @@ export default function RelaysPage() {
                 (e.g. uid.ovh, ngit-relay.nostrver.se) are skipped. Relays above
                 are for connecting to Nostr.
               </span>
+              <span className="block mt-1 text-gray-500">
+                gittr hosts: use{" "}
+                <code className="text-gray-400">wss://relay.gittr.space</code>{" "}
+                here (Nostr + GRASP).{" "}
+                <code className="text-gray-400">git.gittr.space</code> is the
+                bridge HTTPS/SSH git host — clone URLs — not a websocket relay,
+                so it belongs in clone tags / Push mirrors, not the normal
+                relays list.
+              </span>
             </p>
 
             {graspListLoading ? (
@@ -841,7 +850,7 @@ export default function RelaysPage() {
                       <Input
                         type="text"
                         id="grasp-server"
-                        placeholder="wss://git.gittr.space"
+                        placeholder="wss://relay.gittr.space"
                         value={newGraspServer}
                         onChange={(e) => setNewGraspServer(e.target.value)}
                         className="flex-1"

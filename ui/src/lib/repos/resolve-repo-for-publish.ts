@@ -109,7 +109,7 @@ async function defaultFetchAnnouncement(
     ...new Set([
       ...PLATFORM_STATS_RELAYS,
       ...getDefaultRelayUrls(),
-      "wss://git.gittr.space",
+      "wss://relay.gittr.space",
     ]),
   ].filter((r) => r.startsWith("wss://"));
   if (relays.length === 0) return null;

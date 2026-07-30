@@ -46,7 +46,7 @@ export default async function handler(
   // Get default relays from environment
   const defaultRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS?.split(",")
     .map((r) => r.trim())
-    .filter(Boolean) || ["wss://relay.damus.io"];
+    .filter(Boolean) || ["wss://relay.gittr.space", "wss://relay.damus.io"];
 
   // Get platform pubkey for NIP-05 verification (optional)
   const platformPubkey = process.env.NEXT_PUBLIC_PLATFORM_PUBKEY || null;

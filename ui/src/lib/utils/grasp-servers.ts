@@ -22,6 +22,10 @@
  * This list includes ALL known GRASP servers (for reading/fetching repos).
  */
 export const KNOWN_GRASP_DOMAINS = [
+  // gittr: Pyramid adaptation — Nostr relay + GRASP git on the same host (ngit-style)
+  "relay.gittr.space",
+  // gittr: git-nostr-bridge HTTPS/SSH host (clone URLs). Not a wss:// Nostr relay.
+  "git.gittr.space",
   // Actual GRASP git servers (verified to serve git repos)
   "relay.ngit.dev",
   "ngit-relay.nostrver.se",
@@ -31,8 +35,6 @@ export const KNOWN_GRASP_DOMAINS = [
   "git-01.uid.ovh",
   "git-02.uid.ovh",
   "git.jb55.com", // Read-only: jb55 hosts repos but only their own, not a public GRASP server for pushing
-  // gittr.space GRASP server (our own server)
-  "git.gittr.space",
 ] as const;
 
 /**
@@ -56,12 +58,12 @@ export const GRASP_DOMAINS_EXCLUDED_FROM_PUSHING = [
  * KNOWN_GRASP_DOMAINS for fetching).
  */
 export const GRASP_SERVERS_FOR_PUSHING = [
+  "relay.gittr.space",
+  "git.gittr.space",
   "relay.ngit.dev",
   "gitnostr.com",
   "ngit.danconwaydev.com",
   "git.shakespeare.diy",
-  // gittr.space GRASP server (our own)
-  "git.gittr.space",
 ] as const;
 
 /**

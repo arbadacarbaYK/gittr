@@ -167,15 +167,17 @@ export default async function handler(
                   parsed.length > 0
                     ? parsed
                     : [
+                        "wss://relay.gittr.space",
                         "wss://relay.damus.io",
                         "wss://nos.lol",
-                        "wss://relay.nostr.bg",
+                        "wss://relay.primal.net",
                       ];
               } else {
                 defaultRelays = [
+                  "wss://relay.gittr.space",
                   "wss://relay.damus.io",
                   "wss://nos.lol",
-                  "wss://relay.nostr.bg",
+                  "wss://relay.primal.net",
                 ];
               }
 

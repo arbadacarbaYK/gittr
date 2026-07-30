@@ -17,6 +17,7 @@ type ProfileMeta = {
 };
 
 const RELAYS = [
+  "wss://relay.gittr.space",
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.nostr.band",

@@ -27,5 +27,5 @@ export function getDefaultRelayUrls(): string[] {
     return [];
   }
 
-  return ["wss://relay.damus.io"];
+  return ["wss://relay.gittr.space", "wss://relay.damus.io"];
 }

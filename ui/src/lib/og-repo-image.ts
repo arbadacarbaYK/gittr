@@ -143,6 +143,7 @@ export async function fetchRepoLogoUrlFromNostr(
   try {
     const { RelayPool } = await import("nostr-relaypool");
     const relays = [
+      "wss://relay.gittr.space",
       "wss://relay.damus.io",
       "wss://relay.nostr.band",
       "wss://nos.lol",
