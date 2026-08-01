@@ -1,15 +1,8 @@
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
-import {
-  resolveRepoIconForMetadata,
-  resolveUserIconForMetadata,
-} from "@/lib/utils/metadata-icon-resolver";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
-import {
-  normalizeSocialImageUrl,
-  openGraphImageDescriptor,
-} from "@/lib/utils/social-image";
+import { openGraphImageDescriptor } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { Suspense } from "react";
@@ -17,9 +10,7 @@ import { nip19 } from "nostr-tools";
 
 import RepoLayoutClient from "./layout-client";
 
-// Cache configuration for link previews
-// Force dynamic rendering to ensure fresh metadata for social media crawlers
-// Social media platforms cache aggressively on their end, so we ensure our content is always fresh
+// Force dynamic rendering so social crawlers get fresh title/description.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
@@ -33,12 +24,10 @@ export async function generateMetadata({
     const resolvedParams = await params;
     const baseUrl = getPublicSiteUrl();
 
-    // Safely decode repo name - handle invalid percent-encoding gracefully
     let decodedRepo: string;
     try {
       decodedRepo = decodeURIComponent(resolvedParams.repo);
     } catch (decodeError) {
-      // If decoding fails (e.g., invalid % encoding like %ZZ), use original string
       console.warn(
         "[Metadata] Failed to decode repo name, using original:",
         decodeError
@@ -54,7 +43,6 @@ export async function generateMetadata({
       );
     }
 
-    // Format owner name (convert pubkey to npub if needed)
     let ownerName = resolvedParams.entity;
     let ownerPubkey: string | null = null;
     try {
@@ -76,12 +64,13 @@ export async function generateMetadata({
       // Use entity as-is
     }
 
-    const url = `${baseUrl}/${encodeURIComponent(
-      resolvedParams.entity
-    )}/${encodeURIComponent(decodedRepo)}`;
+    const pathEntity = encodeURIComponent(resolvedParams.entity);
+    const pathRepo = encodeURIComponent(decodedRepo);
+    const url = `${baseUrl}/${pathEntity}/${pathRepo}`;
+    // Composed dark card (name + optional logo badge + dual stars) — never raw avatar.
+    const cardUrl = `${url}/opengraph-image`;
 
-    // Fetch owner's actual name from Nostr (kind 0 metadata) - with timeout
-    let ownerDisplayName = ownerName; // Fallback to npub/entity
+    let ownerDisplayName = ownerName;
     if (ownerPubkey) {
       try {
         const { fetchUserMetadata } = await import(
@@ -93,13 +82,9 @@ export async function generateMetadata({
         ]);
 
         if (ownerMetadata) {
-          // Use owner's actual name from Nostr if available
-          // CRITICAL: Validate that name/display_name are actually strings
-          // Nostr metadata is parsed JSON and could contain any type
           const nameValue = ownerMetadata.name;
           const displayNameValue = ownerMetadata.display_name;
 
-          // Only use if it's a non-empty string
           if (typeof nameValue === "string" && nameValue.trim().length > 0) {
             ownerDisplayName = nameValue;
           } else if (
@@ -108,9 +93,6 @@ export async function generateMetadata({
           ) {
             ownerDisplayName = displayNameValue;
           }
-          // Otherwise keep the fallback (ownerName)
-
-          console.log("[Metadata] Owner display name:", ownerDisplayName);
         }
       } catch (error) {
         console.warn(
@@ -122,103 +104,16 @@ export async function generateMetadata({
 
     const title = `${ownerDisplayName}/${decodedRepo}`;
 
-    // Fetch repo description (with timeout to keep it fast) - make it non-blocking
-    // Start the fetch but don't wait for it - use a fast fallback
-    const repoMetaPromise = fetchRepoAnnouncementMeta(
-      resolvedParams.entity,
-      decodedRepo,
-      1500
-    );
-
-    // Resolve repository icon URL for Open Graph (also non-blocking)
-    // Priority: 1) repo picture (logo) 2) owner profile picture 3) gittr card
-    const defaultCard = `${baseUrl}/opengraph-image`;
-    let iconUrl = defaultCard;
-    const iconUrlPromise = (async () => {
-      try {
-        // 1) Repository logo (file-content URL or default)
-        try {
-          let resolvedIcon = await resolveRepoIconForMetadata(
-            resolvedParams.entity,
-            decodedRepo,
-            baseUrl
-          );
-
-          if (!resolvedIcon.startsWith("http")) {
-            resolvedIcon = `${baseUrl}${
-              resolvedIcon.startsWith("/") ? "" : "/"
-            }${resolvedIcon}`;
-          }
-
-          if (resolvedIcon !== defaultCard) {
-            console.log(
-              "[Metadata] Using repo logo:",
-              resolvedIcon.substring(0, 60)
-            );
-            return resolvedIcon;
-          }
-        } catch (error) {
-          console.warn("[Metadata] Failed to resolve repo icon:", error);
-        }
-
-        // 2) Owner profile picture
-        if (ownerPubkey) {
-          try {
-            const ownerIcon = await resolveUserIconForMetadata(
-              resolvedParams.entity,
-              baseUrl,
-              1000
-            );
-            if (
-              ownerIcon &&
-              ownerIcon !== defaultCard &&
-              ownerIcon.startsWith("http")
-            ) {
-              console.log(
-                "[Metadata] Using owner profile picture:",
-                ownerIcon.substring(0, 60)
-              );
-              return ownerIcon;
-            }
-          } catch (error) {
-            console.warn("[Metadata] Failed to fetch owner icon:", error);
-          }
-        }
-
-        return defaultCard;
-      } catch (error) {
-        console.warn(
-          "[Metadata] Failed to resolve icon, using default:",
-          error
-        );
-        return defaultCard;
-      }
-    })();
-
-    // Wait for both with a timeout - if they take too long, use fallbacks
-    const [repoMeta, resolvedIconUrl] = await Promise.race([
-      Promise.all([repoMetaPromise, iconUrlPromise]),
-      new Promise<
-        [{ description: string | null; nostrPublicRead: boolean }, string]
-      >((resolve) =>
-        setTimeout(
-          () =>
-            resolve([
-              { description: null, nostrPublicRead: true },
-              `${baseUrl}/opengraph-image`,
-            ]),
-          2000
-        )
+    const repoMeta = await Promise.race([
+      fetchRepoAnnouncementMeta(resolvedParams.entity, decodedRepo, 1500),
+      new Promise<{ description: string | null; nostrPublicRead: boolean }>(
+        (resolve) =>
+          setTimeout(
+            () => resolve({ description: null, nostrPublicRead: true }),
+            2000
+          )
       ),
-    ]).catch(
-      () =>
-        [
-          { description: null, nostrPublicRead: true },
-          `${baseUrl}/opengraph-image`,
-        ] as [{ description: string | null; nostrPublicRead: boolean }, string]
-    );
-
-    iconUrl = normalizeSocialImageUrl(resolvedIconUrl || iconUrl, baseUrl);
+    ]).catch(() => ({ description: null, nostrPublicRead: true }));
 
     const repoDescription = repoMeta.description;
 
@@ -231,7 +126,6 @@ export async function generateMetadata({
       );
     }
 
-    // Build description text - use repo description if available, otherwise generic
     const description = repoDescription
       ? repoDescription.length > 160
         ? repoDescription.substring(0, 157) + "..."
@@ -242,10 +136,12 @@ export async function generateMetadata({
       console.log("[Metadata] Final metadata:", {
         title,
         description: description.substring(0, 50),
-        iconUrl,
+        cardUrl,
         indexable,
       });
     }
+
+    const imageAlt = `${decodedRepo} repository on gittr`;
 
     return {
       title,
@@ -267,39 +163,35 @@ export async function generateMetadata({
         url,
         type: "website",
         siteName: "gittr",
-        images: [
-          openGraphImageDescriptor(
-            iconUrl,
-            baseUrl,
-            `${decodedRepo} repository on gittr`
-          ),
-        ],
+        images: [openGraphImageDescriptor(cardUrl, baseUrl, imageAlt)],
       },
       twitter: {
-        card: "summary_large_image", // X/Twitter requires summary_large_image for better image display
+        card: "summary_large_image",
         title,
         description,
-        images: [iconUrl], // Must be absolute URL, publicly accessible
+        images: [cardUrl],
       },
       alternates: {
         canonical: url,
       },
     };
   } catch (error) {
-    // If metadata generation fails, return basic metadata to prevent page crash
     console.error("[Metadata] Error generating metadata:", error);
     const baseUrl = getPublicSiteUrl();
     const resolvedParams = await params;
 
-    // Safely decode repo name in error handler too
     let decodedRepo: string;
     try {
       decodedRepo = decodeURIComponent(resolvedParams.repo);
-    } catch (decodeError) {
+    } catch {
       decodedRepo = resolvedParams.repo;
     }
 
     const title = `${resolvedParams.entity}/${decodedRepo}`;
+    const url = `${baseUrl}/${encodeURIComponent(
+      resolvedParams.entity
+    )}/${encodeURIComponent(decodedRepo)}`;
+    const cardUrl = `${url}/opengraph-image`;
 
     return {
       title,
@@ -310,14 +202,12 @@ export async function generateMetadata({
       openGraph: {
         title,
         description: `Repository ${title} on gittr - Decentralized Git on Nostr`,
-        url: `${baseUrl}/${encodeURIComponent(
-          resolvedParams.entity
-        )}/${encodeURIComponent(decodedRepo)}`,
+        url,
         type: "website",
         siteName: "gittr",
         images: [
           openGraphImageDescriptor(
-            `${baseUrl}/opengraph-image`,
+            cardUrl,
             baseUrl,
             `${decodedRepo} repository on gittr`
           ),
@@ -327,7 +217,7 @@ export async function generateMetadata({
         card: "summary_large_image",
         title,
         description: `Repository ${title} on gittr - Decentralized Git on Nostr`,
-        images: [`${baseUrl}/opengraph-image`],
+        images: [cardUrl],
       },
     };
   }
@@ -335,7 +225,6 @@ export async function generateMetadata({
 
 export default function RepoLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
   params: Promise<{ entity: string; repo: string; subpage?: string }>;

@@ -67,18 +67,26 @@ for rel in "${LOCAL_ONLY[@]}"; do
 done
 
 # --- Install & build ---
+# yarn.lock is canonical (package-lock.json is gitignored and goes stale).
 echo ""
-echo "Installing UI dependencies..."
+echo "Installing UI dependencies (yarn)..."
 cd "$TARGET/ui"
-npm install
+if command -v yarn >/dev/null 2>&1; then
+  yarn install
+elif command -v corepack >/dev/null 2>&1; then
+  corepack enable >/dev/null 2>&1 || true
+  yarn install || npx --yes yarn@1.22.22 install
+else
+  npx --yes yarn@1.22.22 install
+fi
 
 echo ""
 echo "Building UI (verifies TypeScript)..."
-npm run build
+yarn build 2>/dev/null || npx --yes yarn@1.22.22 build
 
 echo ""
 echo "=== Done ==="
-echo "Work here:  cd $TARGET/ui && npm run dev"
+echo "Work here:  cd $TARGET/ui && yarn dev"
 echo "Deploy:     cd $TARGET && ./upload_to_hetzner.sh <host>"
 echo ""
 echo "NEVER rsync or upload from $BACKUP_DIR — it may contain stale code."

@@ -166,7 +166,7 @@ Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](d
 
 | Layer      | Tech                                                                                      |
 | ---------- | ----------------------------------------------------------------------------------------- |
-| UI         | Next.js 13 (App Router), React, TypeScript, Tailwind                                      |
+| UI         | Next.js 15 (App Router), React, TypeScript, Tailwind                                      |
 | Nostr      | `nostr-relaypool`, `nostr-tools`                                                          |
 | Git server | `git-nostr-bridge`, `git-nostr-ssh`, `git-nostr-cli` in `[ui/gitnostr/](ui/gitnostr/)`    |
 | App blobs  | NIP-96 Blossom (NIP-82 `/apps`, Pages uploads; large packs—not git objects on the bridge) |

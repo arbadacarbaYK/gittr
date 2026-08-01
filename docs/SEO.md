@@ -8,8 +8,8 @@ How search engines and social previews find gittr content. Marketing copy was up
 | --- | --- | --- |
 | Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Root card via `buildRootSiteMetadata()`; per-route cards via `buildPageSiteMetadata({ path, title, description })` so X/Telegram do not reuse the homepage `og:url` |
 | Hub routes (`/pages`, `/apps`, `/explore`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
-| Route OG images | `ui/src/app/pages/opengraph-image.tsx`, `apps/opengraph-image.tsx`, root `opengraph-image.tsx` | Distinct taglines; shared renderer in `ui/src/lib/seo/create-og-image.tsx` |
-| Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` | Uses repo description when present; otherwise `buildRepoFallbackDescription()` |
+| Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
+| Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card (name-first, optional logo badge, source ★ + Nostr ★ when known). Never uses raw avatars as the whole preview. |
 | `robots.txt` | `ui/src/app/robots.ts` | Allows `/`; disallows `/api/`, `/login`, `/settings/`, etc. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |
 | PWA manifest | `ui/public/site.webmanifest` | Short description for install prompts |
@@ -89,9 +89,10 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 
 ## Social previews (X, Telegram, LinkedIn)
 
-- Repo and profile pages set Open Graph / Twitter cards in layout metadata.
-- Use full `https://` in `NEXT_PUBLIC_SITE_URL`.
-- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools if previews stay stale.
+- Homepage vs hubs: `/`, `/apps`, `/pages`, and `/explore` each have their own **title**, **description**, and **OG image** (`buildPageSiteMetadata` + route `opengraph-image.tsx`). Do not reuse homepage copy for hub links.
+- `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.
+- Use full `https://` in `NEXT_PUBLIC_SITE_URL` in production.
+- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools (e.g. Telegram may keep a separate cache for `gittr.space` vs `https://gittr.space`).
 
 ## Related
 
