@@ -133,7 +133,7 @@ export async function readRepoLogoFromBridge(
   return null;
 }
 
-/** First image-like HTTPS URL from kind 30617 web tags (logo in announcement). */
+/** Prefer NIP-34 `image` tag; fall back to image-like HTTPS URLs in `web` tags. */
 export async function fetchRepoLogoUrlFromNostr(
   ownerPubkey: string,
   repoName: string,
@@ -180,8 +180,19 @@ export async function fetchRepoLogoUrlFromNostr(
           relays,
           (event: { tags?: string[][] }) => {
             clearTimeout(timer);
+            const tags = event.tags || [];
+            // Spec: logo URL lives on `image` (not `web`).
+            for (const tag of tags) {
+              if (tag[0] === "image" && typeof tag[1] === "string") {
+                const u = tag[1].trim();
+                if (u.startsWith("https://") && !/\.svg(\?|$)/i.test(u)) {
+                  finish(u);
+                  return;
+                }
+              }
+            }
             const webUrls: string[] = [];
-            for (const tag of event.tags || []) {
+            for (const tag of tags) {
               if (tag[0] === "web") {
                 for (let i = 1; i < tag.length; i++) {
                   const v = tag[i];
@@ -191,7 +202,9 @@ export async function fetchRepoLogoUrlFromNostr(
                 }
               }
             }
-            const imageUrl = webUrls.find((u) => IMAGE_EXT.test(u));
+            const imageUrl = webUrls.find(
+              (u) => IMAGE_EXT.test(u) && !/\.svg(\?|$)/i.test(u)
+            );
             finish(imageUrl || null);
           },
           undefined,

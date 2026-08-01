@@ -119,6 +119,7 @@ type AnnouncementBits = {
   description: string | null;
   eventId: string | null;
   github: { owner: string; repo: string } | null;
+  imageUrl: string | null;
 };
 
 async function fetchAnnouncementBits(
@@ -130,6 +131,7 @@ async function fetchAnnouncementBits(
     description: null,
     eventId: null,
     github: null,
+    imageUrl: null,
   };
   try {
     const { RelayPool } = await import("nostr-relaypool");
@@ -186,10 +188,39 @@ async function fetchAnnouncementBits(
             ) {
               description = descTag[1];
             }
+            const tags = event.tags || [];
+            let imageUrl: string | null = null;
+            for (const tag of tags) {
+              if (tag[0] === "image" && typeof tag[1] === "string") {
+                const u = tag[1].trim();
+                if (u.startsWith("https://") && !/\.svg(\?|$)/i.test(u)) {
+                  imageUrl = u;
+                  break;
+                }
+              }
+            }
+            if (!imageUrl) {
+              for (const tag of tags) {
+                if (tag[0] !== "web") continue;
+                for (let i = 1; i < tag.length; i++) {
+                  const v = tag[i];
+                  if (
+                    typeof v === "string" &&
+                    v.startsWith("https://") &&
+                    /\.(png|jpe?g|webp|gif)(\?|$)/i.test(v)
+                  ) {
+                    imageUrl = v;
+                    break;
+                  }
+                }
+                if (imageUrl) break;
+              }
+            }
             finish({
               description,
               eventId: typeof event.id === "string" ? event.id : null,
-              github: githubFromTags(event.tags || []),
+              github: githubFromTags(tags),
+              imageUrl,
             });
           },
           undefined,
@@ -292,69 +323,92 @@ async function fetchGithubStars(
   }
 }
 
+async function httpsImageToDataUrl(
+  url: string,
+  timeoutMs = 1200
+): Promise<string | null> {
+  if (!url.startsWith("https://") || /\.svg(\?|$)/i.test(url)) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "gittr-space-og" },
+      redirect: "follow",
+    });
+    if (!res.ok) return null;
+    const ctype = res.headers.get("content-type") || "";
+    if (ctype.includes("svg")) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 80 || buf.length > 2_500_000) return null;
+    const meta = await sharp(buf).metadata();
+    const w = meta.width || 0;
+    const h = meta.height || 0;
+    // Allow modest icons; skip tiny junk.
+    if (w > 0 && h > 0 && (w < 32 || h < 32)) return null;
+    const png = await sharp(buf)
+      .resize(160, 160, {
+        fit: "cover",
+        position: "centre",
+        background: { r: 20, g: 24, b: 34, alpha: 1 },
+      })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function logoToDataUrl(
   ownerPubkey: string,
-  repoName: string
+  repoName: string,
+  announcementImageUrl: string | null,
+  ownerPictureUrl: string | null
 ): Promise<string | null> {
+  // 1) Bridge bare-repo logo.png (etc.)
   try {
     const onDisk = await readRepoLogoFromBridge(ownerPubkey, repoName);
     if (onDisk && !onDisk.contentType.includes("svg")) {
       const meta = await sharp(onDisk.buffer).metadata();
       const w = meta.width || 0;
       const h = meta.height || 0;
-      // Tiny / broken icons look worse blown up — skip as badge.
-      if (w > 0 && h > 0 && (w < 48 || h < 48)) {
-        /* too small; try remote */
-      } else if (w >= 48 && h >= 48) {
+      if (w >= 32 && h >= 32) {
         const png = await sharp(onDisk.buffer)
-          .resize(160, 160, { fit: "cover" })
+          .resize(160, 160, { fit: "cover", position: "centre" })
           .png()
           .toBuffer();
         return `data:image/png;base64,${png.toString("base64")}`;
       }
     }
   } catch {
-    /* try remote */
+    /* continue */
   }
 
-  try {
-    const remote = await fetchRepoLogoUrlFromNostr(ownerPubkey, repoName, 900);
-    if (!remote || !remote.startsWith("https://")) return null;
-    if (/\.svg(\?|$)/i.test(remote)) return null;
-
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 1200);
-    try {
-      const res = await fetch(remote, {
-        signal: ctrl.signal,
-        headers: { "User-Agent": "gittr-space-og" },
-      });
-      if (!res.ok) return null;
-      const ctype = res.headers.get("content-type") || "";
-      if (ctype.includes("svg")) return null;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length < 200 || buf.length > 2_500_000) return null;
-      const meta = await sharp(buf).metadata();
-      const w = meta.width || 0;
-      const h = meta.height || 0;
-      if (w < 48 || h < 48) return null;
-      const png = await sharp(buf)
-        .resize(160, 160, { fit: "cover" })
-        .png()
-        .toBuffer();
-      return `data:image/png;base64,${png.toString("base64")}`;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return null;
+  // 2) Announcement `image` / image-like web (passed in or fetched)
+  const remoteCandidates = [
+    announcementImageUrl,
+    await fetchRepoLogoUrlFromNostr(ownerPubkey, repoName, 900).catch(
+      () => null
+    ),
+    ownerPictureUrl,
+  ];
+  for (const candidate of remoteCandidates) {
+    if (!candidate) continue;
+    const dataUrl = await httpsImageToDataUrl(candidate);
+    if (dataUrl) return dataUrl;
   }
+
+  return null;
 }
 
-async function fetchOwnerLabel(
+async function fetchOwnerProfile(
   ownerPubkey: string,
   timeoutMs: number
-): Promise<string> {
+): Promise<{ label: string; pictureUrl: string | null }> {
+  const fallback = { label: shortNpub(ownerPubkey), pictureUrl: null as string | null };
   try {
     const { fetchUserMetadata } = await import(
       "@/lib/nostr/fetch-metadata-server"
@@ -363,16 +417,20 @@ async function fetchOwnerLabel(
       fetchUserMetadata(ownerPubkey),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
     ]);
-    if (meta) {
-      if (typeof meta.name === "string" && meta.name.trim()) return meta.name.trim();
-      if (typeof meta.display_name === "string" && meta.display_name.trim()) {
-        return meta.display_name.trim();
-      }
+    if (!meta) return fallback;
+    let label = fallback.label;
+    if (typeof meta.name === "string" && meta.name.trim()) label = meta.name.trim();
+    else if (typeof meta.display_name === "string" && meta.display_name.trim()) {
+      label = meta.display_name.trim();
     }
+    const pictureUrl =
+      typeof meta.picture === "string" && meta.picture.startsWith("https://")
+        ? meta.picture.trim()
+        : null;
+    return { label, pictureUrl };
   } catch {
-    /* ignore */
+    return fallback;
   }
-  return shortNpub(ownerPubkey);
 }
 
 /**
@@ -398,10 +456,15 @@ export async function fetchRepoOgData(
   }
 
   const announcement = await fetchAnnouncementBits(ownerPubkey, repoName, 1200);
+  const owner = await fetchOwnerProfile(ownerPubkey, 1000);
 
-  const [ownerLabel, logoDataUrl, sourceStars, nostrStars] = await Promise.all([
-    fetchOwnerLabel(ownerPubkey, 900),
-    logoToDataUrl(ownerPubkey, repoName),
+  const [logoDataUrl, sourceStars, nostrStars] = await Promise.all([
+    logoToDataUrl(
+      ownerPubkey,
+      repoName,
+      announcement.imageUrl,
+      owner.pictureUrl
+    ),
     announcement.github
       ? fetchGithubStars(
           announcement.github.owner,
@@ -421,7 +484,7 @@ export async function fetchRepoOgData(
 
   return {
     repoName,
-    ownerLabel,
+    ownerLabel: owner.label,
     description,
     logoDataUrl,
     // Omit zeros — empty meta beats a row of ★ 0 · N 0
