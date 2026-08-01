@@ -9,30 +9,49 @@
 // - The secret key is only used locally for signing/encrypting events
 import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
 
+import { parseNwcConnectionUri } from "./nwc-uri";
+
 export interface NWCBalanceResult {
   balance: number; // Balance in millisats
   balanceSats: number; // Balance in sats
 }
 
 export async function getNWCBalance(nwcUri: string): Promise<NWCBalanceResult> {
-  // Parse NWC URI — ALWAYS use `relay` from the connection string (not the app
-  // relay pool). Clients that ignore URI relay= lock out self-hosted wallets.
-  const normalizedUri = nwcUri.replace(/^nostr\+walletconnect:/, "http:");
-  const uri = new URL(normalizedUri);
-  const walletPubkey =
-    uri.hostname || uri.pathname.replace(/^\/+/, "").replace(/\/$/, "");
-  const relay = uri.searchParams.get("relay");
-  const secret = uri.searchParams.get("secret");
-
-  if (!walletPubkey || !relay || !secret) {
-    throw new Error(`Invalid NWC URI: missing walletPubkey, relay, or secret`);
-  }
-
-  const sk = secret; // hex
+  const parsed = parseNwcConnectionUri(nwcUri);
+  const sk = parsed.secret;
   const clientPubkey = getPublicKey(sk);
 
-  console.log("NWC Balance: Connecting to relay:", relay);
+  let lastError: Error | null = null;
+  for (const relay of parsed.relays) {
+    try {
+      console.log("NWC Balance: Connecting to relay:", relay);
+      return await getNWCBalanceOnRelay(
+        relay,
+        parsed.walletPubkey,
+        sk,
+        clientPubkey
+      );
+    } catch (err: any) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(
+        `NWC Balance: failed on ${relay}:`,
+        lastError.message,
+        "— trying next URI relay if any"
+      );
+    }
+  }
+  throw (
+    lastError ||
+    new Error(`NWC balance failed on all URI relays: ${parsed.relays.join(", ")}`)
+  );
+}
 
+async function getNWCBalanceOnRelay(
+  relay: string,
+  walletPubkey: string,
+  sk: string,
+  clientPubkey: string
+): Promise<NWCBalanceResult> {
   // Create get_balance request
   const requestPayload = {
     method: "get_balance",

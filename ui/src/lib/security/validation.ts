@@ -248,26 +248,20 @@ export function validateNWC(input: string): string | null {
   input = input.trim();
 
   // Format: nostr+walletconnect://<pubkey>?relay=wss://...&secret=...&lud16=...
+  // May include multiple relay= (Alby).
   if (!input.startsWith("nostr+walletconnect://")) {
     return null;
   }
 
   try {
-    const url = new URL(input);
-    if (url.protocol !== "nostr+walletconnect:") {
-      return null;
-    }
-
-    // Validate required parameters
-    const relay = url.searchParams.get("relay");
+    const url = new URL(input.replace(/^nostr\+walletconnect:/, "http:"));
+    const relays = url.searchParams
+      .getAll("relay")
+      .map((r) => r.trim())
+      .filter((r) => r.startsWith("wss://") || r.startsWith("ws://"));
     const secret = url.searchParams.get("secret");
 
-    if (!relay || !secret) {
-      return null;
-    }
-
-    // Validate relay is WebSocket URL
-    if (!relay.startsWith("wss://") && !relay.startsWith("ws://")) {
+    if (relays.length === 0 || !secret) {
       return null;
     }
 

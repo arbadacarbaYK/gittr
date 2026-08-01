@@ -222,14 +222,16 @@ export default function AccountSettingsPage() {
       return "NWC URI must start with 'nostr+walletconnect://'";
     }
     try {
-      const url = new URL(value);
-      const relay = url.searchParams.get("relay");
+      // Normalize custom scheme so multi-relay Alby URIs parse reliably
+      const normalized = value.replace(/^nostr\+walletconnect:/, "http:");
+      const url = new URL(normalized);
+      const relays = url.searchParams
+        .getAll("relay")
+        .map((r) => r.trim())
+        .filter((r) => r.startsWith("wss://") || r.startsWith("ws://"));
       const secret = url.searchParams.get("secret");
-      if (!relay || !secret) {
-        return "NWC URI must include 'relay' and 'secret' parameters";
-      }
-      if (!relay.startsWith("wss://")) {
-        return "Relay URL must start with 'wss://'";
+      if (relays.length === 0 || !secret) {
+        return "NWC URI must include at least one 'relay' (wss://) and a 'secret'";
       }
     } catch {
       return "Invalid NWC URI format";

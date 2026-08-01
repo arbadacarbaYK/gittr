@@ -11,14 +11,16 @@ We're implementing NIP-47 directly without external npm packages for full contro
 
 **Problem:** A lot of NWC UIs only publish/subscribe payment RPC on a **fixed app relay pool** (or a short allow-list of “popular” relays) and **do not use — or do not fall back to — the `relay=` query param in the NWC string**. Wallets that only listen on that URI relay (self-hosted LNbits, Umbrel, custom NWC services) then look “broken”: connect test fails, `pay_invoice` never gets a `23195`, even though the URI is valid.
 
-**gittr rule:** The `relay` inside `nostr+walletconnect://…` is the **sole transport** for NWC.
+**gittr rule:** The `relay` / `relay=` values inside `nostr+walletconnect://…` are the **sole transport** for NWC.
 
-1. Parse `relay` + `secret` + wallet pubkey from the URI (`nwc-balance.ts`, `nwc-connection-test.ts`, `payment-qr.tsx`).
-2. Open a **browser WebSocket straight to that URL** (client-side only — secret never hits our server).
+1. Parse **all** `relay` params + `secret` + wallet pubkey from the URI (`nwc-uri.ts` → `getAll("relay")`). Alby Dummy Sub-Wallet often lists two Alby relays — try each in order.
+2. Open a **browser WebSocket straight to those URLs** (client-side only — secret never hits our server).
 3. Do **not** require that relay to appear under Settings → Relays.
 4. Do **not** rewrite NWC traffic onto damus / primal / user GRASP lists “for convenience”.
 
-App relays stay for NIP-34 / zaps / social events. NWC transport stays on the wallet’s advertised relay — same separation we keep for NIP-46 bunker URI relays vs publish relays.
+**Not login:** Pasting NWC into Amber “Nostr Connect” / gittr Pair Remote Signer is wrong — those expect `bunker://` / `nostrconnect://`. NWC goes in Settings → Account. Login shows a clear error if an NWC URI is pasted there.
+
+App relays stay for NIP-34 / zaps / social events. NWC transport stays on the wallet’s advertised relay(s) — same separation we keep for NIP-46 bunker URI relays vs publish relays.
 
 Teaching extract: [gittr-helper-tools `nip47-nwc`](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip47-nwc).
 

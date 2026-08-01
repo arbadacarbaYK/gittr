@@ -96,6 +96,15 @@ export default function Login() {
         setRemoteError("Paste a bunker:// or nostrconnect:// token.");
         return;
       }
+      if (
+        token.startsWith("nostr+walletconnect://") ||
+        token.startsWith("nostr+walletconnect:")
+      ) {
+        setRemoteError(
+          "That is an NWC payment URI (nostr+walletconnect://), not a login token. Paste it under Settings → Account → NWC Send/Recv. For Amber login use bunker:// or nostrconnect:// (Pair Remote Signer)."
+        );
+        return;
+      }
       setRemoteBusy(true);
       setRemoteError(null);
       try {

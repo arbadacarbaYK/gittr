@@ -10,67 +10,83 @@
 // - The secret key is only used locally for signing/encrypting events
 import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
 
+import { parseNwcConnectionUri } from "./nwc-uri";
+
 export interface NWCConnectionResult {
   connected: boolean;
   relayReachable: boolean;
   requestAccepted: boolean;
   error?: string;
+  /** Which URI relay succeeded (when multiple relay= are present) */
+  relayUsed?: string;
 }
 
 /**
  * Test NWC connection by:
- * 1. Connecting to relay
+ * 1. Connecting to each relay from the URI (Alby often lists two)
  * 2. Sending a simple request (get_info or get_balance)
  * 3. Verifying we get an OK response (even if method not supported)
  */
 export async function testNWCConnection(
   nwcUri: string
 ): Promise<NWCConnectionResult> {
-  // Parse NWC URI — transport relay is URI `relay=` only (see NWC_IMPLEMENTATION_NOTES.md).
-  const normalizedUri = nwcUri.replace(/^nostr\+walletconnect:/, "http:");
-  const uri = new URL(normalizedUri);
-  const walletPubkey =
-    uri.hostname || uri.pathname.replace(/^\/+/, "").replace(/\/$/, "");
-  const relay = uri.searchParams.get("relay");
-  const secret = uri.searchParams.get("secret");
-
-  if (!walletPubkey || !relay || !secret) {
-    throw new Error(`Invalid NWC URI: missing walletPubkey, relay, or secret`);
-  }
-
-  const sk = secret; // hex
+  const parsed = parseNwcConnectionUri(nwcUri);
+  const sk = parsed.secret;
   const clientPubkey = getPublicKey(sk);
 
-  console.log("NWC Connection Test: Testing connection to relay:", relay);
-  console.log("NWC Connection Test: Wallet pubkey:", walletPubkey);
-  // Note: We don't log the full NWC URI or secret for security
+  console.log(
+    "NWC Connection Test: Trying relays from URI:",
+    parsed.relays.join(", ")
+  );
+  console.log("NWC Connection Test: Wallet pubkey:", parsed.walletPubkey);
 
-  // Try get_info first (more commonly supported), fallback to get_balance
   const methodsToTry = ["get_info", "get_balance"];
+  let lastError: string | undefined;
 
-  for (const method of methodsToTry) {
-    try {
-      const result = await testNWCMethod(
-        relay,
-        walletPubkey,
-        sk,
-        clientPubkey,
-        method
-      );
-      if (result.connected) {
-        return result;
+  for (const relay of parsed.relays) {
+    for (const method of methodsToTry) {
+      try {
+        const result = await testNWCMethod(
+          relay,
+          parsed.walletPubkey,
+          sk,
+          clientPubkey,
+          method
+        );
+        if (result.connected) {
+          return { ...result, relayUsed: relay };
+        }
+      } catch (error: any) {
+        lastError = error?.message || String(error);
+        console.log(
+          `NWC Connection Test: ${method} on ${relay} failed:`,
+          lastError
+        );
       }
-    } catch (error: any) {
-      console.log(
-        `NWC Connection Test: ${method} failed, trying next method...`,
-        error.message
-      );
-      // Continue to next method
     }
   }
 
-  // If all methods failed, at least test relay connectivity
-  return await testRelayConnectivity(relay);
+  // Last resort: any relay reachable at all?
+  for (const relay of parsed.relays) {
+    const reach = await testRelayConnectivity(relay);
+    if (reach.relayReachable) {
+      return {
+        ...reach,
+        relayUsed: relay,
+        error:
+          reach.error ||
+          lastError ||
+          "Relay reachable but wallet methods did not respond",
+      };
+    }
+  }
+
+  return {
+    connected: false,
+    relayReachable: false,
+    requestAccepted: false,
+    error: lastError || `Cannot connect to any URI relay: ${parsed.relays.join(", ")}`,
+  };
 }
 
 async function testNWCMethod(

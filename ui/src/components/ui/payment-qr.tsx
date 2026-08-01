@@ -8,6 +8,8 @@ import { CheckCircle, Copy, Download, X } from "lucide-react";
 import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
 import { QRCodeSVG } from "qrcode.react";
 
+import { parseNwcConnectionUri } from "@/lib/payments/nwc-uri";
+
 // NIP-44 is only available in nostr-tools v2.x+, so we'll import it conditionally at runtime
 // This avoids build errors when nip44 doesn't exist in v1.7.4
 let nip44: any = undefined;
@@ -344,22 +346,9 @@ export function PaymentQR({
       }
 
       try {
-        const normalizedUri = uriToUse.replace(
-          /^nostr\+walletconnect:/,
-          "http:"
-        );
-        const uri = new URL(normalizedUri);
-        const walletPubkey =
-          uri.hostname || uri.pathname.replace(/^\/+/, "").replace(/\/$/, "");
-        const relay = uri.searchParams.get("relay");
-        const secret = uri.searchParams.get("secret");
-        if (!walletPubkey || !relay || !secret) {
-          throw new Error(
-            `Invalid NWC URI: missing walletPubkey, relay, or secret`
-          );
-        }
-
-        const sk = secret;
+        const parsed = parseNwcConnectionUri(uriToUse);
+        const walletPubkey = parsed.walletPubkey;
+        const sk = parsed.secret;
         const clientPubkey = getPublicKey(sk);
         setPaymentStatus("checking");
 
@@ -367,34 +356,42 @@ export function PaymentQR({
         let supportedEncryption: string[] = ["nip04"];
         let useNip44 = false;
 
-        try {
-          const infoEvent = await fetchNWCInfoEvent(relay, walletPubkey);
-          if (infoEvent) {
-            walletCapabilities = infoEvent.content
-              .split(/\s+/)
-              .filter((c: string) => c.length > 0);
-            const encryptionTag = infoEvent.tags?.find(
-              (tag: any) => tag[0] === "encryption"
-            );
-            if (encryptionTag && encryptionTag[1]) {
-              supportedEncryption = encryptionTag[1]
+        // Prefer a URI relay that answers the NWC info event (Alby often lists two)
+        for (const candidate of parsed.relays) {
+          try {
+            const infoEvent = await fetchNWCInfoEvent(candidate, walletPubkey);
+            if (infoEvent) {
+              relay = candidate;
+              walletCapabilities = infoEvent.content
                 .split(/\s+/)
-                .filter((e: string) => e.length > 0);
-            }
-            useNip44 =
-              supportedEncryption.includes("nip44_v2") ||
-              supportedEncryption.includes("nip44");
-
-            if (!walletCapabilities.includes("pay_invoice")) {
-              throw new Error(
-                `Wallet does not support pay_invoice. Supported methods: ${walletCapabilities.join(
-                  ", "
-                )}`
+                .filter((c: string) => c.length > 0);
+              const encryptionTag = infoEvent.tags?.find(
+                (tag: any) => tag[0] === "encryption"
               );
+              if (encryptionTag && encryptionTag[1]) {
+                supportedEncryption = encryptionTag[1]
+                  .split(/\s+/)
+                  .filter((e: string) => e.length > 0);
+              }
+              useNip44 =
+                supportedEncryption.includes("nip44_v2") ||
+                supportedEncryption.includes("nip44");
+
+              if (
+                walletCapabilities.length > 0 &&
+                !walletCapabilities.includes("pay_invoice")
+              ) {
+                throw new Error(
+                  `Wallet does not support pay_invoice. Supported methods: ${walletCapabilities.join(
+                    ", "
+                  )}`
+                );
+              }
+              break;
             }
+          } catch (infoError: any) {
+            // try next URI relay
           }
-        } catch (infoError: any) {
-          // Continue with NIP-04 as fallback
         }
 
         const requestPayload = {
@@ -447,82 +444,102 @@ export function PaymentQR({
         paymentEvent.id = getEventHash(paymentEvent);
         paymentEvent.sig = signEvent(paymentEvent, sk);
 
-        await new Promise<void>((resolve, reject) => {
-          const ws = new WebSocket(relay);
-          let requestAccepted = false;
-          let requestSent = false;
+        let lastPayError: Error | null = null;
+        let paidViaRelay = false;
+        for (const candidate of parsed.relays) {
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const ws = new WebSocket(candidate);
+              let requestAccepted = false;
+              let requestSent = false;
 
-          ws.onopen = () => {
-            ws.send(JSON.stringify(["EVENT", paymentEvent]));
-            requestSent = true;
-          };
+              ws.onopen = () => {
+                ws.send(JSON.stringify(["EVENT", paymentEvent]));
+                requestSent = true;
+              };
 
-          ws.onmessage = (message) => {
-            try {
-              const data = JSON.parse(message.data);
-              if (Array.isArray(data) && data[0] === "OK") {
-                const eventId = data[1];
-                const accepted = data[2];
+              ws.onmessage = (message) => {
+                try {
+                  const data = JSON.parse(message.data);
+                  if (Array.isArray(data) && data[0] === "OK") {
+                    const eventId = data[1];
+                    const accepted = data[2];
 
-                if (eventId === paymentEvent.id) {
-                  requestAccepted = accepted;
-                  if (accepted) {
-                    ws.close();
+                    if (eventId === paymentEvent.id) {
+                      requestAccepted = accepted;
+                      if (accepted) {
+                        ws.close();
+                        setPaymentStatus("checking");
+                        if (paymentHash) {
+                          setTimeout(() => checkPaymentStatus(), 1500);
+                        } else {
+                          setPaymentStatus("pending");
+                        }
+                        resolve();
+                      } else {
+                        const reason = data[3] || "unknown";
+                        ws.close();
+                        reject(
+                          new Error(
+                            `Payment request rejected by relay: ${reason}`
+                          )
+                        );
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error("NWC: Error parsing message:", error);
+                }
+              };
+
+              ws.onerror = (error) => {
+                ws.close();
+                reject(new Error(`WebSocket error: ${error}`));
+              };
+
+              ws.onclose = () => {
+                if (!requestAccepted && requestSent) {
+                  setPaymentStatus("checking");
+                  if (paymentHash) {
+                    setTimeout(() => checkPaymentStatus(), 1500);
+                  }
+                  resolve();
+                }
+              };
+
+              setTimeout(() => {
+                if (!requestAccepted && ws.readyState === WebSocket.OPEN) {
+                  ws.close();
+                  if (requestSent) {
                     setPaymentStatus("checking");
                     if (paymentHash) {
                       setTimeout(() => checkPaymentStatus(), 1500);
-                    } else {
-                      setPaymentStatus("pending");
                     }
                     resolve();
                   } else {
-                    const reason = data[3] || "unknown";
-                    ws.close();
                     reject(
-                      new Error(`Payment request rejected by relay: ${reason}`)
+                      new Error(
+                        "WebSocket timeout - failed to send payment request"
+                      )
                     );
                   }
                 }
-              }
-            } catch (error) {
-              console.error("NWC: Error parsing message:", error);
-            }
-          };
-
-          ws.onerror = (error) => {
-            ws.close();
-            reject(new Error(`WebSocket error: ${error}`));
-          };
-
-          ws.onclose = (event) => {
-            if (!requestAccepted && requestSent) {
-              setPaymentStatus("checking");
-              if (paymentHash) {
-                setTimeout(() => checkPaymentStatus(), 1500);
-              }
-              resolve();
-            }
-          };
-
-          setTimeout(() => {
-            if (!requestAccepted && ws.readyState === WebSocket.OPEN) {
-              ws.close();
-              if (requestSent) {
-                setPaymentStatus("checking");
-                if (paymentHash) {
-                  setTimeout(() => checkPaymentStatus(), 1500);
-                }
-                resolve();
-              } else {
-                reject(
-                  new Error(
-                    "WebSocket timeout - failed to send payment request"
-                  )
-                );
-              }
-            }
-          }, 10000);
-        });
+              }, 10000);
+            });
+            paidViaRelay = true;
+            break;
+          } catch (err: any) {
+            lastPayError =
+              err instanceof Error ? err : new Error(String(err));
+            console.warn(
+              `NWC pay_invoice failed on ${candidate}:`,
+              lastPayError.message
+            );
+          }
+        }
+        if (!paidViaRelay && lastPayError) {
+          throw lastPayError;
+        }
       } catch (protoErr: any) {
         console.error("NWC protocol error:", protoErr);
         setPaymentStatus("pending");
