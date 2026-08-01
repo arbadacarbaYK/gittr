@@ -30,7 +30,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.122.0",
     "mermaid": "^11.12.1",
-    "next": "^15.5.7",
+    "next": "^15.5.21",
     "node-fetch": "^3.3.1",
     "nostr-relaypool": "^0.5.5",
     "nostr-tools": "^1.7.4",
@@ -45,7 +45,7 @@
     "tailwind-merge": "^1.10.0",
     "tailwindcss-animate": "^1.0.5",
     "utf-8-validate": "^6.0.5",
-    "ws": "^8.12.1",
+    "ws": "^8.21.0",
     "zod": "^3.20.6"
   },
   "devDependencies": {
@@ -64,7 +64,7 @@
     "autoprefixer": "^10.4.7",
     "eslint": "^8.34.0",
     "eslint-config-next": "^13.2.1",
-    "postcss": "^8.4.14",
+    "postcss": "^8.5.18",
     "prettier": "^2.8.4",
     "prettier-plugin-tailwindcss": "^0.2.4",
     "rimraf": "^4.3.1",
@@ -76,6 +76,12 @@
     "initVersion": "7.5.9"
   },
   "resolutions": {
-    "@babel/core": "^7.23.0"
+    "@babel/core": "^7.23.0",
+    "lodash": "4.18.1",
+    "picomatch": "2.3.2",
+    "@xmldom/xmldom": "0.8.13",
+    "mdast-util-to-hast": "13.2.1",
+    "dompurify": "3.4.12",
+    "js-yaml": "4.3.0"
   }
 }
