@@ -355,13 +355,14 @@ export function PaymentQR({
         let walletCapabilities: string[] = [];
         let supportedEncryption: string[] = ["nip04"];
         let useNip44 = false;
+        let preferredRelay = parsed.relay;
 
         // Prefer a URI relay that answers the NWC info event (Alby often lists two)
         for (const candidate of parsed.relays) {
           try {
             const infoEvent = await fetchNWCInfoEvent(candidate, walletPubkey);
             if (infoEvent) {
-              relay = candidate;
+              preferredRelay = candidate;
               walletCapabilities = infoEvent.content
                 .split(/\s+/)
                 .filter((c: string) => c.length > 0);
@@ -446,7 +447,11 @@ export function PaymentQR({
 
         let lastPayError: Error | null = null;
         let paidViaRelay = false;
-        for (const candidate of parsed.relays) {
+        const payRelays = [
+          preferredRelay,
+          ...parsed.relays.filter((r) => r !== preferredRelay),
+        ];
+        for (const candidate of payRelays) {
           try {
             await new Promise<void>((resolve, reject) => {
               const ws = new WebSocket(candidate);
