@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+import { Search } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 function SearchBarInner({ className }: { className?: string }) {
@@ -39,8 +40,7 @@ function SearchBarInner({ className }: { className?: string }) {
     if (params.q) sp.set("q", params.q);
     const qs = sp.toString();
     const href = qs ? `/explore?${qs}` : "/explore";
-    // Hard nav — soft router.push/replace was silently no-op from the header
-    // SearchBar on some pages; seed API makes explore remount cheap.
+    // Hard nav — soft App Router push/replace from the header was a silent no-op.
     window.location.assign(href);
   }, []);
 
@@ -53,7 +53,7 @@ function SearchBarInner({ className }: { className?: string }) {
 
   const submitQuery = useCallback(
     (raw: string) => {
-      const q = raw.trim();
+      const q = String(raw || "").trim();
       if (!q) {
         clearExploreFilters();
         return;
@@ -74,12 +74,16 @@ function SearchBarInner({ className }: { className?: string }) {
     [clearExploreFilters, goExplore]
   );
 
+  const runSubmit = useCallback(() => {
+    submitQuery(ref.current?.value || "");
+  }, [submitQuery]);
+
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      submitQuery(ref.current?.value || "");
+      runSubmit();
     },
-    [submitQuery]
+    [runSubmit]
   );
 
   const handleKeyDown = useCallback(
@@ -87,10 +91,15 @@ function SearchBarInner({ className }: { className?: string }) {
       if (e.key === "Escape" && pathname === "/explore") {
         e.preventDefault();
         clearExploreFilters();
+        return;
       }
-      // Enter is handled by the wrapping <form onSubmit>.
+      // Explicit Enter — do not rely only on form submit (some embeds swallow it).
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitQuery(e.currentTarget.value || "");
+      }
     },
-    [clearExploreFilters, pathname]
+    [clearExploreFilters, pathname, submitQuery]
   );
 
   // Live-clear while deleting on explore: empty box drops ?q= / ?user=.
@@ -103,11 +112,15 @@ function SearchBarInner({ className }: { className?: string }) {
   }, [clearExploreFilters, pathname, urlQ, urlUser]);
 
   return (
-    <form onSubmit={handleSubmit} className="w-full" role="search">
+    <form
+      onSubmit={handleSubmit}
+      className="relative flex w-full items-center gap-1"
+      role="search"
+    >
       <Input
         ref={ref}
         className={cn(
-          "w-full bg-[#0E1116] transition-all ease-in-out",
+          "w-full bg-[#0E1116] transition-all ease-in-out pr-9",
           className
         )}
         type="search"
@@ -127,6 +140,17 @@ function SearchBarInner({ className }: { className?: string }) {
           }, 0);
         }}
       />
+      <button
+        type="submit"
+        aria-label="Search"
+        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+        onClick={(e) => {
+          e.preventDefault();
+          runSubmit();
+        }}
+      >
+        <Search className="h-3.5 w-3.5" aria-hidden />
+      </button>
     </form>
   );
 }
