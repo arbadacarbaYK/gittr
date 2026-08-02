@@ -509,7 +509,9 @@ export function AppsDirectoryClient() {
               mergeReleaseEvent(event);
             }
           },
-          16000
+          // Deliver ASAP — 16s batching made the client fallback look "broken"
+          // for a long empty stretch after the server path returned [].
+          400
         )
       : () => {};
 

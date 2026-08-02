@@ -6,9 +6,9 @@ export const RELAY_ZAPSTORE = "wss://relay.zapstore.dev";
 /** Public relays used for the Apps directory (no login required). Zapstore first. */
 export const SOFTWARE_CATALOG_RELAYS = [
   RELAY_ZAPSTORE,
-  "wss://relay.gittr.space",
-  "wss://relay.damus.io",
   "wss://nos.lol",
+  "wss://relay.damus.io",
+  "wss://relay.gittr.space",
 ] as const;
 
 /**

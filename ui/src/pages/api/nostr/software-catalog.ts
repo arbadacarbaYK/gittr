@@ -13,14 +13,21 @@ import { RELAY_ZAPSTORE } from "@/lib/nostr/software-catalog-relays";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
+/**
+ * Catalog scrape relays. Zapstore holds most NIP-82 apps; others are backups.
+ * Do NOT finish on the first EOSE — relay.gittr.space EOSes empty in ~100ms and
+ * would abort before Zapstore finishes (that bug returned apps:[] to /apps).
+ */
 const CATALOG_RELAYS = [
   RELAY_ZAPSTORE,
-  "wss://relay.gittr.space",
-  "wss://relay.damus.io",
   "wss://nos.lol",
+  "wss://relay.damus.io",
+  "wss://relay.gittr.space",
 ];
 
 const FETCH_MS = 20000;
+/** Once we have apps, don't wait the full 20s for stragglers. */
+const EARLY_EXIT_AFTER_APPS_MS = 8000;
 
 type CatalogResponse = {
   apps: ParsedSoftwareApp[];
@@ -53,15 +60,28 @@ async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
   const rawApps: NostrEventLike[] = [];
   const releasesByApp = new Map<string, ParsedSoftwareRelease[]>();
   const releasesByAppId = new Map<string, ParsedSoftwareRelease[]>();
+  const eoseRelays = new Set<string>();
 
   await new Promise<void>((resolve) => {
     let settled = false;
+    let earlyTimer: ReturnType<typeof setTimeout> | null = null;
+
     const finish = () => {
       if (settled) return;
       settled = true;
+      if (earlyTimer) clearTimeout(earlyTimer);
+      clearTimeout(hardTimer);
       resolve();
     };
-    const timer = setTimeout(finish, FETCH_MS);
+
+    const hardTimer = setTimeout(finish, FETCH_MS);
+
+    const maybeEarlyExit = () => {
+      if (rawApps.length === 0) return;
+      if (earlyTimer) return;
+      // Got apps from at least one relay — paint soon, keep listening briefly.
+      earlyTimer = setTimeout(finish, EARLY_EXIT_AFTER_APPS_MS);
+    };
 
     pool.subscribe(
       [
@@ -73,6 +93,7 @@ async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
         if (isPublisherBlocklisted(event.pubkey)) return;
         if (event.kind === KIND_SOFTWARE_APPLICATION) {
           rawApps.push(event);
+          maybeEarlyExit();
           return;
         }
         if (event.kind === KIND_SOFTWARE_RELEASE) {
@@ -83,9 +104,20 @@ async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
         }
       },
       undefined,
-      () => {
-        clearTimeout(timer);
-        finish();
+      (relayInfo) => {
+        // EOSE from one relay — keep waiting for others (Zapstore) until timeout.
+        const url =
+          typeof relayInfo === "string"
+            ? relayInfo
+            : relayInfo &&
+              typeof relayInfo === "object" &&
+              "url" in (relayInfo as object)
+            ? String((relayInfo as { url: string }).url || "")
+            : "";
+        if (url) eoseRelays.add(url.toLowerCase().replace(/\/+$/, ""));
+        if (eoseRelays.size >= CATALOG_RELAYS.length && rawApps.length > 0) {
+          finish();
+        }
       }
     );
   });
@@ -126,10 +158,15 @@ export default async function handler(
 
   try {
     const catalog = await fetchCatalogFromRelays();
-    res.setHeader(
-      "Cache-Control",
-      "public, s-maxage=120, stale-while-revalidate=300"
-    );
+    // Never CDN-cache an empty catalog — that made /apps stick on zero after a race.
+    if (catalog.apps.length > 0) {
+      res.setHeader(
+        "Cache-Control",
+        "public, s-maxage=120, stale-while-revalidate=300"
+      );
+    } else {
+      res.setHeader("Cache-Control", "no-store");
+    }
     return res.status(200).json(catalog);
   } catch (e) {
     console.error("[software-catalog]", e);
