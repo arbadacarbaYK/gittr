@@ -185,15 +185,16 @@ export async function sendNostrDM(
 // Default relay list (same as in NostrContext)
 function getDefaultRelays(): string[] {
   return [
+    "wss://relay.gittr.space",
     "wss://gitnostr.com",
     "wss://relay.ngit.dev",
     "wss://ngit.danconwaydev.com",
     "wss://relay.damus.io",
-    "wss://nostr.fmt.wiz.biz",
     "wss://nos.lol",
     "wss://relay.azzamo.net",
     "wss://nostr.mom",
-    "wss://relay.nostr.band",
     "wss://nostr.wine",
+    "wss://relay.primal.net",
+    "wss://purplepag.es",
   ];
 }

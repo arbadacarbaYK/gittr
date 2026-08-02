@@ -9,7 +9,7 @@ How search engines and social previews find gittr content. Marketing copy was up
 | Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Root card via `buildRootSiteMetadata()`; per-route cards via `buildPageSiteMetadata({ path, title, description })` so X/Telegram do not reuse the homepage `og:url` |
 | Hub routes (`/pages`, `/apps`, `/explore`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
 | Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
-| Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card (name-first, optional logo badge, source ★ + Nostr ★ when known). Never uses raw avatars as the whole preview. |
+| Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card: name, owner, About, corner badge; stats as **GitHub icon + ★ count**, fork icon + count, **N + ★** for Nostr (no “source stars” prose). Brand bottom-right (X uses bottom-left). |
 | `robots.txt` | `ui/src/app/robots.ts` | Allows `/`; disallows `/api/`, `/login`, `/settings/`, etc. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |
 | PWA manifest | `ui/public/site.webmanifest` | Short description for install prompts |
@@ -32,6 +32,8 @@ When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 ### Daily SEO repo index (recommended on production)
 
 Explore discovers public Nostr repos (not only repos people Push’d from gittr). The sitemap already queries Nostr, but a **daily background refresh** writes a durable disk snapshot so crawlers still get a full list when a live relay query times out.
+
+The same snapshot **seeds `/explore`** when the browser cache is empty (`GET /api/explore/seed` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich.
 
 ```bash
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
@@ -90,9 +92,11 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 ## Social previews (X, Telegram, LinkedIn)
 
 - Homepage vs hubs: `/`, `/apps`, `/pages`, and `/explore` each have their own **title**, **description**, and **OG image** (`buildPageSiteMetadata` + route `opengraph-image.tsx`). Do not reuse homepage copy for hub links.
+- Repo cards (`create-repo-og-image.tsx`): keep the **bottom-left corner empty** — X overlays the link name chip there. Brand (`gittr · nostr`) + `NIP-34` sit **bottom-right**.
+- **Canonical share URL** is always `/{entity}/{repo}` (no `?branch=` / `?file=` / tab path). Nested pages inherit the same `og:image`; Share/QR copies the root so social caches do not fork per deep link. File “Copy permalink” stays deep for collaborators.
 - `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.
 - Use full `https://` in `NEXT_PUBLIC_SITE_URL` in production.
-- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools (e.g. Telegram may keep a separate cache for `gittr.space` vs `https://gittr.space`).
+- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools. Repo OG URLs include `?v=…` (and Next’s content hash) so composition changes force a new image URL; paste the **page** URL again in Card Validator after deploy.
 
 ## Related
 

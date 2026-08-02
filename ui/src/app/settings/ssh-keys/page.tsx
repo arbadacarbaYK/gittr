@@ -125,6 +125,24 @@ function sshKeyFromEvent(
   return null;
 }
 
+/**
+ * Git-oriented relays (ngit / gitnostr) often reject bare kind-52 events
+ * ("must reference an accepted repository"). Settings list/publish must
+ * always include general relays that accept kind 52, or the page looks empty
+ * even when keys exist and the bridge already authorized them.
+ */
+const SSH_KEY_LIST_RELAYS = [
+  "wss://relay.gittr.space",
+  "wss://relay.damus.io",
+  "wss://nos.lol",
+] as const;
+
+function relaysForSshKeys(defaultRelays: string[]): string[] {
+  return Array.from(
+    new Set([...getAllRelays(defaultRelays), ...SSH_KEY_LIST_RELAYS])
+  );
+}
+
 function mergeSshKeys(local: SSHKey[], fromRelays: SSHKey[]): SSHKey[] {
   const byBody = new Map<string, SSHKey>();
   for (const k of [...fromRelays, ...local]) {
@@ -195,7 +213,7 @@ export default function SSHKeysPage() {
         return;
       }
 
-      const relays = getAllRelays(defaultRelays);
+      const relays = relaysForSshKeys(defaultRelays);
       const collected = new Map<string, SSHKey>();
       await new Promise<void>((resolve) => {
         let settled = false;
@@ -208,6 +226,15 @@ export default function SSHKeysPage() {
           settled = true;
           resolve();
         };
+        const maybeFinishEarly = () => {
+          if (
+            eoseCount >= expectedEose ||
+            (collected.size > 0 && eoseCount >= eoseQuorum)
+          ) {
+            clearTimeout(timeout);
+            finish();
+          }
+        };
         const timeout = setTimeout(finish, 6000);
         try {
           subscribe(
@@ -217,19 +244,17 @@ export default function SSHKeysPage() {
               if (event.kind !== KIND_SSH_KEY) return;
               if (event.pubkey?.toLowerCase() !== pubkey.toLowerCase()) return;
               const parsed = sshKeyFromEvent(event, calculateFingerprint);
-              if (parsed) collected.set(parsed.id, parsed);
+              if (parsed) {
+                collected.set(parsed.id, parsed);
+                // Event may arrive after empty git-relay EOSEs — finish once
+                // we have keys and a quorum, without waiting for another EOSE.
+                maybeFinishEarly();
+              }
             },
             undefined,
             () => {
               eoseCount += 1;
-              // Early exit only once we have keys + quorum, or every relay EOSEd
-              if (
-                eoseCount >= expectedEose ||
-                (collected.size > 0 && eoseCount >= eoseQuorum)
-              ) {
-                clearTimeout(timeout);
-                finish();
-              }
+              maybeFinishEarly();
             },
             {}
           );
@@ -707,9 +732,10 @@ export default function SSHKeysPage() {
         throw new Error("No signing method available");
       }
 
-      // Publish to Nostr relays (user relays + defaults)
+      // Publish to Nostr relays (user relays + defaults + open relays that
+      // accept bare kind 52 — git relays often reject these events)
       if (publish) {
-        const publishRelays = getAllRelays(defaultRelays);
+        const publishRelays = relaysForSshKeys(defaultRelays);
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         void publish(sshKeyEvent, publishRelays);
 

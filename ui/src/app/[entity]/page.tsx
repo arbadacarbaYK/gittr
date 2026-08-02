@@ -2752,10 +2752,8 @@ export default function EntityPage({
           rememberContactList(currentUserPubkey, pubkeys);
         }
       },
-      undefined,
-      () => {
-        if (unsub) unsub();
-      }
+      undefined
+      // Do not abort on first EOSE — other relays may still deliver a fuller kind-3.
     );
 
     return () => {

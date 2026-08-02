@@ -26,7 +26,7 @@ RUN mkdir -p /root/.config/git-nostr
 
 # Configure git-nostr-bridge
 # Replace gitRepoOwners key with your public key (hex)
-RUN echo '{"repositoryDir": "/root/git-nostr-repositories","DbFile": "/root/.config/git-nostr/git-nostr-db.sqlite","relays": ["wss://relay.damus.io", "wss://nostr.fmt.wiz.biz", "wss://nos.lol"],"gitRepoOwners": ["d7a2565a3d29c05a72c315c9117594bb0c76eda7ebfdda3441d0eb6ba326c5e1"]}' > /root/.config/git-nostr/git-nostr-bridge.json
+RUN echo '{"repositoryDir": "/root/git-nostr-repositories","DbFile": "/root/.config/git-nostr/git-nostr-db.sqlite","relays": ["wss://relay.gittr.space", "wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],"gitRepoOwners": ["d7a2565a3d29c05a72c315c9117594bb0c76eda7ebfdda3441d0eb6ba326c5e1"]}' > /root/.config/git-nostr/git-nostr-bridge.json
 
 # Set the default command to run when the container starts
 CMD service ssh start && /usr/gitnostr/bin/git-nostr-bridge -config=/root/.config/git-nostr/git-nostr-bridge.json

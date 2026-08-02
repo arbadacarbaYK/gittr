@@ -1,6 +1,7 @@
 /**
  * Server-side data for composed repo Open Graph cards.
- * Keeps timeouts tight so social crawlers don't hang.
+ * Keeps timeouts bounded so social crawlers don't hang, but does not abort
+ * on the first empty EOSE (other relays may still answer).
  */
 import {
   KIND_REACTION,
@@ -12,17 +13,19 @@ import {
   fetchRepoLogoUrlFromNostr,
   readRepoLogoFromBridge,
 } from "@/lib/og-repo-image";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 
 import { nip19 } from "nostr-tools";
 import sharp from "sharp";
 
 const OG_RELAYS = [
   "wss://relay.gittr.space",
-  "wss://relay.damus.io",
-  "wss://relay.noderunners.network",
-  "wss://nos.lol",
   "wss://relay.ngit.dev",
   "wss://gitnostr.com",
+  "wss://relay.damus.io",
+  "wss://nos.lol",
+  "wss://relay.noderunners.network",
+  "wss://relay.nostr.band",
 ];
 
 export type RepoOgData = {
@@ -31,6 +34,7 @@ export type RepoOgData = {
   description: string | null;
   logoDataUrl: string | null;
   sourceStars: number | null;
+  sourceForks: number | null;
   nostrStars: number | null;
 };
 
@@ -102,14 +106,16 @@ function parseGithubOwnerRepo(
   }
 }
 
+/** Scan multi-value NIP-34 tags for a github.com owner/repo. */
 function githubFromTags(tags: string[][]): { owner: string; repo: string } | null {
-  for (const tag of tags) {
-    if (tag[0] !== "clone" && tag[0] !== "source" && tag[0] !== "web") continue;
-    for (let i = 1; i < tag.length; i++) {
-      const v = tag[i];
-      if (typeof v !== "string") continue;
-      const parsed = parseGithubOwnerRepo(v);
-      if (parsed) return parsed;
+  const prefer = ["source", "forkedFrom", "clone", "web", "link"] as const;
+  for (const kind of prefer) {
+    for (const tag of tags) {
+      if (tag[0] !== kind) continue;
+      for (const v of nip34TagValuesFromRow(tag)) {
+        const parsed = parseGithubOwnerRepo(v);
+        if (parsed) return parsed;
+      }
     }
   }
   return null;
@@ -120,7 +126,68 @@ type AnnouncementBits = {
   eventId: string | null;
   github: { owner: string; repo: string } | null;
   imageUrl: string | null;
+  createdAt: number;
 };
+
+function bitsFromEvent(event: {
+  id?: string;
+  content?: string;
+  tags?: string[][];
+  created_at?: number;
+}): AnnouncementBits {
+  let description: string | null = null;
+  try {
+    const content = JSON.parse(event.content || "{}") as {
+      description?: unknown;
+    };
+    if (typeof content.description === "string") {
+      description = content.description;
+    }
+  } catch {
+    /* ignore */
+  }
+  const tags = event.tags || [];
+  const descTag = tags.find((t) => t[0] === "description");
+  if (!description && typeof descTag?.[1] === "string" && descTag[1].trim()) {
+    description = descTag[1];
+  }
+  // NIP-34 also allows human-readable `name` but we already show repoName;
+  // keep description only for About.
+
+  let imageUrl: string | null = null;
+  for (const tag of tags) {
+    if (tag[0] === "image" && typeof tag[1] === "string") {
+      const u = tag[1].trim();
+      if (u.startsWith("https://") && !/\.svg(\?|$)/i.test(u)) {
+        imageUrl = u;
+        break;
+      }
+    }
+  }
+  if (!imageUrl) {
+    for (const tag of tags) {
+      if (tag[0] !== "web") continue;
+      for (const v of nip34TagValuesFromRow(tag)) {
+        if (
+          v.startsWith("https://") &&
+          /\.(png|jpe?g|webp|gif)(\?|$)/i.test(v)
+        ) {
+          imageUrl = v;
+          break;
+        }
+      }
+      if (imageUrl) break;
+    }
+  }
+
+  return {
+    description: description?.trim() || null,
+    eventId: typeof event.id === "string" ? event.id : null,
+    github: githubFromTags(tags),
+    imageUrl,
+    createdAt: typeof event.created_at === "number" ? event.created_at : 0,
+  };
+}
 
 async function fetchAnnouncementBits(
   ownerPubkey: string,
@@ -132,12 +199,14 @@ async function fetchAnnouncementBits(
     eventId: null,
     github: null,
     imageUrl: null,
+    createdAt: 0,
   };
   try {
     const { RelayPool } = await import("nostr-relaypool");
     const pool = new RelayPool(OG_RELAYS);
     return await new Promise<AnnouncementBits>((resolve) => {
       let settled = false;
+      let best: AnnouncementBits | null = null;
       const finish = (value: AnnouncementBits) => {
         if (settled) return;
         settled = true;
@@ -148,7 +217,7 @@ async function fetchAnnouncementBits(
         }
         resolve(value);
       };
-      const timer = setTimeout(() => finish(empty), timeoutMs);
+      const timer = setTimeout(() => finish(best || empty), timeoutMs);
       try {
         pool.subscribe(
           [
@@ -156,7 +225,7 @@ async function fetchAnnouncementBits(
               kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
               authors: [ownerPubkey],
               "#d": [repoName],
-              limit: 1,
+              limit: 5,
             },
           ],
           OG_RELAYS,
@@ -164,74 +233,18 @@ async function fetchAnnouncementBits(
             id?: string;
             content?: string;
             tags?: string[][];
-            pubkey?: string;
-            kind?: number;
             created_at?: number;
           }) => {
-            clearTimeout(timer);
-            let description: string | null = null;
-            try {
-              const content = JSON.parse(event.content || "{}") as {
-                description?: unknown;
-              };
-              if (typeof content.description === "string") {
-                description = content.description;
-              }
-            } catch {
-              /* ignore */
+            const bits = bitsFromEvent(event);
+            if (!best || bits.createdAt >= best.createdAt) {
+              best = bits;
             }
-            const descTag = event.tags?.find((t) => t[0] === "description");
-            if (
-              !description &&
-              typeof descTag?.[1] === "string" &&
-              descTag[1].trim()
-            ) {
-              description = descTag[1];
-            }
-            const tags = event.tags || [];
-            let imageUrl: string | null = null;
-            for (const tag of tags) {
-              if (tag[0] === "image" && typeof tag[1] === "string") {
-                const u = tag[1].trim();
-                if (u.startsWith("https://") && !/\.svg(\?|$)/i.test(u)) {
-                  imageUrl = u;
-                  break;
-                }
-              }
-            }
-            if (!imageUrl) {
-              for (const tag of tags) {
-                if (tag[0] !== "web") continue;
-                for (let i = 1; i < tag.length; i++) {
-                  const v = tag[i];
-                  if (
-                    typeof v === "string" &&
-                    v.startsWith("https://") &&
-                    /\.(png|jpe?g|webp|gif)(\?|$)/i.test(v)
-                  ) {
-                    imageUrl = v;
-                    break;
-                  }
-                }
-                if (imageUrl) break;
-              }
-            }
-            finish({
-              description,
-              eventId: typeof event.id === "string" ? event.id : null,
-              github: githubFromTags(tags),
-              imageUrl,
-            });
-          },
-          undefined,
-          () => {
-            clearTimeout(timer);
-            finish(empty);
           }
+          // Do NOT abort on first EOSE — other relays may still deliver.
         );
       } catch {
         clearTimeout(timer);
-        finish(empty);
+        finish(best || empty);
       }
     });
   } catch {
@@ -268,18 +281,14 @@ async function fetchNostrStarCount(
             {
               kinds: [KIND_REACTION],
               "#e": [eventId],
-              limit: 200,
+              limit: 500,
             },
           ],
           OG_RELAYS,
           (event: any) => {
             events.push(event);
-          },
-          undefined,
-          () => {
-            clearTimeout(timer);
-            finish();
           }
+          // Wait for timeout so slower relays can contribute.
         );
       } catch {
         clearTimeout(timer);
@@ -291,11 +300,18 @@ async function fetchNostrStarCount(
   }
 }
 
-async function fetchGithubStars(
+type GithubMeta = {
+  stars: number | null;
+  forks: number | null;
+  description: string | null;
+};
+
+async function fetchGithubMeta(
   owner: string,
   repo: string,
   timeoutMs: number
-): Promise<number | null> {
+): Promise<GithubMeta> {
+  const empty: GithubMeta = { stars: null, forks: null, description: null };
   const token = process.env.GITHUB_PLATFORM_TOKEN || "";
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -311,13 +327,23 @@ async function fetchGithubStars(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
       { headers, signal: ctrl.signal }
     );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { stargazers_count?: unknown };
-    return typeof data.stargazers_count === "number"
-      ? data.stargazers_count
-      : null;
+    if (!res.ok) return empty;
+    const data = (await res.json()) as {
+      stargazers_count?: unknown;
+      forks_count?: unknown;
+      description?: unknown;
+    };
+    return {
+      stars:
+        typeof data.stargazers_count === "number" ? data.stargazers_count : null,
+      forks: typeof data.forks_count === "number" ? data.forks_count : null,
+      description:
+        typeof data.description === "string" && data.description.trim()
+          ? data.description.trim()
+          : null,
+    };
   } catch {
-    return null;
+    return empty;
   } finally {
     clearTimeout(timer);
   }
@@ -344,10 +370,9 @@ async function httpsImageToDataUrl(
     const meta = await sharp(buf).metadata();
     const w = meta.width || 0;
     const h = meta.height || 0;
-    // Allow modest icons; skip tiny junk.
     if (w > 0 && h > 0 && (w < 32 || h < 32)) return null;
     const png = await sharp(buf)
-      .resize(160, 160, {
+      .resize(220, 220, {
         fit: "cover",
         position: "centre",
         background: { r: 20, g: 24, b: 34, alpha: 1 },
@@ -368,7 +393,6 @@ async function logoToDataUrl(
   announcementImageUrl: string | null,
   ownerPictureUrl: string | null
 ): Promise<string | null> {
-  // 1) Bridge bare-repo logo.png (etc.)
   try {
     const onDisk = await readRepoLogoFromBridge(ownerPubkey, repoName);
     if (onDisk && !onDisk.contentType.includes("svg")) {
@@ -377,7 +401,7 @@ async function logoToDataUrl(
       const h = meta.height || 0;
       if (w >= 32 && h >= 32) {
         const png = await sharp(onDisk.buffer)
-          .resize(160, 160, { fit: "cover", position: "centre" })
+          .resize(220, 220, { fit: "cover", position: "centre" })
           .png()
           .toBuffer();
         return `data:image/png;base64,${png.toString("base64")}`;
@@ -387,7 +411,6 @@ async function logoToDataUrl(
     /* continue */
   }
 
-  // 2) Announcement `image` / image-like web (passed in or fetched)
   const remoteCandidates = [
     announcementImageUrl,
     await fetchRepoLogoUrlFromNostr(ownerPubkey, repoName, 900).catch(
@@ -408,19 +431,65 @@ async function fetchOwnerProfile(
   ownerPubkey: string,
   timeoutMs: number
 ): Promise<{ label: string; pictureUrl: string | null }> {
-  const fallback = { label: shortNpub(ownerPubkey), pictureUrl: null as string | null };
+  const fallback = {
+    label: shortNpub(ownerPubkey),
+    pictureUrl: null as string | null,
+  };
   try {
-    const { fetchUserMetadata } = await import(
-      "@/lib/nostr/fetch-metadata-server"
-    );
-    const meta = await Promise.race([
-      fetchUserMetadata(ownerPubkey),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-    ]);
+    const { RelayPool } = await import("nostr-relaypool");
+    const profileRelays = [
+      "wss://purplepag.es",
+      "wss://user.kindpag.es",
+      "wss://relay.gittr.space",
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+    ];
+    const pool = new RelayPool(profileRelays);
+    const meta = await new Promise<{
+      name?: string;
+      display_name?: string;
+      picture?: string;
+    } | null>((resolve) => {
+      let settled = false;
+      const finish = (
+        value: { name?: string; display_name?: string; picture?: string } | null
+      ) => {
+        if (settled) return;
+        settled = true;
+        try {
+          pool.close();
+        } catch {
+          /* ignore */
+        }
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      try {
+        pool.subscribe(
+          [{ kinds: [0], authors: [ownerPubkey], limit: 1 }],
+          profileRelays,
+          (event: { content?: string }) => {
+            clearTimeout(timer);
+            try {
+              finish(JSON.parse(event.content || "{}"));
+            } catch {
+              finish(null);
+            }
+          }
+        );
+      } catch {
+        clearTimeout(timer);
+        finish(null);
+      }
+    });
     if (!meta) return fallback;
     let label = fallback.label;
-    if (typeof meta.name === "string" && meta.name.trim()) label = meta.name.trim();
-    else if (typeof meta.display_name === "string" && meta.display_name.trim()) {
+    if (typeof meta.name === "string" && meta.name.trim()) {
+      label = meta.name.trim();
+    } else if (
+      typeof meta.display_name === "string" &&
+      meta.display_name.trim()
+    ) {
       label = meta.display_name.trim();
     }
     const pictureUrl =
@@ -451,14 +520,17 @@ export async function fetchRepoOgData(
       description: null,
       logoDataUrl: null,
       sourceStars: null,
+      sourceForks: null,
       nostrStars: null,
     };
   }
 
-  const announcement = await fetchAnnouncementBits(ownerPubkey, repoName, 1200);
-  const owner = await fetchOwnerProfile(ownerPubkey, 1000);
+  const [announcement, owner] = await Promise.all([
+    fetchAnnouncementBits(ownerPubkey, repoName, 3200),
+    fetchOwnerProfile(ownerPubkey, 2800),
+  ]);
 
-  const [logoDataUrl, sourceStars, nostrStars] = await Promise.all([
+  const [logoDataUrl, githubMeta, nostrStars] = await Promise.all([
     logoToDataUrl(
       ownerPubkey,
       repoName,
@@ -466,18 +538,22 @@ export async function fetchRepoOgData(
       owner.pictureUrl
     ),
     announcement.github
-      ? fetchGithubStars(
+      ? fetchGithubMeta(
           announcement.github.owner,
           announcement.github.repo,
-          1500
+          2000
         )
-      : Promise.resolve(null),
+      : Promise.resolve({
+          stars: null,
+          forks: null,
+          description: null,
+        } as GithubMeta),
     announcement.eventId
-      ? fetchNostrStarCount(announcement.eventId, 1400)
+      ? fetchNostrStarCount(announcement.eventId, 2500)
       : Promise.resolve(null),
   ]);
 
-  let description = announcement.description;
+  let description = announcement.description || githubMeta.description;
   if (description && description.length > 140) {
     description = `${description.slice(0, 137)}…`;
   }
@@ -487,9 +563,14 @@ export async function fetchRepoOgData(
     ownerLabel: owner.label,
     description,
     logoDataUrl,
-    // Omit zeros — empty meta beats a row of ★ 0 · N 0
     sourceStars:
-      typeof sourceStars === "number" && sourceStars > 0 ? sourceStars : null,
+      typeof githubMeta.stars === "number" && githubMeta.stars > 0
+        ? githubMeta.stars
+        : null,
+    sourceForks:
+      typeof githubMeta.forks === "number" && githubMeta.forks > 0
+        ? githubMeta.forks
+        : null,
     nostrStars:
       typeof nostrStars === "number" && nostrStars > 0 ? nostrStars : null,
   };

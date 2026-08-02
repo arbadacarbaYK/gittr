@@ -6,9 +6,16 @@ gittr shows a **viewer-relative** trust badge next to Nostr identities when you 
 |--------|---------|
 | **In your network** | 1 hop (you follow them, or extension/oracle agrees) |
 | **N hops from you** | Connected through the follow graph within max hops |
-| **Outside your network** | No path found within the search limit |
+| **Outside your network** | Oracle/extension confirmed: no path within the search limit |
+| **Distance unknown** | Oracle/extension unreachable (e.g. 502) and not in your follow list — **not** the same as Outside |
 | **Followers see: In their network** | Your own profile — preview of how people who follow you see you |
 | *(hidden)* | Logged out |
+
+### False “Outside” (fixed Aug 2026)
+
+If the public oracle returns **502**, older code treated that like “no path” and showed **Outside your network** for everyone you don’t follow directly. Multi-hop friends looked “outside” even when you were connected.
+
+Now: HTTP/network failure → **Distance unknown**. Confirmed null hops from a healthy oracle → **Outside your network**. Direct follows still win first from kind-3 + local backup (even when the oracle is down).
 
 ## Data sources (priority)
 
@@ -51,4 +58,4 @@ Self-host: [nostr-wot-oracle](https://github.com/nostr-wot/nostr-wot-oracle).
 - `ui/src/components/ui/trust-badge.tsx` — UI
 - `ui/src/pages/api/wot/distance.ts` — oracle proxy
 
-Tracked in [gittr#26](https://github.com/arbadacarbaYK/gittr/issues/26).
+Tracked previously in [gittr#26](https://github.com/arbadacarbaYK/gittr/issues/26) (**closed** — WoT shipped). Optional **L402** payment rail: [gittr#34](https://github.com/arbadacarbaYK/gittr/issues/34).

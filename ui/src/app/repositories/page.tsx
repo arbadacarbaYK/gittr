@@ -40,6 +40,7 @@ import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
+import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
 import {
   type StoredRepo,
   clearForeignReposFromStorage,
@@ -690,27 +691,10 @@ export default function RepositoriesPage() {
                 pubkey.toLowerCase()
               : false,
         });
-      } else {
+      } else if (list.length === 0) {
         console.log(
-          "⚠️ [Repositories] tides repo NOT found in localStorage. Total repos:",
-          list.length
+          "⚠️ [Repositories] localStorage empty (Total repos: 0) — waiting for Nostr / profile-repos refill"
         );
-        // Debug: Check for any repo with "tide" in the name
-        const tideRepos = list.filter((r) => {
-          const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
-          return repoName.includes("tide");
-        });
-        if (tideRepos.length > 0) {
-          console.log(
-            "🔍 [Repositories] Found repos with 'tide' in name:",
-            tideRepos.map((r: any) => ({
-              repo: r.repo,
-              slug: r.slug,
-              name: r.name,
-              entity: r.entity,
-            }))
-          );
-        }
       }
 
       // Load list of locally-deleted repos (user deleted them, don't re-add from Nostr)
@@ -842,6 +826,21 @@ export default function RepositoriesPage() {
       setRepos([]);
     }
   }, [pubkey]);
+
+  /** Same-tab LS writes never fire `storage` — debounce UI reload after Nostr merges. */
+  const uiReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleUiReloadFromNostr = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (uiReloadTimerRef.current) clearTimeout(uiReloadTimerRef.current);
+    uiReloadTimerRef.current = setTimeout(() => {
+      loadRepos();
+      try {
+        window.dispatchEvent(new Event("gittr:repos-updated"));
+      } catch {
+        /* ignore */
+      }
+    }, 450);
+  }, [loadRepos]);
 
   useEffect(() => {
     if (typeof window === "undefined") return; // Don't run during SSR
@@ -1867,9 +1866,8 @@ export default function RepositoriesPage() {
             // Save to localStorage (with corrupted repos removed)
             localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
 
-            // CRITICAL: Don't call setRepos here - it causes infinite loops
-            // The repos will be loaded from localStorage via loadRepos() when needed
-            // or via storage event listeners. This prevents maximum update depth errors.
+            // Debounced React refresh (same-tab storage events do not fire).
+            scheduleUiReloadFromNostr();
           } catch (error) {
             console.error("Failed to process repo event from Nostr:", error);
           }
@@ -1947,10 +1945,98 @@ export default function RepositoriesPage() {
       { allowDuplicateEvents: false }
     );
 
+    // If relays never EOSE, still refresh UI from whatever landed in LS.
+    const eoseFailsafe = window.setTimeout(() => {
+      setSyncing(false);
+      loadRepos();
+    }, 8000);
+
     return () => {
       unsub();
+      clearTimeout(eoseFailsafe);
+      if (uiReloadTimerRef.current) clearTimeout(uiReloadTimerRef.current);
     };
-  }, [mounted, subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
+  }, [
+    mounted,
+    subscribe,
+    pubkey,
+    defaultRelays,
+    userName,
+    loadRepos,
+    scheduleUiReloadFromNostr,
+  ]); // Note: pubkey optional - syncs ALL repos even when not logged in
+
+  // After Clear Local / empty cache: refill *my* repos via server profile-repos API
+  // (more reliable than waiting on browser EOSE alone).
+  useEffect(() => {
+    if (!mounted || !pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const existing = loadStoredRepos();
+        const mine = existing.filter(
+          (r) =>
+            typeof r.ownerPubkey === "string" &&
+            r.ownerPubkey.toLowerCase() === pubkey.toLowerCase()
+        );
+        // Always help after wipe; if we already have many owned rows, skip.
+        if (mine.length >= 3) return;
+
+        const res = await fetch(
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          repos?: Array<{
+            entity: string;
+            repo: string;
+            name: string;
+            description?: string;
+            ownerPubkey: string;
+            lastActivity: number;
+            lastNostrEventId?: string;
+            lastNostrEventCreatedAt?: number;
+            publicRead?: boolean;
+          }>;
+        };
+        if (!Array.isArray(data.repos) || data.repos.length === 0 || cancelled) {
+          return;
+        }
+
+        const rows = data.repos.map((row) => ({
+          slug: row.repo,
+          entity: row.entity,
+          repo: row.repo,
+          name: row.name || row.repo,
+          description: row.description || "",
+          ownerPubkey: row.ownerPubkey,
+          createdAt: row.lastActivity,
+          updatedAt: row.lastActivity,
+          lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
+          lastNostrEventId: row.lastNostrEventId,
+          syncedFromNostr: true,
+          fromNostr: true,
+          publicRead: row.publicRead !== false,
+        }));
+
+        const merged = mergeProfileRepoList(loadStoredRepos() as any[], rows);
+        saveStoredRepos(merged as StoredRepo[]);
+        if (!cancelled) {
+          loadRepos();
+          console.log(
+            `✅ [Repositories] Refilled ${data.repos.length} owned repo(s) from profile-repos API`
+          );
+        }
+      } catch (e) {
+        console.warn("[Repositories] profile-repos refill failed:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, pubkey, loadRepos]);
 
   // Make findCorruptedRepos and deleteCorruptedTidesRepos available in console for debugging
   // Note: General corruption detection is handled by isRepoCorrupted() throughout the codebase

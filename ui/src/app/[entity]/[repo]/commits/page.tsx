@@ -165,7 +165,11 @@ async function fetchBridgeCommits(
     id: c.id,
     message: c.message,
     author: c.author,
-    timestamp: c.timestamp,
+    // Bridge/cache can emit null — never pass that to formatDateTime24h.
+    timestamp:
+      typeof c.timestamp === "number" && Number.isFinite(c.timestamp)
+        ? c.timestamp
+        : 0,
     branch: c.branch || effectiveBranch,
     parentIds: c.parentIds,
   }));
@@ -256,7 +260,14 @@ export default function CommitsPage({
           const raw = JSON.parse(
             localStorage.getItem(commitsKey) || "[]"
           ) as Commit[];
-          return Array.isArray(raw) ? raw : [];
+          if (!Array.isArray(raw)) return [] as Commit[];
+          return raw.map((c) => ({
+            ...c,
+            timestamp:
+              typeof c.timestamp === "number" && Number.isFinite(c.timestamp)
+                ? c.timestamp
+                : 0,
+          }));
         } catch {
           return [] as Commit[];
         }

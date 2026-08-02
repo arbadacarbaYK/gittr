@@ -3,6 +3,23 @@
  * All dates should use these functions for consistent display
  */
 
+function toDate(timestamp: number | string | Date | null | undefined): Date {
+  if (timestamp == null || timestamp === "") {
+    return new Date(NaN);
+  }
+  if (typeof timestamp === "string" || typeof timestamp === "number") {
+    return new Date(
+      typeof timestamp === "number" && timestamp < 10000000000
+        ? timestamp * 1000
+        : timestamp
+    );
+  }
+  if (timestamp instanceof Date) {
+    return timestamp;
+  }
+  return new Date(NaN);
+}
+
 /**
  * Format a date/time in 24-hour format
  * @param timestamp - Unix timestamp in milliseconds or seconds
@@ -11,21 +28,14 @@
  * @returns Formatted date string like "11/8/2025, 18:35" or "11/8/2025, 18:35:02"
  */
 export function formatDateTime24h(
-  timestamp: number | string | Date,
+  timestamp: number | string | Date | null | undefined,
   includeTime = true,
   includeSeconds = false
 ): string {
-  const date =
-    typeof timestamp === "string" || typeof timestamp === "number"
-      ? new Date(
-          typeof timestamp === "number" && timestamp < 10000000000
-            ? timestamp * 1000
-            : timestamp
-        )
-      : timestamp;
+  const date = toDate(timestamp);
 
   if (isNaN(date.getTime())) {
-    return "Invalid date";
+    return "Unknown date";
   }
 
   const year = date.getFullYear();
@@ -50,7 +60,9 @@ export function formatDateTime24h(
  * @param timestamp - Unix timestamp in milliseconds or seconds
  * @returns Formatted date string like "11/8/2025"
  */
-export function formatDate24h(timestamp: number | string | Date): string {
+export function formatDate24h(
+  timestamp: number | string | Date | null | undefined
+): string {
   return formatDateTime24h(timestamp, false);
 }
 
@@ -61,20 +73,13 @@ export function formatDate24h(timestamp: number | string | Date): string {
  * @returns Formatted time string like "18:35" or "18:35:02"
  */
 export function formatTime24h(
-  timestamp: number | string | Date,
+  timestamp: number | string | Date | null | undefined,
   includeSeconds = false
 ): string {
-  const date =
-    typeof timestamp === "string" || typeof timestamp === "number"
-      ? new Date(
-          typeof timestamp === "number" && timestamp < 10000000000
-            ? timestamp * 1000
-            : timestamp
-        )
-      : timestamp;
+  const date = toDate(timestamp);
 
   if (isNaN(date.getTime())) {
-    return "Invalid time";
+    return "Unknown time";
   }
 
   const hours = String(date.getHours()).padStart(2, "0");

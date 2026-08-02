@@ -1,0 +1,313 @@
+/**
+ * Warm gittr_issues / gittr_prs from Nostr while on any repo tab (Code included).
+ * Issues/PRs pages still own the full list UI; this only fills localStorage so
+ * layout tab badges update without requiring a tab click.
+ */
+import {
+  KIND_ISSUE,
+  KIND_PULL_REQUEST,
+  KIND_STATUS_APPLIED,
+  KIND_STATUS_CLOSED,
+  KIND_STATUS_DRAFT,
+  KIND_STATUS_OPEN,
+} from "@/lib/nostr/events";
+import {
+  getRepoStorageKey,
+  readRepoIssuesFromLocalStorage,
+  readRepoPullsFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
+import {
+  normalizeIssueListStatus,
+  prStatusForNostrKind1618Merge,
+} from "@/lib/utils/issue-pr-status";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SubscribeFn = (...args: any[]) => () => void;
+
+function resolveOwnerHex(entity: string, repo: string): string | null {
+  const resolved = resolveEntityToPubkey(entity);
+  if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) return resolved.toLowerCase();
+  try {
+    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+    const row = findRepoByEntityAndName(repos, entity, repo);
+    if (row?.ownerPubkey && /^[0-9a-f]{64}$/i.test(row.ownerPubkey)) {
+      return row.ownerPubkey.toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function eventBelongsToRepo(
+  event: { tags: string[][] },
+  entity: string,
+  repo: string,
+  ownerHex: string | null
+): boolean {
+  const aTag = event.tags.find((t) => t[0] === "a");
+  if (aTag?.[1]) {
+    const parts = aTag[1].split(":");
+    if (parts.length >= 3 && parts[0] === "30617") {
+      return parts[2] === repo;
+    }
+  }
+  const repoTag = event.tags.find((t) => t[0] === "repo");
+  if (!repoTag) return false;
+  const ownerOk =
+    repoTag[1] === entity ||
+    (ownerHex != null && repoTag[1] === ownerHex);
+  return ownerOk && repoTag[2] === repo;
+}
+
+function upsertIssue(entity: string, repo: string, event: any): void {
+  const key = getRepoStorageKey("gittr_issues", entity, repo);
+  const existing = [
+    ...(readRepoIssuesFromLocalStorage(entity, repo) as any[]),
+  ];
+  const idx = existing.findIndex((i) => i.id === event.id);
+  const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
+  let title = subjectTag ? subjectTag[1] : "";
+  let description = event.content || "";
+  if (!title && event.content) {
+    try {
+      const old = JSON.parse(event.content);
+      title = old.title || "";
+      description = old.description || description;
+    } catch {
+      /* markdown */
+    }
+  }
+  const prior = idx >= 0 ? existing[idx] : undefined;
+  const status =
+    prior?.status && normalizeIssueListStatus(prior.status) === "closed"
+      ? prior.status
+      : "open";
+  const row = {
+    ...(prior || {}),
+    id: event.id,
+    entity,
+    repo,
+    title: title || prior?.title || "Untitled Issue",
+    description,
+    status,
+    author: event.pubkey,
+    createdAt: event.created_at * 1000,
+    number: prior?.number || String(existing.length + 1),
+    nostrEventId: prior?.nostrEventId || event.id,
+  };
+  if (idx >= 0) existing[idx] = row;
+  else existing.push(row);
+  localStorage.setItem(key, JSON.stringify(existing));
+  window.dispatchEvent(new Event("gittr:issue-updated"));
+}
+
+function upsertPr(entity: string, repo: string, event: any): void {
+  const key = getRepoStorageKey("gittr_prs", entity, repo);
+  const existing = [...(readRepoPullsFromLocalStorage(entity, repo) as any[])];
+  const idx = existing.findIndex((pr) => pr.id === event.id);
+  const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
+  let title = subjectTag ? subjectTag[1] : "";
+  let body = event.content || "";
+  if (!title && event.content) {
+    try {
+      const old = JSON.parse(event.content);
+      title = old.title || "";
+      body = old.description || body;
+    } catch {
+      /* markdown */
+    }
+  }
+  const prior = idx >= 0 ? existing[idx] : undefined;
+  const status = prStatusForNostrKind1618Merge(prior?.status, "open");
+  const row = {
+    ...(prior || {}),
+    id: event.id,
+    entity,
+    repo,
+    title: title || prior?.title || "Untitled PR",
+    body,
+    status,
+    author: event.pubkey,
+    createdAt: event.created_at * 1000,
+    number: prior?.number || String(existing.length + 1),
+    nostrEventId: prior?.nostrEventId || event.id,
+  };
+  if (idx >= 0) existing[idx] = row;
+  else existing.push(row);
+  localStorage.setItem(key, JSON.stringify(existing));
+  window.dispatchEvent(new Event("gittr:pr-updated"));
+}
+
+function applyStatus(
+  entity: string,
+  repo: string,
+  kind: "issues" | "prs",
+  event: any
+): void {
+  const rootTag = event.tags.find(
+    (t: string[]) => t[0] === "e" && t[3] === "root"
+  );
+  if (!rootTag?.[1]) return;
+  const eventId = rootTag[1];
+  const key =
+    kind === "issues"
+      ? getRepoStorageKey("gittr_issues", entity, repo)
+      : getRepoStorageKey("gittr_prs", entity, repo);
+  const rows =
+    kind === "issues"
+      ? ([...(readRepoIssuesFromLocalStorage(entity, repo) as any[])] as any[])
+      : ([...(readRepoPullsFromLocalStorage(entity, repo) as any[])] as any[]);
+  const idx = rows.findIndex(
+    (r) => (r.nostrEventId || r.id) === eventId
+  );
+  if (idx < 0) return;
+
+  let status = "open";
+  if (event.kind === KIND_STATUS_CLOSED) status = "closed";
+  else if (event.kind === KIND_STATUS_APPLIED) status = "merged";
+  else if (event.kind === KIND_STATUS_DRAFT) status = "draft";
+  else if (event.kind === KIND_STATUS_OPEN) status = "open";
+
+  rows[idx] = { ...rows[idx], status };
+  localStorage.setItem(key, JSON.stringify(rows));
+  window.dispatchEvent(
+    new Event(kind === "issues" ? "gittr:issue-updated" : "gittr:pr-updated")
+  );
+}
+
+/**
+ * Subscribe to NIP-34 issues + PRs (+ status) for badge warming.
+ * Returns cleanup. Safe alongside Issues/PRs page subscriptions.
+ */
+export function startWarmRepoIssuePrFromNostr(opts: {
+  entity: string;
+  repo: string;
+  subscribe: SubscribeFn;
+  relays: string[];
+}): () => void {
+  const { entity, repo, subscribe, relays } = opts;
+  if (!entity || !repo || !subscribe || !relays.length) {
+    return () => {};
+  }
+
+  const ownerHex = resolveOwnerHex(entity, repo);
+  const unsubs: Array<() => void> = [];
+  let cancelled = false;
+
+  const issueFilters: any[] = [
+    { kinds: [KIND_ISSUE], "#repo": [entity, repo] },
+  ];
+  const prFilters: any[] = [
+    { kinds: [KIND_PULL_REQUEST], "#repo": [entity, repo] },
+  ];
+  if (ownerHex) {
+    issueFilters.push({
+      kinds: [KIND_ISSUE],
+      "#a": [`30617:${ownerHex}:${repo}`],
+    });
+    prFilters.push({
+      kinds: [KIND_PULL_REQUEST],
+      "#a": [`30617:${ownerHex}:${repo}`],
+    });
+  }
+
+  unsubs.push(
+    subscribe(issueFilters, relays, (event: any) => {
+      if (cancelled || event.kind !== KIND_ISSUE) return;
+      if (!eventBelongsToRepo(event, entity, repo, ownerHex)) return;
+      try {
+        upsertIssue(entity, repo, event);
+      } catch {
+        /* ignore */
+      }
+    })
+  );
+
+  unsubs.push(
+    subscribe(prFilters, relays, (event: any) => {
+      if (cancelled || event.kind !== KIND_PULL_REQUEST) return;
+      if (!eventBelongsToRepo(event, entity, repo, ownerHex)) return;
+      try {
+        upsertPr(entity, repo, event);
+      } catch {
+        /* ignore */
+      }
+    })
+  );
+
+  // Status pass after a short delay so root events land first.
+  const statusTimer = window.setTimeout(() => {
+    if (cancelled) return;
+    const issueIds = (readRepoIssuesFromLocalStorage(entity, repo) as any[])
+      .map((i) => i.nostrEventId || i.id)
+      .filter(Boolean);
+    const prIds = (readRepoPullsFromLocalStorage(entity, repo) as any[])
+      .map((p) => p.nostrEventId || p.id)
+      .filter(Boolean);
+
+    if (issueIds.length) {
+      unsubs.push(
+        subscribe(
+          [
+            {
+              kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+              "#e": issueIds.slice(0, 200),
+              "#k": ["1621"],
+            },
+          ],
+          relays,
+          (event: any) => {
+            if (cancelled) return;
+            try {
+              applyStatus(entity, repo, "issues", event);
+            } catch {
+              /* ignore */
+            }
+          }
+        )
+      );
+    }
+    if (prIds.length) {
+      unsubs.push(
+        subscribe(
+          [
+            {
+              kinds: [
+                KIND_STATUS_OPEN,
+                KIND_STATUS_APPLIED,
+                KIND_STATUS_CLOSED,
+                KIND_STATUS_DRAFT,
+              ],
+              "#e": prIds.slice(0, 200),
+              "#k": ["1618"],
+            },
+          ],
+          relays,
+          (event: any) => {
+            if (cancelled) return;
+            try {
+              applyStatus(entity, repo, "prs", event);
+            } catch {
+              /* ignore */
+            }
+          }
+        )
+      );
+    }
+  }, 2500);
+
+  return () => {
+    cancelled = true;
+    window.clearTimeout(statusTimer);
+    for (const u of unsubs) {
+      try {
+        u();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+}

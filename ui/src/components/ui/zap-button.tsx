@@ -88,9 +88,7 @@ export function ZapButton({
   const currentUserMetadata = useContributorMetadata(currentUserPubkeys);
 
   const hasProvidedRecipientWallet = !!(
-    providedMetadata?.lud16?.trim() ||
-    providedMetadata?.lnurl?.trim() ||
-    providedMetadata?.nwcRecv?.trim()
+    providedMetadata?.lud16?.trim() || providedMetadata?.lnurl?.trim()
   );
 
   // Fetch recipient's Lightning address from Nostr profile (only if not provided)
@@ -225,15 +223,12 @@ export function ZapButton({
           lnbitsAdminKeyOverride,
         });
       } else {
-        // Create invoice from recipient's Lightning address (LNURL/LUD-16)
-        // Show QR modal first - NWC payment happens only when user clicks "Pay via NWC" button
-        if (!recipientMetadata?.lud16 && !recipientMetadata?.lnurl) {
-          setError(
-            "Recipient's Lightning address not found. The recipient needs to set a lud16 or lnurl in their Nostr profile."
-          );
-          setPaymentInvoice(null);
-          return;
-        }
+        // Create invoice from recipient's Lightning address (LNURL/LUD-16).
+        // Prefer client-side lud16/lnurl when known; otherwise let the API
+        // fetch kind-0 from relays (avoids stale localStorage cache without lud16).
+        // Show QR modal first - NWC payment happens only when user clicks "Pay via NWC".
+
+        let lastInvoiceError: string | null = null;
 
         // Plain LNURL invoice first — no NIP-07 prompt. Same BOLT11 for paying.
         // NIP-57 (signed kind 9734) is only a fallback when this path fails but
@@ -250,20 +245,43 @@ export function ZapButton({
                 recipient: recipient,
                 amount: zapAmount,
                 comment: paymentMessage,
-                lud16: recipientMetadata.lud16,
-                lnurl: recipientMetadata.lnurl,
+                ...(recipientMetadata?.lud16
+                  ? { lud16: recipientMetadata.lud16 }
+                  : {}),
+                ...(recipientMetadata?.lnurl
+                  ? { lnurl: recipientMetadata.lnurl }
+                  : {}),
               }),
             });
-            if (!response.ok) return null;
-            const data = await response.json();
+            let data: {
+              paymentRequest?: string;
+              message?: string;
+              status?: string;
+            } = {};
+            try {
+              data = await response.json();
+            } catch {
+              /* non-JSON body */
+            }
+            if (!response.ok) {
+              lastInvoiceError =
+                (typeof data.message === "string" && data.message.trim()) ||
+                `Invoice API returned ${response.status}`;
+              return null;
+            }
             const invoice = data.paymentRequest as string | undefined;
-            if (!invoice || invoice.length < 50) return null;
+            if (!invoice || invoice.length < 50) {
+              lastInvoiceError =
+                "Invoice API returned an empty or truncated payment request";
+              return null;
+            }
             return { invoice, paymentHash: "" };
           } catch (apiErr: unknown) {
-            console.warn(
-              "[ZapButton] create-invoice API:",
-              apiErr instanceof Error ? apiErr.message : apiErr
-            );
+            lastInvoiceError =
+              apiErr instanceof Error
+                ? apiErr.message
+                : "Network error creating invoice";
+            console.warn("[ZapButton] create-invoice API:", lastInvoiceError);
             return null;
           }
         };
@@ -287,9 +305,10 @@ export function ZapButton({
           }
           try {
             const ludOr =
-              recipientMetadata.lud16?.trim() ||
-              recipientMetadata.lnurl?.trim() ||
+              recipientMetadata?.lud16?.trim() ||
+              recipientMetadata?.lnurl?.trim() ||
               "";
+            if (!ludOr) return null;
             const httpsPay = ludOr.includes("@")
               ? lightningAddressToLnurlpHttps(ludOr)
               : lnurlPayInputToHttpsUrl(ludOr);
@@ -350,9 +369,12 @@ export function ZapButton({
           paymentResult = await tryNip57Invoice();
         }
         if (!paymentResult) {
-          setError(
-            "Failed to create invoice. Check the recipient Lightning address and try again."
-          );
+          const hint =
+            lastInvoiceError ||
+            (!recipientMetadata?.lud16 && !recipientMetadata?.lnurl
+              ? "No Lightning address in local cache — server could not resolve lud16/lnurl for this recipient either."
+              : "Check the recipient Lightning address and try again.");
+          setError(`Failed to create invoice. ${hint}`);
           setPaymentInvoice(null);
           setLoading(false);
           return;
@@ -376,28 +398,50 @@ export function ZapButton({
         );
       }
 
+      // Show QR immediately — ledger writes must not block payment if storage is full.
+      setPaymentInvoice(paymentRequest);
+      setPaymentHash(paymentHash);
+
       const zapId = `zap-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 9)}`;
       pendingZapIdRef.current = zapId;
       const repoMatch = comment?.match(/^Zap for (.+)/);
-      recordZap({
-        id: zapId,
-        recipient,
-        sender: pubkey || undefined, // Convert null to undefined
-        amount: zapAmount,
-        comment: zapRequest.comment,
-        createdAt: Date.now(),
-        type: repoMatch ? "repo" : "user",
-        contextId: repoMatch ? repoMatch[1] : undefined,
-        invoice: paymentRequest,
-        status: "pending",
-      });
-
-      setPaymentInvoice(paymentRequest);
-      setPaymentHash(paymentHash);
+      try {
+        recordZap({
+          id: zapId,
+          recipient,
+          sender: pubkey || undefined, // Convert null to undefined
+          amount: zapAmount,
+          comment: zapRequest.comment,
+          createdAt: Date.now(),
+          type: repoMatch ? "repo" : "user",
+          contextId: repoMatch ? repoMatch[1] : undefined,
+          invoice: paymentRequest,
+          status: "pending",
+        });
+      } catch (ledgerErr: unknown) {
+        const msg =
+          ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr);
+        if (/quota/i.test(msg) || (ledgerErr as { name?: string })?.name === "QuotaExceededError") {
+          console.warn(
+            "[ZapButton] Invoice ready but localStorage is full — zap history not saved. Clear site data or unused repos if this keeps happening."
+          );
+        }
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to create zap");
+      const msg = err?.message || "Failed to create zap";
+      if (
+        err?.name === "QuotaExceededError" ||
+        err?.code === 22 ||
+        /quota/i.test(String(msg))
+      ) {
+        setError(
+          "Browser storage is full on gittr.space. Clear site data (or unused repos in Settings) and try the zap again — this is not a missing Lightning address."
+        );
+      } else {
+        setError(msg);
+      }
       setPaymentInvoice(null);
     } finally {
       setLoading(false);

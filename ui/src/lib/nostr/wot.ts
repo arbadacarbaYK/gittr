@@ -10,10 +10,17 @@ export const DEFAULT_WOT_ORACLE_URL = "https://wot-oracle.mappingbitcoin.com";
 
 export const DEFAULT_WOT_MAX_HOPS = 4;
 
-export type WoTDistanceSource = "extension" | "oracle" | "follows" | "self";
+export type WoTDistanceSource =
+  | "extension"
+  | "oracle"
+  | "follows"
+  | "self"
+  /** Follow list miss and oracle/extension unavailable — not a confirmed Outside. */
+  | "unavailable";
 
 export type WoTDistanceResult = {
-  hops: number;
+  /** null = no path (Outside) OR unknown when source is "unavailable" */
+  hops: number | null;
   mutual?: boolean;
   source: WoTDistanceSource;
 };
@@ -99,6 +106,28 @@ export function wotLabel(
   return `${hops} hops from you`;
 }
 
+/** Label for a full WoT result (preferred over hops-only). */
+export function wotResultLabel(
+  result: WoTDistanceResult | null | undefined
+): string {
+  if (!result) return "Outside your network";
+  if (result.source === "unavailable") return "Distance unknown";
+  if (result.hops === null) return "Outside your network";
+  if (result.hops === 0) return "";
+  if (result.hops === 1) return "In your network";
+  return `${result.hops} hops from you`;
+}
+
+export function wotResultTitle(
+  result: WoTDistanceResult | null | undefined
+): string {
+  if (!result || result.source === "unavailable") {
+    return "Web of Trust distance unknown — trust oracle unreachable and this pubkey is not in your follow list. People you follow still show as In your network.";
+  }
+  const label = wotResultLabel(result);
+  return result.mutual ? `${label} (mutual follow)` : `${label} · Web of Trust`;
+}
+
 /** Shown on your own profile — how people who follow you see you. */
 export function wotSelfPreviewLabel(): string {
   return "Followers see: In their network";
@@ -108,7 +137,13 @@ export function wotSelfPreviewTitle(): string {
   return "People who follow you see your profile one hop away (In their network). Others see distance from their own follow graph.";
 }
 
-export function wotBadgeClassName(hops: number | null): string {
+export function wotBadgeClassName(
+  hops: number | null,
+  opts?: { unavailable?: boolean }
+): string {
+  if (opts?.unavailable) {
+    return "border-gray-600/70 text-gray-400 bg-gray-900/30";
+  }
   if (hops === null) return "border-gray-600/80 text-gray-400 bg-gray-900/40";
   if (hops === 1) return "border-green-600/60 text-green-300 bg-green-950/50";
   if (hops === 2) return "border-cyan-600/50 text-cyan-300 bg-cyan-950/40";
@@ -184,17 +219,27 @@ export async function fetchWoTDistanceFromOracle(
   try {
     const res = await fetch(`/api/wot/distance?${params.toString()}`);
     if (!res.ok) {
-      distanceCache.set(key, { value: null, expires: Date.now() + 60_000 });
-      return null;
+      // Do not cache as Outside — oracle 502 ≠ "no path".
+      const unavailable: WoTDistanceResult = {
+        hops: null,
+        source: "unavailable",
+      };
+      distanceCache.set(key, {
+        value: unavailable,
+        expires: Date.now() + 60_000,
+      });
+      return unavailable;
     }
     const body = (await res.json()) as WoTOracleDistanceResponse;
     const hops = hopsFromOracleBody(body);
     if (hops === null) {
+      // Oracle answered: no path within max_hops → confirmed Outside.
+      const outside: WoTDistanceResult = { hops: null, source: "oracle" };
       distanceCache.set(key, {
-        value: null,
+        value: outside,
         expires: Date.now() + CACHE_TTL_MS,
       });
-      return null;
+      return outside;
     }
     const result: WoTDistanceResult = {
       hops,
@@ -207,8 +252,15 @@ export async function fetchWoTDistanceFromOracle(
     });
     return result;
   } catch {
-    distanceCache.set(key, { value: null, expires: Date.now() + 60_000 });
-    return null;
+    const unavailable: WoTDistanceResult = {
+      hops: null,
+      source: "unavailable",
+    };
+    distanceCache.set(key, {
+      value: unavailable,
+      expires: Date.now() + 60_000,
+    });
+    return unavailable;
   }
 }
 
@@ -242,16 +294,22 @@ export async function resolveWoTDistance(opts: {
   if (fromFollows) return fromFollows;
 
   const fromExtension = await fetchWoTDistanceFromExtension(viewer, target);
-  if (fromExtension && fromExtension.hops > 0) return fromExtension;
+  if (fromExtension && fromExtension.hops != null && fromExtension.hops > 0) {
+    return fromExtension;
+  }
 
   const fromOracle = await fetchWoTDistanceFromOracle(
     viewer,
     target,
     opts.maxHops ?? DEFAULT_WOT_MAX_HOPS
   );
-  if (fromOracle) return fromOracle;
+  if (fromOracle) {
+    // Oracle confirmed Outside, hops, or unavailable — all are results.
+    return fromOracle;
+  }
 
   if (fromExtension) return fromExtension;
 
-  return null;
+  // No follow, no extension, no oracle answer → treat as unknown, not Outside.
+  return { hops: null, source: "unavailable" };
 }

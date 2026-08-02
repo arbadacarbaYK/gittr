@@ -16,6 +16,8 @@ Pick **one** way to publish your public key (all publish kind **52** for the sam
 2. **Any Nostr client** that can sign kind 52
 3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only). The page loads kind **52** from your relays (not only this browser’s cache). If GitHub is connected, public keys from `api.github.com/users/<you>/keys` are offered as fill-in suggestions.
 
+**Kind 52 + git relays:** Many git-oriented relays (e.g. `relay.ngit.dev`, `gitnostr.com`) **reject** bare kind-52 events (“must reference an accepted repository”). Clone auth still works because Settings **POSTs the event to the bridge**. The Settings list also always queries general relays (`relay.damus.io`, `nos.lol`) so keys do not look “missing” when only git relays are configured.
+
 **Note:** `git.gittr.space` is the **git host** (SSH/HTTPS). It is not a Nostr relay — `wss://git.gittr.space` returning 404 is expected.
 
 ## Repository URL Formats
@@ -253,8 +255,9 @@ This publishes:
 
 **Important**: 
 - `git push` updates the repository on the bridge server
-- "Push to Nostr" publishes NIP-34 events to Nostr relays
-- Both are needed for full functionality: bridge for git operations, Nostr events for discovery
+- "Push to Nostr" publishes NIP-34 events to Nostr relays **and** (on gittr) tries to mirror Git objects to `git.gittr.space`
+- For **imports**, the original forge (GitHub/GitLab/Codeberg) stays the `source`; the bridge is a mirror, not the only home of the objects. Other GRASP hosts in `clone[]` are extra links/mirrors.
+- Both announce + a working git host are needed for full functionality: bridge/GRASP for git operations, Nostr events for discovery
 - Publishing to Nostr always requires a signer approval (NIP-07 extension or local nsec signer)
 
 ## Push Paywall Flow (Optional Per Repository)

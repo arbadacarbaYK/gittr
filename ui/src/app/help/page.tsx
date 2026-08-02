@@ -1243,17 +1243,22 @@ export default function HelpPage() {
                 <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-2">
                   <p className="font-semibold text-white">Publishing</p>
                   <p className="text-sm text-gray-200">
-                    Use the <strong>Push to Nostr</strong> button in the repo
-                    UI. We publish the NIP‑34 event and automatically sync your
-                    repo to our git bridge so other clients can clone it
-                    immediately.
+                    Use <strong>Push to Nostr</strong> on the Code tab. That
+                    publishes the NIP‑34 announcement to your relays and, on
+                    gittr, tries to mirror the Git repo to{" "}
+                    <code className="bg-black/40 px-1 rounded">
+                      git.gittr.space
+                    </code>{" "}
+                    so clones here work. Imported repos still keep their
+                    original forge (GitHub, etc.) as the source — the bridge is
+                    a mirror, not the only copy.
                   </p>
                   <p className="text-[11px] text-gray-400">
                     CLI fan? You can still run{" "}
                     <code className="bg-black/40 px-1 rounded">
                       git push origin main
-                    </code>
-                    ; it hits the same bridge endpoint.
+                    </code>{" "}
+                    to a bridge remote; that updates the same gittr mirror.
                   </p>
                 </div>
                 <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-1">
@@ -1285,32 +1290,64 @@ export default function HelpPage() {
 
             <HelpTopic id="push-to-nostr" title={<>Push to Nostr</>}>
               <p>
-                After making local changes, click "Push to Nostr" in your
-                repository settings to publish updates.
+                After making local changes, click <strong>Push to Nostr</strong>{" "}
+                on the Code tab (sidebar) to publish updates.
               </p>
               <p className="mt-2 text-sm text-gray-400">
-                We sign the NIP‑34 event, publish it to your relays, and sync
-                the Git repo to git.gittr.space automatically. Only small
-                metadata files live inside the Nostr event; the real Git objects
-                stay on the bridge.
+                That does two different things:
+              </p>
+              <ul className="mt-2 text-sm text-gray-400 list-disc list-inside space-y-1 ml-1">
+                <li>
+                  <strong className="text-gray-300">Announce</strong> — we sign
+                  a NIP‑34 event (name, description, clone links, etc.) and
+                  publish it to your relays. The event is mostly metadata, not
+                  your full Git history.
+                </li>
+                <li>
+                  <strong className="text-gray-300">Mirror (gittr)</strong> — we
+                  also try to put a Git copy on{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    git.gittr.space
+                  </code>{" "}
+                  so people can clone from here. That usually works after Push,
+                  but it is not guaranteed if the mirror step fails.
+                </li>
+              </ul>
+              <p className="mt-2 text-sm text-gray-400">
+                <strong className="text-gray-300">Imported repos:</strong> Push
+                does <em>not</em> move your project off GitHub/GitLab/Codeberg.
+                The forge stays the original (<code className="bg-black/40 px-1 rounded text-xs">source</code>
+                ). gittr lists its bridge/GRASP URLs for Nostr clients and tries
+                to mirror objects onto the bridge. Other GRASP hosts (e.g.{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  relay.ngit.dev
+                </code>
+                ) may also appear in clone links if configured — those are extra
+                mirrors/links, not “everything lives only on gittr.”
               </p>
               <p className="mt-2 text-xs text-gray-400">
-                If you see "Local changes are not visible in other clients yet",
-                push to Nostr to publish those edits to relays.
+                If you see &quot;Local changes are not visible in other clients
+                yet&quot;, Push to Nostr so relays (and the mirror attempt) get
+                those edits. Import alone stays local until you Push.
               </p>
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-1">
-                  📦 File Content During Push
+                  📦 Where files come from during Push
                 </p>
                 <p className="text-sm text-blue-100 mb-2">
-                  Files are sourced from your browser's localStorage (from
-                  create/import workflow) or from the bridge API if missing. The
-                  push process does NOT fetch files from external sources
-                  (GitHub, GitLab, etc.).
+                  If you already edited files in the browser, those local files
+                  are uploaded to the bridge. For a clean import with no local
+                  edits, the bridge often clones from the forge{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    source
+                  </code>{" "}
+                  URL instead.
                 </p>
                 <p className="text-xs text-blue-200">
-                  <strong>If files are missing:</strong> Re-import the
-                  repository to load all files into localStorage before pushing.
+                  <strong>If the tree looks empty after Push:</strong> Re-import
+                  or open the repo so files load, then Push again — or{" "}
+                  <code className="bg-black/40 px-1 rounded">git push</code> to
+                  a bridge remote.
                 </p>
               </div>
 

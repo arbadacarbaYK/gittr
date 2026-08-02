@@ -15,6 +15,7 @@ import {
 } from "@/lib/repos/upstream-precedence";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import {
   syncGithubIssuesForRepo,
@@ -84,23 +85,36 @@ export function findStoredRepoForRoute(
   });
 }
 
+/**
+ * Prefer an explicit `source` / `forkedFrom` GitHub URL, then any github.com
+ * entry in multi-value `clone` / `web` / `link` tags (NIP-34 often puts GRASP
+ * first and GitHub later on the same `clone` row).
+ */
 function extractGithubUrlFromEventTags(tags: string[][]): string {
+  const preferOrder = ["source", "forkedFrom", "clone", "web", "link"] as const;
+  const byKind = new Map<string, string[]>();
   for (const tag of tags) {
-    if (!Array.isArray(tag)) continue;
+    if (!Array.isArray(tag) || !tag[0]) continue;
+    const kind = String(tag[0]);
     if (
-      tag[0] === "source" &&
-      tag[1] &&
-      isRefetchableUpstreamSourceUrl(tag[1])
+      kind !== "source" &&
+      kind !== "forkedFrom" &&
+      kind !== "clone" &&
+      kind !== "web" &&
+      kind !== "link"
     ) {
-      const u = String(tag[1]);
-      if (u.includes("github.com")) return u;
+      continue;
     }
+    const values = nip34TagValuesFromRow(tag);
+    if (!values.length) continue;
+    const prev = byKind.get(kind) || [];
+    byKind.set(kind, prev.concat(values));
   }
-  for (const tag of tags) {
-    if (!Array.isArray(tag) || tag[0] !== "clone" || !tag[1]) continue;
-    const u = String(tag[1]);
-    if (u.includes("github.com") && isRefetchableUpstreamSourceUrl(u)) {
-      return u;
+  for (const kind of preferOrder) {
+    for (const raw of byKind.get(kind) || []) {
+      if (!raw.includes("github.com")) continue;
+      if (!isRefetchableUpstreamSourceUrl(raw)) continue;
+      return raw;
     }
   }
   return "";

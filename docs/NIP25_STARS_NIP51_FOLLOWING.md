@@ -152,7 +152,7 @@ When the repo is re-published, the `30617` event id may change; reactions on an 
 Concepts in the repo header:
 
 1. **Star** — NIP-25 kind `7` on the current repo 30617 event (`publishStarReaction` / `removeStarReaction`). The **Stars** page lists your kind `7` reactions with `#k` `30617` from relays (matched to `gittr_repos` by event id). `gittr_starred_repos` is updated in the background when you star/unstar so the list stays usable offline and before relays echo.
-2. **GitHub / Import** — live GitHub stargazer **count** when `sourceUrl` is GitHub; otherwise an **Import** snapshot from stored `repo.stars` if present. This is display-only, not “your GitHub stars” OAuth.
+2. **GitHub / Import** — live GitHub stargazer **count** when a github.com URL is found on the announcement (`source`, multi-value `clone`, `web`, `forkedFrom`, or `link`) or stored `sourceUrl`; otherwise an **Import** snapshot from stored `repo.stars` if present. This is display-only, not “your GitHub stars” OAuth. On `npub…` routes the URL is resolved from Nostr tags (GitHub is often *not* the first `clone` value).
 3. **Watch** — NIP-51 kind `10018` followed repos; separate from Star.
 
 ## NIP-51: Followed repositories (kind 10018)

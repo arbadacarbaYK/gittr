@@ -1,5 +1,4 @@
 // Declare locally so Next.js recognizes `runtime` (re-exported const is ignored).
-// Cache-bust bump with larger corner pic (220px, v4).
 export const runtime = "nodejs";
 export { alt, contentType, size } from "./opengraph-image";
 export { default } from "./opengraph-image";

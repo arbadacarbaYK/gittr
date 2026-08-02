@@ -47,6 +47,7 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
+import { startWarmRepoIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -194,6 +195,8 @@ export default function RepoLayoutClient({
     useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
   const [githubStarCount, setGithubStarCount] = useState<number | null>(null);
+  /** GitHub URL discovered via Nostr hydrate (session/LS may lag behind). */
+  const [hydratedGithubUrl, setHydratedGithubUrl] = useState<string>("");
   const [nostrStarEvents, setNostrStarEvents] = useState<NostrEvent[]>([]);
   const [forkCount, setForkCount] = useState<number>(0);
   const [issueCount, setIssueCount] = useState<number>(0);
@@ -303,20 +306,22 @@ export default function RepoLayoutClient({
     [mounted, pubkey, ownerPubkey, repoNostrEventId]
   );
 
-  const githubUpstreamUrl = useMemo(
-    () =>
-      resolveGithubUpstreamForTabs(
-        resolvedParams.entity,
-        resolvedParams.repo,
-        repo
-      ),
-    [
+  const githubUpstreamUrl = useMemo(() => {
+    const fromTabs = resolveGithubUpstreamForTabs(
       resolvedParams.entity,
       resolvedParams.repo,
-      repo?.sourceUrl,
-      Array.isArray(repo?.clone) ? repo.clone.join("|") : "",
-    ]
-  );
+      repo
+    );
+    if (fromTabs.includes("github.com")) return fromTabs;
+    if (hydratedGithubUrl.includes("github.com")) return hydratedGithubUrl;
+    return fromTabs || hydratedGithubUrl;
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    repo?.sourceUrl,
+    Array.isArray(repo?.clone) ? repo.clone.join("|") : "",
+    hydratedGithubUrl,
+  ]);
 
   const githubSpec = useMemo(() => {
     if (!githubUpstreamUrl) return null;
@@ -490,9 +495,11 @@ export default function RepoLayoutClient({
     if (cached) setRelayRepoEventId((prev) => prev || cached);
   }, [mounted, resolvedParams.entity, resolvedParams.repo]);
 
+  // Only reset hydrate session on route change — NOT when githubUpstreamUrl
+  // updates mid-hydrate (that cancelled in-flight sync and left badges at 0).
   useEffect(() => {
     githubHydrateKeyRef.current = "";
-  }, [resolvedParams.entity, resolvedParams.repo, githubUpstreamUrl]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // After localStorage clear (or cold anonymous visit), Public/Private badge still
   // needs public-read from the latest kind 30617 — local row alone is not enough.
@@ -962,10 +969,10 @@ export default function RepoLayoutClient({
     } catch {}
   }, [resolvedParams.entity, resolvedParams.repo, pubkey, repo]);
 
-  // Live GitHub star count when `sourceUrl` points at github.com
+  // Live GitHub star count when we know a github.com upstream
   useEffect(() => {
     if (!mounted || !githubSpec) {
-      setGithubStarCount(null);
+      // Do not clear hydrate-set counts while we are still resolving the upstream URL.
       return;
     }
     let cancelled = false;
@@ -987,7 +994,7 @@ export default function RepoLayoutClient({
           setGithubStarCount(stat.stars);
         }
       } catch {
-        if (!cancelled) setGithubStarCount(null);
+        /* keep hydrate count if any */
       }
     })();
     return () => {
@@ -1172,8 +1179,19 @@ export default function RepoLayoutClient({
     const routeKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     refreshOpenIssuePrCounts();
 
-    // Allow retries when a previous visit only synced PRs (or only issues).
-    if (githubHydrateKeyRef.current === `${routeKey}:full`) return;
+    // Already hydrated this route in this session — restore URL for the GitHub badge.
+    if (githubHydrateKeyRef.current === `${routeKey}:full`) {
+      const known = resolveGithubUpstreamForTabs(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        findStoredRepoForRoute(resolvedParams.entity, resolvedParams.repo)
+      );
+      if (known.includes("github.com")) setHydratedGithubUrl(known);
+      return;
+    }
+
+    setHydratedGithubUrl("");
+    setGithubStarCount(null);
 
     let cancelled = false;
     let retryTimer: number | undefined;
@@ -1201,6 +1219,9 @@ export default function RepoLayoutClient({
               }
             );
           if (cancelled) return;
+          if (sourceUrl?.includes("github.com")) {
+            setHydratedGithubUrl(sourceUrl);
+          }
           if (meta) {
             setForkCount(meta.forks);
             if (typeof meta.stars === "number") {
@@ -1264,10 +1285,30 @@ export default function RepoLayoutClient({
     mounted,
     resolvedParams.entity,
     resolvedParams.repo,
-    githubUpstreamUrl,
+    // Do NOT depend on githubUpstreamUrl — setting it after hydrate re-ran this
+    // effect, cleared the session key, and cancelled the in-flight sync.
     subscribe,
     defaultRelays?.join("|") ?? "",
     refreshOpenIssuePrCounts,
+  ]);
+
+  // Nostr issues/PRs → localStorage so tab badges update on Code (not only after click).
+  useEffect(() => {
+    if (!mounted || !subscribe || !defaultRelays?.length) return;
+    if (!resolvedParams.entity || !resolvedParams.repo) return;
+    const relays = getAllRelays(defaultRelays);
+    return startWarmRepoIssuePrFromNostr({
+      entity: resolvedParams.entity,
+      repo: resolvedParams.repo,
+      subscribe,
+      relays,
+    });
+  }, [
+    mounted,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    subscribe,
+    defaultRelays?.join("|") ?? "",
   ]);
 
   // Dynamic counts for issues/PRs (only open items)
@@ -2016,9 +2057,9 @@ export default function RepoLayoutClient({
       </section>
       {showRepoQR && (
         <RepoQRShare
-          repoUrl={`/${resolvedParams.entity}/${resolvedParams.repo}${
-            searchParams?.toString() ? `?${searchParams.toString()}` : ""
-          }`}
+          // Always the repo root — branch/file query strings create separate
+          // X/Telegram cache entries; OG meta already points at this canonical URL.
+          repoUrl={`/${resolvedParams.entity}/${resolvedParams.repo}`}
           repoName={`${ownerDisplayName}/${decodeURIComponent(
             resolvedParams.repo
           )}`}

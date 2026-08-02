@@ -1,4 +1,5 @@
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
+import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 
@@ -9,6 +10,16 @@ export const SITE_TITLE_DEFAULT =
 /** ~155 chars — good for Google snippets and social cards. */
 export const SITE_DESCRIPTION_DEFAULT =
   "Mirror git repos to Nostr relays, run issues and pull requests with signed events, publish gittr Pages, discover Nostr apps, and fund work with Lightning bounties.";
+
+/** Hub routes: keep these distinct from the homepage card so Telegram/X previews match the link. */
+export const APPS_DESCRIPTION =
+  "Browse NIP-82 / Zapstore-style apps on Nostr — Android APKs announced from gittr repos, not a git hosting page.";
+
+export const PAGES_DESCRIPTION =
+  "Published static sites on Nostr (gittr Pages / nsite) — open each site on pages.gittr.space. Separate from git clone and the Apps catalog.";
+
+export const EXPLORE_DESCRIPTION =
+  "Explore public Nostr git repositories — browse announcements on relays (same list as Repos). Discover projects before you open Code, Issues, or zap the owner.";
 
 export const SITE_KEYWORDS = [
   "nostr git",
@@ -61,6 +72,13 @@ export function buildPageSiteMetadata(opts: {
   const canonical = absolutePath(siteUrl, opts.path);
   const imagePath = opts.imagePath ?? "/opengraph-image";
   const imageAlt = opts.imageAlt ?? OG_IMAGE_ALT;
+  // Absolute HTTPS URLs — Telegram often drops previews when og:image is relative
+  // or http:// after a scheme-less `gittr.space` paste.
+  const ogImage = normalizeSocialImageUrl(imagePath, siteUrl);
+  const twitterImage = normalizeSocialImageUrl(
+    imagePath.replace("opengraph-image", "twitter-image"),
+    siteUrl
+  );
   // Absolute title for OG/Twitter (crawlers ignore the Next title template).
   const socialTitle = opts.title.includes("gittr")
     ? opts.title
@@ -78,10 +96,12 @@ export function buildPageSiteMetadata(opts: {
       description: opts.description,
       images: [
         {
-          url: imagePath,
+          url: ogImage,
           width: 1200,
           height: 630,
           alt: imageAlt,
+          type: "image/png",
+          secureUrl: ogImage,
         },
       ],
     },
@@ -89,7 +109,7 @@ export function buildPageSiteMetadata(opts: {
       card: "summary_large_image",
       title: socialTitle,
       description: opts.description,
-      images: [imagePath.replace("opengraph-image", "twitter-image")],
+      images: [twitterImage],
     },
     alternates: {
       canonical,
@@ -99,6 +119,8 @@ export function buildPageSiteMetadata(opts: {
 
 export function buildRootSiteMetadata(): Metadata {
   const siteUrl = getPublicSiteUrl();
+  const ogImage = normalizeSocialImageUrl("/opengraph-image", siteUrl);
+  const twitterImage = normalizeSocialImageUrl("/twitter-image", siteUrl);
 
   return {
     title: {
@@ -120,10 +142,12 @@ export function buildRootSiteMetadata(): Metadata {
       description: SITE_DESCRIPTION_DEFAULT,
       images: [
         {
-          url: "/opengraph-image",
+          url: ogImage,
           width: 1200,
           height: 630,
           alt: OG_IMAGE_ALT,
+          type: "image/png",
+          secureUrl: ogImage,
         },
       ],
     },
@@ -131,7 +155,7 @@ export function buildRootSiteMetadata(): Metadata {
       card: "summary_large_image",
       title: SITE_TITLE_DEFAULT,
       description: SITE_DESCRIPTION_DEFAULT,
-      images: ["/twitter-image"],
+      images: [twitterImage],
     },
     robots: {
       index: true,

@@ -1,12 +1,16 @@
 import type { ReactNode } from "react";
 
-import { buildPageSiteMetadata } from "@/lib/seo/site-metadata";
+import {
+  EXPLORE_DESCRIPTION,
+  buildPageSiteMetadata,
+} from "@/lib/seo/site-metadata";
 
 export const metadata = buildPageSiteMetadata({
   path: "/explore",
   title: "Repos",
-  description:
-    "Browse public git repositories published on Nostr (same data as the Repos link in the header).",
+  description: EXPLORE_DESCRIPTION,
+  imagePath: "/explore/opengraph-image",
+  imageAlt: "gittr Explore — public Nostr git repositories",
 });
 
 export default function ExploreLayout({ children }: { children: ReactNode }) {

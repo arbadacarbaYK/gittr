@@ -62,6 +62,16 @@ function hasUsableProfileName(meta?: Metadata | null): boolean {
   return true;
 }
 
+/** Lightning receive fields used for zaps / invoices. */
+function hasPaymentReceiveFields(meta?: Metadata | null): boolean {
+  if (!meta) return false;
+  return !!(
+    meta.lud16?.trim() ||
+    meta.lnurl?.trim() ||
+    meta.nwcRecv?.trim()
+  );
+}
+
 /**
  * Merge kind-0 / HTTP profile onto an existing entry.
  * Incomplete stubs (kind 10011 identities-only) must always accept name/picture
@@ -112,8 +122,14 @@ function mergeKind0OntoExisting(
     if (incoming.banner) next.banner = incoming.banner;
     if (incoming.about) next.about = incoming.about;
     if (incoming.nip05) next.nip05 = incoming.nip05;
-    if (incoming.lud16) next.lud16 = incoming.lud16;
     if (incoming.website) next.website = incoming.website;
+  }
+
+  // Always backfill payment fields — a cached name must not permanently hide lud16.
+  if (!next.lud16?.trim() && incoming.lud16?.trim()) next.lud16 = incoming.lud16;
+  if (!next.lnurl?.trim() && incoming.lnurl?.trim()) next.lnurl = incoming.lnurl;
+  if (!next.nwcRecv?.trim() && incoming.nwcRecv?.trim()) {
+    next.nwcRecv = incoming.nwcRecv;
   }
 
   return next;
@@ -216,6 +232,35 @@ let saveTimeout: NodeJS.Timeout | null = null;
 let pendingMetadata: Record<string, Metadata> | null = null;
 let isSaving = false; // Track if we're currently saving to prevent loops
 
+/** Prefer keeping entries that have Lightning receive info when pruning for quota. */
+function pruneMetadataForQuota(
+  metadata: Record<string, Metadata>,
+  keepFraction = 0.5
+): Record<string, Metadata> {
+  const entries = Object.entries(metadata);
+  if (entries.length < 8) return metadata;
+  entries.sort((a, b) => {
+    const ap = hasPaymentReceiveFields(a[1]) ? 1 : 0;
+    const bp = hasPaymentReceiveFields(b[1]) ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const at = a[1]?.created_at ?? 0;
+    const bt = b[1]?.created_at ?? 0;
+    return bt - at;
+  });
+  const keep = Math.max(4, Math.floor(entries.length * keepFraction));
+  return Object.fromEntries(entries.slice(0, keep));
+}
+
+function isQuotaExceeded(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; code?: number; message?: string };
+  return (
+    e.name === "QuotaExceededError" ||
+    e.code === 22 ||
+    /quota/i.test(String(e.message || ""))
+  );
+}
+
 function saveMetadataCache(metadata: Record<string, Metadata>) {
   // Prevent recursive saves
   if (isSaving) {
@@ -240,12 +285,38 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
     if (pendingMetadata && typeof window !== "undefined") {
       try {
         isSaving = true; // Mark as saving to prevent recursive updates
-        localStorage.setItem(
-          METADATA_CACHE_KEY,
-          JSON.stringify(pendingMetadata)
-        );
-        // Invalidate module cache so it reloads on next access
-        invalidateModuleCache();
+        let toSave = pendingMetadata;
+        try {
+          localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+        } catch (err) {
+          if (!isQuotaExceeded(err)) throw err;
+          // Keep zap-relevant profiles; drop the rest so future loads still work.
+          toSave = pruneMetadataForQuota(toSave, 0.4);
+          try {
+            localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+            console.warn(
+              `⚠️ [useContributorMetadata] localStorage full — pruned metadata cache to ${
+                Object.keys(toSave).length
+              } entries (kept Lightning profiles when possible)`
+            );
+          } catch (err2) {
+            if (isQuotaExceeded(err2)) {
+              try {
+                localStorage.removeItem(METADATA_CACHE_KEY);
+                console.warn(
+                  "⚠️ [useContributorMetadata] localStorage full — cleared metadata cache so zaps can still use in-memory profiles"
+                );
+              } catch {
+                /* ignore */
+              }
+            } else {
+              throw err2;
+            }
+          }
+        }
+        // Keep module cache in sync with what we intended (full map in memory).
+        moduleCache = pendingMetadata;
+        cacheLoadTime = Date.now();
         if (
           contributorMetaVerbose() &&
           Object.keys(pendingMetadata).length > 0 &&
@@ -371,8 +442,11 @@ export function useContributorMetadata(pubkeys: string[]) {
     const missingFromCache = validPubkeys.filter((p) => {
       const normalized = p.toLowerCase();
       const cached = metadataMap[normalized] || currentCache[normalized];
-      // Usable name → done. Incomplete stub (identities-only / empty) still needs fetch.
-      if (hasUsableProfileName(cached)) return false;
+      // Usable name alone is not enough — zaps need lud16/lnurl. Stale cache
+      // used to skip refetch forever when only a display name was stored.
+      const needsName = !hasUsableProfileName(cached);
+      const needsPayment = !hasPaymentReceiveFields(cached);
+      if (!needsName && !needsPayment) return false;
       if (profileFetchAttempted.has(normalized)) return false;
       return true;
     });
@@ -430,7 +504,14 @@ export function useContributorMetadata(pubkeys: string[]) {
     void (async () => {
       try {
         const profiles = await fetchProfilesHttp(pubkeysToSubscribe);
-        if (httpAbort.cancelled || Object.keys(profiles).length === 0) return;
+        if (httpAbort.cancelled) return;
+        if (Object.keys(profiles).length === 0) {
+          // Network miss — allow another try later (don't poison the session).
+          for (const p of pubkeysToSubscribe) {
+            profileFetchAttempted.delete(p.toLowerCase());
+          }
+          return;
+        }
         setMetadataMap((prev) => {
           const next = { ...prev };
           for (const [pk, meta] of Object.entries(profiles)) {
@@ -440,6 +521,11 @@ export function useContributorMetadata(pubkeys: string[]) {
           saveMetadataCache(next);
           return next;
         });
+        // Allow a later retry only for pubkeys this batch completely missed.
+        for (const p of pubkeysToSubscribe) {
+          const key = p.toLowerCase();
+          if (!profiles[key]) profileFetchAttempted.delete(key);
+        }
       } catch (e) {
         if (contributorMetaVerbose()) {
           console.warn("[useContributorMetadata] HTTP profiles failed:", e);

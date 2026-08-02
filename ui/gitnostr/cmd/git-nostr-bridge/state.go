@@ -150,28 +150,56 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 		checkCmd := exec.Command("git", "--git-dir", repoPath, "cat-file", "-e", ref.commit)
 		checkErr := checkCmd.Run()
 		if checkErr != nil {
-			// Commit doesn't exist - try to fallback to current HEAD of this ref
+			// Commit doesn't exist locally — try to fetch it from the origin remote first.
 			commitDisplay := ref.commit
 			if len(ref.commit) > 8 {
 				commitDisplay = ref.commit[:8]
 			}
-			log.Printf("⚠️ [Bridge] Commit %s doesn't exist (possibly invalid after migration), trying HEAD fallback for ref %s\n", commitDisplay, ref.ref)
-			
-			// Try to get current HEAD commit of this ref
-			headCmd := exec.Command("git", "--git-dir", repoPath, "rev-parse", ref.ref)
-			headOutput, headErr := headCmd.Output()
-			if headErr == nil {
-				headCommit := strings.TrimSpace(string(headOutput))
-				if headCommit != "" {
-					log.Printf("💡 [Bridge] Using HEAD commit %s for ref %s (fallback from invalid commit %s)\n", headCommit[:8], ref.ref, commitDisplay)
-					ref.commit = headCommit // Update to use HEAD commit
+			log.Printf("⚠️ [Bridge] Commit %s not found locally, attempting git fetch from origin to get it (ref %s)\n", commitDisplay, ref.ref)
+
+			// Try origin first, then upstream (source forge like GitHub) if available
+			for _, remote := range []string{"origin", "upstream"} {
+				remoteCheckCmd := exec.Command("git", "--git-dir", repoPath, "remote", "get-url", remote)
+				if remoteCheckCmd.Run() != nil {
+					continue // remote doesn't exist, skip
+				}
+				fetchCmd := exec.Command("git", "--git-dir", repoPath, "fetch", remote, "+refs/heads/*:refs/heads/*")
+				fetchOut, fetchErr := fetchCmd.CombinedOutput()
+				if fetchErr != nil {
+					log.Printf("⚠️ [Bridge] git fetch %s failed: %v — output: %s\n", remote, fetchErr, strings.TrimSpace(string(fetchOut)))
 				} else {
-					log.Printf("⚠️ [Bridge] Ref %s has no HEAD commit, skipping update\n", ref.ref)
+					log.Printf("✅ [Bridge] git fetch %s succeeded\n", remote)
+				}
+				// Stop early if we now have the commit
+				checkEarly := exec.Command("git", "--git-dir", repoPath, "cat-file", "-e", ref.commit)
+				if checkEarly.Run() == nil {
+					break
+				}
+			}
+
+			// Re-check whether commit exists after fetch(es)
+			checkCmd2 := exec.Command("git", "--git-dir", repoPath, "cat-file", "-e", ref.commit)
+			if checkCmd2.Run() == nil {
+				log.Printf("✅ [Bridge] Commit %s now available after fetch — proceeding with ref update\n", commitDisplay)
+				// fall through to the update-ref step below
+			} else {
+				// Still not there — fall back to keeping current HEAD to avoid data loss
+				log.Printf("⚠️ [Bridge] Commit %s still not found after fetch, keeping current HEAD for ref %s\n", commitDisplay, ref.ref)
+				headCmd := exec.Command("git", "--git-dir", repoPath, "rev-parse", ref.ref)
+				headOutput, headErr := headCmd.Output()
+				if headErr == nil {
+					headCommit := strings.TrimSpace(string(headOutput))
+					if headCommit != "" {
+						log.Printf("💡 [Bridge] Using existing HEAD commit %s for ref %s (fetch could not retrieve %s)\n", headCommit[:8], ref.ref, commitDisplay)
+						ref.commit = headCommit
+					} else {
+						log.Printf("⚠️ [Bridge] Ref %s has no HEAD commit, skipping update\n", ref.ref)
+						continue
+					}
+				} else {
+					log.Printf("⚠️ [Bridge] Ref %s doesn't exist yet, skipping update (commit %s unavailable)\n", ref.ref, commitDisplay)
 					continue
 				}
-			} else {
-				log.Printf("⚠️ [Bridge] Ref %s doesn't exist yet, skipping update (commit %s invalid)\n", ref.ref, commitDisplay)
-				continue
 			}
 		}
 

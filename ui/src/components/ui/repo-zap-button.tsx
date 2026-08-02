@@ -58,17 +58,27 @@ export function RepoZapButton({
     return "";
   }, [ownerPubkey]);
 
-  // Get all contributor pubkeys (including owner)
+  // Get all contributor pubkeys (including owner) — always hex for metadata fetch
   const contributorPubkeys = useMemo(() => {
     const pubkeys = contributors
       .map((c) => c.pubkey)
-      .filter((p): p is string => !!p);
-    // Ensure owner is included
-    if (ownerPubkey && !pubkeys.includes(ownerPubkey)) {
-      return [ownerPubkey, ...pubkeys];
+      .filter((p): p is string => !!p)
+      .map((p) => {
+        try {
+          if (p.startsWith("npub")) {
+            return (nip19.decode(p).data as string).toLowerCase();
+          }
+        } catch {
+          /* keep raw */
+        }
+        return p.toLowerCase();
+      })
+      .filter((p) => /^[0-9a-f]{64}$/i.test(p));
+    if (ownerHex && !pubkeys.includes(ownerHex)) {
+      return [ownerHex, ...pubkeys];
     }
     return pubkeys;
-  }, [contributors, ownerPubkey]);
+  }, [contributors, ownerHex]);
 
   // Fetch Nostr metadata for all contributors to get Lightning addresses
   const metadataMap = useContributorMetadata(contributorPubkeys);

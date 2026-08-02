@@ -8,6 +8,7 @@ import {
   loadKnownContactList,
   mergeContactLists,
   parseContactListPubkeys as parseContactListEvent,
+  rememberContactList,
 } from "@/lib/nostr/contact-list";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
@@ -28,7 +29,7 @@ export type WoTDistanceState =
       result: Awaited<ReturnType<typeof resolveWoTDistance>>;
     };
 
-const FOLLOWS_WAIT_MS = 8500;
+const FOLLOWS_WAIT_MS = 12_000;
 
 /**
  * Viewer-relative hop distance to `targetPubkey` (hex or npub).
@@ -65,6 +66,8 @@ export function useWoTDistance(
 
     const applyUnion = (pubkeys: string[]) => {
       if (cancelled || pubkeys.length === 0) return;
+      // Persist so repo visits refill from backup without re-waiting on relays.
+      rememberContactList(viewerHex, pubkeys);
       setFollows((prev) => {
         const merged = mergeContactLists(
           prev ? Array.from(prev) : [],
@@ -78,11 +81,20 @@ export function useWoTDistance(
       const detail = (ev as CustomEvent<ContactListChangedDetail>).detail;
       if (!detail?.ownerPubkey || detail.ownerPubkey !== viewerHex) return;
       clearWoTDistanceCache(viewerHex);
-      setFollows(new Set(detail.pubkeys));
+      // detail.pubkeys is already the merged known list from rememberContactList.
+      setFollows((prev) => {
+        const merged = mergeContactLists(
+          prev ? Array.from(prev) : [],
+          detail.pubkeys
+        );
+        return new Set(merged);
+      });
     };
     window.addEventListener(CONTACT_LIST_CHANGED_EVENT, onLocalChange);
 
     const relays = getAllRelays(defaultRelays);
+    // No maxDelayms batching — deliver kind-3 as soon as relays answer.
+    // Do NOT pass onEose that aborts (first empty EOSE killed the pool).
     const unsub = subscribe(
       [
         {
@@ -96,11 +108,10 @@ export function useWoTDistance(
       (event) => {
         if (cancelled || event.kind !== KIND_CONTACT_LIST) return;
         applyUnion(parseContactListEvent(event));
-      },
-      8000
+      }
     );
 
-    // If kind-3 never arrives, stop waiting so oracle/Outside can resolve.
+    // If kind-3 never arrives, stop waiting so Distance unknown / Outside can show.
     const timeout = window.setTimeout(() => {
       if (!cancelled) {
         setFollows((prev) => prev ?? new Set(loadKnownContactList(viewerHex)));

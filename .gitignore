@@ -62,3 +62,5 @@ repo-list-ownerhex-for-username-script.txt
 
 # Local planning (nsite gateway + gittr Pages; not shipped in git)
 NSITE_GATEWAY_PLAN.local.md
+# Local agent / ops scratchpad (Cashu/NWC/relay follow-ups, etc.)
+LOCAL_TODOS.md

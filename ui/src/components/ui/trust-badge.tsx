@@ -1,7 +1,11 @@
 "use client";
 
 import { useWoTDistance } from "@/lib/nostr/useWoTDistance";
-import { wotBadgeClassName, wotLabel } from "@/lib/nostr/wot";
+import {
+  wotBadgeClassName,
+  wotResultLabel,
+  wotResultTitle,
+} from "@/lib/nostr/wot";
 import { cn } from "@/lib/utils";
 
 import { Network } from "lucide-react";
@@ -60,19 +64,20 @@ export function TrustBadge({
     );
   }
 
-  const hops = wot.result?.hops ?? null;
-  const label = wotLabel(hops);
+  const result = wot.result;
+  const label = wotResultLabel(result);
   if (!label) return null;
 
-  const mutual = wot.result?.mutual;
-  const title = mutual ? `${label} (mutual follow)` : `${label} · Web of Trust`;
+  const hops = result?.hops ?? null;
+  const unavailable = result?.source === "unavailable";
+  const title = wotResultTitle(result);
 
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-medium leading-none",
         size === "md" ? "text-xs" : "text-[10px]",
-        wotBadgeClassName(hops),
+        wotBadgeClassName(hops, { unavailable }),
         className
       )}
       title={title}

@@ -909,6 +909,130 @@ function ExplorePageContent() {
     };
   }, [loadRepos]);
 
+  // Cold start: seed from SEO snapshot (+ recent-repos) when localStorage is empty
+  // so search works before the heavy client Nostr sync finishes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    const mergeSeed = (
+      seed: Array<{
+        entity: string;
+        repo: string;
+        repoName?: string;
+        ownerPubkey: string;
+        lastActivity?: number;
+        description?: string;
+      }>
+    ) => {
+      if (!seed.length) return;
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem("gittr_repos") || "[]"
+        ) as any[];
+        const byKey = new Map<string, any>();
+        for (const r of existing) {
+          const entity = String(r.entity || "").toLowerCase();
+          const name = String(
+            r.repo || r.slug || r.repositoryName || r.name || ""
+          ).toLowerCase();
+          if (entity && name) byKey.set(`${entity}/${name}`, r);
+        }
+        let added = 0;
+        for (const s of seed) {
+          const entity = String(s.entity || "").trim();
+          const name = String(s.repo || s.repoName || "").trim();
+          if (!entity || !name) continue;
+          const key = `${entity.toLowerCase()}/${name.toLowerCase()}`;
+          if (byKey.has(key)) continue;
+          byKey.set(key, {
+            entity,
+            repo: name,
+            slug: name,
+            name,
+            repositoryName: name,
+            ownerPubkey: s.ownerPubkey,
+            description: s.description || "",
+            createdAt: s.lastActivity || Date.now(),
+            lastNostrEventCreatedAt: s.lastActivity
+              ? Math.floor(s.lastActivity / 1000)
+              : undefined,
+            fromSeoSnapshot: true,
+            syncedFromNostr: false,
+          });
+          added++;
+        }
+        if (added > 0) {
+          localStorage.setItem(
+            "gittr_repos",
+            JSON.stringify(Array.from(byKey.values()))
+          );
+          if (!cancelled) {
+            loadRepos();
+            if (byKey.size >= 40) setSyncing(false);
+          }
+          console.log(
+            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
+          );
+        }
+      } catch (e) {
+        console.warn("[Explore] seed merge failed:", e);
+      }
+    };
+
+    (async () => {
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem("gittr_repos") || "[]"
+        ) as any[];
+        // Always try SEO seed when cache is thin — recent-repos alone is only ~12.
+        if (existing.length >= 200) return;
+
+        const [seedRes, recentRes] = await Promise.all([
+          fetch("/api/explore/seed?limit=3000").catch(() => null),
+          fetch("/api/stats/recent-repos").catch(() => null),
+        ]);
+        if (cancelled) return;
+
+        const seedJson = seedRes?.ok
+          ? ((await seedRes.json()) as {
+              ok?: boolean;
+              repos?: Array<{
+                entity: string;
+                repo: string;
+                repoName?: string;
+                ownerPubkey: string;
+                lastActivity?: number;
+              }>;
+            })
+          : null;
+        const recentJson = recentRes?.ok
+          ? ((await recentRes.json()) as {
+              repos?: Array<{
+                entity: string;
+                repo: string;
+                repoName?: string;
+                ownerPubkey: string;
+                lastActivity?: number;
+                description?: string;
+              }>;
+            })
+          : null;
+
+        mergeSeed([
+          ...(seedJson?.repos || []),
+          ...(recentJson?.repos || []),
+        ]);
+      } catch (e) {
+        console.warn("[Explore] seed fetch failed:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadRepos]);
+
   // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own
   useEffect(() => {
@@ -989,11 +1113,18 @@ function ExplorePageContent() {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
+      // Seed / early events: hide spinner once we can search, keep listening.
+      const hasUsableSample = repos.length >= 40;
 
       const hasEnoughGraspRelays = graspRelaysReceived.size >= 2;
       const hasEnoughRegularRelays = eoseReceived.size >= 5 && hasEnoughRepos;
 
-      if (hasEnoughGraspRelays || hasEnoughRegularRelays || hasVeryManyRepos) {
+      if (
+        hasEnoughGraspRelays ||
+        hasEnoughRegularRelays ||
+        hasVeryManyRepos ||
+        hasUsableSample
+      ) {
         console.log(
           "✅ [Explore] Hiding sync indicator - enough initial data received:",
           {
@@ -1004,7 +1135,9 @@ function ExplorePageContent() {
               ? "2+ GRASP relays"
               : hasEnoughRegularRelays
               ? "5+ regular relays with repos"
-              : "2000+ repos received (good initial sample)",
+              : hasVeryManyRepos
+              ? "2000+ repos received (good initial sample)"
+              : "40+ repos in cache (seed or early events)",
             note: "Subscription continues to listen for new repos in real-time",
           }
         );
@@ -1035,27 +1168,20 @@ function ExplorePageContent() {
     // Also query user's own repos to ensure they're included
     // NOTE: No time limit - get all repos from Nostr (historical repos are valuable)
     // Relays will handle pagination/limits if needed
-    // CRITICAL: Query for BOTH kind 51 (gitnostr) and kind 30617 (NIP-34) to see all repos
-    // Also subscribe to NIP-09 deletion events (kind 5) to filter deleted repos
+    // Match /repositories: lighter REQ so relays actually finish (EOSE).
+    // Soft-delete markers on 30617 cover most deletions; do NOT bundle unscoped
+    // kind 5 here — that flood stalls discovery across ~16 relays.
     const filters = [
       {
-        kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr (51) and NIP-34 (30617)
-        limit: 10000, // Request up to 10k repos (most relays default to 100-500 without this)
-        // No since parameter = get ALL repos (no time limit)
-        // No authors filter = get ALL public repos from all users
-        // This is the "Nostr cloud" - repos are stored on relays, not locally
-      },
-      {
-        kinds: [5], // NIP-09: Deletion events - to filter out deleted repos
-        limit: 1000,
+        kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+        limit: 800,
       },
       ...(pubkey
         ? [
             {
-              kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both formats
-              authors: [pubkey], // Also get user's own repos (for private repos in future)
-              limit: 1000, // User's own repos - smaller limit is fine
-              // No since parameter = get all user's repos (no time limit)
+              kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+              authors: [pubkey],
+              limit: 1000,
             },
           ]
         : []),
@@ -1066,8 +1192,16 @@ function ExplorePageContent() {
       JSON.stringify(filters, null, 2)
     );
 
-    // CRITICAL: Use all relays (default + user) for repository discovery
-    const allRelays = getAllRelays(defaultRelays);
+    // Prefer GRASP / git hosts first — they carry most NIP-34 announces.
+    const allRelaysRaw = getAllRelays(defaultRelays);
+    const allRelays = [
+      ...graspRelays,
+      ...allRelaysRaw.filter((u) => !graspRelayNorms.has(normRelay(u))),
+    ];
+    console.log(
+      "📡 [Explore] Relay order (GRASP first):",
+      allRelays.slice(0, 8)
+    );
 
     // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
     // Map: repoKey (pubkey + d tag) -> array of events
@@ -2053,6 +2187,7 @@ function ExplorePageContent() {
             // Use setTimeout to batch updates and prevent infinite loops
             setTimeout(() => {
               loadRepos();
+              checkShouldStopSyncing();
             }, 100);
           } catch (error: any) {
             console.error("Error processing repo event:", error);
@@ -2828,7 +2963,10 @@ function ExplorePageContent() {
               );
             })
             .filter(Boolean)}
-        {!isLoadingRepos && filteredRepos.length === 0 && (
+        {!isLoadingRepos &&
+          !syncing &&
+          filteredRepos.length === 0 &&
+          repos.length === 0 && (
           <div className="col-span-2 p-8 text-center text-gray-400">
             {userFilter ? (
               <p>No public repositories found for this user.</p>
@@ -2837,6 +2975,39 @@ function ExplorePageContent() {
             ) : (
               <p>No repositories yet.</p>
             )}
+          </div>
+        )}
+        {!isLoadingRepos &&
+          !syncing &&
+          filteredRepos.length === 0 &&
+          repos.length > 0 &&
+          (q || userFilter) && (
+          <div className="col-span-2 p-8 text-center text-gray-400">
+            {userFilter ? (
+              <p>No public repositories found for this user.</p>
+            ) : (
+              <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
+            )}
+          </div>
+        )}
+        {!isLoadingRepos &&
+          syncing &&
+          filteredRepos.length === 0 &&
+          repos.length === 0 && (
+          <div className="col-span-2 p-8 text-center text-gray-400">
+            <p>Looking up repositories on Nostr relays…</p>
+          </div>
+        )}
+        {!isLoadingRepos &&
+          syncing &&
+          filteredRepos.length === 0 &&
+          repos.length > 0 &&
+          (q || userFilter) && (
+          <div className="col-span-2 p-8 text-center text-gray-400">
+            <p>
+              Still syncing… {repos.length} repos loaded so far
+              {q ? ` (no match for “${qRaw.trim()}” yet)` : ""}.
+            </p>
           </div>
         )}
       </div>

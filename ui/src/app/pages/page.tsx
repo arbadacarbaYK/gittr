@@ -1,12 +1,14 @@
-import { buildPageSiteMetadata } from "@/lib/seo/site-metadata";
+import {
+  PAGES_DESCRIPTION,
+  buildPageSiteMetadata,
+} from "@/lib/seo/site-metadata";
 
 import { GittrPagesClient } from "./GittrPagesClient";
 
 export const metadata = buildPageSiteMetadata({
   path: "/pages",
   title: "Published pages",
-  description:
-    "Sites published on Nostr and cached by the Nostr Pages gateway — open each site in a new tab.",
+  description: PAGES_DESCRIPTION,
   imagePath: "/pages/opengraph-image",
   imageAlt: "gittr Pages — sites on Nostr",
 });

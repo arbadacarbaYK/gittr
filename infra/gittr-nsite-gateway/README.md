@@ -1,6 +1,6 @@
 # gittr Pages gateway (Docker image)
 
-Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway)** branch **`master`** (forked from hzrd149 v3.6.2 + gittr features). Gateway docs: **that repo’s `README.md`**.
+Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway)** branch **`master`** (forked from **hzrd149 v3.6.2** + gittr features; selective patches from **v3.6.3**: root-host DNS skip, applesauce ^6.2 — not a full upstream merge). Gateway docs: **that repo’s `README.md`**.
 
 ## What we added (on hzrd149 v3.6.2)
 

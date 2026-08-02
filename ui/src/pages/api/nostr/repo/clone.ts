@@ -7,12 +7,22 @@ import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { join } from "path";
+import { basename, join } from "path";
 import { promisify } from "util";
 
-import { rm } from "fs/promises";
+import { mkdir, rename, rm } from "fs/promises";
 
 const execAsync = promisify(exec);
+
+/**
+ * Opening several files at once used to POST /clone in parallel for the same
+ * bare path. Concurrent `git clone --bare` into one directory races (tmp_pack /
+ * config lock errors) and can delete a just-finished clone. Coalesce by key.
+ */
+const cloneInFlight = new Map<
+  string,
+  Promise<{ success: true; path: string; message: string; cloneUrl: string }>
+>();
 
 /** True if bare repo at gitDir has at least one commit (valid HEAD). */
 async function bareRepoHasCommits(gitDir: string): Promise<boolean> {
@@ -273,75 +283,126 @@ export default async function handler(
       await rm(repoPath, { recursive: true, force: true });
     }
 
-    // Ensure parent directory exists
-    const parentDir = join(reposDir, ownerPubkey);
-    if (!existsSync(parentDir)) {
-      const { exec: execSync } = require("child_process");
-      execSync(`mkdir -p "${parentDir}"`, { stdio: "inherit" });
+    const cloneKey = `${ownerPubkey}/${repoSanitized}`.toLowerCase();
+    const existing = cloneInFlight.get(cloneKey);
+    if (existing) {
+      console.log(`⏳ [Clone API] Waiting on in-flight clone for ${cloneKey}`);
+      const result = await existing;
+      return res.status(200).json(result);
     }
 
-    console.log(
-      `🔍 Cloning repository from ${cloneUrl} to ${repoPath} (repo key: ${repoSanitized})`
-    );
-
-    // Race or partial state: ensure destination is gone immediately before clone
-    if (existsSync(repoPath)) {
-      await rm(repoPath, { recursive: true, force: true });
-    }
-
-    const runBareClone = () =>
-      execAsync(`git clone --bare "${normalizedCloneUrl}" "${repoPath}"`, {
-        timeout: 60000, // 60 second timeout
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-      });
-
-    let stdout: string;
-    let stderr: string;
-    try {
-      ({ stdout, stderr } = await runBareClone());
-    } catch (firstErr: unknown) {
-      const msg = String((firstErr as Error)?.message || firstErr);
-      if (msg.includes("already exists and is not an empty directory")) {
-        console.warn(
-          `⚠️ [Clone API] Clone target still present, forcing rm and retry: ${repoPath}`
-        );
-        await rm(repoPath, { recursive: true, force: true }).catch(() => {});
-        ({ stdout, stderr } = await runBareClone());
-      } else {
-        throw firstErr;
+    const doClone = async () => {
+      // Re-check after acquiring the slot (another waiter may have finished).
+      if (existsSync(repoPath) && (await bareRepoHasCommits(repoPath))) {
+        return {
+          success: true as const,
+          message: "Repository already exists",
+          path: repoPath,
+          cloneUrl: normalizedCloneUrl,
+        };
       }
-    }
+      if (existsSync(repoPath)) {
+        await rm(repoPath, { recursive: true, force: true });
+      }
 
-    if (
-      stderr &&
-      !stderr.includes("Cloning into") &&
-      !stderr.includes("warning")
-    ) {
-      console.error("Git clone stderr:", stderr);
-      // Don't fail on warnings, but log them
-    }
+      const parentDir = join(reposDir, ownerPubkey);
+      await mkdir(parentDir, { recursive: true });
 
-    console.log("✅ Repository cloned successfully");
-    console.log("Git output:", stdout);
+      // Clone into a unique temp dir, then rename into place (atomic vs peers).
+      const tempPath = join(
+        parentDir,
+        `.${repoSanitized}.partial-${process.pid}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}.git`
+      );
 
-    // Verify repository was cloned
-    if (!existsSync(repoPath)) {
-      return res.status(500).json({
-        error: "Clone completed but repository not found at expected path",
-        path: repoPath,
-      });
-    }
+      console.log(
+        `🔍 Cloning repository from ${normalizedCloneUrl} to ${tempPath} → ${repoPath} (repo key: ${repoSanitized})`
+      );
 
-    return res.status(200).json({
-      success: true,
-      message: "Repository cloned successfully",
-      path: repoPath,
-      cloneUrl,
+      try {
+        const { stdout, stderr } = await execAsync(
+          `git clone --bare "${normalizedCloneUrl}" "${tempPath}"`,
+          {
+            timeout: 120000,
+            maxBuffer: 10 * 1024 * 1024,
+          }
+        );
+
+        if (
+          stderr &&
+          !stderr.includes("Cloning into") &&
+          !stderr.includes("warning")
+        ) {
+          console.error("Git clone stderr:", stderr);
+        }
+        if (stdout) {
+          console.log("Git output:", stdout);
+        }
+
+        if (!(await bareRepoHasCommits(tempPath))) {
+          throw new Error(
+            `Clone finished but ${basename(tempPath)} has no valid HEAD`
+          );
+        }
+
+        // If a peer finished first, keep theirs and drop our temp.
+        if (existsSync(repoPath) && (await bareRepoHasCommits(repoPath))) {
+          await rm(tempPath, { recursive: true, force: true }).catch(() => {});
+          return {
+            success: true as const,
+            message: "Repository already exists",
+            path: repoPath,
+            cloneUrl: normalizedCloneUrl,
+          };
+        }
+        if (existsSync(repoPath)) {
+          await rm(repoPath, { recursive: true, force: true });
+        }
+        try {
+          await rename(tempPath, repoPath);
+        } catch (renameErr) {
+          // Peer won the rename race — keep the good final repo.
+          if (existsSync(repoPath) && (await bareRepoHasCommits(repoPath))) {
+            await rm(tempPath, { recursive: true, force: true }).catch(
+              () => {}
+            );
+            return {
+              success: true as const,
+              message: "Repository already exists",
+              path: repoPath,
+              cloneUrl: normalizedCloneUrl,
+            };
+          }
+          throw renameErr;
+        }
+
+        console.log("✅ Repository cloned successfully");
+        return {
+          success: true as const,
+          message: "Repository cloned successfully",
+          path: repoPath,
+          cloneUrl: normalizedCloneUrl,
+        };
+      } catch (err) {
+        await rm(tempPath, { recursive: true, force: true }).catch(() => {});
+        if (existsSync(repoPath) && !(await bareRepoHasCommits(repoPath))) {
+          await rm(repoPath, { recursive: true, force: true }).catch(() => {});
+        }
+        throw err;
+      }
+    };
+
+    const pending = doClone().finally(() => {
+      cloneInFlight.delete(cloneKey);
     });
+    cloneInFlight.set(cloneKey, pending);
+
+    const result = await pending;
+    return res.status(200).json(result);
   } catch (error: any) {
     console.error("❌ Error cloning repository:", error);
 
-    // Handle specific git errors
     if (
       error.message?.includes("fatal: repository") ||
       error.message?.includes("not found")

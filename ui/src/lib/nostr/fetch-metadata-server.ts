@@ -78,17 +78,9 @@ export async function fetchUserMetadata(
           } catch {
             resolve(null);
           }
-        },
-        undefined,
-        () => {
-          // EOSE - no more events
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            pool.close();
-            resolve(null);
-          }
         }
+        // Do not abort on first EOSE — other relays in the pool may still
+        // answer (profile directories often lag behind empty EOSes).
       );
     });
   } catch (error) {

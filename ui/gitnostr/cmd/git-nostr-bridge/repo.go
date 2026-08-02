@@ -218,6 +218,27 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		return fmt.Errorf("git repository stat: %w", err)
 	}
 
+	// If repo already exists, ensure the source URL is registered as the "upstream" remote
+	// so the state event handler can fetch from it when commits are missing.
+	if repoExists && sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
+		upstreamCloneUrl := sourceUrl
+		if !strings.HasSuffix(upstreamCloneUrl, ".git") {
+			upstreamCloneUrl = upstreamCloneUrl + ".git"
+		}
+		// Set or update the upstream remote (non-fatal)
+		setCmd := exec.Command("git", "--git-dir", repoPath, "remote", "set-url", "upstream", upstreamCloneUrl)
+		if setCmd.Run() != nil {
+			addCmd := exec.Command("git", "--git-dir", repoPath, "remote", "add", "upstream", upstreamCloneUrl)
+			if err := addCmd.Run(); err != nil {
+				log.Printf("⚠️ [Bridge] Could not set upstream remote to %s: %v\n", upstreamCloneUrl, err)
+			} else {
+				log.Printf("🔗 [Bridge] Added upstream remote: %s\n", upstreamCloneUrl)
+			}
+		} else {
+			log.Printf("🔗 [Bridge] Updated upstream remote: %s\n", upstreamCloneUrl)
+		}
+	}
+
 	// If repo doesn't exist, try to clone from source URL or clone URLs
 	if !repoExists {
 		// Priority 1: external forge / self-hosted HTTPS or git@ (not GRASP /npub1 paths)
