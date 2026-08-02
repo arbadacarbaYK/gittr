@@ -5,14 +5,13 @@ import { Suspense, useCallback, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 function SearchBarInner({ className }: { className?: string }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const ref = useRef<HTMLInputElement>(null);
-  /** Skip URL→input sync while the user is editing or we are clearing. */
+  /** Skip URL→input sync while the user is editing. */
   const suppressSyncRef = useRef(false);
 
   const urlQ = searchParams?.get("q")?.trim() || "";
@@ -34,29 +33,21 @@ function SearchBarInner({ className }: { className?: string }) {
     }
   }, [exploreQuery]);
 
-  const goExplore = useCallback(
-    (params: { q?: string; user?: string }) => {
-      const sp = new URLSearchParams();
-      if (params.user) sp.set("user", params.user);
-      if (params.q) sp.set("q", params.q);
-      const qs = sp.toString();
-      const href = qs ? `/explore?${qs}` : "/explore";
-      // Soft nav keeps explore's in-flight Nostr sync / warm cache.
-      if (pathname === "/explore") {
-        router.replace(href);
-      } else {
-        router.push(href);
-      }
-    },
-    [pathname, router]
-  );
+  const goExplore = useCallback((params: { q?: string; user?: string }) => {
+    const sp = new URLSearchParams();
+    if (params.user) sp.set("user", params.user);
+    if (params.q) sp.set("q", params.q);
+    const qs = sp.toString();
+    const href = qs ? `/explore?${qs}` : "/explore";
+    // Hard nav — soft router.push/replace was silently no-op from the header
+    // SearchBar on some pages; seed API makes explore remount cheap.
+    window.location.assign(href);
+  }, []);
 
   const clearExploreFilters = useCallback(() => {
     if (pathname !== "/explore") return;
     suppressSyncRef.current = true;
     if (ref.current) ref.current.value = "";
-    // Soft replace often leaves useSearchParams stuck with the old ?q=.
-    // Hard nav is reliable; /api/explore/seed rehydrates the list quickly.
     window.location.assign("/explore");
   }, [pathname]);
 
@@ -68,7 +59,6 @@ function SearchBarInner({ className }: { className?: string }) {
         return;
       }
 
-      suppressSyncRef.current = false;
       const npubMatch = q.match(/^(npub1[0-9a-z]+)$/i);
       if (npubMatch) {
         goExplore({ user: npubMatch[1] });
@@ -84,18 +74,23 @@ function SearchBarInner({ className }: { className?: string }) {
     [clearExploreFilters, goExplore]
   );
 
+  const handleSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      submitQuery(ref.current?.value || "");
+    },
+    [submitQuery]
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Escape" && pathname === "/explore") {
         e.preventDefault();
         clearExploreFilters();
-        return;
       }
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      submitQuery(ref.current?.value || "");
+      // Enter is handled by the wrapping <form onSubmit>.
     },
-    [clearExploreFilters, pathname, submitQuery]
+    [clearExploreFilters, pathname]
   );
 
   // Live-clear while deleting on explore: empty box drops ?q= / ?user=.
@@ -108,27 +103,31 @@ function SearchBarInner({ className }: { className?: string }) {
   }, [clearExploreFilters, pathname, urlQ, urlUser]);
 
   return (
-    <Input
-      ref={ref}
-      className={cn(
-        "w-full bg-[#0E1116] transition-all ease-in-out",
-        className
-      )}
-      type="text"
-      placeholder="Search or jump to…"
-      defaultValue={exploreQuery}
-      onKeyDown={handleKeyDown}
-      onChange={handleChange}
-      onFocus={() => {
-        suppressSyncRef.current = true;
-      }}
-      onBlur={() => {
-        // Allow URL→input sync again after blur (e.g. browser back).
-        window.setTimeout(() => {
-          suppressSyncRef.current = false;
-        }, 0);
-      }}
-    />
+    <form onSubmit={handleSubmit} className="w-full" role="search">
+      <Input
+        ref={ref}
+        className={cn(
+          "w-full bg-[#0E1116] transition-all ease-in-out",
+          className
+        )}
+        type="search"
+        name="q"
+        enterKeyHint="search"
+        autoComplete="off"
+        placeholder="Search or jump to…"
+        defaultValue={exploreQuery}
+        onKeyDown={handleKeyDown}
+        onChange={handleChange}
+        onFocus={() => {
+          suppressSyncRef.current = true;
+        }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            suppressSyncRef.current = false;
+          }, 0);
+        }}
+      />
+    </form>
   );
 }
 
@@ -141,7 +140,7 @@ export default function SearchBar({ className }: { className?: string }) {
             "w-full bg-[#0E1116] transition-all ease-in-out",
             className
           )}
-          type="text"
+          type="search"
           placeholder="Search or jump to…"
         />
       }
