@@ -205,11 +205,77 @@ export function branchesToTryForContent(
     .filter((b, i, arr) => arr.indexOf(b) === i);
 }
 
+/** Count paths that live under a folder (have a `/`). Dirs at root do not count. */
+export function nestedFilePathCount(
+  files: Array<{ path?: string; type?: string }> | undefined | null
+): number {
+  if (!Array.isArray(files)) return 0;
+  let n = 0;
+  for (const f of files) {
+    const p = String(f?.path || "").replace(/^\//, "");
+    if (!p.includes("/")) continue;
+    const t = String(f?.type || "file").toLowerCase();
+    if (t === "dir" || t === "tree" || t === "folder") continue;
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Decide whether a freshly fetched file tree may replace what's on screen /
+ * in localStorage.
+ *
+ * Never replace a richer local tree with a smaller remote snapshot unless the
+ * caller opts in (`allowShrink`) — that was wiping folder uploads after Push
+ * when GRASP returned only a partial/flat listing on hard refresh.
+ * Also refuse equal-count flat remotes when local still has nested paths.
+ */
 export function shouldApplyFetchedFileTree(
   incomingBranch: string,
   existingFileCount: number,
-  activeBranch: string
+  activeBranch: string,
+  incomingFileCount?: number,
+  opts?: {
+    allowShrink?: boolean;
+    existingNestedCount?: number;
+    incomingNestedCount?: number;
+  }
 ): boolean {
   if (existingFileCount === 0) return true;
-  return incomingBranch === activeBranch;
+  if (incomingBranch !== activeBranch) return false;
+  if (
+    typeof incomingFileCount === "number" &&
+    incomingFileCount > 0 &&
+    incomingFileCount < existingFileCount &&
+    !opts?.allowShrink
+  ) {
+    return false;
+  }
+  const existingNested = opts?.existingNestedCount ?? 0;
+  const incomingNested = opts?.incomingNestedCount ?? 0;
+  if (
+    !opts?.allowShrink &&
+    existingNested > 0 &&
+    incomingNested < existingNested &&
+    typeof incomingFileCount === "number" &&
+    incomingFileCount > 0 &&
+    incomingFileCount <= existingFileCount
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Prefer merge (union by path) when remote listing is a strict subset. */
+export function shouldMergeFetchedFileTree(
+  existingFileCount: number,
+  incomingFileCount: number,
+  opts?: { allowShrink?: boolean }
+): boolean {
+  return (
+    !opts?.allowShrink &&
+    existingFileCount > 0 &&
+    incomingFileCount > 0 &&
+    incomingFileCount < existingFileCount
+  );
 }

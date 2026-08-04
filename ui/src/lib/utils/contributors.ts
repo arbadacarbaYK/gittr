@@ -132,17 +132,18 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
   const pk = ownerPubkey.trim().toLowerCase();
   const dn = typeof displayName === "string" ? displayName.trim() : "";
 
+  // Drop name-only "owner" placeholders once we know the real owner pubkey —
+  // otherwise Settings/UI shows a second "arbadacarba" with no identity.
   const withoutShadowOwner = base.filter((c) => {
     if (c.pubkey || c.githubLogin) return true;
-    if (
-      dn &&
-      typeof c.name === "string" &&
-      c.name.trim() === dn &&
-      (c.weight === 100 || c.role === "owner")
-    ) {
-      return false;
-    }
-    return true;
+    const name =
+      typeof c.name === "string" ? c.name.trim().toLowerCase() : "";
+    const looksLikeOwner = c.weight === 100 || c.role === "owner";
+    if (!looksLikeOwner) return true;
+    if (!name) return false;
+    if (dn && name === dn.toLowerCase()) return false;
+    // Any name-only weight-100/owner row is a shadow of the real pubkey owner
+    return false;
   });
 
   const idx = withoutShadowOwner.findIndex(

@@ -117,6 +117,42 @@ const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
 
 /**
+ * Match nostr-tools SimplePool `_conn` keys. Their normalizeURL uses URL.href,
+ * which keeps a trailing `/` (e.g. `wss://relay.damus.io/`). Our display
+ * normalize strips it — lookups must accept both.
+ */
+function poolNormalizeUrl(url: string): string {
+  try {
+    const p = new URL(url.trim());
+    p.pathname = p.pathname.replace(/\/+/g, "/");
+    if (p.pathname.endsWith("/")) {
+      p.pathname = p.pathname.slice(0, -1);
+    }
+    if (
+      (p.port === "80" && p.protocol === "ws:") ||
+      (p.port === "443" && p.protocol === "wss:")
+    ) {
+      p.port = "";
+    }
+    p.searchParams.sort();
+    p.hash = "";
+    return p.href;
+  } catch {
+    return normalizeRelayUrl(url);
+  }
+}
+
+function relayUrlsMatch(a: string, b: string): boolean {
+  return (
+    normalizeRelayUrl(a) === normalizeRelayUrl(b) ||
+    poolNormalizeUrl(a) === poolNormalizeUrl(b)
+  );
+}
+
+/** Per-relay budget for first OPEN after hydrate (slow mobile / Amber defaults). */
+const BUNKER_RELAY_OPEN_BUDGET_MS = 15000;
+
+/**
  * Relays embedded in nostrconnect QR — must NOT include GRASP/git relays (they reject kind 24133).
  * Use signer-friendly WSS relays that overlap Amber's bunker defaults.
  */
@@ -603,8 +639,12 @@ export class RemoteSignerManager {
 
   /**
    * Single-flight bootstrap — safe to call from push/sign while page load is still pairing.
+   * Page load only hydrates cached identity; live Amber connect waits for ensureRpcHealthy.
    */
   ensureBootstrapped(): Promise<void> {
+    if (this.session?.userPubkey && this.adapter) {
+      return Promise.resolve();
+    }
     if (this.state === "ready" && this.session?.userPubkey && this.rpcHealthy) {
       return Promise.resolve();
     }
@@ -636,6 +676,10 @@ export class RemoteSignerManager {
     this.healthProbeInFlight = (async () => {
       if (!this.session) {
         await this.activateSession(session);
+      } else {
+        // Hydrate-only left session in memory without bunker sockets. Warm
+        // directPool + 24133 subscription before connect RPC (no page-load dial).
+        await this.prepareTransportForSession(this.requireSession());
       }
       this.notifyState("connecting");
       try {
@@ -662,43 +706,41 @@ export class RemoteSignerManager {
   /**
    * Attempt to rehydrate existing session from storage.
    */
+  /**
+   * Rehydrate cached bunker identity for read-only UI (logged-in pubkey, adapter).
+   * Does NOT call Amber — live NIP-46 connect runs on first sign via ensureRpcHealthy.
+   * Viewing public repos must never wait on the phone signer.
+   */
   async bootstrapFromStorage() {
     const stored = loadStoredRemoteSignerSession();
     if (!stored) return;
     try {
-      console.log("[RemoteSigner] Restoring session from storage");
+      console.log(
+        "[RemoteSigner] Restoring session from storage (hydrate only — no Amber connect)"
+      );
       this.rpcHealthy = false;
-      this.notifyState("connecting");
-      await this.activateSession(stored);
-      // Many signers (Amber/bunker) require a fresh connect RPC after reload
-      // before sign_event works — otherwise responses are "no permission".
-      try {
-        await this.reestablishConnection(this.requireSession());
-        this.rpcHealthy = true;
-        this.notifyState("ready");
-      } catch (reconnectErr) {
-        this.rpcHealthy = false;
-        console.warn(
-          "[RemoteSigner] Reconnect on bootstrap failed; keeping cached session (not ready until Amber answers)",
-          reconnectErr instanceof Error ? reconnectErr.message : reconnectErr
-        );
-        // Keep adapter + cached pubkey for UI, but do NOT claim ready — otherwise
-        // callers start a 120s sign_event that never reaches Amber.
-        this.notifyState(
-          "error",
-          "Remote signer session restored but Amber did not respond. Open the signer app and try again."
-        );
+      this.session = stored;
+      persistRemoteSignerSession(stored);
+      // Apply NIP-07 adapter so getPublicKey works; skip bunker relay dial + connect RPC.
+      if (
+        typeof window !== "undefined" &&
+        window.nostr &&
+        !this.originalNostr
+      ) {
+        this.originalNostr = window.nostr;
       }
+      this.applyNip07Adapter();
+      // "idle" + adapter = logged in for browsing; signing will probe Amber.
+      this.notifyState("idle");
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
       this.rpcHealthy = false;
       if (stored.userPubkey) {
         try {
-          await this.activateSession({ ...stored, lastConnected: Date.now() });
-          this.notifyState(
-            "error",
-            "Remote signer session cached but not connected. Open Amber and try again."
-          );
+          this.session = stored;
+          persistRemoteSignerSession(stored);
+          this.applyNip07Adapter();
+          this.notifyState("idle");
           return;
         } catch {
           // Fall through to clear.
@@ -763,13 +805,22 @@ export class RemoteSignerManager {
     // Session already stores the logged-in identity from pairing. Amber treats
     // get_public_key as its own permission and often prompts "read public key"
     // on every reconnect — even though gittr already knows the owner pubkey.
-    // Only probe when we truly lack a cached identity (or connect failed).
+    // Only probe when we truly lack a cached identity.
+    //
+    // IMPORTANT: if `connect` itself timed out, Amber never answered. Do NOT
+    // mark the session healthy via a soft "cached pubkey" fallback — that made
+    // push claim signing was underway while Amber showed no prompt.
     const cachedUserPubkey =
       typeof session.userPubkey === "string" &&
       HEX_64_RE.test(session.userPubkey)
         ? session.userPubkey.toLowerCase()
         : "";
-    if (cachedUserPubkey && !connectTimedOut) {
+    if (connectTimedOut) {
+      throw new Error(
+        "Remote signer connect timed out — Amber did not answer on its bunker relays. Keep Amber open/online and try again."
+      );
+    }
+    if (cachedUserPubkey) {
       return;
     }
 
@@ -790,13 +841,11 @@ export class RemoteSignerManager {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/no permission|timed out/i.test(msg) && cachedUserPubkey) {
-        console.warn(
-          "[RemoteSigner] get_public_key denied/timed out but cached userPubkey exists — continuing with cached identity"
-        );
-        return;
-      }
-      throw err;
+      throw new Error(
+        /timed out/i.test(msg)
+          ? "Remote signer get_public_key timed out — Amber did not answer. Keep Amber open/online and try again."
+          : msg
+      );
     }
   }
 
@@ -1197,6 +1246,80 @@ export class RemoteSignerManager {
     this.applyNip07Adapter();
   }
 
+  /**
+   * Merge session bunker relays with Amber-friendly defaults so a thin/damus-only
+   * URI still has working transport after hydrate-only page load.
+   */
+  private expandBunkerRelays(relays: string[]): string[] {
+    const merged: string[] = [];
+    const add = (url: string) => {
+      const normalized = normalizeRelayUrl(url);
+      if (
+        normalized.startsWith("wss://") &&
+        !merged.includes(normalized) &&
+        !isGraspServer(normalized)
+      ) {
+        merged.push(normalized);
+      }
+    };
+    (relays || []).forEach(add);
+    NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
+    NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
+    return merged.slice(0, 8);
+  }
+
+  /**
+   * Warm directPool + NIP-46 subscription without Amber RPC.
+   * Used on first sign after hydrate-only bootstrap.
+   */
+  private async prepareTransportForSession(session: RemoteSignerSession) {
+    const expanded = this.expandBunkerRelays(session.relays);
+    if (expanded.length > (session.relays?.length || 0)) {
+      console.log("[RemoteSigner] Expanding bunker relays for transport", {
+        before: session.relays?.length || 0,
+        after: expanded.length,
+      });
+      session.relays = expanded;
+      this.session = session;
+      persistRemoteSignerSession(session);
+    }
+    await this.ensureRelays(session.relays);
+
+    let open = await this.ensureDirectTransport(session);
+    if (open.length === 0) {
+      console.warn(
+        "[RemoteSigner] No bunker relays open after warm-up; retrying with fresh pool"
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+      this.resetDirectPool();
+      open = await this.ensureDirectTransport(session);
+    }
+    if (open.length === 0) {
+      const statuses = await this.snapshotDirectRelayStatuses(session.relays);
+      console.error(
+        "[RemoteSigner] Bunker relay statuses after warm-up:",
+        statuses
+      );
+      throw new Error(
+        "Could not open any bunker relay to reach Amber. Check your network, keep Amber open, then try again."
+      );
+    }
+    try {
+      await this.startSubscription(session, open);
+    } catch (error) {
+      console.warn(
+        "[RemoteSigner] Failed to start subscription during transport warm-up:",
+        error
+      );
+    }
+    if (typeof window !== "undefined" && window.nostr) {
+      if (!this.originalNostr || window.nostr !== this.adapter) {
+        this.originalNostr = window.nostr;
+      }
+    }
+    this.applyNip07Adapter();
+  }
+
   private clearSession() {
     this.rpcHealthy = false;
     this.healthProbeInFlight = null;
@@ -1238,56 +1361,209 @@ export class RemoteSignerManager {
     return open.length > 0 ? open : relays;
   }
 
+  private resetDirectPool() {
+    try {
+      const conn = (this.directPool as any)._conn;
+      if (conn && typeof conn === "object") {
+        Object.keys(conn).forEach((url) => {
+          try {
+            conn[url]?.close?.();
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+    this.directUnsubscribe?.();
+    this.directUnsubscribe = undefined;
+    this.directPool = new SimplePool();
+  }
+
+  /** Drop a stuck SimplePool relay so ensureRelay can create a fresh socket. */
+  private dropDirectRelay(url: string) {
+    try {
+      this.directPool.close([url, poolNormalizeUrl(url)]);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const conn = (this.directPool as any)._conn;
+      if (conn && typeof conn === "object") {
+        Object.keys(conn).forEach((k) => {
+          if (relayUrlsMatch(k, url)) delete conn[k];
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private getDirectRelayFromPool(url: string): any | null {
+    try {
+      const conn = (this.directPool as any)._conn;
+      if (!conn || typeof conn !== "object") return null;
+      const key = Object.keys(conn).find((k) => relayUrlsMatch(k, url));
+      return key ? conn[key] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async waitForRelayStatusOpen(
+    relay: { status?: number; connect?: () => Promise<void> },
+    timeoutMs: number
+  ): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (relay.status === 1) return true;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    return relay.status === 1;
+  }
+
+  private async snapshotDirectRelayStatuses(
+    relays: string[]
+  ): Promise<Record<string, number | "missing">> {
+    const out: Record<string, number | "missing"> = {};
+    for (const url of relays) {
+      const relay = this.getDirectRelayFromPool(url);
+      out[normalizeRelayUrl(url)] =
+        typeof relay?.status === "number" ? relay.status : "missing";
+    }
+    return out;
+  }
+
   /**
-   * Re-open dead directPool sockets before publishing a NIP-46 request.
+   * Open one bunker relay without thrashing CONNECTING sockets.
+   * nostr-tools ensureRelay returns an in-flight relay immediately on repeat
+   * calls — short Promise.race timeouts were closing those and Amber never saw us.
+   */
+  private async openDirectRelay(
+    url: string,
+    budgetMs = BUNKER_RELAY_OPEN_BUDGET_MS
+  ): Promise<boolean> {
+    const started = Date.now();
+    const remaining = () => Math.max(800, budgetMs - (Date.now() - started));
+
+    const waitOpen = async (relay: any) => {
+      if (!relay) return false;
+      if (relay.status === 1) return true;
+      if (relay.status === 0) {
+        return this.waitForRelayStatusOpen(relay, remaining());
+      }
+      if (relay.status === 2 || relay.status === 3) {
+        try {
+          await Promise.race([
+            relay.connect(),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("connect timeout")),
+                remaining()
+              )
+            ),
+          ]);
+        } catch {
+          /* fall through to status check */
+        }
+        if (relay.status === 1) return true;
+        if (relay.status === 0) {
+          return this.waitForRelayStatusOpen(relay, remaining());
+        }
+      }
+      return relay.status === 1;
+    };
+
+    try {
+      let relay = this.getDirectRelayFromPool(url);
+      if (relay) {
+        if (await waitOpen(relay)) return true;
+      } else {
+        relay = await Promise.race([
+          this.directPool.ensureRelay(url),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("ensureRelay timeout")),
+              remaining()
+            )
+          ),
+        ]);
+        if (await waitOpen(relay)) return true;
+      }
+    } catch (error) {
+      console.warn(
+        `[RemoteSigner] openDirectRelay first pass failed for ${url}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+
+    // One clean retry — only now drop a stuck socket.
+    if (remaining() < 1000) return false;
+    try {
+      this.dropDirectRelay(url);
+      const relay: any = await Promise.race([
+        this.directPool.ensureRelay(url),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("ensureRelay retry timeout")),
+            remaining()
+          )
+        ),
+      ]);
+      return await waitOpen(relay);
+    } catch (error) {
+      console.warn(
+        `[RemoteSigner] openDirectRelay retry failed for ${url}:`,
+        error instanceof Error ? error.message : error
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Re-open dead/stuck directPool sockets before publishing a NIP-46 request.
    * nostr-tools v1 relays never auto-reconnect: after a silent drop the
    * subscription is dead and trySend discards messages, so requests would
    * vanish and every RPC would "time out" even though Amber is online.
    */
-  private async ensureDirectTransport(session: RemoteSignerSession) {
+  private async ensureDirectTransport(
+    session: RemoteSignerSession
+  ): Promise<string[]> {
     const targets = session.relays.filter((r) =>
       normalizeRelayUrl(r).startsWith("wss://")
     );
-    if (targets.length === 0) return;
-    let reconnected = false;
-    await Promise.all(
+    if (targets.length === 0) return [];
+
+    const results = await Promise.all(
       targets.map(async (url) => {
-        try {
-          const relay: any = await Promise.race([
-            this.directPool.ensureRelay(url),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("ensureRelay timeout")), 5000)
-            ),
-          ]);
-          // 3 = CLOSED. Never touch CONNECTING/OPEN sockets — re-dialing a
-          // connecting socket replaces it and thrashes the connection.
-          if (relay && relay.status === 3) {
-            await Promise.race([
-              relay.connect(),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("connect timeout")), 5000)
-              ),
-            ]);
-            reconnected = true;
-          }
-        } catch {
-          // Other relays may still work; publish path retries too.
-        }
+        const ok = await this.openDirectRelay(url);
+        return ok ? url : null;
       })
     );
-    if (reconnected) {
-      console.log(
-        "[RemoteSigner] Direct transport re-opened; refreshing NIP-46 subscription"
-      );
+    const openUrls = results.filter((u): u is string => !!u);
+
+    if (openUrls.length > 0) {
+      console.log("[RemoteSigner] Direct transport ready", {
+        open: openUrls.length,
+        total: targets.length,
+        openUrls: openUrls.map((u) => normalizeRelayUrl(u)),
+      });
       try {
-        await this.startSubscription(session);
+        await this.startSubscription(session, openUrls);
       } catch (error) {
         console.warn(
-          "[RemoteSigner] Failed to refresh subscription after reconnect:",
+          "[RemoteSigner] Failed to refresh subscription after transport ensure:",
           error
         );
       }
+    } else {
+      console.warn(
+        "[RemoteSigner] No OPEN bunker sockets",
+        await this.snapshotDirectRelayStatuses(targets)
+      );
     }
+    return openUrls;
   }
 
   private async waitForDirectPoolRelays(relays: string[], timeoutMs = 8000) {
@@ -1295,21 +1571,77 @@ export class RemoteSignerManager {
       .map((r) => normalizeRelayUrl(r))
       .filter((r) => r.startsWith("wss://"));
     if (targets.length === 0) return;
-    await new Promise<void>((resolve) => {
+    // Prefer the shared openDirectRelay path (longer budget, no thrash).
+    await Promise.all(
+      targets.map((url) =>
+        this.openDirectRelay(
+          url,
+          Math.max(timeoutMs, BUNKER_RELAY_OPEN_BUDGET_MS)
+        )
+      )
+    );
+  }
+
+  private async listDirectOpenRelays(relays: string[]): Promise<string[]> {
+    const open: string[] = [];
+    for (const url of relays) {
+      const relay = this.getDirectRelayFromPool(url);
+      if (relay?.status === 1) open.push(url);
+    }
+    return open;
+  }
+
+  /**
+   * Publish via SimplePool and prefer waiting for at least one relay OK.
+   * nostr-tools trySend silently drops when the socket is not OPEN — so we
+   * only publish to OPEN relays. Missing OK acks are warned (some relays omit
+   * them for kind 24133) but do not hard-fail if sockets were OPEN.
+   */
+  private async publishDirectConfirmed(
+    relays: string[],
+    event: any,
+    timeoutMs = 2500
+  ): Promise<string[]> {
+    const open = await this.listDirectOpenRelays(relays);
+    const publishTargets = open.length > 0 ? open : [];
+    if (publishTargets.length === 0) {
+      throw new Error("No bunker relay connected for remote signer publish");
+    }
+
+    return await new Promise<string[]>((resolve, reject) => {
+      const okRelays: string[] = [];
       let settled = false;
-      const finish = () => {
+      const finish = (urls: string[]) => {
         if (settled) return;
         settled = true;
-        try {
-          sub.unsub();
-        } catch {
-          /* ignore */
-        }
-        resolve();
+        clearTimeout(timer);
+        resolve(urls);
       };
-      const sub = this.directPool.sub(targets, [{ kinds: [1], limit: 0 }]);
-      sub.on("eose", finish);
-      setTimeout(finish, Math.min(timeoutMs, 4000));
+      const timer = setTimeout(() => {
+        if (okRelays.length > 0) {
+          finish([...okRelays]);
+          return;
+        }
+        console.warn(
+          "[RemoteSigner] Direct publish got no OK ack; continuing because bunker sockets were OPEN",
+          { eventId: event?.id, relays: publishTargets }
+        );
+        finish([...publishTargets]);
+      }, timeoutMs);
+      try {
+        const pub = this.directPool.publish(publishTargets, event);
+        pub.on("ok", (relayUrl: string) => {
+          okRelays.push(relayUrl);
+          finish([...okRelays]);
+        });
+        pub.on("failed", (relayUrl: string) => {
+          console.warn("[RemoteSigner] Direct publish failed on", relayUrl);
+        });
+      } catch (error) {
+        settled = true;
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -1325,8 +1657,18 @@ export class RemoteSignerManager {
       if (hasOpenTarget) return;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+    const statuses = this.deps.getRelayStatuses?.() || [];
+    const bunkerStatuses = statuses.filter(([url]) =>
+      targets.has(normalizeRelayUrl(url))
+    );
     console.warn(
-      "[RemoteSigner] No bunker relay reached OPEN state before timeout; continuing"
+      "[RemoteSigner] No bunker relay reached OPEN state in app relaypool before timeout (direct pool may still work)",
+      {
+        bunkerStatuses: bunkerStatuses.map(([url, state]) => ({
+          url,
+          state,
+        })),
+      }
     );
   }
 
@@ -1653,7 +1995,12 @@ export class RemoteSignerManager {
     await this.ensureRelays(session.relays);
     // Repair the dedicated NIP-46 transport first — dead sockets silently
     // swallow requests AND responses (the "push fails silently" symptom).
-    await this.ensureDirectTransport(session);
+    const openDirect = await this.ensureDirectTransport(session);
+    if (openDirect.length === 0) {
+      throw new Error(
+        "Could not open any bunker relay to reach Amber. Check your network, keep Amber open, then try again."
+      );
+    }
     await this.waitForRelayOpen(session.relays, 6000);
     const id = randomRequestId();
     const payload = JSON.stringify({
@@ -1675,7 +2022,9 @@ export class RemoteSignerManager {
     };
     requestEvent.id = getEventHash(requestEvent);
     requestEvent.sig = signEvent(requestEvent, session.clientSecretKey);
-    const shouldDualPublishForPairing =
+    // Amber may expect NIP-04 during pairing (connect / get_public_key).
+    // Do NOT dual-publish for sign_event — that can show two Amber prompts.
+    const shouldDualPublish =
       method === "connect" || method === "get_public_key";
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -1690,22 +2039,22 @@ export class RemoteSignerManager {
           await this.publishWithRelayRetry(
             requestEvent,
             session.relays,
-            session.relays
+            openDirect.length > 0 ? openDirect : session.relays
           );
-          // Also publish through dedicated SimplePool path, isolated from app relaypool.
-          try {
-            this.directPool.publish(session.relays, requestEvent);
-            console.log("[RemoteSigner] Published via direct pool", {
-              eventId: requestEvent.id,
-              method,
-              relays: session.relays,
-            });
-          } catch {
-            // ignore direct publish errors here; retry path above already handled.
-          }
-          if (shouldDualPublishForPairing) {
-            // Amber compatibility: during pairing, publish a second envelope using
-            // explicit NIP-04 encryption (same request id) in case signer is not
+          // Confirmed publish through dedicated SimplePool — requires at least
+          // one relay OK so we don't pretend Amber was notified.
+          const okRelays = await this.publishDirectConfirmed(
+            openDirect.length > 0 ? openDirect : session.relays,
+            requestEvent
+          );
+          console.log("[RemoteSigner] Published via direct pool", {
+            eventId: requestEvent.id,
+            method,
+            relays: okRelays,
+          });
+          if (shouldDualPublish) {
+            // Amber compatibility: publish a second envelope using explicit
+            // NIP-04 encryption (same request id) in case signer is not
             // accepting our NIP-44 envelope for this connection.
             try {
               const nip04Ciphertext = await nip04.encrypt(
@@ -1729,20 +2078,29 @@ export class RemoteSignerManager {
               await this.publishWithRelayRetry(
                 fallbackEvent,
                 session.relays,
-                session.relays
+                openDirect.length > 0 ? openDirect : session.relays
               );
               try {
-                this.directPool.publish(session.relays, fallbackEvent);
+                const okFallback = await this.publishDirectConfirmed(
+                  openDirect.length > 0 ? openDirect : session.relays,
+                  fallbackEvent,
+                  6000
+                );
                 console.log(
                   "[RemoteSigner] Published fallback via direct pool",
                   {
                     eventId: fallbackEvent.id,
                     method,
-                    relays: session.relays,
+                    relays: okFallback,
                   }
                 );
-              } catch {
-                // ignore direct publish errors for fallback envelope
+              } catch (fallbackErr) {
+                console.warn(
+                  "[RemoteSigner] NIP-04 fallback publish not acknowledged:",
+                  fallbackErr instanceof Error
+                    ? fallbackErr.message
+                    : fallbackErr
+                );
               }
             } catch {
               // Ignore fallback path failures and rely on primary envelope.

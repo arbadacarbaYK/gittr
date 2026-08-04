@@ -1,11 +1,11 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
+import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { join } from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
@@ -149,10 +149,22 @@ export default async function handler(
 
   // Use same directory resolution as push endpoint for consistency
   const reposDir = await resolveReposDir();
-  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+  const resolvedPath = resolveBridgeRepoPath(reposDir, ownerPubkey, repoName);
+  if (!resolvedPath) {
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
+  }
+  const repoPath = resolvedPath.repoPath;
 
   // Private repos: only owner/contributors may read (same ACL as SSH).
-  const access = await assertRepoReadAccess(req, ownerPubkey, repoName);
+  const access = await assertRepoReadAccess(
+    req,
+    ownerPubkey,
+    resolvedPath.repoName
+  );
   if (!access.ok) {
     return res.status(access.status).json({ error: access.error });
   }

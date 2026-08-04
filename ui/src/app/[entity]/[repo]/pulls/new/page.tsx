@@ -46,7 +46,7 @@ import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { FileDiff, GitBranch, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getEventHash, getPublicKey } from "nostr-tools";
+import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 
 interface ChangedFile {
   path: string;
@@ -792,6 +792,8 @@ export default function NewPullRequestPage({
               ? currentCommitId
               : undefined,
             sourceRef: headBranch || baseBranch,
+            pubkey: authorPubkey,
+            signer: (evt) => window.nostr!.signEvent(evt),
           });
           if (!refResult.success) {
             showToast(
@@ -839,6 +841,13 @@ export default function NewPullRequestPage({
               ? currentCommitId
               : undefined,
             sourceRef: headBranch || baseBranch,
+            pubkey: authorPubkey,
+            signer: async (evt) => {
+              const id = getEventHash(evt);
+              const event = { ...evt, id };
+              event.sig = signEvent(event, privateKey);
+              return event;
+            },
           });
           if (!refResult.success) {
             showToast(
@@ -996,6 +1005,7 @@ export default function NewPullRequestPage({
                       ["p", finalOwnerPubkey],
                       ["p", authorPubkey],
                       ["a", `30617:${finalOwnerPubkey}:${repo}`],
+                      ["k", "1618"],
                     ],
                     content: `Opened PR #${prId}`,
                     pubkey: authorPubkey,
@@ -1012,6 +1022,7 @@ export default function NewPullRequestPage({
                       ownerPubkey: finalOwnerPubkey,
                       rootEventAuthor: authorPubkey,
                       repoName: repo || "",
+                      rootKind: 1618,
                       content: `Opened PR #${prId}`,
                     },
                     privateKey

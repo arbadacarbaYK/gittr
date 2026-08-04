@@ -184,204 +184,210 @@ function NewRepoPageContent() {
           d = JSON.parse(rawText);
         } catch {
           setStatus(
-            `Import failed (HTTP ${r.status}): server returned a non-JSON response. ${rawText.slice(0, 180)}`
+            `Import failed (HTTP ${
+              r.status
+            }): server returned a non-JSON response. ${rawText.slice(0, 180)}`
           );
           return;
         }
 
         if (d.status === "completed" || d.success) {
-        // Slugify the imported repo name to ensure URL-safe format
-        const importedRepoSlug = slugify(d.repo || d.slug);
-        if (!importedRepoSlug) {
-          setStatus(
-            `Import failed: Repository name "${
-              d.repo || d.slug
-            }" is not valid for URL`
-          );
-          return;
-        }
-        setStatus(`Imported ${entityInfo.entitySlug}/${importedRepoSlug}`);
-        setReadme(d.readme || "");
-
-        // store repo locally for listing - always use current user's Nostr pubkey as entity
-        try {
-          const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-          // For imports, use GitHub repo name but keep user's Nostr pubkey as entity
-          const entity = entityInfo.entitySlug; // Use npub format (GRASP protocol standard)
-          const repo = importedRepoSlug; // Use slugified version
-          // Only treat as duplicate for the same entity+repo (never match slug alone:
-          // another cached repo can share a slug under a different entity and would
-          // incorrectly block imports).
-          const duplicateIdx = repos.findIndex(
-            (r: any) =>
-              findRepoByEntityAndName<StoredRepo>([r], entity, repo) !==
-              undefined
-          );
-          // Ensure current user (owner) is ALWAYS in contributors array with pubkey for icon resolution
-          // GitHub contributors won't have pubkeys, but we add the current user as owner
-          const contributors: Array<{
-            pubkey?: string;
-            name?: string;
-            picture?: string;
-            weight: number;
-            githubLogin?: string;
-          }> = [...(d.contributors || [])];
-
-          // Always ensure owner is present (replace if exists, add if not)
-          if (pubkey) {
-            const existingOwnerIdx = contributors.findIndex(
-              (c: any) => c.pubkey === pubkey
+          // Slugify the imported repo name to ensure URL-safe format
+          const importedRepoSlug = slugify(d.repo || d.slug);
+          if (!importedRepoSlug) {
+            setStatus(
+              `Import failed: Repository name "${
+                d.repo || d.slug
+              }" is not valid for URL`
             );
-            const ownerContributor = {
-              pubkey,
-              name: entityInfo.displayName,
-              weight: 100,
+            return;
+          }
+          setStatus(`Imported ${entityInfo.entitySlug}/${importedRepoSlug}`);
+          setReadme(d.readme || "");
+
+          // store repo locally for listing - always use current user's Nostr pubkey as entity
+          try {
+            const repos = JSON.parse(
+              localStorage.getItem("gittr_repos") || "[]"
+            );
+            // For imports, use GitHub repo name but keep user's Nostr pubkey as entity
+            const entity = entityInfo.entitySlug; // Use npub format (GRASP protocol standard)
+            const repo = importedRepoSlug; // Use slugified version
+            // Only treat as duplicate for the same entity+repo (never match slug alone:
+            // another cached repo can share a slug under a different entity and would
+            // incorrectly block imports).
+            const duplicateIdx = repos.findIndex(
+              (r: any) =>
+                findRepoByEntityAndName<StoredRepo>([r], entity, repo) !==
+                undefined
+            );
+            // Ensure current user (owner) is ALWAYS in contributors array with pubkey for icon resolution
+            // GitHub contributors won't have pubkeys, but we add the current user as owner
+            const contributors: Array<{
+              pubkey?: string;
+              name?: string;
+              picture?: string;
+              weight: number;
+              githubLogin?: string;
+            }> = [...(d.contributors || [])];
+
+            // Always ensure owner is present (replace if exists, add if not)
+            if (pubkey) {
+              const existingOwnerIdx = contributors.findIndex(
+                (c: any) => c.pubkey === pubkey
+              );
+              const ownerContributor = {
+                pubkey,
+                name: entityInfo.displayName,
+                weight: 100,
+              };
+              if (existingOwnerIdx >= 0) {
+                contributors[existingOwnerIdx] = ownerContributor; // Replace with owner weight
+              } else {
+                contributors.unshift(ownerContributor); // Add owner at the beginning
+              }
+            }
+
+            // CRITICAL: Preserve original GitHub repo name (with dots) in 'name' field for display
+            // Use slugified version for URLs (slug, repo, repositoryName)
+            const originalRepoName =
+              d.repo || d.slug || name || importedRepoSlug; // Original name from GitHub (may have dots)
+
+            // CRITICAL: Validate entity is not a domain name or empty
+            if (
+              !entity ||
+              entity === "gittr.space" ||
+              (entity.includes(".") && !entity.startsWith("npub"))
+            ) {
+              setStatus(
+                `Error: Invalid entity "${entity}". Repository not created.`
+              );
+              return;
+            }
+
+            // CRITICAL: Store files separately to avoid localStorage quota issues
+            // Only store fileCount in repo object, not full files array
+            let fileCount = 0;
+            if (d.files && Array.isArray(d.files) && d.files.length > 0) {
+              fileCount = d.files.length;
+              try {
+                const { saveRepoFiles } = await import("@/lib/repos/storage");
+                saveRepoFiles(entity, importedRepoSlug, d.files);
+                console.log(
+                  `✅ [New Repo] Saved ${fileCount} files to separate storage for ${entity}/${importedRepoSlug}`
+                );
+              } catch (e: any) {
+                console.error(
+                  `❌ [New Repo] Failed to save files separately:`,
+                  e
+                );
+                // Continue anyway - fileCount will be 0
+              }
+            }
+
+            const rec = {
+              slug: importedRepoSlug, // Use slugified repo name for URLs
+              entity,
+              entityDisplayName: entityInfo.displayName,
+              repo: importedRepoSlug, // Use slugified version for URLs
+              repositoryName: importedRepoSlug, // CRITICAL: Store exact repositoryName for git-nostr-bridge compatibility
+              name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
+              // Always set ownerPubkey for reliable ownership detection
+              ownerPubkey: pubkey || undefined,
+              sourceUrl: d.sourceUrl || normalizedUrl,
+              forkedFrom: d.sourceUrl || normalizedUrl,
+              readme: d.readme,
+              fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
+              description: d.description,
+              stars: d.stars,
+              forks: d.forks,
+              languages: d.languages,
+              topics: d.topics,
+              // Always include contributors array (never undefined) - at minimum the owner
+              contributors:
+                contributors.length > 0
+                  ? contributors
+                  : pubkey
+                  ? [{ pubkey, name: entityInfo.displayName, weight: 100 }]
+                  : [],
+              defaultBranch: d.defaultBranch,
+              branches: d.branches || [],
+              tags: d.tags || [],
+              releases: d.releases || [],
+              createdAt: Date.now(),
+              status: "local" as const,
             };
-            if (existingOwnerIdx >= 0) {
-              contributors[existingOwnerIdx] = ownerContributor; // Replace with owner weight
-            } else {
-              contributors.unshift(ownerContributor); // Add owner at the beginning
-            }
-          }
+            // CRITICAL: Log entity to verify it's correct
+            console.log("🔄 Importing via new page with entity:", {
+              entity: rec.entity,
+              entityDisplayName: rec.entityDisplayName,
+              ownerPubkey: rec.ownerPubkey?.slice(0, 8),
+              expectedEntity: entityInfo.entitySlug,
+              pubkey: pubkey?.slice(0, 8),
+              repoName: rec.name,
+              isValidEntity:
+                rec.entity.startsWith("npub") &&
+                !rec.entity.includes("gittr.space"),
+            });
 
-          // CRITICAL: Preserve original GitHub repo name (with dots) in 'name' field for display
-          // Use slugified version for URLs (slug, repo, repositoryName)
-          const originalRepoName = d.repo || d.slug || name || importedRepoSlug; // Original name from GitHub (may have dots)
-
-          // CRITICAL: Validate entity is not a domain name or empty
-          if (
-            !entity ||
-            entity === "gittr.space" ||
-            (entity.includes(".") && !entity.startsWith("npub"))
-          ) {
-            setStatus(
-              `Error: Invalid entity "${entity}". Repository not created.`
-            );
-            return;
-          }
-
-          // CRITICAL: Store files separately to avoid localStorage quota issues
-          // Only store fileCount in repo object, not full files array
-          let fileCount = 0;
-          if (d.files && Array.isArray(d.files) && d.files.length > 0) {
-            fileCount = d.files.length;
-            try {
-              const { saveRepoFiles } = await import("@/lib/repos/storage");
-              saveRepoFiles(entity, importedRepoSlug, d.files);
-              console.log(
-                `✅ [New Repo] Saved ${fileCount} files to separate storage for ${entity}/${importedRepoSlug}`
+            // CRITICAL: Final validation before saving
+            if (
+              !rec.entity ||
+              rec.entity === "gittr.space" ||
+              (!rec.entity.startsWith("npub") && rec.entity.includes("."))
+            ) {
+              setStatus(
+                `Error: Invalid entity "${rec.entity}". Repository not saved.`
               );
-            } catch (e: any) {
               console.error(
-                `❌ [New Repo] Failed to save files separately:`,
-                e
+                "❌ [New Repo] Invalid entity detected, not saving:",
+                rec.entity
               );
-              // Continue anyway - fileCount will be 0
+              return;
             }
-          }
 
-          const rec = {
-            slug: importedRepoSlug, // Use slugified repo name for URLs
-            entity,
-            entityDisplayName: entityInfo.displayName,
-            repo: importedRepoSlug, // Use slugified version for URLs
-            repositoryName: importedRepoSlug, // CRITICAL: Store exact repositoryName for git-nostr-bridge compatibility
-            name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
-            // Always set ownerPubkey for reliable ownership detection
-            ownerPubkey: pubkey || undefined,
-            sourceUrl: d.sourceUrl || normalizedUrl,
-            forkedFrom: d.sourceUrl || normalizedUrl,
-            readme: d.readme,
-            fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
-            description: d.description,
-            stars: d.stars,
-            forks: d.forks,
-            languages: d.languages,
-            topics: d.topics,
-            // Always include contributors array (never undefined) - at minimum the owner
-            contributors:
-              contributors.length > 0
-                ? contributors
-                : pubkey
-                ? [{ pubkey, name: entityInfo.displayName, weight: 100 }]
-                : [],
-            defaultBranch: d.defaultBranch,
-            branches: d.branches || [],
-            tags: d.tags || [],
-            releases: d.releases || [],
-            createdAt: Date.now(),
-            status: "local" as const,
-          };
-          // CRITICAL: Log entity to verify it's correct
-          console.log("🔄 Importing via new page with entity:", {
-            entity: rec.entity,
-            entityDisplayName: rec.entityDisplayName,
-            ownerPubkey: rec.ownerPubkey?.slice(0, 8),
-            expectedEntity: entityInfo.entitySlug,
-            pubkey: pubkey?.slice(0, 8),
-            repoName: rec.name,
-            isValidEntity:
-              rec.entity.startsWith("npub") &&
-              !rec.entity.includes("gittr.space"),
-          });
+            const nextRepos =
+              duplicateIdx >= 0
+                ? repos.map((r: StoredRepo, i: number) =>
+                    i === duplicateIdx ? { ...r, ...rec } : r
+                  )
+                : [rec, ...repos];
+            localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
 
-          // CRITICAL: Final validation before saving
-          if (
-            !rec.entity ||
-            rec.entity === "gittr.space" ||
-            (!rec.entity.startsWith("npub") && rec.entity.includes("."))
-          ) {
-            setStatus(
-              `Error: Invalid entity "${rec.entity}". Repository not saved.`
-            );
+            // Dispatch event to update repositories page
+            window.dispatchEvent(new CustomEvent("gittr:repo-created"));
+
+            // Local only — publish via Push to Nostr on the repo page.
+          } catch (storageErr: any) {
             console.error(
-              "❌ [New Repo] Invalid entity detected, not saving:",
-              rec.entity
+              "❌ [New Repo] Failed to save imported repo:",
+              storageErr
+            );
+            setStatus(
+              `Import partially failed while saving locally: ${
+                storageErr?.message || storageErr
+              }`
             );
             return;
           }
-
-          const nextRepos =
-            duplicateIdx >= 0
-              ? repos.map((r: StoredRepo, i: number) =>
-                  i === duplicateIdx ? { ...r, ...rec } : r
-                )
-              : [rec, ...repos];
-          localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
-
-          // Dispatch event to update repositories page
-          window.dispatchEvent(new CustomEvent("gittr:repo-created"));
-
-          // Local only — publish via Push to Nostr on the repo page.
-        } catch (storageErr: any) {
-          console.error("❌ [New Repo] Failed to save imported repo:", storageErr);
-          setStatus(
-            `Import partially failed while saving locally: ${
-              storageErr?.message || storageErr
-            }`
-          );
-          return;
-        }
-        // Only redirect if repo was successfully created
-        if (importedRepoSlug && entityInfo) {
-          setTimeout(() => router.push("/repositories"), 600);
+          // Only redirect if repo was successfully created
+          if (importedRepoSlug && entityInfo) {
+            setTimeout(() => router.push("/repositories"), 600);
+          } else {
+            setStatus(
+              `Import failed: Repository was not created. ${
+                d.message || d.status || "Unknown error"
+              }`
+            );
+          }
         } else {
           setStatus(
-            `Import failed: Repository was not created. ${
-              d.message || d.status || "Unknown error"
-            }`
+            `Import failed: ${d.message || d.status || `HTTP ${r.status}`}`
           );
         }
-      } else {
-        setStatus(
-          `Import failed: ${d.message || d.status || `HTTP ${r.status}`}`
-        );
-      }
       } catch (importErr: any) {
         console.error("❌ [New Repo] Import error:", importErr);
-        setStatus(
-          `Import failed: ${importErr?.message || String(importErr)}`
-        );
+        setStatus(`Import failed: ${importErr?.message || String(importErr)}`);
       } finally {
         setImporting(false);
       }
@@ -610,7 +616,13 @@ function NewRepoPageContent() {
 
         // Only redirect if repo was successfully created
         if (repoSlug && entity) {
-          setTimeout(() => router.push("/repositories"), 400);
+          // Empty repos go straight to upload (files + folders / drag-drop).
+          // Forks that already copied files open the repo page.
+          const next =
+            !isFork || fileCount === 0
+              ? `/${entity}/${repoSlug}/upload`
+              : `/${entity}/${repoSlug}`;
+          setTimeout(() => router.push(next), 400);
         } else {
           setStatus(
             "Error: Repository was not created. Please check the name and try again."
@@ -694,8 +706,8 @@ function NewRepoPageContent() {
           {importing
             ? "Importing…"
             : url.trim()
-              ? "Import & Create"
-              : "Enter URL to import"}
+            ? "Import & Create"
+            : "Enter URL to import"}
         </button>
         {status && (
           <div className="mt-3 text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap">
@@ -709,7 +721,9 @@ function NewRepoPageContent() {
           ➕ Option 2: Create empty repository
         </h2>
         <p className="text-sm text-gray-300 mb-2">
-          Create a new empty repository from scratch.
+          Create a new empty repository from scratch. After create you&apos;ll
+          land on Upload — drag &amp; drop files or whole folders (paths
+          preserved).
         </p>
         <label className="block text-sm font-medium mb-2">
           Repository Name

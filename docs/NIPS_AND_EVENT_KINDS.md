@@ -207,12 +207,13 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `d`: Repository identifier (required)
   - `name`: Human-readable project name
   - `description`: Repository description
-  - `clone[]`: Git server URLs (HTTPS GRASP/forges, `nostr://…`, or Iris **`htree://npub…/repo`** — Hashtree needs `git-remote-htree`; gittr does not list those trees in the Code browser yet)
-  - `relay[]`: Nostr relay URLs
+  - `clone[]`: Git server URLs for **this** Nostr-git host (HTTPS GRASP/`git.gittr.space`, `nostr://…`, or Iris **`htree://npub…/repo`**). After a gittr Push that already lists a GRASP clone, the foreign forge (GitHub/…) is **not** duplicated in `clone` (avoids “commit not found” on other clients) — it goes in `source` instead.
+  - `source` (gittr / common clients): Upstream foreign forge URL (e.g. `https://github.com/org/repo.git`). Drives **Git Server** in the sidebar and **Refetch from GitHub/GitLab/…**. Pure Nostr-native repos omit this; Refetch then reloads from Nostr.
+  - `relay[]` / `relays[]`: Nostr relay URLs
   - `t[]`: Topics/tags
   - `p[]`: Contributors (with weights)
   - `maintainers[]`: Maintainer pubkeys (used for access control)
-  - `r`: Source URL (e.g., GitHub)
+  - `r` + `euc`: Earliest unique commit (NIP-34) — **not** the GitHub URL
   - `image`: Logo URL
   - `web[]`: Project website / docs browse links (e.g. homepage, Iris `https://git.iris.to/#/npub…/repo` — shown as **Iris Git**). Forge client mirrors such as `https://gitworkshop.dev/npub…/<grasp-host>/repo` are **not** treated as Documentation in the gittr sidebar. Not a clone URL; logos belong on `image`, not `web`.
   - `default_branch`: Default branch name
@@ -221,7 +222,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `link[]`: Repository links (docs, social media, etc.) — preferred over bare `web` when typed metadata / labels matter
   - `push_cost_sats` (optional, **gittr / git-nostr-bridge extension**): Integer sats charged per push when the bridge enforces a paywall. **Not** part of the core NIP-34 text; we reuse kind **30617** so the amount is owner-attested on the same replaceable repo announcement other clients already follow. The bridge copies this tag into `RepositoryPushPolicy` for `/api/nostr/repo/push` and SSH enforcement; purely local UI state alone cannot secure server-side push.
   - `public-read` / `public-write` (optional, **gittr extension**): `["public-read","false"]` marks a repo private (code/clone/API/SSH reads restricted to owner + `maintainers` / `RepositoryPermission`). Default when omitted: public read, owner-only write. The kind **30617** announcement itself remains a public relay event — name and description stay discoverable; only file access is gated.
-- **Privacy**: Core NIP-34 has no visibility field. gittr adds `public-read` / `public-write` tags on kind **30617** and enforces them in **git-nostr-bridge** (SQLite `Repository.PublicRead` / `PublicWrite`), **git-nostr-ssh** (`git-upload-pack` / `git-receive-pack`), and **HTTPS git** on `git.gittr.space` (nginx `auth_request` → `/api/git/http-auth`). The web UI/API uses the same ACL via `assertRepoReadAccess`. Listings (Explore, My Repositories, profile `/api/nostr/profile-repos`) **must parse** those tags — treating privacy as localStorage-only was a bug (private flipped back to public after “clear local data”). Every Push path (nsec and NIP-07/Amber) must re-emit the tags so a later push does not wipe Settings → Private. Private repos are hidden from Explore/profile for strangers; direct URL shows a **Private** badge and lock screen. SSH keys and Nostr-signed HTTP headers use the same pubkey-based ACL — add a maintainer's **npub** in Repository Settings → Contributors for access.
+- **Privacy**: Core NIP-34 has no visibility field. gittr adds `public-read` / `public-write` tags on kind **30617** and enforces them in **git-nostr-bridge** (SQLite `Repository.PublicRead` / `PublicWrite`), **git-nostr-ssh** (`git-upload-pack` / `git-receive-pack`), and **HTTPS git** on `git.gittr.space` (nginx `auth_request` → `/api/git/http-auth`). The web UI/API uses the same ACL via `assertRepoReadAccess`. Listings (Explore, My Repositories, profile `/api/nostr/profile-repos`) **must parse** those tags — treating privacy as localStorage-only was a bug (private flipped back to public after “clear local data”). Repo **Settings** hydrates Public/Private from the latest kind **30617** (same as the Private badge) and blocks Save until visibility is confirmed, so editing Description alone cannot republish a default Public over a private repo. Every Push path (nsec and NIP-07/Amber) must re-emit the tags so a later push does not wipe Settings → Private. Private repos are hidden from Explore/profile for strangers; direct URL shows a **Private** badge and lock screen. SSH keys and Nostr-signed HTTP headers use the same pubkey-based ACL — add a maintainer's **npub** in Repository Settings → Contributors for access.
 - **Soft-delete (gittr)**: Settings → Delete does **not** rely on localStorage alone. If the repo was published, gittr republishes the same replaceable kind **30617** (`d` = repo name) with `["deleted","true"]` / `["status","deleted"]` and content JSON `{"deleted":true,...}`, plus a NIP-09 kind **5** with an `a` tag `30617:<owner-hex>:<repo>`. Explore, My Repositories, home recent repos, profile-repos, entity pages, and sitemaps **must** honor those markers — otherwise a tombstone looks like a “new” push (newer `created_at`) and resurfaces after clearing `gittr_deleted_repos`. Parser: `ui/src/lib/nostr/repo-deleted.ts`.
 - **Related announces on delete**: the same Settings delete also best-effort NIP-09-deletes **Nostr Pages** (kind **35128** for the repo’s pages `d` tag) and **app announces** (kinds **32267** / **30063** / **3063** linked via `a`=`30617:…` or suggested app id). Helper: `ui/src/lib/nostr/delete-repo-related-nostr.ts`.
 
@@ -305,6 +306,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `p`: Root event author - REQUIRED
   - `a`: Repository reference (optional, for filter efficiency)
   - `r`: Earliest unique commit (optional, for filter efficiency)
+  - `k`: Optional **gittr extension** with the root event kind (`1618` PR / `1621` issue / `1617` patch). Core NIP-34 does **not** require this tag. gittr **publishes** it on new status events for filter efficiency, but **must not require** `#k` when reading — older merges omit `k`, and requiring it made merged PRs look **OPEN** again after localStorage clear / another browser.
   - For kind 1631 (Applied/Merged): `e` (accepted revision), `q[]` (applied patch IDs), `merge-commit`, `applied-as-commits[]`
 - **Content**: Optional markdown text
 - **Kinds**:
@@ -312,6 +314,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - **1631**: Applied/Merged (for PRs/patches) or Resolved (for issues)
   - **1632**: Closed
   - **1633**: Draft
+- **Client rehydrate**: Status subscriptions for a known PR/issue list filter by `#e` (root ids) only. On kind **1631**, set `status: merged` and `mergedBy` from the status event pubkey.
 
 ### Kind 10317: User GRASP List (NIP-34)
 

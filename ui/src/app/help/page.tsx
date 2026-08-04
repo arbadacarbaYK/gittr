@@ -226,9 +226,8 @@ export default function HelpPage() {
             >
               /apps
             </Link>
-            . Repo owners can{" "}
-            <strong className="text-white">Nostr Apps</strong> from the Code
-            sidebar: list an Android app on Nostr from a forge{" "}
+            . Repo owners can <strong className="text-white">Nostr Apps</strong>{" "}
+            from the Code sidebar: list an Android app on Nostr from a forge{" "}
             <strong className="text-white">Release</strong> that has an{" "}
             <code className="text-purple-200">.apk</code> (file stays on
             GitHub/Codeberg/GitLab). Zapstore listing is optional and free.
@@ -532,7 +531,11 @@ export default function HelpPage() {
                   <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Enter a repository name</li>
                     <li>Click &quot;Create Empty Repository&quot;</li>
-                    <li>Empty until you push files via Git (see below)</li>
+                    <li>
+                      You&apos;re taken to Upload — drag &amp; drop files or
+                      folders, or use Choose files / Choose folder
+                    </li>
+                    <li>Or push via Git CLI if you prefer (see below)</li>
                   </ul>
                 </HelpSubTopic>
 
@@ -562,8 +565,17 @@ export default function HelpPage() {
 
                 <HelpSubTopic title={<>Getting files into an empty repo</>}>
                   <p>
-                    After creating an empty repo in the web UI, push via Git
-                    before files show up:
+                    <strong>Web UI:</strong> Open the repo → Upload (or land
+                    there after Create empty). Drag &amp; drop files or whole
+                    folders; nested paths like{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      src/app/page.tsx
+                    </code>{" "}
+                    are kept. Then Push to Nostr when ready.
+                  </p>
+                  <p className="mt-2">
+                    <strong>Git CLI:</strong> after creating an empty repo, you
+                    can also push via Git:
                   </p>
                   <ol className="list-decimal list-inside space-y-1 ml-2">
                     <li>
@@ -681,9 +693,9 @@ export default function HelpPage() {
               <p className="text-sm text-gray-400 mb-3">
                 All repos are stored locally in your browser and can be pushed
                 to Nostr for public access.
-                <strong className="text-yellow-400"> Important:</strong> Empty
-                repositories created via web UI will not show files until you
-                push them via Git.
+                <strong className="text-yellow-400"> Tip:</strong> After Create
+                empty, use Upload (files or folders, drag &amp; drop) or push
+                via Git — then Push to Nostr for public access.
               </p>
               <div className="p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm font-semibold text-blue-200 mb-2">
@@ -858,7 +870,9 @@ export default function HelpPage() {
                   your GitHub identity via NIP-39 in Profile settings)
                 </li>
                 <li>
-                  <strong>GitLab, Codeberg, Gitea / Forgejo, self-hosted</strong>{" "}
+                  <strong>
+                    GitLab, Codeberg, Gitea / Forgejo, self-hosted
+                  </strong>{" "}
                   — paste a full HTTPS or{" "}
                   <code className="bg-blue-900/50 px-1 rounded">git@…</code> URL
                   on <strong>Create repository</strong> (Option 1). The server
@@ -1316,7 +1330,8 @@ export default function HelpPage() {
               <p className="mt-2 text-sm text-gray-400">
                 <strong className="text-gray-300">Imported repos:</strong> Push
                 does <em>not</em> move your project off GitHub/GitLab/Codeberg.
-                The forge stays the original (<code className="bg-black/40 px-1 rounded text-xs">source</code>
+                The forge stays the original (
+                <code className="bg-black/40 px-1 rounded text-xs">source</code>
                 ). gittr lists its bridge/GRASP URLs for Nostr clients and tries
                 to mirror objects onto the bridge. Other GRASP hosts (e.g.{" "}
                 <code className="bg-black/40 px-1 rounded text-xs">

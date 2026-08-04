@@ -1,11 +1,13 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { join } from "path";
 import { promisify } from "util";
+
+import { verifyNostrAuth, verifySSHKeyOwnership } from "./push-auth";
 
 const execAsync = promisify(exec);
 
@@ -177,7 +179,37 @@ export default async function handler(
   }
 
   const reposDir = await resolveReposDir();
-  const repoPath = join(reposDir, resolved.pubkey, `${repo}.git`);
+  const resolvedPath = resolveBridgeRepoPath(reposDir, resolved.pubkey, repo);
+  if (!resolvedPath) {
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
+  }
+
+  const authResult = await verifyNostrAuth(req, {
+    expectedRepo: resolvedPath.repoName,
+  });
+  if (!authResult.authorized || !authResult.pubkey) {
+    return res.status(401).json({
+      error: "Authentication required",
+      details: authResult.error,
+    });
+  }
+
+  const ownership = await verifySSHKeyOwnership(
+    authResult.pubkey,
+    resolved.pubkey
+  );
+  if (!ownership.authorized) {
+    return res.status(403).json({
+      error: "Access denied",
+      details: ownership.error,
+    });
+  }
+
+  const repoPath = resolvedPath.repoPath;
 
   if (!existsSync(repoPath)) {
     return res.status(404).json({

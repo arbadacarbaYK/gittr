@@ -1,5 +1,5 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import {
   type LNbitsConfig,
   type LNbitsPaymentRequest,
@@ -28,12 +28,12 @@ export default async function handler(
   // Rate limiting
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res);
+  setPaymentCorsHeaders(res, req);
   const rateLimitResult = await rateLimiters.payment(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
@@ -111,12 +111,9 @@ export default async function handler(
     });
   }
 
-  // Get LNbits admin key from request body (user config) or environment
-  const lnbitsAdminKey = (
-    req.body?.lnbitsAdminKey ||
-    process.env.LNBITS_ADMIN_KEY ||
-    ""
-  ).trim();
+  // Require per-user LNbits admin key from the client (never fall back to server env —
+  // that would let anyone with CORS spend the platform wallet).
+  const lnbitsAdminKey = String(req.body?.lnbitsAdminKey || "").trim();
 
   // Validate admin key format (should be hex string)
   if (

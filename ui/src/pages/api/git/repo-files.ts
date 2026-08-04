@@ -1,5 +1,6 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 
 import { exec } from "child_process";
@@ -57,38 +58,6 @@ function normalizeCloneUrl(sourceUrl: string): string {
     return `https://${cloneUrl}`;
   }
   return cloneUrl;
-}
-
-function isSafeRemoteUrl(url: string): boolean {
-  try {
-    const t = url.trim();
-    const previewForParse =
-      t.startsWith("git@") && t.match(/^git@([^:]+):(.+)$/)
-        ? (() => {
-            const m = t.match(/^git@([^:]+):(.+)$/);
-            return m ? `https://${m[1]}/${m[2]}` : normalizeCloneUrl(t);
-          })()
-        : isSshStyleGitRemote(t)
-        ? (() => {
-            const m = t.match(/^[^@]+@([^:]+):(.+)$/);
-            return m ? `https://${m[1]}/${m[2]}` : normalizeCloneUrl(t);
-          })()
-        : normalizeCloneUrl(t);
-    const u = new URL(previewForParse);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    const h = u.hostname.toLowerCase();
-    if (
-      h === "localhost" ||
-      h === "127.0.0.1" ||
-      h.endsWith(".local") ||
-      h === "0.0.0.0"
-    ) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function sanitizeBranch(branch: string | undefined): string {
@@ -238,7 +207,7 @@ export default async function handler(
   }
   setCorsHeaders(res, req);
 
-  const rateLimitResult = await rateLimiters.api(req as any);
+  const rateLimitResult = await rateLimiters.gitFetch(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
   }
@@ -269,7 +238,7 @@ export default async function handler(
 
   sourceUrl = normalizeGithubSourceUrl(sourceUrl.trim());
 
-  if (!isSafeRemoteUrl(sourceUrl)) {
+  if (!(await assertSafeOutboundGitUrl(sourceUrl)).ok) {
     return res.status(400).json({ message: "invalid or blocked remote URL" });
   }
 

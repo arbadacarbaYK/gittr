@@ -621,9 +621,65 @@ export function getOwnBountyStats(ownerPubkey: string | null): {
 }
 
 /**
+ * True when an activity belongs on a repo the user owns / can write
+ * (homepage "Your recent activity" — not the global network feed).
+ */
+export function activityOnUsersRepo(
+  activity: {
+    entity?: string;
+    repo?: string;
+    repoName?: string;
+    user?: string;
+  },
+  userPubkey: string,
+  repos?: any[]
+): boolean {
+  const normalized = userPubkey.toLowerCase();
+  if (!normalized) return false;
+
+  const entity = (activity.entity || "").trim();
+  if (entity) {
+    if (entity.toLowerCase() === normalized) return true;
+    try {
+      if (
+        entity.startsWith("npub1") &&
+        nip19.npubEncode(normalized) === entity
+      ) {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    const resolved = resolveEntityToPubkey(entity);
+    if (resolved && resolved.toLowerCase() === normalized) return true;
+  }
+
+  const list =
+    repos ||
+    (typeof localStorage !== "undefined"
+      ? (JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[])
+      : []);
+
+  const repoName = (
+    activity.repoName ||
+    activity.repo?.split("/").pop() ||
+    activity.repo ||
+    ""
+  ).toLowerCase();
+  if (!repoName) return false;
+
+  const found = list.find((r: any) => {
+    const rRepo = (r.repo || r.slug?.split("/")[1] || r.slug || "").toLowerCase();
+    if (rRepo !== repoName) return false;
+    return userHasAccessToRepo(userPubkey, r);
+  });
+  return Boolean(found);
+}
+
+/**
  * Get recent activity (commits, PR merges, releases, etc.)
  * @param count - Number of activities to return
- * @param userPubkey - Optional: filter by specific user's pubkey and only show activities on repos where user has access
+ * @param userPubkey - Optional: only activities on repos the user owns / can write
  */
 export function getRecentActivity(
   count = 10,
@@ -635,45 +691,19 @@ export function getRecentActivity(
   ) as any[];
   let filtered = activities;
 
-  // If userPubkey provided, filter by user AND only show activities on repos where user has access
   if (userPubkey) {
-    const normalized = userPubkey.toLowerCase();
     filtered = activities.filter((a) => {
-      if (!a.user || !a.repo || !a.entity) return false;
-
-      // Match user pubkey
-      const activityUser = a.user.toLowerCase();
-      const userMatches =
-        activityUser === normalized ||
-        (normalized.length === 8 && activityUser.startsWith(normalized)) ||
-        (normalized.length === 8 &&
-          activityUser.length === 64 &&
-          activityUser.startsWith(normalized));
-
-      if (!userMatches) return false;
-
-      // Extract entity and repo from activity.repo
-      const [activityEntity, activityRepo] = a.repo.split("/");
+      if (!a.repo || !a.entity) return false;
+      const parts = (a.repo.includes("/") ? a.repo : `${a.entity}/${a.repo}`).split(
+        "/"
+      );
+      const activityEntity = parts[0] || a.entity;
+      const activityRepo = parts[parts.length - 1] || a.repoName || "";
       if (!activityEntity || !activityRepo) return false;
-
-      // Skip if repo is deleted
       if (isRepoDeleted(activityEntity, activityRepo)) return false;
-
-      // Check if user has access to this repo
-      const repo = repos.find((r: any) => {
-        const rEntity = r.entity || "";
-        const rRepo = r.repo || r.slug || "";
-        return (
-          rEntity.toLowerCase() === activityEntity.toLowerCase() &&
-          rRepo.toLowerCase() === activityRepo.toLowerCase()
-        );
-      });
-
-      // Only include if user has access to the repo
-      return repo && userHasAccessToRepo(userPubkey, repo);
+      return activityOnUsersRepo(a, userPubkey, repos);
     });
   } else {
-    // Even without userPubkey, filter out deleted repos
     filtered = activities.filter((a) => {
       if (!a.repo || !a.entity) return false;
       const [activityEntity, activityRepo] = a.repo.split("/");
@@ -1063,7 +1093,6 @@ export function countRepoActivitiesFromNostr(
       // PR merged status (kind 1631) (NO since - get all)
       {
         kinds: [KIND_STATUS_APPLIED],
-        "#k": ["1618"], // Only PR status events
         limit: 400,
       },
       // Issue events (kind 1621) (NO since - get all)
@@ -1074,7 +1103,6 @@ export function countRepoActivitiesFromNostr(
       // Issue closed status (kind 1632) (NO since - get all)
       {
         kinds: [KIND_STATUS_CLOSED],
-        "#k": ["1621"], // Only issue status events
         limit: 400,
       },
     ];
@@ -1383,9 +1411,9 @@ export function countUserActivitiesFromNostr(
       withSince({ kinds: [KIND_REPOSITORY_NIP34], limit: 5000 }),
       withSince({ kinds: [KIND_REPOSITORY_STATE], limit: 5000 }),
       withSince({ kinds: [KIND_PULL_REQUEST], limit: 2000 }),
-      withSince({ kinds: [KIND_STATUS_APPLIED], "#k": ["1618"], limit: 1000 }),
+      withSince({ kinds: [KIND_STATUS_APPLIED], limit: 1000 }),
       withSince({ kinds: [KIND_ISSUE], limit: 2000 }),
-      withSince({ kinds: [KIND_STATUS_CLOSED], "#k": ["1621"], limit: 1000 }),
+      withSince({ kinds: [KIND_STATUS_CLOSED], limit: 1000 }),
     ];
 
     const unsub = subscribe(
@@ -1865,8 +1893,8 @@ export function getRecentPlatformActivitiesFromNostr(
       { kinds: [KIND_REPOSITORY_STATE], limit: 1500 },
       { kinds: [KIND_PULL_REQUEST], limit: 800 },
       { kinds: [KIND_ISSUE], limit: 800 },
-      { kinds: [KIND_STATUS_APPLIED], "#k": ["1618"], limit: 400 },
-      { kinds: [KIND_STATUS_CLOSED], "#k": ["1621"], limit: 400 },
+      { kinds: [KIND_STATUS_APPLIED], limit: 400 },
+      { kinds: [KIND_STATUS_CLOSED], limit: 400 },
     ];
 
     const unsub = subscribe(
@@ -1941,6 +1969,7 @@ export function getRecentPlatformActivitiesFromNostr(
             entity,
             repo: parsed.repoName,
             repoName: parsed.repoName,
+            metadata: { prId: event.id },
           });
         } else if (event.kind === KIND_ISSUE) {
           push({
@@ -1951,8 +1980,14 @@ export function getRecentPlatformActivitiesFromNostr(
             entity,
             repo: parsed.repoName,
             repoName: parsed.repoName,
+            metadata: { issueId: event.id },
           });
         } else if (event.kind === KIND_STATUS_APPLIED) {
+          const eTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "e"
+          );
+          const prId =
+            typeof eTag?.[1] === "string" && eTag[1] ? eTag[1] : event.id;
           push({
             id: event.id,
             type: "pr_merged",
@@ -1961,8 +1996,14 @@ export function getRecentPlatformActivitiesFromNostr(
             entity,
             repo: parsed.repoName,
             repoName: parsed.repoName,
+            metadata: { prId },
           });
         } else if (event.kind === KIND_STATUS_CLOSED) {
+          const eTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "e"
+          );
+          const issueId =
+            typeof eTag?.[1] === "string" && eTag[1] ? eTag[1] : event.id;
           push({
             id: event.id,
             type: "issue_closed",
@@ -1971,6 +2012,7 @@ export function getRecentPlatformActivitiesFromNostr(
             entity,
             repo: parsed.repoName,
             repoName: parsed.repoName,
+            metadata: { issueId },
           });
         }
       },

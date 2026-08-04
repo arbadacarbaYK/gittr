@@ -10,6 +10,7 @@ import {
   loadRepoFiles,
   loadRepoOverrides,
   loadStoredRepos,
+  mergeRepoFileIndexes,
   normalizeFilePath,
   resolveRepoStorageAlias,
   saveStoredRepos,
@@ -719,21 +720,34 @@ export async function pushRepoToNostr(
         : repoSlug;
     const savedOverrides =
       typeof window !== "undefined"
-        ? loadRepoOverrides(entity, storageRepo)
+        ? {
+            ...loadRepoOverrides(entity, repoSlug),
+            ...loadRepoOverrides(entity, storageRepo),
+          }
         : {};
 
     // CRITICAL: Filter out deleted files before pushing to Nostr
     // Deleted files are tracked separately in deletedPaths and should NOT be included in the event
     const deletedPaths =
       typeof window !== "undefined"
-        ? loadRepoDeletedPaths(entity, storageRepo)
+        ? [
+            ...new Set([
+              ...loadRepoDeletedPaths(entity, repoSlug),
+              ...loadRepoDeletedPaths(entity, storageRepo),
+            ]),
+          ]
         : [];
 
     // Start with repo.files plus gittr_files index (addFilesToRepo / upload clears repo.files to save quota)
     const filesFromRepoObject =
       repo.files && Array.isArray(repo.files) ? [...repo.files] : [];
     const filesFromIndexedStorage =
-      typeof window !== "undefined" ? loadRepoFiles(entity, storageRepo) : [];
+      typeof window !== "undefined"
+        ? mergeRepoFileIndexes(
+            loadRepoFiles(entity, repoSlug),
+            loadRepoFiles(entity, storageRepo)
+          )
+        : [];
     const pathToFile = new Map<string, any>();
     for (const f of filesFromRepoObject) {
       const p = normalizeFilePath((f as { path?: string }).path || "");
@@ -767,23 +781,22 @@ export async function pushRepoToNostr(
       ).length,
     });
 
-    const normalizedDeletedPaths = deletedPaths.map((p) =>
-      normalizeFilePath(p)
-    );
+    const normalizedDeletedPaths = deletedPaths
+      .map((p) => normalizeFilePath(p))
+      .filter((p) => p.length > 0);
 
-    // CRITICAL: Also check if any deleted paths match files by partial match (for cases where path normalization differs)
+    // Exact path or parent/child — never substring ("" or "a" would match everything)
     const baseFiles = allFiles.filter((file: any) => {
       const filePath = normalizeFilePath(file.path || "");
-      // Check exact match
+      if (!filePath) return false;
       if (normalizedDeletedPaths.includes(filePath)) {
         return false;
       }
-      // Check if any deleted path is contained in file path or vice versa (for edge cases)
       const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
         return (
           filePath === deletedPath ||
-          filePath.includes(deletedPath) ||
-          deletedPath.includes(filePath)
+          filePath.startsWith(`${deletedPath}/`) ||
+          deletedPath.startsWith(`${filePath}/`)
         );
       });
       return !isDeleted;
@@ -933,12 +946,27 @@ export async function pushRepoToNostr(
               : isBinaryFile(normalizedPath);
 
           // Get content from overrides (check both original and normalized path)
-          const fileContent =
+          let fileContent =
             savedOverrides[filePath] !== undefined
               ? savedOverrides[filePath]
               : savedOverrides[normalizedPath] !== undefined
               ? savedOverrides[normalizedPath]
               : file.content || "";
+
+          // Folder upload may leave nested index paths while an older flat
+          // basename override still holds the body — reuse it for the nested path.
+          if (
+            (!fileContent || fileContent === "") &&
+            normalizedPath.includes("/")
+          ) {
+            const base = normalizedPath.split("/").pop() || "";
+            if (base && savedOverrides[base] !== undefined) {
+              fileContent = savedOverrides[base];
+              console.log(
+                `🔁 [Push Repo] Using basename override for nested path ${normalizedPath}`
+              );
+            }
+          }
 
           // Calculate content size (base64 is ~33% larger than raw)
           const contentSizeBytes = fileContent
@@ -1050,12 +1078,12 @@ export async function pushRepoToNostr(
           continue;
         }
 
-        // Skip if file is marked as deleted (check exact match and partial matches)
+        // Skip if file is marked as deleted (exact or parent/child path only)
         const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
           return (
             normalizedOverridePath === deletedPath ||
-            normalizedOverridePath.includes(deletedPath) ||
-            deletedPath.includes(normalizedOverridePath)
+            normalizedOverridePath.startsWith(`${deletedPath}/`) ||
+            deletedPath.startsWith(`${normalizedOverridePath}/`)
           );
         });
         if (isDeleted) {
@@ -2194,9 +2222,16 @@ export async function pushRepoToNostr(
         );
       }
 
-      // Sign with NIP-07
-      // Handle user cancellation gracefully
-      console.log(`✍️ [Push Repo] Signing event with NIP-07...`);
+      // Sign via resolved NIP-07 / remote signer / nsec bridge
+      console.log(
+        `✍️ [Push Repo] Signing event with ${
+          resolvedSource === "remote"
+            ? "remote signer (Amber/NIP-46)"
+            : resolvedSource === "nsec"
+            ? "local nsec"
+            : "NIP-07"
+        }...`
+      );
       try {
         repoEvent = await signWithResolved(repoEvent);
 
@@ -2565,6 +2600,10 @@ export async function pushRepoToNostr(
         } else {
           onProgress?.(
             `📤 Pushing ${pushableFiles.length} file(s) to bridge...`
+          );
+          console.log(
+            `📤 [Push Repo] Bridge paths (${pushableFiles.length}):`,
+            pushableFiles.map((f) => f.path).slice(0, 40)
           );
           onProgress?.(
             `⏱️ This may take several minutes for large repos (timeout: 5 minutes)`

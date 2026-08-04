@@ -7,6 +7,10 @@ How the UI loads repo trees and file content. Implementation lives in:
 - `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`
 - `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` for any reachable HTTP(S) remote
 
+## Security (outbound remotes)
+
+Clone / import / file-fetch APIs reject private, loopback, link-local, and metadata hosts (and DNS that resolves to them). Public HTTPS remotes still work: GitHub, GitLab, Codeberg, GRASP (`relay.ngit.dev`, `git.gittr.space`, …), and self-hosted forges reachable from the server. Local-only NAS URLs (`*.local`, `192.168.*`) will not be fetched by the gittr server.
+
 ## Order (simplified)
 
 **File tree**
@@ -20,7 +24,9 @@ How the UI loads repo trees and file content. Implementation lives in:
    - Per URL: bridge `GET /api/nostr/repo/files`, or forge / **`GET /api/git/repo-files?sourceUrl=…`**
 5. **GRASP** (`nostr-git`, known GRASP host + `/npub1…/repo`): empty tree or 404 → shallow clone via `repo-files`, then optional `POST /api/nostr/repo/clone` + bridge retry
 6. **Self-hosted** (including **non-GRASP** hosts that reuse a `/npub1…/repo` path, e.g. home Freebox): **`repo-files` only** — do **not** skip as “not GRASP”
-7. Well-known GRASP mirrors are **inferred only after Nostr EOSE** if `clone[]` is still empty (`appendInferredGraspCloneUrls` / `buildGraspHttpsCloneCandidates`) — never guessed before the announcement arrives
+7. Well-known GRASP mirrors are **inferred after Nostr EOSE *or* the 3s timeout** if `clone[]` is still empty (`appendInferredGraspCloneUrls` / `buildGraspHttpsCloneCandidates`) — never guessed before the announcement query starts
+8. **Bridge-only success still fills the sidebar** — if files come from `GET /api/nostr/repo/files` while the 30617 event was slow/missing, merge event clones (when known) or inferred GRASP HTTPS URLs into `repoData.clone` / localStorage so Clone URL is not blank
+9. Repo event queries always include NIP-34 discovery relays (`relay.ngit.dev`, shakespeare, nostrhub, gittr) even when they are not in the viewer’s social relay list — many batch-imported / ngit-published repos announce only there
 
 **Single file**
 
@@ -31,7 +37,13 @@ How the UI loads repo trees and file content. Implementation lives in:
 
 **Folder README** (browsing a directory without opening a file)
 
-Same branch as the loaded tree: use `repoData.filesBranch` (from multifetch `resolvedBranch`), not only `?branch=` in the URL. If the remote default is `master` but the URL says `main`, the UI syncs branch after the first successful tree fetch. Fallback order: local overrides → bridge `file-content` → `successfulSources` / `clone[]` via `GET /api/git/file-content?sourceUrl=…` (GRASP HTTPS) → cached `gittr_files` row content.
+Same branch as the loaded tree: honor `?branch=` in the URL, then `repoData.filesBranch` (from multifetch `resolvedBranch`). Do **not** strip a non-default `?branch=` back to `main` — that forced README onto missing branches while the tree loaded `feat/*` via bridge HEAD.
+
+`shouldPreferUpstreamContent` is **forge-only** (GitHub / GitLab.com / Codeberg). GRASP-only / home `http://IP:port` clones are **not** treated as upstream, so README goes to bridge first instead of a 400/404 storm.
+
+Fallback order: local overrides → (forge upstream if any) → bridge `file-content` → `successfulSources` (HTTPS, with `resolvedBranch`) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content.
+
+Multifetch prefers reachable remotes before GRASP, but sorts bare `http://IP:port` home clones **after** HTTPS GRASP mirrors so a dead LAN host does not race ahead of working mirrors.
 
 ## Classification (`parseGitSource`)
 
@@ -67,6 +79,10 @@ Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. P
 Parallel `clone[]` sources use `Promise.race`: **first mirror that returns a non-empty tree wins**. A dead mirror (502) does not block a working one (e.g. `relay.ngit.dev`).
 
 Empty bare dir with no branches: nostr files API may return `files: []` — step 2–3 still run.
+
+**Wrong default branch (common on foreign mirrors):** UI often asks for `main`, but the bare repo’s HEAD may be `develop` / a feature branch with **no** `main`. `/api/nostr/repo/files` falls back to `main`↔`master`, then the bare repo’s symbolic-ref HEAD (or first head). Success responses include the resolved `branch`. True “branch missing” 404s include `defaultBranch` + `availableBranches`; the client retries that once and **does not** start clone/poll storms. `includeSizes` defaults off (pass `includeSizes=1` when needed) so huge trees do not run per-file `cat-file`.
+
+**Huge trees (e.g. Trezor Suite, 10k+ files):** A naive soft-cap after dirs-first sort kept only directories → every subfolder looked empty. Now root listings above the threshold return `listing: "shallow"` (one level) plus `truncated: true` / `totalFileCount`. Folder navigation calls `GET /api/nostr/repo/files?...&path=packages/suite` for that directory’s children.
 
 ### Newest copy: what we do and do not compare
 

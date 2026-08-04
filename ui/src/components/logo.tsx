@@ -1,20 +1,21 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { appNavigate } from "@/lib/utils/app-navigate";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function Logo({ className }: { className?: string }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   return (
     <a
       href="/"
       onClick={(e) => {
-        e.preventDefault();
         e.stopPropagation(); // Prevent event from bubbling up to parent handlers
-        router.push("/");
+        appNavigate("/", router, pathname, e);
       }}
       className={cn("items-center space-x-2 flex cursor-pointer", className)}
     >

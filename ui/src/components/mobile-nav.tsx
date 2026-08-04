@@ -5,10 +5,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLockBody } from "@/lib/hooks/use-lock-body";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
+import { appNavigate } from "@/lib/utils/app-navigate";
 import { cn } from "@/lib/utils";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 import { type MainNavItem } from "./main-nav";
@@ -35,12 +35,20 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
       ? `/${pubkey}`
       : "/settings/profile";
   const router = useRouter();
+  const pathname = usePathname();
+  const go = useCallback(
+    (href: string, e?: { preventDefault: () => void } | null) => {
+      onClick();
+      appNavigate(href, router, pathname, e);
+    },
+    [onClick, router, pathname]
+  );
   const handleSignOut = useCallback(() => {
     if (signOut) {
       signOut();
-      router.push("/");
+      go("/");
     }
-  }, [router, signOut]);
+  }, [go, signOut]);
 
   return (
     <div
@@ -76,16 +84,18 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
                   ? profileHref
                   : filteredItem.href;
               return (
-                <Link
+                <a
                   key={index}
                   href={href}
-                  onClick={onClick}
+                  onClick={(e) => {
+                    go(href, e);
+                  }}
                   className={cn(
                     "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
                   )}
                 >
                   {filteredItem.title}
-                </Link>
+                </a>
               );
             }
           )}
@@ -108,7 +118,9 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
               <a
                 key={index}
                 href={item.href}
-                onClick={onClick}
+                onClick={(e) => {
+                  go(item.href, e);
+                }}
                 className={cn(
                   "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
                 )}
@@ -119,22 +131,27 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
           )}
 
           {isLoggedIn ? (
-            <div onClick={onClick} className="flex items-center p-3">
+            <div className="flex items-center p-3">
               <Button variant={"outline"} type="submit" onClick={handleSignOut}>
                 Sign Out
               </Button>
             </div>
           ) : (
-            <div onClick={onClick} className="flex gap-1 mt-2">
-              <Button variant="outline" type="submit" className="mr-2">
-                <Link className="text-white" href="/login">
-                  Sign in
-                </Link>
+            <div className="flex gap-1 mt-2">
+              <Button
+                variant="outline"
+                type="button"
+                className="mr-2"
+                onClick={() => go("/login")}
+              >
+                Sign in
               </Button>
-              <Button variant="ghost" type="submit">
-                <Link className="text-white" href="/signup">
-                  Sign up
-                </Link>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => go("/signup")}
+              >
+                Sign up
               </Button>
             </div>
           )}

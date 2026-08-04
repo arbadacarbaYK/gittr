@@ -4,11 +4,15 @@ Developers working locally can use gittr's bridge API to push their repositories
 
 ## Authentication (required)
 
-**The push API requires Nostr authentication (NIP-98).** Unauthenticated `POST /api/nostr/repo/push` requests receive `401 Unauthorized`. To authenticate:
+**The push API requires Nostr authentication.** Unauthenticated `POST /api/nostr/repo/push` requests receive `401 Unauthorized`. To authenticate:
 
-1. **GET** `/api/nostr/repo/push-challenge` → returns `{ challenge: "..." }`
-2. Sign a Nostr event (kind 24242) with `challenge` in tags and your private key
-3. **POST** `/api/nostr/repo/push` with header: `Authorization: Nostr <base64(pubkey,sig,created_at)>`
+1. **GET** `/api/nostr/repo/push-challenge` → returns `{ challenge: "...", expires_in: 300 }` (server-stored, multi-use until expiry)
+2. Sign a Nostr event **kind 24242** with tags `[["challenge", "<challenge>"]]` and your private key
+3. **POST** `/api/nostr/repo/push` with header:
+   - `X-Nostr-Auth-Event: <base64(JSON.stringify(signedEvent))>` (**required** — server verifies the real Nostr signature and challenge)
+   - Optional legacy: `Authorization: Nostr <base64({pubkey,sig,created_at})>` (alone is **not** enough)
+
+Repo names must match the bridge rules (no spaces, slashes, or dots), e.g. `my-repo`.
 
 For a ready-made implementation (Node.js), use [gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main-mcp): `pushToBridge({ ownerPubkey, repo, branch, files, privkey })` handles challenge and auth automatically.
 

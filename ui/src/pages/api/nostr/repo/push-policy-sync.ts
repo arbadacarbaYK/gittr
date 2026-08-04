@@ -65,14 +65,30 @@ export default async function handler(
     return res.status(429).json(JSON.parse(await limiter.text()));
   }
 
-  const auth = await verifyNostrAuth(req);
+  const signedHeader = req.headers["x-nostr-auth-event"] as string | undefined;
+  let expectedRepo: string | undefined;
+  if (signedHeader?.trim()) {
+    try {
+      const decoded = Buffer.from(signedHeader, "base64").toString("utf-8");
+      const peeked = JSON.parse(decoded);
+      const dTag = Array.isArray(peeked?.tags)
+        ? peeked.tags.find((t: string[]) => t[0] === "d")
+        : null;
+      if (typeof dTag?.[1] === "string" && dTag[1].trim()) {
+        expectedRepo = dTag[1].trim();
+      }
+    } catch {
+      /* verifyNostrAuth will fail cleanly */
+    }
+  }
+
+  const auth = await verifyNostrAuth(req, { expectedRepo });
   if (!auth.authorized || !auth.pubkey) {
     return res
       .status(401)
       .json({ error: auth.error || "Authentication required" });
   }
 
-  const signedHeader = req.headers["x-nostr-auth-event"] as string | undefined;
   if (!signedHeader?.trim()) {
     return res
       .status(400)

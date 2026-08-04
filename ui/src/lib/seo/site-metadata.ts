@@ -21,6 +21,9 @@ export const PAGES_DESCRIPTION =
 export const EXPLORE_DESCRIPTION =
   "Explore public Nostr git repositories — browse announcements on relays (same list as Repos). Discover projects before you open Code, Issues, or zap the owner.";
 
+export const NEW_DESCRIPTION =
+  "Create a repository on Nostr git, or batch-import and mirror repos from GitHub, GitLab, Codeberg, and other foreign git sources onto gittr.";
+
 export const SITE_KEYWORDS = [
   "nostr git",
   "NIP-34",

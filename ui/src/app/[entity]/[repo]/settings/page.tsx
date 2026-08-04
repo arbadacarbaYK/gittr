@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import SettingsHero from "@/components/settings-hero";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,6 +20,8 @@ import {
   createRepositoryEvent,
   createRepositoryEventNip07,
 } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -67,10 +68,10 @@ import {
   Youtube,
   Zap,
 } from "lucide-react";
+import { nip19 } from "nostr-tools";
 import { useParams, useRouter } from "next/navigation";
 
 import RepoWalletConfig from "./RepoWalletConfig";
-
 interface ZapSplit {
   pubkey: string;
   weight: number; // percentage 0-100
@@ -213,6 +214,9 @@ export default function RepoSettingsPage() {
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [newMaintainerInput, setNewMaintainerInput] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  /** False until localStorage + Nostr 30617 visibility is resolved (or timed out). */
+  const [visibilityReady, setVisibilityReady] = useState(false);
+  const visibilityTouchedRef = useRef(false);
   const [repoLinks, setRepoLinks] = useState<RepoLink[]>([]);
   const [newLinkType, setNewLinkType] = useState<RepoLink["type"]>("docs");
   const [newLinkUrl, setNewLinkUrl] = useState("");
@@ -265,12 +269,20 @@ export default function RepoSettingsPage() {
             process.env.NEXT_PUBLIC_GIT_SSH_BASE ||
             ""
         );
-        // Load visibility (default to public if not set)
-        setIsPublic(
-          repoWithExtras.publicRead !== undefined
-            ? repoWithExtras.publicRead
-            : true
-        );
+        // Load visibility from localStorage when explicitly set.
+        // Missing publicRead used to default to Public and then overwrite Private
+        // on Description-only saves — hydrate from Nostr below before trusting true.
+        visibilityTouchedRef.current = false;
+        if (repoWithExtras.publicRead === false) {
+          setIsPublic(false);
+          setVisibilityReady(true);
+        } else if (repoWithExtras.publicRead === true) {
+          setIsPublic(true);
+          setVisibilityReady(false); // confirm against latest 30617
+        } else {
+          setIsPublic(true); // provisional until Nostr hydrate
+          setVisibilityReady(false);
+        }
         // Load owners (role: "owner" or weight: 100)
         const ownersList = (repoData.contributors || []).filter(
           (c: StoredContributor): c is StoredContributor & { pubkey: string } =>
@@ -361,6 +373,129 @@ export default function RepoSettingsPage() {
     } catch {}
   }, [entity, repo]);
 
+  // Hydrate Public/Private from latest kind 30617 so Description-only saves
+  // cannot republish the form's default Public over a private announcement.
+  useEffect(() => {
+    visibilityTouchedRef.current = false;
+    // Don't clear visibilityReady here if localStorage already applied private
+    // in the load effect — only wait for Nostr when still unknown/public.
+    if (!subscribe || !defaultRelays?.length) return;
+
+    const repos = loadStoredRepos();
+    const stored = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+    let ownerHex =
+      (stored?.ownerPubkey &&
+      /^[0-9a-f]{64}$/i.test(stored.ownerPubkey)
+        ? stored.ownerPubkey
+        : ""
+      ).toLowerCase() || "";
+    if (!ownerHex && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+      ownerHex = pubkey.toLowerCase();
+    }
+    if (!ownerHex && entity?.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(entity);
+        if (decoded.type === "npub" && typeof decoded.data === "string") {
+          ownerHex = decoded.data.toLowerCase();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!ownerHex) {
+      setVisibilityReady(true);
+      return;
+    }
+
+    const repoName =
+      stored?.repositoryName ||
+      stored?.name ||
+      decodeURIComponent(repo || "");
+    const dTags = Array.from(
+      new Set(
+        [repoName, repo, stored?.slug, stored?.repo]
+          .map((v) => (typeof v === "string" ? v.trim() : ""))
+          .filter(Boolean)
+      )
+    );
+    if (dTags.length === 0) {
+      setVisibilityReady(true);
+      return;
+    }
+
+    let latest: { created_at?: number; tags?: string[][] } | null = null;
+    let cancelled = false;
+    const finish = (publicRead: boolean | null) => {
+      if (cancelled) return;
+      if (publicRead !== null && !visibilityTouchedRef.current) {
+        setIsPublic(publicRead);
+        try {
+          const all = loadStoredRepos();
+          const idx = all.findIndex(
+            (r) => findRepoByEntityAndName([r], entity, repo) !== undefined
+          );
+          if (idx >= 0 && all[idx]) {
+            (all[idx] as StoredRepo & { publicRead?: boolean }).publicRead =
+              publicRead;
+            saveStoredRepos(all);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      setVisibilityReady(true);
+    };
+
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_REPOSITORY_NIP34],
+          authors: [ownerHex],
+          "#d": dTags,
+          limit: 8,
+        },
+      ],
+      getAllRelays(defaultRelays),
+      (event) => {
+        if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
+          latest = event;
+        }
+      },
+      5000,
+      () => {
+        if (cancelled) return;
+        if (latest) {
+          finish(isPublicReadFromEvent(latest as any));
+        } else {
+          // No announcement yet — keep localStorage (already applied) / provisional public
+          finish(null);
+        }
+      }
+    );
+
+    const timeout = setTimeout(() => {
+      if (!cancelled && !visibilityTouchedRef.current) {
+        if (latest) {
+          finish(isPublicReadFromEvent(latest as any));
+        } else {
+          finish(null);
+        }
+      } else if (!cancelled) {
+        setVisibilityReady(true);
+      }
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [entity, repo, pubkey, subscribe, defaultRelays]);
+
   useEffect(() => {
     let mounted = true;
     const loadInvoiceKey = async () => {
@@ -447,6 +582,14 @@ export default function RepoSettingsPage() {
       if (!hasLnbitsInvoiceKey && !hasBlinkApiKey && pushCostSats > 0) {
         setStatus(
           "Error: Push Cost requires LNbits Invoice Key OR Blink API Key in Settings -> Account."
+        );
+        setSaving(false);
+        return;
+      }
+
+      if (!visibilityReady && !visibilityTouchedRef.current) {
+        setStatus(
+          "Still loading Public/Private from Nostr — wait a moment, then save again so we do not overwrite visibility."
         );
         setSaving(false);
         return;
@@ -1359,7 +1502,11 @@ export default function RepoSettingsPage() {
             <Button
               type="button"
               variant={isPublic ? "default" : "outline"}
-              onClick={() => setIsPublic(true)}
+              onClick={() => {
+                visibilityTouchedRef.current = true;
+                setIsPublic(true);
+                setVisibilityReady(true);
+              }}
               className={isPublic ? "bg-purple-600 hover:bg-purple-700" : ""}
             >
               <Globe className="h-4 w-4 mr-2" />
@@ -1368,13 +1515,23 @@ export default function RepoSettingsPage() {
             <Button
               type="button"
               variant={!isPublic ? "default" : "outline"}
-              onClick={() => setIsPublic(false)}
+              onClick={() => {
+                visibilityTouchedRef.current = true;
+                setIsPublic(false);
+                setVisibilityReady(true);
+              }}
               className={!isPublic ? "bg-purple-600 hover:bg-purple-700" : ""}
             >
               <Lock className="h-4 w-4 mr-2" />
               Private
             </Button>
           </div>
+          {!visibilityReady && (
+            <p className="text-sm text-amber-300/90 mt-2">
+              Confirming visibility from Nostr… Save is blocked until this
+              finishes so we do not accidentally flip Private → Public.
+            </p>
+          )}
         </div>
 
         <div>
@@ -1887,7 +2044,11 @@ export default function RepoSettingsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={handleSave} disabled={saving} variant="default">
+          <Button
+            onClick={handleSave}
+            disabled={saving || (!visibilityReady && !visibilityTouchedRef.current)}
+            variant="default"
+          >
             {saving ? "Saving..." : "Save Settings"}
           </Button>
           <Button

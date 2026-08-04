@@ -1,4 +1,8 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import {
+  issuePushChallenge,
+  pushChallengeTtlSeconds,
+} from "@/lib/nostr/push-challenge-store";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -21,7 +25,7 @@ export default async function handler(
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Nostr-Pubkey, X-Nostr-Signature"
+      "Content-Type, Authorization, X-Nostr-Pubkey, X-Nostr-Signature, X-Nostr-Auth-Event"
     );
     res.status(204).end();
     return;
@@ -31,18 +35,17 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // For GET, we just return a static challenge that clients can sign
-  // In production, you might want this to be dynamic per-session
-  const challenge = {
-    challenge: "gittr:push:" + Date.now(),
-    instructions: [
-      "Sign this challenge with your Nostr private key",
-      "Include the signature in Authorization header: Nostr <base64-encoded-{pubkey, sig, created_at}>",
-      "Or use X-Nostr-Pubkey and X-Nostr-Signature headers directly",
-    ],
-  };
+  const challenge = issuePushChallenge();
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Cache-Control", "no-store");
-  return res.status(200).json(challenge);
+  return res.status(200).json({
+    challenge,
+    expires_in: pushChallengeTtlSeconds(),
+    instructions: [
+      "Sign a kind-24242 event with tags: [[\"challenge\", \"<challenge>\"]]",
+      "Send header X-Nostr-Auth-Event: base64(JSON.stringify(signedEvent))",
+      "Challenge is multi-use until expiry (chunked pushes / Amber cache).",
+    ],
+  });
 }

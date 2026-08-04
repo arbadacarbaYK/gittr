@@ -1013,6 +1013,8 @@ export function createStatusEvent(
     revisionAuthor?: string; // Author of revision (for kind 1631)
     repoName?: string; // Repository identifier (for optional "a" tag)
     earliestUniqueCommit?: string; // For optional "r" tag
+    /** Root event kind (1618 PR / 1621 issue / 1617 patch) — optional gittr `k` tag for filters. */
+    rootKind?: 1617 | 1618 | 1621;
     appliedPatchIds?: Array<{
       eventId: string;
       relayUrl?: string;
@@ -1035,6 +1037,12 @@ export function createStatusEvent(
     // ["p", "<root-event-author>"] - REQUIRED
     ["p", status.rootEventAuthor],
   ];
+
+  // Optional gittr extension: NIP-34 does not define `k`, but clients historically
+  // filtered status by `#k` — publish it so new events match those filters too.
+  if (status.rootKind) {
+    tags.push(["k", String(status.rootKind)]);
+  }
 
   // For kind 1631 (Applied/Merged), include accepted revision
   if (status.statusKind === 1631 && status.acceptedRevisionId) {

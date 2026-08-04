@@ -1,28 +1,43 @@
 /**
  * Bridge Push Authentication Middleware
  *
- * Auth methods supported:
- * 1. Signed repo event header (preferred for UI pushes)
- * 2. NIP-98 HTTP Auth - sign a challenge with Nostr key
- * 3. Legacy pubkey/signature headers
+ * Preferred: X-Nostr-Auth-Event with kind 24242 bound to a server-issued challenge
+ * (from /api/nostr/repo/push-challenge). Kind 30617 allowed only when its `d` tag
+ * matches the target repo (same-session Push to Nostr UX).
  */
-import type { NextApiRequest, NextApiResponse } from "next";
-import { SimplePool } from "nostr-tools";
+import {
+  isValidIssuedPushChallenge,
+  pushChallengeTtlSeconds,
+} from "@/lib/nostr/push-challenge-store";
 
-const KIND_SSH_KEY = 52;
+import type { NextApiRequest, NextApiResponse } from "next";
+
 const KIND_REPOSITORY_ANNOUNCEMENT = 30617;
-const KIND_HTTP_AUTH = 24242; // generic signed challenge from getBridgeAuthHeaders
+const KIND_HTTP_AUTH = 24242;
 const AUTH_EVENT_MAX_AGE_SECONDS = 10 * 60;
+
+export type VerifyNostrAuthOptions = {
+  /** When set, kind 30617 must carry a matching `d` tag (repo slug). */
+  expectedRepo?: string;
+};
+
+function eventTagValue(event: any, name: string): string | undefined {
+  if (!Array.isArray(event?.tags)) return undefined;
+  for (const tag of event.tags) {
+    if (Array.isArray(tag) && tag[0] === name && typeof tag[1] === "string") {
+      return tag[1];
+    }
+  }
+  return undefined;
+}
 
 /**
  * Extract and verify Nostr auth from request headers
- * Supports:
- * - X-Nostr-Auth-Event: <base64-signed-nostr-event-json>
- * - Authorization: Nostr <base64-signed-challenge>
- * - X-Nostr-Pubkey: <hex-pubkey>
- * - X-Nostr-Signature: <sig>
  */
-export async function verifyNostrAuth(req: NextApiRequest): Promise<{
+export async function verifyNostrAuth(
+  req: NextApiRequest,
+  options: VerifyNostrAuthOptions = {}
+): Promise<{
   authorized: boolean;
   pubkey?: string;
   error?: string;
@@ -31,10 +46,8 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
   const signedAuthEventHeader = req.headers["x-nostr-auth-event"] as
     | string
     | undefined;
-  const providedPubkey = req.headers["x-nostr-pubkey"] as string | undefined;
-  const providedSig = req.headers["x-nostr-signature"] as string | undefined;
 
-  // Method 0: Reuse signed repo event from this push session (preferred for UI flow)
+  // Method 0: Signed Nostr event (kind 24242 challenge or bound 30617)
   if (signedAuthEventHeader) {
     try {
       const decoded = Buffer.from(signedAuthEventHeader, "base64").toString(
@@ -74,6 +87,35 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
         return { authorized: false, error: "Auth event missing pubkey" };
       }
 
+      if (parsedEvent.kind === KIND_HTTP_AUTH) {
+        const challenge = eventTagValue(parsedEvent, "challenge");
+        if (!challenge || !isValidIssuedPushChallenge(challenge)) {
+          return {
+            authorized: false,
+            error: `Auth challenge missing or expired (fetch /api/nostr/repo/push-challenge, TTL ${pushChallengeTtlSeconds()}s)`,
+          };
+        }
+      } else if (parsedEvent.kind === KIND_REPOSITORY_ANNOUNCEMENT) {
+        const expected = options.expectedRepo?.trim();
+        if (expected) {
+          const d = eventTagValue(parsedEvent, "d");
+          if (!d || d !== expected) {
+            return {
+              authorized: false,
+              error:
+                "Repository announcement auth must match the target repo (d tag)",
+            };
+          }
+        } else {
+          // Without a repo binding, 30617 is too powerful as a bearer token.
+          return {
+            authorized: false,
+            error:
+              "Use a signed kind-24242 challenge auth event (X-Nostr-Auth-Event)",
+          };
+        }
+      }
+
       return { authorized: true, pubkey: parsedEvent.pubkey.toLowerCase() };
     } catch (err: any) {
       return {
@@ -83,101 +125,35 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
     }
   }
 
-  // Method 1: NIP-98 style Authorization header
+  // Method 1: Legacy Authorization: Nostr <base64({pubkey,sig,created_at})>
+  // Accept only when paired with a valid X-Nostr-Auth-Event above. Alone it is
+  // not challenge-bound and must not authorize.
   if (authHeader?.startsWith("Nostr ")) {
-    try {
-      const encoded = authHeader.slice(7); // Remove "Nostr " prefix
-      const decoded = Buffer.from(encoded, "base64").toString("utf-8");
-      const challenge = JSON.parse(decoded);
-
-      if (!challenge.pubkey || !challenge.sig) {
-        return { authorized: false, error: "Invalid challenge format" };
-      }
-
-      // Verify the signature
-      const { verify } = await import("@noble/secp256k1");
-      const pubkeyBuffer = Buffer.from(challenge.pubkey, "hex");
-      const message = JSON.stringify(challenge);
-      const msgHash = new TextEncoder().encode(message);
-
-      // For NIP-98, we verify the signature over the challenge (msgHash truncated to 32 bytes for ECDSA)
-      const sigBytes = new Uint8Array(Buffer.from(challenge.sig, "hex"));
-      const msgHash32 = new Uint8Array(msgHash.slice(0, 32));
-      const pubkeyU8 = new Uint8Array(pubkeyBuffer);
-      const isValid = verify(sigBytes, msgHash32, pubkeyU8);
-
-      if (!isValid) {
-        return { authorized: false, error: "Invalid signature" };
-      }
-
-      // Challenge must be recent (within 5 minutes)
-      const now = Math.floor(Date.now() / 1000);
-      if (challenge.created_at && now - challenge.created_at > 300) {
-        return { authorized: false, error: "Challenge expired" };
-      }
-
-      return { authorized: true, pubkey: challenge.pubkey };
-    } catch (err: any) {
-      return {
-        authorized: false,
-        error: `Auth verification failed: ${err.message}`,
-      };
-    }
+    return {
+      authorized: false,
+      error:
+        "Authorization: Nostr alone is not sufficient. Send X-Nostr-Auth-Event with a kind-24242 event that includes the server challenge tag.",
+    };
   }
 
-  // Method 2: Direct pubkey + signature (simpler for some clients)
-  if (providedPubkey && providedSig) {
-    try {
-      const { verify } = await import("@noble/secp256k1");
-
-      // Create a simple challenge message
-      const message = `gittr:push:${providedPubkey}:${Date.now()}`;
-      const msgBytes = new TextEncoder().encode(message);
-
-      const sigBytes = new Uint8Array(Buffer.from(providedSig, "hex"));
-      const pubkeyBytes = new Uint8Array(Buffer.from(providedPubkey, "hex"));
-      const msgHash32 = new Uint8Array(msgBytes.slice(0, 32));
-      const isValid = verify(sigBytes, msgHash32, pubkeyBytes);
-
-      if (!isValid) {
-        return { authorized: false, error: "Invalid signature" };
-      }
-
-      return { authorized: true, pubkey: providedPubkey };
-    } catch (err: any) {
-      return {
-        authorized: false,
-        error: `Signature verification failed: ${err.message}`,
-      };
-    }
-  }
-
-  // No auth provided
   return {
     authorized: false,
     error:
-      "No authentication provided. Use Nostr HTTP Auth (NIP-98) or provide pubkey+signature.",
+      "No authentication provided. Sign a push-challenge (kind 24242) and send X-Nostr-Auth-Event.",
   };
 }
 
 /**
- * Verify that the authenticated pubkey owns SSH keys for this repo
- * This allows SSH key holders to push via the bridge
+ * Verify that the authenticated pubkey owns this repo (or is the owner).
  */
 export async function verifySSHKeyOwnership(
   pubkey: string,
   ownerPubkey: string,
-  relays: string[] = []
+  _relays: string[] = []
 ): Promise<{ authorized: boolean; error?: string }> {
-  // If pushing to own repo, allow (they own the SSH keys by definition)
   if (pubkey.toLowerCase() === ownerPubkey.toLowerCase()) {
     return { authorized: true };
   }
-
-  // For pushing to others' repos, check if they have authorized this pubkey
-  // This would require a collaboration/permissions system
-  // For now, deny cross-owner pushes unless explicitly authorized
-  // TODO: Add collaboration permissions storage
 
   return {
     authorized: false,
@@ -186,7 +162,7 @@ export async function verifySSHKeyOwnership(
 }
 
 /**
- * Generate a challenge for NIP-98 auth
+ * Generate a challenge payload (clients should prefer /push-challenge).
  */
 export function generateChallenge(pubkey: string): {
   pubkey: string;
@@ -200,11 +176,10 @@ export function generateChallenge(pubkey: string): {
   };
 }
 
-/** This file is a shared auth helper; not a standalone API route. */
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader("Allow", "GET, POST");
-  res.status(405).json({
-    error:
-      "Not an endpoint. Use /api/nostr/repo/push or /api/nostr/repo/push-challenge.",
+/** Not an HTTP API — helpers only. Keeps Next.js route typing happy. */
+export default function handler(_req: NextApiRequest, res: NextApiResponse) {
+  return res.status(404).json({
+    error: "Not found",
+    hint: "Import verifyNostrAuth from this module; use /api/nostr/repo/push-challenge for challenges.",
   });
 }

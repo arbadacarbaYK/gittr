@@ -155,6 +155,9 @@ export interface FetchStatus {
   files?: Array<{ type: string; path: string; size?: number }>;
   /** Ref/branch used to fetch `files` when it differs from the requested branch (e.g. GitHub default is gh-pages). */
   resolvedBranch?: string;
+  truncated?: boolean;
+  listing?: "full" | "shallow";
+  totalFileCount?: number;
   error?: string;
   fetchedAt?: number;
 }
@@ -162,6 +165,9 @@ export interface FetchStatus {
 export type GitSourceFilesResult = {
   files: Array<{ type: string; path: string; size?: number }>;
   resolvedBranch?: string;
+  truncated?: boolean;
+  listing?: "full" | "shallow";
+  totalFileCount?: number;
 };
 
 /**
@@ -1226,6 +1232,9 @@ async function readBridgeFilesFromUrl(
     const bridgeJson = (await response.json()) as {
       files?: unknown[];
       branch?: string;
+      truncated?: boolean;
+      listing?: "full" | "shallow";
+      totalFileCount?: number;
     };
     if (!Array.isArray(bridgeJson.files) || bridgeJson.files.length === 0) {
       return null;
@@ -1241,6 +1250,9 @@ async function readBridgeFilesFromUrl(
         size?: number;
       }>,
       resolvedBranch: resolved,
+      truncated: !!bridgeJson.truncated,
+      listing: bridgeJson.listing,
+      totalFileCount: bridgeJson.totalFileCount,
     };
   } catch {
     return null;
@@ -1330,11 +1342,24 @@ function scheduleBareCloneToBridge(
 type BridgeFilesPayload = {
   files: Array<{ type: string; path: string; size?: number }>;
   branch?: string;
+  truncated?: boolean;
+  listing?: "full" | "shallow";
+  totalFileCount?: number;
 };
+
+type BridgeFilesFetchOutcome =
+  | { ok: true; data: BridgeFilesPayload }
+  | {
+      ok: false;
+      status: number;
+      error?: string;
+      defaultBranch?: string | null;
+      availableBranches?: string[];
+    };
 
 const bridgeFilesInflight = new Map<
   string,
-  Promise<BridgeFilesPayload | null>
+  Promise<BridgeFilesFetchOutcome>
 >();
 
 /** One bridge API call per owner/repo/branch — shared by parallel GRASP clone URLs. */
@@ -1343,24 +1368,54 @@ export async function fetchBridgeFilesOnce(
   repo: string,
   branch: string
 ): Promise<BridgeFilesPayload | null> {
+  const outcome = await fetchBridgeFilesOutcome(ownerPubkey, repo, branch);
+  if (outcome.ok) return outcome.data;
+  return null;
+}
+
+async function fetchBridgeFilesOutcome(
+  ownerPubkey: string,
+  repo: string,
+  branch: string
+): Promise<BridgeFilesFetchOutcome> {
   const key = `${ownerPubkey.toLowerCase()}:${repo}:${branch}`;
   const existing = bridgeFilesInflight.get(key);
   if (existing) return existing;
 
-  const promise = (async (): Promise<BridgeFilesPayload | null> => {
+  const promise = (async (): Promise<BridgeFilesFetchOutcome> => {
     const bridgeUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
       ownerPubkey
     )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`;
     try {
       const response = await fetchBridgeRead(bridgeUrl, { cache: "no-store" });
-      if (!response.ok) return null;
-      const json = (await response.json()) as BridgeFilesPayload;
-      if (!Array.isArray(json.files)) {
-        return { files: [], branch: json.branch };
+      if (response.ok) {
+        const json = (await response.json()) as BridgeFilesPayload;
+        if (!Array.isArray(json.files)) {
+          return { ok: true, data: { files: [], branch: json.branch } };
+        }
+        return { ok: true, data: json };
       }
-      return json;
+      let body: {
+        error?: string;
+        defaultBranch?: string | null;
+        availableBranches?: string[];
+      } = {};
+      try {
+        body = await response.json();
+      } catch {
+        // ignore
+      }
+      return {
+        ok: false,
+        status: response.status,
+        error: typeof body.error === "string" ? body.error : undefined,
+        defaultBranch: body.defaultBranch,
+        availableBranches: Array.isArray(body.availableBranches)
+          ? body.availableBranches
+          : undefined,
+      };
     } catch {
-      return null;
+      return { ok: false, status: 0 };
     }
   })();
 
@@ -1370,6 +1425,66 @@ export async function fetchBridgeFilesOnce(
   } finally {
     bridgeFilesInflight.delete(key);
   }
+}
+
+/**
+ * Try requested branch, then bare-repo default from a Branch-not-found response.
+ * Avoids clone+poll storms when the mirror exists but HEAD is not main/master.
+ */
+async function fetchBridgeFilesResolvingBranch(
+  ownerPubkey: string,
+  repo: string,
+  branch: string
+): Promise<{
+  payload: BridgeFilesPayload | null;
+  branchNotFound: boolean;
+  resolvedBranch: string;
+}> {
+  const first = await fetchBridgeFilesOutcome(ownerPubkey, repo, branch);
+  if (first.ok) {
+    return {
+      payload: first.data,
+      branchNotFound: false,
+      resolvedBranch:
+        typeof first.data.branch === "string" && first.data.branch.trim()
+          ? first.data.branch.trim()
+          : branch,
+    };
+  }
+
+  const alt =
+    (typeof first.defaultBranch === "string" && first.defaultBranch.trim()) ||
+    first.availableBranches?.find(
+      (b) => typeof b === "string" && b.trim() && b.trim() !== branch
+    );
+  if (
+    first.status === 404 &&
+    first.error === "Branch not found" &&
+    alt &&
+    alt !== branch
+  ) {
+    console.log(
+      `🔁 [Git Source] Bridge branch '${branch}' missing — retrying '${alt}'`
+    );
+    const second = await fetchBridgeFilesOutcome(ownerPubkey, repo, alt);
+    if (second.ok) {
+      return {
+        payload: second.data,
+        branchNotFound: false,
+        resolvedBranch:
+          typeof second.data.branch === "string" && second.data.branch.trim()
+            ? second.data.branch.trim()
+            : alt,
+      };
+    }
+  }
+
+  return {
+    payload: null,
+    branchNotFound:
+      first.status === 404 && first.error === "Branch not found",
+    resolvedBranch: branch,
+  };
 }
 
 function notifyGraspRepoCloned(
@@ -1465,7 +1580,11 @@ async function fetchFromNostrGit(
         url: bridgeUrl,
       });
 
-      const bridgeJson = await fetchBridgeFilesOnce(ownerPubkey, repo, branch);
+      const {
+        payload: bridgeJson,
+        branchNotFound,
+        resolvedBranch: bridgeResolvedBranch,
+      } = await fetchBridgeFilesResolvingBranch(ownerPubkey, repo, branch);
 
       if (
         bridgeJson?.files &&
@@ -1474,12 +1593,10 @@ async function fetchFromNostrGit(
       ) {
         console.log(
           `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
-            (bridgeJson.branch ? ` (branch: ${bridgeJson.branch})` : "")
+            (bridgeResolvedBranch
+              ? ` (branch: ${bridgeResolvedBranch})`
+              : "")
         );
-        const resolved =
-          typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
-            ? bridgeJson.branch.trim()
-            : branch;
         const rawFiles = bridgeJson.files as Array<{
           type: string;
           path: string;
@@ -1490,9 +1607,21 @@ async function fetchFromNostrGit(
         });
         return {
           files,
-          resolvedBranch: resolved,
+          resolvedBranch: bridgeResolvedBranch,
+          truncated: !!(bridgeJson as BridgeFilesPayload).truncated,
+          listing: (bridgeJson as BridgeFilesPayload).listing,
+          totalFileCount: (bridgeJson as BridgeFilesPayload).totalFileCount,
         };
       }
+
+      // Mirror on disk but wrong branch (and no usable default) — do not clone/poll.
+      if (branchNotFound) {
+        console.warn(
+          `⚠️ [Git Source] Bridge has repo but branch '${branch}' (and fallbacks) not found — skipping clone/poll storm`
+        );
+        return null;
+      }
+
       // Not on disk (null) or empty tree: trigger GRASP clone + mirror.
       const shouldTriggerClone =
         !bridgeJson ||
@@ -1552,9 +1681,41 @@ async function fetchFromNostrGit(
               const cloneData = await cloneResponse.json();
               console.log(`✅ [Git Source] Bare mirror clone OK:`, cloneData);
 
-              const mirrored = await awaitBridgeFilesAfterClone(
-                bridgeUrl,
+              // Re-resolve branch after mirror (HEAD may not be main)
+              const afterClone = await fetchBridgeFilesResolvingBranch(
+                ownerPubkey,
+                repo,
                 branch
+              );
+              if (afterClone.payload?.files?.length) {
+                notifyGraspRepoCloned(
+                  afterClone.payload.files,
+                  ownerPubkey,
+                  repo
+                );
+                return {
+                  files: afterClone.payload.files,
+                  resolvedBranch: afterClone.resolvedBranch,
+                };
+              }
+
+              if (afterClone.branchNotFound) {
+                console.warn(
+                  `⚠️ [Git Source] Mirror exists but requested branch missing — not polling`
+                );
+                return null;
+              }
+
+              const mirroredUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+                ownerPubkey
+              )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(
+                afterClone.resolvedBranch || branch
+              )}`;
+              const mirrored = await awaitBridgeFilesAfterClone(
+                mirroredUrl,
+                afterClone.resolvedBranch || branch,
+                4,
+                1500
               );
               if (mirrored?.files?.length) {
                 notifyGraspRepoCloned(mirrored.files, ownerPubkey, repo);
@@ -1564,7 +1725,12 @@ async function fetchFromNostrGit(
               console.log(
                 `⚠️ [Git Source] Mirror clone OK but bridge not readable yet; background poll`
               );
-              startBackgroundBridgePoll(bridgeUrl, branch, ownerPubkey, repo);
+              startBackgroundBridgePoll(
+                mirroredUrl,
+                afterClone.resolvedBranch || branch,
+                ownerPubkey,
+                repo
+              );
             } else {
               const cloneError = await cloneResponse
                 .json()
@@ -1856,13 +2022,37 @@ export async function fetchFilesFromMultipleSources(
           }
         });
 
-        // Prefer publisher's real remotes (GitHub / Freebox / self-hosted) before
-        // well-known GRASP mirrors — otherwise we burn 45s on 404/502 dead ends.
-        prioritizedCloneUrls = [...otherCloneUrls, ...graspCloneUrls];
+        // Prefer publisher remotes (GitHub / reachable self-hosted) before GRASP
+        // mirrors — but put bare http://IP:port home hosts LAST. Those often 502
+        // from gittr's servers while HTTPS GRASP + bridge already have the tree.
+        const looksLikeHomeHttpIp = (url: string): boolean => {
+          try {
+            const u = new URL(url.trim());
+            return (
+              u.protocol === "http:" &&
+              /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
+            );
+          } catch {
+            return false;
+          }
+        };
+        const reachableOther = otherCloneUrls.filter(
+          (u) => !looksLikeHomeHttpIp(u)
+        );
+        const homeHttpIp = otherCloneUrls.filter((u) => looksLikeHomeHttpIp(u));
+        prioritizedCloneUrls = [
+          ...reachableOther,
+          ...graspCloneUrls,
+          ...homeHttpIp,
+        ];
 
-        if (otherCloneUrls.length > 0 && graspCloneUrls.length > 0) {
+        if (reachableOther.length > 0 && graspCloneUrls.length > 0) {
           console.log(
-            `✅ [File Fetch] Preferring ${otherCloneUrls.length} non-GRASP clone URL(s) before ${graspCloneUrls.length} GRASP mirror(s)`
+            `✅ [File Fetch] Preferring ${reachableOther.length} non-GRASP clone URL(s) before ${graspCloneUrls.length} GRASP mirror(s)`
+          );
+        } else if (homeHttpIp.length > 0 && graspCloneUrls.length > 0) {
+          console.log(
+            `✅ [File Fetch] Preferring ${graspCloneUrls.length} GRASP mirror(s) before ${homeHttpIp.length} home http://IP clone(s)`
           );
         } else if (graspCloneUrls.length > 0) {
           console.log(
@@ -2003,6 +2193,11 @@ export async function fetchFilesFromMultipleSources(
       const files = fetchResult?.files;
       if (fetchResult?.resolvedBranch) {
         status.resolvedBranch = fetchResult.resolvedBranch;
+      }
+      if (fetchResult?.truncated) status.truncated = true;
+      if (fetchResult?.listing) status.listing = fetchResult.listing;
+      if (typeof fetchResult?.totalFileCount === "number") {
+        status.totalFileCount = fetchResult.totalFileCount;
       }
 
       if (files && files.length > 0) {

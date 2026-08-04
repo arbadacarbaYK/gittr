@@ -1,30 +1,54 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  detectBareRepoDefaultBranch,
+  listBareRepoBranches,
+} from "@/lib/git/bare-repo-default-branch";
+import {
+  buildFlatTreeFromPaths,
+  listBareRepoRecursivePaths,
+  listBareRepoShallow,
+  sanitizeRepoTreePath,
+} from "@/lib/git/bare-repo-ls-tree";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import {
+  REPO_FILE_TREE_SHALLOW_THRESHOLD,
   capRepoFileTreeForDisplay,
   fileTreeListFromScrub,
   filterGraspMirrorPollutionFromFileTree,
 } from "@/lib/utils/filter-grasp-mirror-pollution";
-import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
+import {
+  resolveBridgeRepoPath,
+  sanitizeBridgeRepoName,
+} from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { join } from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 const filesCache = new Map<
   string,
-  { timestamp: number; payload: { files: any[]; branch: string } }
+  {
+    timestamp: number;
+    payload: {
+      files: any[];
+      branch: string;
+      truncated?: boolean;
+      listing?: "full" | "shallow";
+      totalFileCount?: number;
+    };
+  }
 >();
 const CACHE_TTL_MS = 30_000;
 
 const shouldIncludeSizes = (raw: string | string[] | undefined) => {
+  // Default off: per-file `git cat-file -s` on large mirrors (10k+ paths) melts CPU.
+  // Callers that need sizes must pass includeSizes=1 explicitly.
   if (raw === undefined) {
-    return true;
+    return false;
   }
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value) return false;
@@ -129,6 +153,7 @@ export default async function handler(
     repo: repoName,
     branch = "main",
     includeSizes: includeSizesRaw,
+    path: pathRaw,
   } = req.query;
 
   // Validate inputs
@@ -142,7 +167,11 @@ export default async function handler(
 
   const repoSanitized = sanitizeBridgeRepoName(repoName);
   if (!repoSanitized) {
-    return res.status(400).json({ error: "repo is empty after normalization" });
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
   }
 
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
@@ -164,6 +193,13 @@ export default async function handler(
 
   const ownerPubkey = resolved.pubkey;
   const includeSizes = shouldIncludeSizes(includeSizesRaw);
+  const treePath = sanitizeRepoTreePath(pathRaw);
+  if (treePath === null) {
+    return res.status(400).json({
+      error: "Invalid path",
+      hint: "path must be a relative repo path without '..'",
+    });
+  }
 
   // Get repository directory from environment or git-nostr-bridge config file
   // Priority: env vars > config file > defaults
@@ -217,7 +253,15 @@ export default async function handler(
   }
 
   // Repository path: reposDir/{ownerPubkey}/{repoName}.git
-  const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
+  const resolvedPath = resolveBridgeRepoPath(
+    reposDir,
+    ownerPubkey,
+    repoSanitized
+  );
+  if (!resolvedPath) {
+    return res.status(400).json({ error: "Invalid repository path" });
+  }
+  const repoPath = resolvedPath.repoPath;
 
   // Private repos: only owner/contributors may read (same ACL as SSH).
   const access = await assertRepoReadAccess(req, ownerPubkey, repoSanitized);
@@ -230,7 +274,7 @@ export default async function handler(
     console.log("🔍 Repository directory exists:", existsSync(reposDir));
     console.log(
       "🔍 Owner directory exists:",
-      existsSync(join(reposDir, ownerPubkey))
+      existsSync(resolvedPath.ownerDir)
     );
 
     // Check if repository exists
@@ -276,241 +320,157 @@ export default async function handler(
       : typeof branch === "string"
       ? branch
       : "main";
-    const cacheKey = `${repoPath}:${branchStr}:sizes=${includeSizes}`;
+    const cacheKey = `${repoPath}:${branchStr}:path=${treePath}:sizes=${includeSizes}`;
     const cached = filesCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
       return res.status(200).json(cached.payload);
     }
 
-    // Use git ls-tree to get file tree (respects deletions - only shows current files)
-    // This gets the actual files in the repository, not from Nostr events
-    console.log(`🔍 Fetching file tree for branch: ${branch}`);
-    let stdout: string, stderr: string;
-    let branchNotFound = false;
-    const actualBranch = branchStr; // Track which branch was actually used
+    // Resolve a branch that actually exists (main/master → HEAD for foreign mirrors)
+    const branchCandidates = [
+      branchStr,
+      ...(branchStr === "main"
+        ? ["master"]
+        : branchStr === "master"
+        ? ["main"]
+        : ["main", "master"]),
+    ];
+    const detectedDefault = await detectBareRepoDefaultBranch(repoPath);
+    if (detectedDefault && !branchCandidates.includes(detectedDefault)) {
+      branchCandidates.push(detectedDefault);
+    }
 
-    try {
-      // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames (Cyrillic, Chinese, etc.)
-      const result = await execAsync(
-        `git --git-dir="${repoPath}" ls-tree -r --name-only ${branchStr}`,
-        { timeout: 10000, encoding: "utf8" } // CRITICAL: UTF-8 encoding for international filenames
-      );
-      stdout = result.stdout;
-      stderr = result.stderr || "";
-    } catch (error: any) {
-      // execAsync throws when command fails - extract stderr from error
-      stderr = error.stderr || error.message || String(error);
-      stdout = error.stdout || "";
-
-      // Check if this is a "branch not found" error
-      if (
-        stderr.includes("fatal: not a valid object name") ||
-        stderr.includes("fatal: Not a valid object name")
-      ) {
-        branchNotFound = true;
-      } else {
-        // Other error - return 500
-        console.error("Git ls-tree error:", stderr);
-        return res
-          .status(500)
-          .json({ error: "Failed to read repository", details: stderr });
+    let resolvedBranch: string | null = null;
+    for (const candidate of branchCandidates) {
+      try {
+        await execAsync(
+          `git --git-dir="${repoPath}" rev-parse --verify ${JSON.stringify(
+            candidate
+          )}^{commit}`,
+          { timeout: 5000 }
+        );
+        resolvedBranch = candidate;
+        break;
+      } catch {
+        // try next
       }
     }
 
-    if (stderr && !stderr.includes("warning") && !stderr.includes("fatal")) {
-      console.error("Git ls-tree error:", stderr);
-      return res
-        .status(500)
-        .json({ error: "Failed to read repository", details: stderr });
-    }
-
-    // Check if branch doesn't exist - try common branch names
-    if (
-      branchNotFound ||
-      (stderr && stderr.includes("fatal: not a valid object name"))
-    ) {
-      console.warn(
-        `⚠️ Branch ${branch} not found, trying fallback branches...`
-      );
-
-      // Try common branch names: main, master
-      const fallbackBranches =
-        branchStr === "main"
-          ? ["master"]
-          : branchStr === "master"
-          ? ["main"]
-          : ["main", "master"];
-
-      for (const fallbackBranch of fallbackBranches) {
-        try {
-          console.log(`🔍 Trying fallback branch: ${fallbackBranch}`);
-          // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames
-          const { stdout: fallbackStdout, stderr: fallbackStderr } =
-            await execAsync(
-              `git --git-dir="${repoPath}" ls-tree -r --name-only ${fallbackBranch}`,
-              { timeout: 10000, encoding: "utf8" } // CRITICAL: UTF-8 encoding for international filenames
-            );
-
-          if (
-            !fallbackStderr ||
-            fallbackStderr.includes("warning") ||
-            !fallbackStderr.includes("fatal")
-          ) {
-            const filePaths = fallbackStdout.trim().split("\n").filter(Boolean);
-            console.log(
-              `✅ Found ${filePaths.length} files in '${fallbackBranch}' branch`
-            );
-
-            // Build full file tree with directories
-            const files: Array<{ type: string; path: string; size?: number }> =
-              [];
-            const dirs = new Set<string>();
-
-            for (const filePath of filePaths) {
-              // Add all parent directories
-              const parts = filePath.split("/");
-              for (let i = 1; i < parts.length; i++) {
-                dirs.add(parts.slice(0, i).join("/"));
-              }
-              if (!includeSizes) {
-                files.push({ type: "file", path: filePath });
-                continue;
-              }
-
-              // Get file size
-              // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
-              try {
-                const escapedFilePath = filePath.replace(/"/g, '\\"');
-                const escapedFallbackBranch = fallbackBranch.replace(
-                  /"/g,
-                  '\\"'
-                );
-                const { stdout: sizeOutput } = await execAsync(
-                  `git --git-dir="${repoPath}" cat-file -s "${escapedFallbackBranch}:${escapedFilePath}"`,
-                  { timeout: 5000, encoding: "utf8" } // CRITICAL: Explicitly set UTF-8 encoding
-                );
-                const size = parseInt(sizeOutput.trim(), 10);
-                files.push({
-                  type: "file",
-                  path: filePath,
-                  size: isNaN(size) ? undefined : size,
-                });
-              } catch {
-                files.push({ type: "file", path: filePath });
-              }
-            }
-
-            // Add directories
-            for (const dirPath of Array.from(dirs).sort()) {
-              files.push({ type: "dir", path: dirPath });
-            }
-
-            // Sort: directories first, then files
-            files.sort((a, b) => {
-              if (a.type !== b.type) {
-                return a.type === "dir" ? -1 : 1;
-              }
-              return a.path.localeCompare(b.path);
-            });
-
-            const scrubbed = capRepoFileTreeForDisplay(
-              filterGraspMirrorPollutionFromFileTree(files, {
-                ownerPubkeyHex: ownerPubkey,
-              })
-            );
-            const payload = {
-              files: fileTreeListFromScrub(scrubbed),
-              branch: fallbackBranch,
-            };
-            filesCache.set(cacheKey, { timestamp: Date.now(), payload });
-            return res.status(200).json(payload);
-          }
-        } catch (fallbackError: any) {
-          console.warn(
-            `⚠️ Failed to fetch from '${fallbackBranch}' branch:`,
-            fallbackError.message
-          );
-          // Continue to next fallback
-        }
-      }
-
-      // All branches failed - return 404
-      console.error("❌ All branch attempts failed");
+    if (!resolvedBranch) {
+      const availableBranches = await listBareRepoBranches(repoPath);
       return res.status(404).json({
         error: "Branch not found",
-        branch,
-        triedBranches: [branch, ...fallbackBranches],
+        branch: branchStr,
+        triedBranches: branchCandidates,
+        defaultBranch: detectedDefault || availableBranches[0] || null,
+        availableBranches,
         hint: "Repository may be empty or branch doesn't exist",
       });
     }
 
-    console.log("✅ Git ls-tree succeeded, parsing files...");
+    console.log(
+      `🔍 Fetching file tree for branch: ${resolvedBranch}` +
+        (treePath ? ` path=${treePath}` : "")
+    );
 
-    // Parse file list and build tree structure
-    // CRITICAL: git ls-tree outputs UTF-8 file paths - ensure they're preserved correctly
-    // Split by newline and filter empty lines, preserving UTF-8 encoding
-    const filePaths = stdout.trim().split("\n").filter(Boolean);
-    const files: Array<{ type: string; path: string; size?: number }> = [];
-    const dirs = new Set<string>();
+    const respondWithTree = (payload: {
+      files: Array<{ type: string; path: string; size?: number }>;
+      branch: string;
+      truncated?: boolean;
+      listing?: "full" | "shallow";
+      totalFileCount?: number;
+    }) => {
+      const scrubbed = filterGraspMirrorPollutionFromFileTree(payload.files, {
+        ownerPubkeyHex: ownerPubkey,
+      });
+      const finalPayload = {
+        ...payload,
+        files: scrubbed,
+      };
+      filesCache.set(cacheKey, {
+        timestamp: Date.now(),
+        payload: finalPayload,
+      });
+      return res.status(200).json(finalPayload);
+    };
 
-    for (const filePath of filePaths) {
-      // CRITICAL: Ensure file path is a valid UTF-8 string (git ls-tree outputs UTF-8)
-      // No need to decode - git already outputs UTF-8, and we want to preserve it as-is
-      // Add all parent directories
-      const parts = filePath.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        dirs.add(parts.slice(0, i).join("/"));
-      }
-      if (!includeSizes) {
-        files.push({ type: "file", path: filePath });
-        continue;
-      }
-
-      // Get file size using git cat-file
-      // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
+    // Folder browse: one-level listing (never hollow from soft-cap)
+    if (treePath) {
       try {
-        const escapedFilePath = filePath.replace(/"/g, '\\"');
-        const escapedBranch = branchStr.replace(/"/g, '\\"');
-        const { stdout: sizeOutput } = await execAsync(
-          `git --git-dir="${repoPath}" cat-file -s "${escapedBranch}:${escapedFilePath}"`,
-          { timeout: 5000, encoding: "utf8" } // CRITICAL: Explicitly set UTF-8 encoding
+        const entries = await listBareRepoShallow(
+          repoPath,
+          resolvedBranch,
+          treePath,
+          { includeSizes }
         );
-        const size = parseInt(sizeOutput.trim(), 10);
-        files.push({
-          type: "file",
-          path: filePath,
-          size: isNaN(size) ? undefined : size,
+        return respondWithTree({
+          files: entries,
+          branch: resolvedBranch,
+          truncated: false,
+          listing: "shallow",
         });
-      } catch {
-        // If size fetch fails, still include the file
-        files.push({ type: "file", path: filePath });
+      } catch (err: any) {
+        const msg = err?.stderr || err?.message || String(err);
+        if (
+          String(msg).includes("not a valid object name") ||
+          String(msg).includes("does not exist")
+        ) {
+          return res.status(404).json({
+            error: "Path not found",
+            path: treePath,
+            branch: resolvedBranch,
+          });
+        }
+        throw err;
       }
     }
 
-    // Add directories
-    for (const dirPath of Array.from(dirs).sort()) {
-      files.push({ type: "dir", path: dirPath });
+    // Root: recursive when small; shallow when huge (Trezor-scale mirrors)
+    let filePaths: string[];
+    try {
+      filePaths = await listBareRepoRecursivePaths(repoPath, resolvedBranch);
+    } catch (err: any) {
+      console.error("Git ls-tree error:", err?.stderr || err?.message);
+      return res.status(500).json({
+        error: "Failed to read repository",
+        details: err?.stderr || err?.message || String(err),
+      });
     }
 
-    // Sort: directories first, then files
-    files.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === "dir" ? -1 : 1;
-      }
-      return a.path.localeCompare(b.path);
-    });
+    console.log(`✅ Found ${filePaths.length} files in '${resolvedBranch}'`);
 
-    const scrubbed = capRepoFileTreeForDisplay(
-      filterGraspMirrorPollutionFromFileTree(files, {
+    if (filePaths.length > REPO_FILE_TREE_SHALLOW_THRESHOLD) {
+      const entries = await listBareRepoShallow(
+        repoPath,
+        resolvedBranch,
+        "",
+        { includeSizes }
+      );
+      console.log(
+        `ℹ️ Large tree (${filePaths.length} files) — returning shallow root (${entries.length} entries)`
+      );
+      return respondWithTree({
+        files: entries,
+        branch: resolvedBranch,
+        truncated: true,
+        listing: "shallow",
+        totalFileCount: filePaths.length,
+      });
+    }
+
+    const flat = buildFlatTreeFromPaths(filePaths);
+    const capped = capRepoFileTreeForDisplay(
+      filterGraspMirrorPollutionFromFileTree(flat, {
         ownerPubkeyHex: ownerPubkey,
       })
     );
-    const payload = {
-      files: fileTreeListFromScrub(scrubbed),
-      branch: actualBranch || branchStr,
-    };
-    filesCache.set(cacheKey, { timestamp: Date.now(), payload });
-    return res.status(200).json(payload);
+    return respondWithTree({
+      files: fileTreeListFromScrub(capped),
+      branch: resolvedBranch,
+      truncated: capped.truncated,
+      listing: "full",
+      totalFileCount: filePaths.length,
+    });
   } catch (error: any) {
     console.error("Error fetching repository files:", error);
 

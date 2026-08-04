@@ -674,6 +674,7 @@ export default function RepoIssueNewPage() {
                       ["p", finalOwnerPubkey],
                       ["p", authorPubkey],
                       ["a", `30617:${finalOwnerPubkey}:${repo}`],
+                      ["k", "1621"],
                     ],
                     content: `Opened issue`,
                     pubkey: authorPubkey,
@@ -690,6 +691,7 @@ export default function RepoIssueNewPage() {
                       ownerPubkey: finalOwnerPubkey,
                       rootEventAuthor: authorPubkey,
                       repoName: repo,
+                      rootKind: 1621,
                       content: `Opened issue`,
                     },
                     privateKey

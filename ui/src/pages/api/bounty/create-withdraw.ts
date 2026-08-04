@@ -1,4 +1,4 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import {
   type LNbitsConfig,
   createWithdrawLink,
@@ -20,12 +20,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ status: "method_not_allowed" });
@@ -61,9 +61,8 @@ export default async function handler(
       .json({ status: "invalid_issue_id", message: "Invalid issue ID format" });
   }
 
-  // Get LNbits admin key from request body (user config) or environment
-  const finalLnbitsAdminKey =
-    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+  // Require per-user key from the request body (no server env fallback).
+  const finalLnbitsAdminKey = String(lnbitsAdminKey || "").trim();
   const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
 
   if (!finalLnbitsUrl) {

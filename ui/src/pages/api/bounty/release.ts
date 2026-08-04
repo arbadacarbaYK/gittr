@@ -1,4 +1,4 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -10,12 +10,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ status: "method_not_allowed" });
@@ -61,9 +61,8 @@ export default async function handler(
     bountyAmount,
   });
 
-  // Get LNbits admin key from request body (user config) or environment
-  const finalLnbitsAdminKey =
-    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+  // Require per-user key from the request body (no server env fallback).
+  const finalLnbitsAdminKey = String(lnbitsAdminKey || "").trim();
   const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
 
   try {
@@ -72,7 +71,7 @@ export default async function handler(
       return res.status(400).json({
         status: "error",
         message:
-          "LNbits not configured. Please set LNbits URL and admin key in Settings → Account, and/or set LNBITS_URL / LNBITS_ADMIN_KEY on the server.",
+          "LNbits not configured. Set LNbits URL and admin key in Settings → Account (server env keys are not used for payments).",
       });
     }
 

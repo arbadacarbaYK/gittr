@@ -165,7 +165,7 @@ export async function assertRepoReadAccess(
   if (!visibility) return { ok: true };
   if (visibility.publicRead) return { ok: true };
 
-  const auth = await verifyNostrAuth(req);
+  const auth = await verifyNostrAuth(req, { expectedRepo: repoName });
   if (!auth.authorized || !auth.pubkey) {
     return {
       ok: false,
@@ -210,7 +210,7 @@ export async function assertRepoWriteAccess(
   if (!visibility) return { ok: true };
   if (visibility.publicWrite) return { ok: true };
 
-  const auth = await verifyNostrAuth(req);
+  const auth = await verifyNostrAuth(req, { expectedRepo: repoName });
   if (!auth.authorized || !auth.pubkey) {
     return {
       ok: false,

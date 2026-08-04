@@ -1,5 +1,5 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import type {
   LNbitsConfig,
   LNbitsPaymentRequest,
@@ -23,12 +23,12 @@ export default async function handler(
   // Rate limiting
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
   const rateLimitResult = await rateLimiters.payment(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));

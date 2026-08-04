@@ -1370,6 +1370,14 @@ export function addFilesToRepo(
         isBinary: isBinary, // Always use the new isBinary value
       };
       existingFileMap.set(normalizedPath, fileEntry);
+
+      // Nested upload wins over a stale flat basename from an earlier pick
+      if (normalizedPath.includes("/")) {
+        const base = normalizedPath.split("/").pop() || "";
+        if (base && base !== normalizedPath && existingFileMap.has(base)) {
+          existingFileMap.delete(base);
+        }
+      }
     });
 
     // Convert back to array
@@ -1393,6 +1401,12 @@ export function addFilesToRepo(
     validFiles.forEach((file) => {
       if (file.content !== undefined) {
         overrides[file.path] = file.content;
+        if (file.path.includes("/")) {
+          const base = file.path.split("/").pop() || "";
+          if (base && base !== file.path && overrides[base] !== undefined) {
+            delete overrides[base];
+          }
+        }
       }
     });
     saveRepoOverrides(entity, repo, overrides);

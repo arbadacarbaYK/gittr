@@ -1,4 +1,4 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import {
   type LNbitsConfig,
   type LNbitsPaymentRequest,
@@ -19,12 +19,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ status: "method_not_allowed" });
@@ -56,7 +56,7 @@ export default async function handler(
   }
 
   const finalLnbitsAdminKey =
-    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+    String(lnbitsAdminKey || "").trim();
   const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
 
   if (!finalLnbitsUrl) {

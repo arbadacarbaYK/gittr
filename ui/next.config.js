@@ -27,6 +27,16 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Social card tools (X/LinkedIn) cache robots.txt; keep it fresh after Allow changes.
+        source: "/robots.txt",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, must-revalidate",
+          },
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           {

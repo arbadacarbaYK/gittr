@@ -1149,7 +1149,6 @@ export function countActivitiesFromNostr(
       {
         kinds: [KIND_STATUS_APPLIED],
         authors: [normalizedPubkey],
-        "#k": ["1618"], // Only PR status events
         limit: 1000,
       },
       // Issue events (kind 1621) - ALL time
@@ -1162,7 +1161,6 @@ export function countActivitiesFromNostr(
       {
         kinds: [KIND_STATUS_CLOSED],
         authors: [normalizedPubkey],
-        "#k": ["1621"], // Only issue status events
         limit: 1000,
       },
     ];

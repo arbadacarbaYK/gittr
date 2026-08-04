@@ -7,10 +7,10 @@ How search engines and social previews find gittr content. Marketing copy was up
 | Surface | Location | Notes |
 | --- | --- | --- |
 | Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Root card via `buildRootSiteMetadata()`; per-route cards via `buildPageSiteMetadata({ path, title, description })` so X/Telegram do not reuse the homepage `og:url` |
-| Hub routes (`/pages`, `/apps`, `/explore`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
+| Hub routes (`/pages`, `/apps`, `/explore`, `/new`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
 | Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
 | Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card: name, owner, About, corner badge; stats as **GitHub icon + ★ count**, fork icon + count, **N + ★** for Nostr (no “source stars” prose). Brand bottom-right (X uses bottom-left). |
-| `robots.txt` | `ui/src/app/robots.ts` | Allows `/`; disallows `/api/`, `/login`, `/settings/`, etc. |
+| `robots.txt` | `ui/src/app/robots.ts` | Allows `/` and explicitly `/new` (create/import social cards); disallows `/api/`, `/login`, `/signup`, `/settings/`, `/import`. `force-dynamic` so validators don’t keep a stale Disallow forever. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |
 | PWA manifest | `ui/public/site.webmanifest` | Short description for install prompts |
 | Canonical / `metadataBase` | `NEXT_PUBLIC_SITE_URL` | Must be `https://your.domain` in production |
@@ -34,6 +34,8 @@ When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 Explore discovers public Nostr repos (not only repos people Push’d from gittr). The sitemap already queries Nostr, but a **daily background refresh** writes a durable disk snapshot so crawlers still get a full list when a live relay query times out.
 
 The same snapshot **seeds `/explore`** when the browser cache is empty (`GET /api/explore/seed` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich.
+
+**Client chrome on Explore:** leaving `/explore` (logo, personal menu, top nav) uses a hard `location.assign` via `appNavigate` when Explore is busy with relay streams. Soft App Router `push` after `preventDefault` can look like a dead click. Search already hard-assigns into Explore for the same reason.
 
 ```bash
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
@@ -84,14 +86,14 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 ## SEO strategy (practical)
 
 - **Index what matters:** Home, explore, help, public repo pages, Pages directory — via sitemap + internal links.
-- **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`.
+- **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
 - **Keywords:** Prefer “nostr git”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository” — still accurate, less likely to trip naive “fake GitHub” heuristics than “github alternative”.
 - **Import is a feature, not the headline:** README and meta mention importing from GitHub/GitLab/Codeberg under **mirror / backup**, not as the product identity.
 - **Reputation ≠ SEO:** Google Safe Browsing clean + good sitemap does not fix Sophos category or LinkedIn link wrappers; see IT reclassification for those.
 
 ## Social previews (X, Telegram, LinkedIn)
 
-- Homepage vs hubs: `/`, `/apps`, `/pages`, and `/explore` each have their own **title**, **description**, and **OG image** (`buildPageSiteMetadata` + route `opengraph-image.tsx`). Do not reuse homepage copy for hub links.
+- Homepage vs hubs: `/`, `/apps`, `/pages`, `/explore`, and `/new` each have their own **title**, **description**, and **OG image** (`buildPageSiteMetadata` + route `opengraph-image.tsx`). Do not reuse homepage copy for hub links. `/new` is **Create or import** — Nostr git create plus batch import/mirror from foreign forges (GitHub/GitLab/Codeberg).
 - Repo cards (`create-repo-og-image.tsx`): keep the **bottom-left corner empty** — X overlays the link name chip there. Brand (`gittr · nostr`) + `NIP-34` sit **bottom-right**.
 - **Canonical share URL** is always `/{entity}/{repo}` (no `?branch=` / `?file=` / tab path). Nested pages inherit the same `og:image`; Share/QR copies the root so social caches do not fork per deep link. File “Copy permalink” stays deep for collaborators.
 - `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.

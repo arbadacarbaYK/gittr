@@ -68,22 +68,67 @@ export function filterGraspMirrorPollutionFromFileTree<
 /** Cap absurdly large bridge trees (mirror bloat) for UI responsiveness. */
 export const REPO_FILE_TREE_SOFT_CAP = 1200;
 
-export type CapFileTreeResult<T extends { path: string }> = {
+/** Above this many recursive file paths, serve a shallow (one-level) listing instead. */
+export const REPO_FILE_TREE_SHALLOW_THRESHOLD = 1200;
+
+export type CapFileTreeResult<T extends { path: string; type?: string }> = {
   files: T[];
   truncated: boolean;
   originalCount: number;
 };
 
-export function capRepoFileTreeForDisplay<T extends { path: string }>(
-  files: T[]
-): CapFileTreeResult<T> {
+/**
+ * Cap a flat tree for display without creating hollow folders.
+ * Prefer shallower files first, then synthesize parent dirs from kept files.
+ * (Naive slice after dirs-first sort kept only directories → empty subfolders.)
+ */
+export function capRepoFileTreeForDisplay<
+  T extends { path: string; type?: string }
+>(files: T[]): CapFileTreeResult<T> {
   if (!Array.isArray(files) || files.length <= REPO_FILE_TREE_SOFT_CAP) {
     return { files, truncated: false, originalCount: files.length };
   }
+
+  const originalCount = files.length;
+  const fileEntries = files.filter((f) => {
+    const t = String(f.type || "file").toLowerCase();
+    return t !== "dir" && t !== "tree" && t !== "folder";
+  });
+  fileEntries.sort((a, b) => {
+    const da = a.path.split("/").length;
+    const db = b.path.split("/").length;
+    if (da !== db) return da - db;
+    return a.path.localeCompare(b.path);
+  });
+
+  const keptFiles = fileEntries.slice(0, REPO_FILE_TREE_SOFT_CAP);
+  const dirs = new Set<string>();
+  for (const f of keptFiles) {
+    const parts = f.path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
+  }
+
+  const proto = keptFiles[0] || files[0];
+  const dirEntries = Array.from(dirs)
+    .sort()
+    .map((path) => ({ ...(proto as object), path, type: "dir" } as T));
+
+  const combined = [...dirEntries, ...keptFiles];
+  combined.sort((a, b) => {
+    const ta = String(a.type || "file").toLowerCase();
+    const tb = String(b.type || "file").toLowerCase();
+    const aDir = ta === "dir" || ta === "tree" || ta === "folder";
+    const bDir = tb === "dir" || tb === "tree" || tb === "folder";
+    if (aDir !== bDir) return aDir ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+
   return {
-    files: files.slice(0, REPO_FILE_TREE_SOFT_CAP),
+    files: combined,
     truncated: true,
-    originalCount: files.length,
+    originalCount,
   };
 }
 

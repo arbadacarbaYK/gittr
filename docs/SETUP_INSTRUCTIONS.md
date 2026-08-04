@@ -111,6 +111,12 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 - The UI shows this list for **both logged-in and logged-out** users (do not substitute the visitor’s localStorage sync — that caused mismatched homepage lists).
 - Warm after deploy: `curl -sS https://YOUR_DOMAIN/api/stats/recent-repos | head` (first call can take several seconds while relays respond).
 
+### Homepage “Recent Activity” / “Your recent activity”
+
+- **Logged out:** shared platform feed from the leaderboard snapshot / live Nostr scan (commits, PRs, issues, repo creates across the network).
+- **Logged in:** only activity on **repos you own or can write** (local `gittr_activities` merged with the platform feed filtered by owner/access). Title becomes **Your recent activity**.
+- Cards deep-link to the matching tab (`/pulls`, `/issues`, `/commits`, `/releases`, or a specific PR/issue id when known) and use a hard navigation to avoid soft-router crashes into heavy repo pages.
+
 ### Profile repo list (logged-out visitors)
 
 Profile pages show a **repo count** from Nostr stats, but the grid used to rely on **localStorage** only (empty for anonymous visitors). Public profiles now load repos from the server:

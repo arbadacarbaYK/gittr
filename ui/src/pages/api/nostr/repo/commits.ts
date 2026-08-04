@@ -1,11 +1,12 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { detectBareRepoDefaultBranch } from "@/lib/git/bare-repo-default-branch";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
+import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { join } from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
@@ -113,36 +114,6 @@ async function resolveReposDir(): Promise<string> {
   return reposDir || "/home/git-nostr/git-nostr-repositories";
 }
 
-/** Resolve a branch name that exists on the bare repo (HEAD, first heads/*, etc.). */
-async function detectBareRepoDefaultBranch(
-  repoPath: string
-): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync(
-      `git --git-dir="${repoPath}" symbolic-ref -q --short HEAD`,
-      { timeout: 5000 }
-    );
-    const b = stdout.trim();
-    if (b) return b;
-  } catch {
-    // detached or invalid HEAD
-  }
-  try {
-    const { stdout } = await execAsync(
-      `git --git-dir="${repoPath}" for-each-ref --format="%(refname:short)" refs/heads`,
-      { timeout: 5000 }
-    );
-    const first = stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)[0];
-    if (first) return first;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
 interface Commit {
   id: string; // commit hash
   message: string;
@@ -233,10 +204,22 @@ export default async function handler(
 
   // Use same directory resolution as other endpoints
   const reposDir = await resolveReposDir();
-  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+  const resolvedPath = resolveBridgeRepoPath(reposDir, ownerPubkey, repoName);
+  if (!resolvedPath) {
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
+  }
+  const repoPath = resolvedPath.repoPath;
 
   // Private repos: only owner/contributors may read (same ACL as SSH).
-  const access = await assertRepoReadAccess(req, ownerPubkey, repoName);
+  const access = await assertRepoReadAccess(
+    req,
+    ownerPubkey,
+    resolvedPath.repoName
+  );
   if (!access.ok) {
     return res.status(access.status).json({ error: access.error });
   }

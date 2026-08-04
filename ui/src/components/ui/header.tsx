@@ -25,14 +25,16 @@ import {
   normalizePrListStatus,
 } from "@/lib/utils/issue-pr-status";
 
+import { appNavigate } from "@/lib/utils/app-navigate";
+import { cn } from "@/lib/utils";
+
 import { ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 import { MainNav } from "../main-nav";
 
 import { Button, buttonVariants } from "./button";
-import { cn } from "@/lib/utils";
 
 const HeaderConfig = {
   mainNav: [
@@ -112,6 +114,7 @@ export function Header() {
   const { picture, name, initials, isLoggedIn } = useSession();
   const { signOut, pubkey } = useNostrContext();
   const router = useRouter();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [openIssueTotal, setOpenIssueTotal] = useState(0);
   const [openPrTotal, setOpenPrTotal] = useState(0);
@@ -191,12 +194,18 @@ export function Header() {
     [isLoggedIn, openIssueTotal, openPrTotal]
   );
 
+  const go = useCallback(
+    (href: string, e?: { preventDefault: () => void } | null) =>
+      appNavigate(href, router, pathname, e),
+    [router, pathname]
+  );
+
   const handleSignOut = useCallback(() => {
     if (signOut) {
       signOut();
-      router.push("/");
+      go("/");
     }
-  }, [router, signOut]);
+  }, [go, signOut]);
 
   // Get profile URL - use npub format if available, otherwise use 8-char prefix
   const profileUrl =
@@ -215,8 +224,7 @@ export function Header() {
             href="/new"
             className={cn(buttonVariants({ variant: "outline" }), "max-h-8 min-w-max")}
             onClick={(e) => {
-              e.preventDefault();
-              router.push("/new");
+              go("/new", e);
             }}
           >
             New
@@ -244,18 +252,14 @@ export function Header() {
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
-              <DropdownMenuItem asChild>
-                <a
-                  href={profileUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push(profileUrl);
-                  }}
-                >
-                  <DropdownMenuLabel className="cursor-pointer">
-                    {name}
-                  </DropdownMenuLabel>
-                </a>
+              <DropdownMenuItem
+                onSelect={() => {
+                  go(profileUrl);
+                }}
+              >
+                <DropdownMenuLabel className="cursor-pointer">
+                  {name}
+                </DropdownMenuLabel>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
@@ -264,32 +268,26 @@ export function Header() {
                   const href =
                     item.href === "/profile" ? profileUrl : item.href;
                   return (
-                    <DropdownMenuItem key={item.title} asChild>
-                      <a
-                        href={href}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          router.push(href);
-                        }}
-                      >
-                        {item.title}
-                      </a>
+                    <DropdownMenuItem
+                      key={item.title}
+                      onSelect={() => {
+                        go(href);
+                      }}
+                    >
+                      {item.title}
                     </DropdownMenuItem>
                   );
                 })}
                 <DropdownMenuSeparator />
 
                 {restGitInfo?.map((item) => (
-                  <DropdownMenuItem key={item.title} asChild>
-                    <a
-                      href={item.href}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        router.push(item.href);
-                      }}
-                    >
-                      {item.title}
-                    </a>
+                  <DropdownMenuItem
+                    key={item.title}
+                    onSelect={() => {
+                      go(item.href);
+                    }}
+                  >
+                    {item.title}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
@@ -315,8 +313,7 @@ export function Header() {
                 "mr-2 max-h-8 min-w-max"
               )}
               onClick={(e) => {
-                e.preventDefault();
-                router.push("/login");
+                go("/login", e);
               }}
             >
               Sign in
@@ -328,8 +325,7 @@ export function Header() {
                 "max-h-8 min-w-max"
               )}
               onClick={(e) => {
-                e.preventDefault();
-                router.push("/signup");
+                go("/signup", e);
               }}
             >
               Sign up

@@ -1,13 +1,18 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
-import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
+import {
+  resolveBridgeOwnerTempPath,
+  resolveBridgeRepoPath,
+  sanitizeBridgeRepoName,
+} from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
-import { basename, join } from "path";
+import { basename } from "path";
 import { promisify } from "util";
 
 import { mkdir, rename, rm } from "fs/promises";
@@ -126,7 +131,7 @@ export default async function handler(
   setCorsHeaders(res, req);
 
   // Rate limiting for API endpoints
-  const rateLimitResult = await rateLimiters.api(req as any);
+  const rateLimitResult = await rateLimiters.gitFetch(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
   }
@@ -152,7 +157,11 @@ export default async function handler(
 
   const repoSanitized = sanitizeBridgeRepoName(repoName);
   if (!repoSanitized) {
-    return res.status(400).json({ error: "repo is empty after normalization" });
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
   }
 
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
@@ -208,6 +217,14 @@ export default async function handler(
     });
   }
 
+  const urlSafety = await assertSafeOutboundGitUrl(normalizedCloneUrl);
+  if (!urlSafety.ok) {
+    return res.status(400).json({
+      error: "cloneUrl blocked",
+      details: urlSafety.error,
+    });
+  }
+
   // Get repository directory from environment or git-nostr-bridge config file
   let reposDir =
     process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
@@ -255,8 +272,17 @@ export default async function handler(
       : "/tmp/gitnostr/repos";
   }
 
-  // Repository path: reposDir/{ownerPubkey}/{repoName}.git
-  const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
+  // Repository path: reposDir/{ownerPubkey}/{repoName}.git (contained)
+  const resolvedPath = resolveBridgeRepoPath(
+    reposDir,
+    ownerPubkey,
+    repoSanitized
+  );
+  if (!resolvedPath) {
+    return res.status(400).json({ error: "Invalid repository path" });
+  }
+  const repoPath = resolvedPath.repoPath;
+  const parentDir = resolvedPath.ownerDir;
 
   // Private repos: only owner/contributors may trigger/inspect clones.
   const access = await assertRepoReadAccess(req, ownerPubkey, repoSanitized);
@@ -305,16 +331,20 @@ export default async function handler(
         await rm(repoPath, { recursive: true, force: true });
       }
 
-      const parentDir = join(reposDir, ownerPubkey);
+      const parentDir = resolvedPath.ownerDir;
       await mkdir(parentDir, { recursive: true });
 
       // Clone into a unique temp dir, then rename into place (atomic vs peers).
-      const tempPath = join(
+      const tempPath = resolveBridgeOwnerTempPath(
         parentDir,
-        `.${repoSanitized}.partial-${process.pid}-${Date.now()}-${Math.random()
+        repoSanitized,
+        `partial-${process.pid}-${Date.now()}-${Math.random()
           .toString(36)
           .slice(2, 8)}.git`
       );
+      if (!tempPath) {
+        throw new Error("Failed to resolve safe temp clone path");
+      }
 
       console.log(
         `🔍 Cloning repository from ${normalizedCloneUrl} to ${tempPath} → ${repoPath} (repo key: ${repoSanitized})`

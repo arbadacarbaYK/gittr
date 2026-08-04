@@ -88,6 +88,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "hourly",
       priority: 0.55,
     },
+    {
+      url: `${baseUrl}/new`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
   ];
 
   // Live Nostr + daily explore-class snapshot + optional gittr-push supplement

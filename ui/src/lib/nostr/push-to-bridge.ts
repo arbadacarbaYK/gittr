@@ -154,11 +154,12 @@ export async function pushFilesToBridge({
     let allRefs: Array<{ ref: string; commit: string }> = [];
     let lastResult: any = null;
     let authorizationHeader = "";
-
-    // Compute bridge auth once per push flow (then reuse across chunks).
-    if (!authEvent && pubkey && signer) {
+    // Prefer challenge-bound kind 24242 over a reused 30617 announcement.
+    let authEventHeader = "";
+    if (pubkey && signer) {
       const authHeaders = await getBridgeAuthHeaders(pubkey, signer);
       authorizationHeader = authHeaders.get("Authorization") || "";
+      authEventHeader = authHeaders.get("X-Nostr-Auth-Event") || "";
     }
 
     // Push chunks sequentially to avoid overwhelming the server
@@ -226,7 +227,9 @@ export async function pushFilesToBridge({
           "Content-Type": "application/json",
         };
 
-        if (authEvent) {
+        if (authEventHeader) {
+          headers["X-Nostr-Auth-Event"] = authEventHeader;
+        } else if (authEvent) {
           headers["X-Nostr-Auth-Event"] = Buffer.from(
             JSON.stringify(authEvent)
           ).toString("base64");

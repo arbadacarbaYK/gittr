@@ -171,7 +171,27 @@ function applyStatus(
   else if (event.kind === KIND_STATUS_DRAFT) status = "draft";
   else if (event.kind === KIND_STATUS_OPEN) status = "open";
 
-  rows[idx] = { ...rows[idx], status };
+  const prior = rows[idx];
+  const priorTime = prior?.lastStatusEventTime || 0;
+  const eventTime = (event.created_at || 0) * 1000;
+  if (eventTime && priorTime && eventTime < priorTime) return;
+
+  rows[idx] = {
+    ...prior,
+    status,
+    lastStatusEventTime: eventTime || priorTime,
+    lastStatusEventId: event.id,
+    ...(status === "merged"
+      ? {
+          sourcePrStillOpen: false,
+          mergedBy:
+            typeof event.pubkey === "string" && event.pubkey
+              ? event.pubkey
+              : prior.mergedBy,
+          mergedAt: prior.mergedAt || eventTime || Date.now(),
+        }
+      : {}),
+  };
   localStorage.setItem(key, JSON.stringify(rows));
   window.dispatchEvent(
     new Event(kind === "issues" ? "gittr:issue-updated" : "gittr:pr-updated")
@@ -255,7 +275,7 @@ export function startWarmRepoIssuePrFromNostr(opts: {
             {
               kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
               "#e": issueIds.slice(0, 200),
-              "#k": ["1621"],
+              // No `#k` — NIP-34 status events historically omit it; `#e` is enough.
             },
           ],
           relays,
@@ -282,7 +302,7 @@ export function startWarmRepoIssuePrFromNostr(opts: {
                 KIND_STATUS_DRAFT,
               ],
               "#e": prIds.slice(0, 200),
-              "#k": ["1618"],
+              // No `#k` — older merge status events have no k tag (NIP-34).
             },
           ],
           relays,

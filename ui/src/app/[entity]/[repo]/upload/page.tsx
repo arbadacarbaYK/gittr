@@ -1,6 +1,14 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type DragEvent,
+  use,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
@@ -11,6 +19,11 @@ import {
   loadStoredRepos,
   normalizeFilePath,
 } from "@/lib/repos/storage";
+import {
+  type StagedUploadFile,
+  mergeStagedUploads,
+  pathFromUploadFile,
+} from "@/lib/repos/upload-paths";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -18,22 +31,101 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
+type StagedFile = StagedUploadFile;
+
+function readEntries(
+  reader: FileSystemDirectoryReader
+): Promise<FileSystemEntry[]> {
+  return new Promise((resolve, reject) => {
+    const all: FileSystemEntry[] = [];
+    const readBatch = () => {
+      reader.readEntries((batch) => {
+        if (!batch.length) {
+          resolve(all);
+          return;
+        }
+        all.push(...batch);
+        readBatch();
+      }, reject);
+    };
+    readBatch();
+  });
+}
+
+async function walkEntry(
+  entry: FileSystemEntry,
+  prefix: string
+): Promise<StagedFile[]> {
+  if (entry.isFile) {
+    const fileEntry = entry as FileSystemFileEntry;
+    const file = await new Promise<File>((resolve, reject) => {
+      fileEntry.file(resolve, reject);
+    });
+    const path = normalizeFilePath(
+      prefix ? `${prefix}/${file.name}` : file.name
+    );
+    return path ? [{ file, path }] : [];
+  }
+  if (entry.isDirectory) {
+    const dirEntry = entry as FileSystemDirectoryEntry;
+    const nextPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const children = await readEntries(dirEntry.createReader());
+    const nested = await Promise.all(
+      children.map((child) => walkEntry(child, nextPrefix))
+    );
+    return nested.flat();
+  }
+  return [];
+}
+
+async function stagedFromDataTransfer(
+  dataTransfer: DataTransfer
+): Promise<StagedFile[]> {
+  const items = dataTransfer.items;
+  if (items && items.length > 0) {
+    const entries: FileSystemEntry[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i]?.webkitGetAsEntry?.();
+      if (entry) entries.push(entry);
+    }
+    if (entries.length > 0) {
+      const nested = await Promise.all(entries.map((e) => walkEntry(e, "")));
+      return nested.flat();
+    }
+  }
+  return Array.from(dataTransfer.files || []).map((file) => ({
+    file,
+    path: pathFromUploadFile(file),
+  }));
+}
+
 export default function UploadPage({
   params,
 }: {
   params: Promise<{ entity: string; repo: string }>;
 }) {
   const resolvedParams = use(params);
-  const [files, setFiles] = useState<File[]>([]);
+  const [staged, setStaged] = useState<StagedFile[]>([]);
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { pubkey } = useNostrContext();
   const { isLoggedIn } = useSession();
   const [isOwnerUser, setIsOwnerUser] = useState<boolean | null>(null);
 
-  // Check if user is owner
+  useEffect(() => {
+    // React/TS don't type webkitdirectory; set on the DOM node so Choose folder
+    // actually opens a directory picker (and keeps nested paths).
+    const el = folderInputRef.current;
+    if (!el) return;
+    el.setAttribute("webkitdirectory", "");
+    el.setAttribute("directory", "");
+    el.setAttribute("mozdirectory", "");
+  }, []);
+
   useEffect(() => {
     if (!pubkey) {
       setIsOwnerUser(false);
@@ -73,9 +165,62 @@ export default function UploadPage({
     }
   }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+  const addFromFileList = useCallback((list: FileList | File[]) => {
+    const incoming = Array.from(list).map((file) => ({
+      file,
+      path: pathFromUploadFile(file),
+    }));
+    setStaged((prev) => mergeStagedUploads(prev, incoming));
+  }, []);
+
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      const incoming = Array.from(e.target.files).map((file) => ({
+        file,
+        path: pathFromUploadFile(file),
+      }));
+      const nested = incoming.filter((s) => s.path.includes("/")).length;
+      console.log(
+        `📂 [Upload] Selected ${incoming.length} file(s), ${nested} with folder path(s)`,
+        incoming.map((s) => s.path).slice(0, 20)
+      );
+      if (
+        e.target === folderInputRef.current &&
+        incoming.length > 0 &&
+        nested === 0
+      ) {
+        setStatus(
+          "Warning: folder paths were not detected (files landed at repo root). Try Drag & drop the folder instead of Choose folder."
+        );
+      }
+      setStaged((prev) => mergeStagedUploads(prev, incoming));
+    }
+    // Allow selecting the same folder/files again
+    e.target.value = "";
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const onDragLeave = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const onDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    try {
+      const incoming = await stagedFromDataTransfer(e.dataTransfer);
+      setStaged((prev) => mergeStagedUploads(prev, incoming));
+    } catch (err) {
+      console.error("Drop failed:", err);
+      setStatus("Error: Could not read dropped files or folders");
     }
   };
 
@@ -85,8 +230,8 @@ export default function UploadPage({
       return;
     }
 
-    if (files.length === 0) {
-      setStatus("Error: Please select at least one file");
+    if (staged.length === 0) {
+      setStatus("Error: Please select at least one file or folder");
       return;
     }
 
@@ -94,16 +239,15 @@ export default function UploadPage({
     setStatus("Reading files...");
 
     try {
-      // Read all files
       const fileData: Array<{
         path: string;
         content: string;
         type: string;
         isBinary: boolean;
       }> = [];
-      for (const file of files) {
+      for (const { file, path } of staged) {
         const { content, isBinary } = await readFileContent(file);
-        const normalizedPath = normalizeFilePath(file.name);
+        const normalizedPath = normalizeFilePath(path);
         if (normalizedPath) {
           fileData.push({
             path: normalizedPath,
@@ -120,7 +264,6 @@ export default function UploadPage({
         return;
       }
 
-      // If user is owner, add files directly to repo (immediate display)
       if (isOwnerUser) {
         const success = addFilesToRepo(
           resolvedParams.entity,
@@ -141,7 +284,6 @@ export default function UploadPage({
           setUploading(false);
         }
       } else {
-        // Non-owners: Add as pending uploads (requires PR)
         for (const file of fileData) {
           addPendingUpload(resolvedParams.entity, resolvedParams.repo, pubkey, {
             path: file.path,
@@ -167,19 +309,12 @@ export default function UploadPage({
     }
   };
 
-  /**
-   * Read file content - handles both text and binary files
-   * Returns: { content: string, isBinary: boolean }
-   * - Text files: content is the text string
-   * - Binary files: content is base64-encoded string
-   */
   const readFileContent = (
     file: File
   ): Promise<{ content: string; isBinary: boolean }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
 
-      // Detect if file is binary by extension or MIME type
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       const textExts = [
         "txt",
@@ -312,8 +447,6 @@ export default function UploadPage({
         }
 
         if (isBinary) {
-          // For binary files, readAsDataURL gives us "data:image/png;base64,..."
-          // We need to extract just the base64 part
           if (typeof result === "string") {
             const base64 = result.includes(",")
               ? result.split(",")[1] || result
@@ -327,7 +460,6 @@ export default function UploadPage({
             reject(new Error("Failed to read binary file"));
           }
         } else {
-          // For text files, result is the text string
           const textContent =
             typeof result === "string" ? result : String(result);
           resolve({ content: textContent, isBinary: false });
@@ -336,14 +468,14 @@ export default function UploadPage({
       reader.onerror = reject;
 
       if (isBinary) {
-        reader.readAsDataURL(file); // For binary files, use readAsDataURL
+        reader.readAsDataURL(file);
       } else {
-        reader.readAsText(file); // For text files, use readAsText
+        reader.readAsText(file);
       }
     });
   };
 
-  const canUpload = !uploading && files.length > 0;
+  const canUpload = !uploading && staged.length > 0;
 
   return (
     <div className="container mx-auto max-w-4xl p-6 text-[var(--color-text-primary)]">
@@ -356,15 +488,25 @@ export default function UploadPage({
         </Link>
       </div>
 
-      <h1 className="text-2xl font-bold mb-4">Upload files</h1>
+      <h1 className="text-2xl font-bold mb-4">Upload files & folders</h1>
 
       <div className="space-y-4">
         <div>
           <label className="mb-2 block text-[var(--color-text-primary)]">
-            Select files
+            Add files or folders
           </label>
-          <div className="relative flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-dark)] px-3 py-3">
-            {/* Native file control ignores theme; keep it off-screen and drive a themed button. */}
+
+          <div
+            onDragEnter={onDragOver}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className={`relative rounded-lg border-2 border-dashed px-4 py-10 text-center transition-colors ${
+              dragOver
+                ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10"
+                : "border-[var(--color-border)] bg-[var(--color-bg-dark)]"
+            }`}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -374,47 +516,101 @@ export default function UploadPage({
               aria-hidden="true"
               className="pointer-events-none absolute h-px w-px -m-px overflow-hidden whitespace-nowrap border-0 p-0 opacity-0"
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5 text-sm font-medium text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]"
-            >
-              Choose files
-            </button>
-            <span className="text-sm text-[var(--color-text-secondary)]">
-              {files.length === 0
-                ? "No files selected"
-                : `${files.length} file${files.length === 1 ? "" : "s"} selected`}
-            </span>
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              onChange={handleFileSelect}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="pointer-events-none absolute h-px w-px -m-px overflow-hidden whitespace-nowrap border-0 p-0 opacity-0"
+            />
+            <p className="mb-1 text-base font-medium text-[var(--color-text-primary)]">
+              Drag & drop files or folders here
+            </p>
+            <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
+              Nested folders keep their paths (e.g.{" "}
+              <code className="text-xs">src/app/page.tsx</code>)
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5 text-sm font-medium text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]"
+              >
+                Choose files
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const el = folderInputRef.current;
+                  if (!el) return;
+                  el.setAttribute("webkitdirectory", "");
+                  el.setAttribute("directory", "");
+                  el.setAttribute("mozdirectory", "");
+                  el.click();
+                }}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5 text-sm font-medium text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]"
+              >
+                Choose folder
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+              {staged.length === 0
+                ? "Nothing selected yet"
+                : (() => {
+                    const nested = staged.filter((s) =>
+                      s.path.includes("/")
+                    ).length;
+                    return `${staged.length} file${
+                      staged.length === 1 ? "" : "s"
+                    } ready${
+                      nested > 0
+                        ? ` (${nested} with folder path${
+                            nested === 1 ? "" : "s"
+                          })`
+                        : ""
+                    }`;
+                  })()}
+            </p>
           </div>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            You can select multiple files.
+
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
             {isOwnerUser && (
               <span className="mt-1 block text-green-400">
-                ✓ You are the owner - files will be added directly (no PR
-                needed)
+                ✓ You are the owner — files are added directly (no PR needed)
               </span>
             )}
             {isOwnerUser === false && (
               <span className="mt-1 block text-yellow-400">
-                ⚠ You are not the owner - files will require a Pull Request
+                ⚠ You are not the owner — files will require a Pull Request
               </span>
             )}
           </p>
         </div>
 
-        {files.length > 0 && (
+        {staged.length > 0 && (
           <div>
-            <h3 className="mb-2 font-semibold">
-              Selected files ({files.length}):
-            </h3>
-            <ul className="list-inside list-disc space-y-1">
-              {files.map((file, idx) => (
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="font-semibold">Selected ({staged.length}):</h3>
+              <button
+                type="button"
+                onClick={() => setStaged([])}
+                className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent-primary)]"
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="max-h-64 list-inside list-disc space-y-1 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-dark)] p-3">
+              {staged.map((item) => (
                 <li
-                  key={`${file.name}-${idx}`}
-                  className="text-[var(--color-text-secondary)]"
+                  key={item.path}
+                  className="font-mono text-sm text-[var(--color-text-secondary)]"
                 >
-                  {file.name} ({(file.size / 1024).toFixed(2)} KB)
+                  {item.path}{" "}
+                  <span className="font-sans text-xs opacity-70">
+                    ({(item.file.size / 1024).toFixed(2)} KB)
+                  </span>
                 </li>
               ))}
             </ul>
@@ -432,7 +628,7 @@ export default function UploadPage({
                 : "cursor-not-allowed rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 font-medium text-[var(--color-text-secondary)]"
             }
           >
-            {uploading ? "Uploading..." : "Upload files"}
+            {uploading ? "Uploading..." : "Upload"}
           </button>
           <Link
             href={`/${resolvedParams.entity}/${resolvedParams.repo}`}

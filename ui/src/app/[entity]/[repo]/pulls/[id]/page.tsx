@@ -47,6 +47,7 @@ import {
   type StoredContributor,
   type StoredRepo,
   loadRepoOverrides,
+  loadRepoFiles,
   loadStoredRepos,
   saveRepoFiles,
   saveRepoOverrides,
@@ -788,9 +789,16 @@ export default function PRDetailPage({
           if (!repoRecord.entity) {
             repoRecord.entity = resolvedParams.entity;
           }
-          const existingFiles: RepoFileEntry[] = Array.isArray(repoRecord.files)
-            ? [...repoRecord.files]
-            : [];
+          const indexedFiles = loadRepoFiles(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const existingFiles: RepoFileEntry[] =
+            indexedFiles.length > 0
+              ? [...indexedFiles]
+              : Array.isArray(repoRecord.files)
+                ? [...repoRecord.files]
+                : [];
           const fileMap = new Map<string, RepoFileEntry>();
           existingFiles.forEach((fileEntry) =>
             fileMap.set(fileEntry.path, fileEntry)
@@ -971,6 +979,7 @@ export default function PRDetailPage({
                         ["p", ownerPubkeyHex],
                         ["p", pr.author],
                         ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
+                        ["k", "1618"],
                         ["merge-commit", commitId],
                         ["r", commitId],
                       ],
@@ -989,6 +998,7 @@ export default function PRDetailPage({
                         ownerPubkey: ownerPubkeyHex,
                         rootEventAuthor: pr.author,
                         repoName: resolvedParams.repo,
+                        rootKind: 1618,
                         mergeCommitId: commitId,
                         content: `Merged PR #${pr.id}`,
                       },

@@ -552,7 +552,9 @@ export default async function handler(
     return res.status(200).json({ ok: true, consumed });
   }
 
-  const auth = await verifyNostrAuth(req);
+  const auth = await verifyNostrAuth(req, {
+    expectedRepo: typeof repo === "string" ? repo : undefined,
+  });
   if (!auth.authorized || !auth.pubkey) {
     return res
       .status(401)

@@ -267,8 +267,8 @@ When deploying to production (Vercel, Railway, Render, etc.):
 | `GITHUB_CLIENT_ID` | `ui/.env.local` | ✅ Yes | GitHub OAuth App ID |
 | `GITHUB_CLIENT_SECRET` | `ui/.env.local` | ✅ Yes | GitHub OAuth App Secret |
 | `GITHUB_REDIRECT_URI` | `ui/.env.local` | ❌ No | Custom callback URL |
-| `LNBITS_URL` | `ui/.env.local` | ❌ No | Default LNbits instance |
-| `LNBITS_ADMIN_KEY` | `ui/.env.local` | ❌ No | Default LNbits admin key |
+| `LNBITS_URL` | `ui/.env.local` | ❌ No | Optional default LNbits instance URL (must be public HTTPS; private/LAN blocked) |
+| `LNBITS_ADMIN_KEY` | — | ❌ Unused | **Do not set.** Payment routes require the user’s key from Settings → Account (no server-key fallback) |
 | `NEXT_PUBLIC_PLATFORM_PUBKEY` | `ui/.env.local` | ❌ No | Platform Nostr pubkey for NIP-05 verification |
 | `BLOSSOM_URL` | `/.env` (root) | ❌ No | Blossom storage (backend only) |
 | `RELAYS` | `/.env` (root) | ❌ No | Default Nostr relays |

@@ -1763,6 +1763,18 @@ export default function RepoLayoutClient({
                 <Link
                   className="text-[var(--color-text-primary)] hover:underline font-semibold"
                   href={getRepoLink()}
+                  onClick={(e) => {
+                    // Already on Code: soft-nav to same URL is a no-op, but the
+                    // file browser may still be in a subfolder (?path= / currentPath).
+                    if (!isCodeTabActive) return;
+                    e.preventDefault();
+                    const href = getRepoLink("", false);
+                    window.dispatchEvent(
+                      new CustomEvent("gittr:repo-code-root", {
+                        detail: { href },
+                      })
+                    );
+                  }}
                 >
                   {decodeURIComponent(resolvedParams.repo)}
                 </Link>

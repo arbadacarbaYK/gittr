@@ -1,5 +1,6 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import {
   normalizeGitCloneUrl,
   parseOwnerRepoFromGitUrl,
@@ -291,6 +292,14 @@ export default async function handler(
       status: "invalid_url",
       message:
         "Invalid git URL. Use a full HTTPS or SSH URL (e.g. https://gitlab.com/group/repo).",
+    });
+  }
+
+  const urlSafety = await assertSafeOutboundGitUrl(sourceUrl);
+  if (!urlSafety.ok) {
+    return res.status(400).json({
+      status: "blocked_url",
+      message: urlSafety.error,
     });
   }
 

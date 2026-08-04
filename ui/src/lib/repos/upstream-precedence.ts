@@ -28,6 +28,19 @@ export function hasGithubUpstreamMirror(
   return url.includes("github.com");
 }
 
+/** GitHub / GitLab.com / Codeberg — not GRASP or home http://IP clones. */
+export function hasForgeUpstreamMirror(
+  ...candidates: Array<string | undefined | null>
+): boolean {
+  const url = resolveUpstreamSourceUrl(...candidates).toLowerCase();
+  if (!url) return false;
+  return (
+    url.includes("github.com") ||
+    url.includes("gitlab.com") ||
+    url.includes("codeberg.org")
+  );
+}
+
 export function resolveRepoUpstreamSource(
   repo:
     | {
@@ -60,7 +73,11 @@ export function shouldPreferUpstreamMirror(
   return isNostrEntityRoute(entity ?? "");
 }
 
-/** README / About text from GitHub — even when the file tree has unpushed local edits. */
+/**
+ * README / About from a real forge — not GRASP-only or home LAN clones.
+ * Previously returned true for every npub route, which made README hammer
+ * unreachable http://IP:port clones (400) and wrong default branches before bridge.
+ */
 export function shouldPreferUpstreamContent(
   entity: string | undefined | null,
   opts: {
@@ -69,11 +86,9 @@ export function shouldPreferUpstreamContent(
     clone?: string[] | null;
   }
 ): boolean {
+  void entity;
   const clones = Array.isArray(opts.clone) ? opts.clone : [];
-  if (hasGithubUpstreamMirror(opts.sourceUrl, opts.forkedFrom, ...clones)) {
-    return true;
-  }
-  return isNostrEntityRoute(entity ?? "");
+  return hasForgeUpstreamMirror(opts.sourceUrl, opts.forkedFrom, ...clones);
 }
 
 export function sourceTreeFreshStorageKey(

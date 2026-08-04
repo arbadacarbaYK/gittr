@@ -1900,7 +1900,6 @@ export default function EntityPage({
                     {
                       kinds: [KIND_STATUS_APPLIED],
                       "#a": repoIdentifiers,
-                      "#k": ["1618"], // Only PR status events
                       limit: 1000,
                     },
                     // Issue events (kind 1621) for this user's repos
@@ -1913,7 +1912,6 @@ export default function EntityPage({
                     {
                       kinds: [KIND_STATUS_CLOSED],
                       "#a": repoIdentifiers,
-                      "#k": ["1621"], // Only issue status events
                       limit: 1000,
                     },
                   ];

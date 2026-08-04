@@ -208,6 +208,19 @@ export const rateLimiters = {
     windowMs: 60000, // 1 minute
   }),
 
+  // GitHub proxy: Code page fires many parallel meta/tree/issues calls.
+  // Separate bucket so it does not starve clone listing (and vice versa).
+  githubProxy: rateLimit({
+    maxRequests: 400,
+    windowMs: 60000, // 1 minute per IP
+  }),
+
+  // Shallow clone / file listing — expensive; keep tighter than githubProxy
+  gitFetch: rateLimit({
+    maxRequests: 60,
+    windowMs: 60000,
+  }),
+
   // Tight limits for bridge push (prevent repo spam & disk abuse)
   push: rateLimit({
     maxRequests: 10,

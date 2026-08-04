@@ -12,6 +12,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
+import {
+  getActivityDeepPath,
+  getActivityIcon as activityIconForType,
+  getActivityLabel,
+} from "@/lib/activity-links";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   type Metadata,
@@ -26,6 +31,7 @@ import {
   type PlatformRecentRepo,
   type RepoStats,
   type UserStats,
+  activityOnUsersRepo,
   getLatestBounties,
   getOpenBounties,
   getOwnBountyStats,
@@ -574,23 +580,44 @@ export default function HomePage({
     };
   }, [pubkey]); // Personal stats only; leaderboard is loadPlatformLeaderboard()
 
-  // Prefer the shared platform feed so Firefox/Brave/etc. show the same homepage activity
-  // (local gittr_activities differs per browser and used to make Recent Activity look "random").
+  // Logged-in: activity on YOUR repos only (local + filtered platform).
+  // Logged-out: shared global platform feed (same across browsers).
   const displayRecentActivity = useMemo((): Activity[] => {
+    const mapPlatform = (a: PlatformRecentActivity): Activity => ({
+      id: a.id,
+      type: a.type,
+      timestamp: a.timestamp,
+      user: a.user,
+      entity: a.entity,
+      repo: a.repo,
+      repoName: a.repoName,
+      metadata: a.metadata,
+    });
+
+    if (pubkey) {
+      let repos: any[] = [];
+      try {
+        repos = loadStoredRepos();
+      } catch {
+        repos = [];
+      }
+      const fromPlatform = platformRecentActivities
+        .filter((a) => activityOnUsersRepo(a, pubkey, repos))
+        .map(mapPlatform);
+      const byId = new Map<string, Activity>();
+      for (const a of [...fromPlatform, ...recentActivity]) {
+        byId.set(a.id, a);
+      }
+      return Array.from(byId.values())
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 12);
+    }
+
     if (platformRecentActivities.length > 0) {
-      return platformRecentActivities.map((a) => ({
-        id: a.id,
-        type: a.type,
-        timestamp: a.timestamp,
-        user: a.user,
-        entity: a.entity,
-        repo: a.repo,
-        repoName: a.repoName,
-        metadata: a.metadata,
-      }));
+      return platformRecentActivities.map(mapPlatform);
     }
     return recentActivity;
-  }, [recentActivity, platformRecentActivities]);
+  }, [recentActivity, platformRecentActivities, pubkey]);
 
   // Get metadata for user avatars (stats)
   const userPubkeys = useMemo(
@@ -1602,75 +1629,25 @@ export default function HomePage({
       {(statsLoaded || displayRecentActivity.length > 0) && (
         <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
           <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
-            Recent Activity
+            {pubkey ? "Your recent activity" : "Recent Activity"}
           </h3>
           {displayRecentActivity.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               {displayRecentActivity.slice(0, 12).map((activity) => {
-                const getActivityIcon = () => {
-                  switch (activity.type) {
-                    case "pr_merged":
-                      return "🔀";
-                    case "commit_created":
-                      // Platform feed uses repo state events as commit_created; package reads clearer than the note.
-                      return "📦";
-                    case "repo_zapped":
-                      return "⚡";
-                    case "issue_created":
-                      return "📌";
-                    case "release_created":
-                      return "🏷️";
-                    case "repo_created":
-                      return "📦";
-                    case "repo_imported":
-                      return "⬇️";
-                    case "bounty_claimed":
-                      return "💰";
-                    default:
-                      return "•";
-                  }
-                };
-
-                const getActivityText = () => {
-                  switch (activity.type) {
-                    case "pr_merged":
-                      return `Merged PR in ${
-                        activity.repoName || activity.repo
-                      }`;
-                    case "commit_created":
-                      return `New commit in ${
-                        activity.repoName || activity.repo
-                      }`;
-                    case "repo_zapped":
-                      return `Zapped ${activity.repoName || activity.repo}`;
-                    case "issue_created":
-                      return `New issue in ${
-                        activity.repoName || activity.repo
-                      }`;
-                    case "release_created":
-                      return `Release in ${activity.repoName || activity.repo}`;
-                    case "repo_created":
-                      return `Created ${activity.repoName || activity.repo}`;
-                    case "repo_imported":
-                      return `Imported ${activity.repoName || activity.repo}`;
-                    case "bounty_claimed":
-                      return `Bounty claimed in ${
-                        activity.repoName || activity.repo
-                      }`;
-                    default:
-                      return `${activity.type} in ${
-                        activity.repoName || activity.repo
-                      }`;
-                  }
-                };
-
+                const repoLabel = activity.repoName || activity.repo || "repo";
+                const deep = getActivityDeepPath(activity);
+                const repoNameOnly =
+                  (activity.repoName ||
+                    activity.repo?.split("/").pop() ||
+                    activity.repo ||
+                    "").trim();
                 const href =
-                  activity.entity && activity.repo
+                  activity.entity && repoNameOnly
                     ? getRepoUrl(
                         activity.entity,
-                        activity.repo.split("/").pop() || activity.repo
+                        deep ? `${repoNameOnly}${deep}` : repoNameOnly
                       )
-                    : "#";
+                    : "";
 
                 // Use mounted state to prevent hydration mismatch
                 const timeAgo = mounted
@@ -1687,18 +1664,28 @@ export default function HomePage({
                   : `${Math.floor(timeAgo / 1440)}d ago`;
 
                 return (
-                  <Link
+                  <a
                     key={activity.id}
-                    href={href}
+                    href={href || undefined}
+                    onClick={(e) => {
+                      if (!href) {
+                        e.preventDefault();
+                        return;
+                      }
+                      // Hard nav — soft Link into heavy repo trees was throwing
+                      // "Cannot read properties of undefined (reading 'call')".
+                      e.preventDefault();
+                      window.location.assign(href);
+                    }}
                     className="block rounded p-3 border border-[var(--color-border)] transition-colors hover:bg-[var(--color-bg-secondary)]"
                   >
                     <div className="flex items-start gap-2">
                       <span className="text-base flex-shrink-0 text-[var(--color-text-secondary)]">
-                        {getActivityIcon()}
+                        {activityIconForType(activity.type)}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-[var(--color-text-primary)] truncate">
-                          {getActivityText()}
+                          {getActivityLabel(activity.type, repoLabel)}
                         </div>
                         <div
                           className="text-xs text-[var(--color-text-secondary)] mt-1"
@@ -1708,13 +1695,16 @@ export default function HomePage({
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </a>
                 );
               })}
             </div>
           ) : (
             <div className="text-[var(--color-text-secondary)]">
-              {!lbRecentActivitiesReady && platformRecentActivities.length === 0
+              {pubkey
+                ? "No recent activity on your repos yet."
+                : !lbRecentActivitiesReady &&
+                  platformRecentActivities.length === 0
                 ? "Loading recent activity..."
                 : "No recent activity yet."}
             </div>

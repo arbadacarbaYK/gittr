@@ -1,4 +1,6 @@
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertSafeGitHubApiEndpoint } from "@/lib/security/safe-remote-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -8,19 +10,23 @@ import type { NextApiRequest, NextApiResponse } from "next";
  * This allows 5000 requests/hour instead of 60/hour (per IP)
  *
  * Endpoint: GET /api/github/proxy?endpoint=/repos/owner/repo/...
+ * Only allowlisted relative paths are accepted (no open proxy).
  */
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res, req);
     return;
   }
 
-  // Set CORS headers
   setCorsHeaders(res, req);
+
+  const rateLimitResult = await rateLimiters.githubProxy(req as any);
+  if (rateLimitResult) {
+    return res.status(429).json(JSON.parse(await rateLimitResult.text()));
+  }
 
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -32,39 +38,40 @@ export default async function handler(
     return res.status(400).json({ error: "endpoint parameter is required" });
   }
 
+  const endpointCheck = assertSafeGitHubApiEndpoint(endpoint);
+  if (!endpointCheck.ok) {
+    return res.status(400).json({
+      error: "endpoint not allowed",
+      details: endpointCheck.error,
+    });
+  }
+
   // SECURITY: Platform token should ONLY have 'public_repo' scope, NOT 'repo' scope
-  // Using 'repo' scope would allow the server to access ANY user's private repos - major security issue!
-  // This token is only used for:
-  // 1. Public repos (rate limit increase: 60/hour → 5000/hour)
-  // 2. User profile lookups (public data)
-  // For private repos, users should use their own tokens or rely on the bridge (files pushed during import)
   const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
 
   try {
-    const url = `https://api.github.com${
-      endpoint.startsWith("/") ? endpoint : `/${endpoint}`
-    }`;
+    const url = `https://api.github.com${endpointCheck.path}`;
 
     const headers: Record<string, string> = {
       "User-Agent": "gittr-space",
       Accept: "application/vnd.github.v3+json",
     };
 
-    // Use platform token if available (increases rate limit from 60 to 5000/hour)
     if (platformToken) {
       headers["Authorization"] = `Bearer ${platformToken}`;
     }
 
-    const response = await fetch(url, { headers: headers as any });
+    const response = await fetch(url, {
+      headers: headers as any,
+      redirect: "error",
+    });
 
-    // Forward response
     const data = await response.text();
     const contentType =
       response.headers.get("content-type") || "application/json";
 
     res.setHeader("Content-Type", contentType);
 
-    // Forward rate limit headers for debugging
     const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
     const rateLimitReset = response.headers.get("x-ratelimit-reset");
     if (rateLimitRemaining) {
@@ -79,7 +86,6 @@ export default async function handler(
         `❌ [GitHub Proxy] GitHub API returned error ${response.status}:`,
         data.substring(0, 200)
       );
-    } else {
     }
 
     return res.status(response.status).send(data);

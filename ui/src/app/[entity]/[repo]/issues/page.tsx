@@ -502,7 +502,7 @@ export default function RepoIssuesPage({
           {
             kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
             "#e": issueEventIds,
-            "#k": ["1621"], // Only issue status events (not PR status events)
+            // No `#k` — NIP-34 status events historically omit it; `#e` scopes to issues.
           },
         ];
 

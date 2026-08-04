@@ -5,6 +5,7 @@ import {
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
+import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
@@ -325,8 +326,26 @@ export default async function handler(
     });
   }
 
+  if (!repoName || typeof repoName !== "string") {
+    return res.status(400).json({ error: "repo is required" });
+  }
+
+  const reposDir = await resolveReposDir();
+  const resolvedRepo = resolveBridgeRepoPath(reposDir, ownerPubkey, repoName);
+  if (!resolvedRepo) {
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+    });
+  }
+  const safeRepoName = resolvedRepo.repoName;
+  const repoPath = resolvedRepo.repoPath;
+
   // CRITICAL: Verify Nostr authentication before processing push
-  const authResult = await verifyNostrAuth(req);
+  const authResult = await verifyNostrAuth(req, {
+    expectedRepo: safeRepoName,
+  });
   if (!authResult.authorized) {
     console.warn(
       `🚫 [Bridge Push] Unauthorized push attempt: ${authResult.error}`
@@ -335,8 +354,8 @@ export default async function handler(
       error: "Authentication required",
       details: authResult.error,
       auth_methods: [
-        "Authorization: Nostr <base64-signed-challenge> (NIP-98)",
-        "X-Nostr-Pubkey + X-Nostr-Signature headers",
+        "X-Nostr-Auth-Event: base64(kind 24242 with server challenge tag)",
+        "X-Nostr-Auth-Event: base64(kind 30617) with matching d tag (same-session push)",
       ],
     });
   }
@@ -396,12 +415,8 @@ export default async function handler(
     `✅ [Bridge Push] Authenticated push: pubkey=${authResult.pubkey?.slice(
       0,
       8
-    )}..., owner=${ownerPubkey.slice(0, 8)}..., repo=${repoName}`
+    )}..., owner=${ownerPubkey.slice(0, 8)}..., repo=${safeRepoName}`
   );
-
-  if (!repoName || typeof repoName !== "string") {
-    return res.status(400).json({ error: "repo is required" });
-  }
 
   // Optional push paywall enforcement (if bridge policy exists for this repo).
   const bridgeDbPath = resolveBridgeDbPath();
@@ -410,13 +425,13 @@ export default async function handler(
     paywallPushCostSats = await getRepoPushPolicy(
       bridgeDbPath,
       ownerPubkey,
-      repoName
+      safeRepoName
     );
     if (paywallPushCostSats > 0) {
       const hasGrant = await hasPaidPushIntent(
         bridgeDbPath,
         ownerPubkey,
-        repoName,
+        safeRepoName,
         authResult.pubkey!.toLowerCase()
       );
       if (!hasGrant) {
@@ -451,13 +466,10 @@ export default async function handler(
       ? commitDate
       : Math.floor(Date.now() / 1000);
 
-  const reposDir = await resolveReposDir();
-  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
-
   // CRITICAL: Log bridge push parameters for debugging
   console.log(`📤 [Bridge Push] Starting push:`, {
     ownerPubkey: ownerPubkey ? `${ownerPubkey.substring(0, 8)}...` : "none",
-    repoName,
+    repoName: safeRepoName,
     branch,
     filesCount: files.length,
     commitTimestamp,
@@ -469,6 +481,9 @@ export default async function handler(
     filesWithoutContent: files.filter(
       (f: any) => !f.content || f.content.length === 0
     ).length,
+    pathsSample: (files as IncomingFile[])
+      .slice(0, 30)
+      .map((f) => (typeof f?.path === "string" ? f.path : "?")),
   });
 
   let tempDir: string | null = null;
@@ -476,7 +491,7 @@ export default async function handler(
   const isChunked = totalChunks && totalChunks > 1;
 
   try {
-    await execAsync(`mkdir -p "${join(reposDir, ownerPubkey)}"`);
+    await execAsync(`mkdir -p "${resolvedRepo.ownerDir}"`);
     if (!existsSync(repoPath)) {
       await execAsync(`git init --bare "${repoPath}"`);
       // CRITICAL: Set HEAD to the branch we'll push (usually "main")
@@ -911,7 +926,7 @@ export default async function handler(
       await consumeSingleUsePaidIntent(
         bridgeDbPath,
         ownerPubkey,
-        repoName,
+        safeRepoName,
         authResult.pubkey!.toLowerCase()
       );
     }

@@ -1,4 +1,4 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
 import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -13,12 +13,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "GET") {
     return res.status(405).json({ status: "method_not_allowed" });

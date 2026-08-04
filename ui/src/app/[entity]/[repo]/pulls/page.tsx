@@ -596,8 +596,9 @@ export default function RepoPullsPage({
               KIND_STATUS_CLOSED,
               KIND_STATUS_DRAFT,
             ],
+            // Scoped by PR event ids — do NOT require `#k` (NIP-34 status has no
+            // required k tag; filtering on it made merges look OPEN forever).
             "#e": prEventIds,
-            "#k": ["1618"], // Only PR status events (not issue status events)
           },
         ];
 
@@ -642,7 +643,15 @@ export default function RepoPullsPage({
                   lastStatusEventTime: event.created_at * 1000,
                   lastStatusEventId: event.id,
                   ...(newStatus === "merged"
-                    ? { sourcePrStillOpen: false }
+                    ? {
+                        sourcePrStillOpen: false,
+                        mergedBy:
+                          typeof event.pubkey === "string" && event.pubkey
+                            ? event.pubkey
+                            : currentPR.mergedBy,
+                        mergedAt:
+                          currentPR.mergedAt || event.created_at * 1000,
+                      }
                     : {}),
                 };
                 localStorage.setItem(prStorageKey, JSON.stringify(prs));

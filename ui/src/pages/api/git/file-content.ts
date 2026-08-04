@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { normalizeSiteUrl } from "@/lib/utils/public-site-url";
 
@@ -56,6 +57,17 @@ export default async function handler(
   const sourceUrl = normalizeGithubSourceUrl(sourceUrlParam);
   if (!sourceUrl) {
     return res.status(400).json({ error: "sourceUrl is required" });
+  }
+
+  const urlSafety = await assertSafeOutboundGitUrl(sourceUrl, {
+    // file-content also serves raw forge URLs; still require repo-shaped path
+    requireRepoPath: true,
+  });
+  if (!urlSafety.ok) {
+    return res.status(400).json({
+      error: "sourceUrl blocked",
+      details: urlSafety.error,
+    });
   }
 
   if (!filePath || typeof filePath !== "string") {
