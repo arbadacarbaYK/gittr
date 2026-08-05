@@ -30,6 +30,7 @@ import {
   wouldWipeFollowList,
   uniqContactPubkeys,
 } from "@/lib/nostr/contact-list";
+import { useProfileFollowCounts } from "@/lib/nostr/useProfileFollowCounts";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   KIND_ISSUE,
@@ -340,6 +341,27 @@ export default function EntityPage({
   /** Shown when follow would risk wiping an unloaded contact list (Enter = dismiss / cancel). */
   const [followListRiskOpen, setFollowListRiskOpen] = useState(false);
   const followRiskCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  const profileFollowCounts = useProfileFollowCounts(
+    fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)
+      ? fullPubkeyForMeta
+      : null,
+    subscribe,
+    defaultRelays
+  );
+  /** Optimistic bump after Follow/Unfollow before relays refresh. */
+  const [followersOverride, setFollowersOverride] = useState<number | null>(
+    null
+  );
+  const displayFollowers =
+    followersOverride !== null
+      ? followersOverride
+      : profileFollowCounts.followers;
+
+  // Reset optimistic override when switching profiles.
+  useEffect(() => {
+    setFollowersOverride(null);
+  }, [fullPubkeyForMeta]);
 
   // CRITICAL: Only fetch metadata if we have a valid 64-char pubkey
   // Don't wait for isPubkey - if we have a full pubkey, fetch metadata immediately
@@ -3156,6 +3178,15 @@ export default function EntityPage({
       rememberContactList(signerPubkey, newContacts, {
         allowShrink: wasFollowing && newContacts.length < currentContacts.length,
       });
+      setFollowersOverride((prev) => {
+        const base =
+          prev !== null
+            ? prev
+            : profileFollowCounts.followers !== null
+              ? profileFollowCounts.followers
+              : 0;
+        return wasFollowing ? Math.max(0, base - 1) : base + 1;
+      });
 
       console.log(
         `✅ ${
@@ -3450,6 +3481,30 @@ export default function EntityPage({
                   {userRepos.length}
                 </span>
               </div>
+              <Tooltip
+                content="People this account follows (NIP-02 contact list). Useful for Web of Trust / legitimacy."
+                mobileClickable
+              >
+                <div className="flex items-center gap-2 cursor-help">
+                  <span className="text-gray-400">Following</span>
+                  <span className="text-blue-400 font-semibold">
+                    {profileFollowCounts.following === null
+                      ? "…"
+                      : profileFollowCounts.following}
+                  </span>
+                </div>
+              </Tooltip>
+              <Tooltip
+                content="Accounts whose follow list includes this profile, as seen on your relays (lower bound — not a global total)."
+                mobileClickable
+              >
+                <div className="flex items-center gap-2 cursor-help">
+                  <span className="text-gray-400">Followers</span>
+                  <span className="text-pink-400 font-semibold">
+                    {displayFollowers === null ? "…" : displayFollowers}
+                  </span>
+                </div>
+              </Tooltip>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Pushes</span>
                 <span className="text-green-400 font-semibold">

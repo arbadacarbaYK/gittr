@@ -17,6 +17,19 @@ If the public oracle returns **502**, older code treated that like “no path”
 
 Now: HTTP/network failure → **Distance unknown**. Confirmed null hops from a healthy oracle → **Outside your network**. Direct follows still win first from kind-3 + local backup (even when the oracle is down).
 
+## Public follow counts (profile legitimacy)
+
+On every public profile (`/{npub}`), gittr shows **Following** and **Followers** in the stats row (visible logged out):
+
+| Stat | Source |
+|------|--------|
+| **Following** | That profile’s NIP-02 kind **3** contact list (`p` tags, union across relays) |
+| **Followers** | Distinct authors of kind **3** events that tag this pubkey (`#p`), using each author’s **newest** list so unfollows drop off |
+
+Follower totals are **relay-dependent lower bounds**, not a global census — still useful for WoT-style legitimacy next to repos. Tooltips explain this. The logged-in **TrustBadge** (hops from *you*) remains separate.
+
+Code: `ui/src/lib/nostr/useProfileFollowCounts.ts`, helpers in `contact-list.ts`.
+
 ## Data sources (priority)
 
 1. **Your kind-3 follow list** — direct follows (`hops: 1` → **In your network**). Uses the same local backup/session as the Follow button, plus a multi-event relay fetch (`limit: 20`, tags + JSON content). A successful Follow immediately refreshes the badge (no oracle wait).

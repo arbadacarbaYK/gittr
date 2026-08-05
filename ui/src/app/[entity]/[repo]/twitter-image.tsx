@@ -1,5 +1,5 @@
-// Declare locally so Next.js recognizes `runtime` (re-exported const is ignored).
-// Cache-bust bump with larger corner pic (220px, v4).
+// Declare locally so Next.js recognizes route config (re-exported const is ignored).
 export const runtime = "nodejs";
+export const revalidate = 3600;
 export { alt, contentType, size } from "./opengraph-image";
 export { default } from "./opengraph-image";

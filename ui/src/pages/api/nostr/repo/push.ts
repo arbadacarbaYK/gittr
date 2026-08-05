@@ -257,7 +257,9 @@ export default async function handler(
     chunkIndex,
     totalChunks,
     pushSessionId,
+    allowTreeShrink: allowTreeShrinkRaw,
   } = req.body || {};
+  const allowTreeShrink = allowTreeShrinkRaw === true;
 
   // CRITICAL: Support hex pubkey (64-char), npub format (NIP-19), and NIP-05
   // The bridge stores repos by hex pubkey in filesystem, so we resolve to hex
@@ -488,7 +490,11 @@ export default async function handler(
 
   let tempDir: string | null = null;
   const missingFiles: string[] = [];
-  const isChunked = totalChunks && totalChunks > 1;
+  const isChunked = Boolean(totalChunks && totalChunks > 1);
+  // Single-chunk pushes still send pushSessionId + totalChunks:1. Previously we
+  // only cloned the existing bare repo when totalChunks > 1, so a partial
+  // 3-file push force-wiped folders (e.g. scripts/). Always seed when a bare
+  // repo already exists.
 
   try {
     await execAsync(`mkdir -p "${resolvedRepo.ownerDir}"`);
@@ -534,6 +540,29 @@ export default async function handler(
     // This avoids cloning the repo for each chunk (which gets slower as repo grows)
     const isFirstChunk = !chunkIndex || chunkIndex === 0;
 
+    const seedWorkingTreeFromBare = async (dest: string): Promise<void> => {
+      if (!existsSync(repoPath)) return;
+      console.log(
+        `📋 [Bridge Push] Seeding working tree from existing bare repo before overlay...`
+      );
+      try {
+        const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
+        await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`, {
+          timeout: 120000,
+        });
+        await execAsync(
+          `rsync -a --exclude='.git' "${cloneTempDir}/" "${dest}/"`
+        );
+        await rm(cloneTempDir, { recursive: true, force: true });
+        console.log(`✅ [Bridge Push] Seeded existing files into working tree`);
+      } catch (cloneError: any) {
+        console.warn(
+          `⚠️ [Bridge Push] Failed to seed existing repo:`,
+          cloneError?.message
+        );
+      }
+    };
+
     if (isChunked && pushSessionId) {
       // Use a predictable path based on push session ID
       tempDir = join(os.tmpdir(), `gittr-push-${pushSessionId}`);
@@ -555,31 +584,7 @@ export default async function handler(
           `git -C "${tempDir}" config user.email "push@gittr.space"`
         );
 
-        // If repo exists, clone it to get existing files
-        if (existsSync(repoPath)) {
-          console.log(
-            `📋 [Bridge Push] Chunk 1/${totalChunks}: Cloning existing repo to get files...`
-          );
-          try {
-            const cloneTempDir = await mkdtemp(
-              join(os.tmpdir(), "gittr-clone-")
-            );
-            await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`, {
-              timeout: 120000,
-            }); // 2 min timeout
-            await execAsync(
-              `rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`
-            );
-            await rm(cloneTempDir, { recursive: true, force: true });
-            console.log(`✅ [Bridge Push] Cloned existing repo`);
-          } catch (cloneError: any) {
-            console.warn(
-              `⚠️ [Bridge Push] Failed to clone existing repo:`,
-              cloneError?.message
-            );
-            // Continue anyway - we'll start fresh
-          }
-        }
+        await seedWorkingTreeFromBare(tempDir);
       } else {
         // Chunks 2+: Reuse existing working directory
         if (!tempDirExists) {
@@ -598,7 +603,8 @@ export default async function handler(
         // Working directory already has files from previous chunks - just add new files
       }
     } else {
-      // Non-chunked push: Use temporary directory as before
+      // Non-chunked / single-chunk session push: still seed from bare repo so a
+      // partial overlay cannot wipe the tree on force-push.
       tempDir = await mkdtemp(join(os.tmpdir(), "gittr-push-"));
       await execAsync(`git init "${tempDir}"`);
       await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
@@ -606,28 +612,7 @@ export default async function handler(
         `git -C "${tempDir}" config user.email "push@gittr.space"`
       );
 
-      // For non-chunked pushes with no files, clone existing repo to preserve state
-      if (files.length === 0 && existsSync(repoPath)) {
-        console.log(
-          `📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`
-        );
-        try {
-          const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
-          await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`, {
-            timeout: 120000,
-          });
-          await execAsync(
-            `rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`
-          );
-          await rm(cloneTempDir, { recursive: true, force: true });
-          console.log(`✅ [Bridge Push] Copied existing files from repo`);
-        } catch (cloneError: any) {
-          console.warn(
-            `⚠️ [Bridge Push] Failed to copy existing files, will create empty commit:`,
-            cloneError?.message
-          );
-        }
-      }
+      await seedWorkingTreeFromBare(tempDir);
     }
 
     let writtenFiles = 0;
@@ -737,6 +722,55 @@ export default async function handler(
               "Refusing to push empty repository snapshot (no files available).",
             details:
               "Push aborted to prevent accidental data loss. Re-fetch source files and retry.",
+          });
+        }
+      }
+
+      // Belt-and-suspenders: refuse accidental shrink if seeding failed and
+      // the payload is a strict subset of the live bare tree (Settings→Push
+      // with incomplete localStorage used to wipe scripts/ this way).
+      if (!allowTreeShrink && existsSync(repoPath)) {
+        let existingCount = 0;
+        try {
+          const { stdout: existingOut } = await execAsync(
+            `git --git-dir="${repoPath}" ls-tree -r --name-only HEAD`,
+            { timeout: 15000 }
+          );
+          existingCount = existingOut
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean).length;
+        } catch {
+          existingCount = 0;
+        }
+        let newCount = 0;
+        try {
+          const { stdout: newOut } = await execAsync(
+            `find "${tempDir}" -type f ! -path '*/.git/*'`,
+            { timeout: 15000 }
+          );
+          newCount = newOut
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean).length;
+        } catch {
+          newCount = 0;
+        }
+        if (
+          existingCount >= 2 &&
+          newCount > 0 &&
+          newCount < existingCount &&
+          newCount / existingCount < 0.85
+        ) {
+          console.error(
+            `🚫 [Bridge Push] Refusing tree shrink ${existingCount} → ${newCount} files for ${safeRepoName}`
+          );
+          return res.status(409).json({
+            error: `Refusing to shrink repository from ${existingCount} to ${newCount} files.`,
+            details:
+              "Partial push would delete files on the bridge. Refresh the file tree from gittr and retry, or pass allowTreeShrink: true for an intentional replace.",
+            existingCount,
+            newCount,
           });
         }
       }

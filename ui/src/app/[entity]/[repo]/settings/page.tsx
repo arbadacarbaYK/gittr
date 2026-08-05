@@ -248,7 +248,13 @@ export default function RepoSettingsPage() {
           isPlaceholderRepositoryDescription(storedDesc, repo)
         ) {
           void fetchGithubRepoDescription(upstream).then((fromGh) => {
-            if (fromGh) setDescription(fromGh);
+            if (!fromGh) return;
+            // Only apply if the field is still a placeholder (user may have typed already).
+            setDescription((current) =>
+              isPlaceholderRepositoryDescription(current, repo)
+                ? fromGh
+                : current
+            );
           });
         }
         setZapSplits(repoWithExtras.zapPolicy?.splits || []);
@@ -703,18 +709,15 @@ export default function RepoSettingsPage() {
         );
         saveStoredRepos(repos);
 
-        // Mark repo as having unpushed edits if it was previously live
-        if (
-          repos[repoIndex].lastNostrEventId ||
-          repos[repoIndex].nostrEventId ||
-          repos[repoIndex].syncedFromNostr
-        ) {
-          const { markRepoAsEdited } = await import("@/lib/utils/repo-status");
-          markRepoAsEdited(repo, entity);
-        }
+        // Do NOT markRepoAsEdited here. Settings Save republishes kind 30617 below
+        // (description / privacy / links). Flagging "unpushed edits" made owners
+        // click Push with a thinned local file index and force-wipe bridge folders
+        // (e.g. scripts/). File content edits still call markRepoAsEdited elsewhere.
 
         // Trigger event to notify repo page to reload
         window.dispatchEvent(new Event("gittr:repo-updated"));
+        // RepoCodePage About sidebar listens for plural repos-updated (LS description).
+        window.dispatchEvent(new Event("gittr:repos-updated"));
       }
 
       // Save milestones
@@ -734,16 +737,38 @@ export default function RepoSettingsPage() {
 
         const repoEventPayload = {
           repositoryName: repo,
+          name: (repoData as { name?: string } | null)?.name || repo,
           publicRead: isPublic,
           publicWrite: false,
           description,
           tags,
+          topics: tags,
           zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
           requiredApprovals: requiredApprovals,
           pushCostSats: Math.max(0, Math.floor(pushCostSats || 0)),
           links: repoLinks.length > 0 ? repoLinks : undefined,
           clone: repoData?.clone || [],
           relays: repoData?.relays || defaultRelays || [],
+          // Keep forge tags on republish so Settings Save does not strip them.
+          sourceUrl:
+            resolveRepoUpstreamSource(repoData) ||
+            repoData?.sourceUrl ||
+            undefined,
+          forkedFrom: repoData?.forkedFrom || undefined,
+          contributors: [
+            ...owners.map((o) => ({
+              pubkey: o.pubkey,
+              name: o.name,
+              weight: o.weight ?? 100,
+            })),
+            ...maintainers.map((m) => ({
+              pubkey: m.pubkey,
+              name: m.name,
+              weight: m.weight ?? 50,
+            })),
+          ],
+          logoUrl: logoInput.trim() || undefined,
+          gitSshBase: gitSshBase || undefined,
         };
 
         let signedRepoEvent: any = null;

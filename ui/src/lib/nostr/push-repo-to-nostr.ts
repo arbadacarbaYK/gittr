@@ -5,6 +5,10 @@
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 
 import {
+  persistGithubSourceOnRepo,
+  queryNostrForGithubSourceUrl,
+} from "../repos/repo-github-hub";
+import {
   type StoredRepo,
   loadRepoDeletedPaths,
   loadRepoFiles,
@@ -15,6 +19,7 @@ import {
   resolveRepoStorageAlias,
   saveStoredRepos,
 } from "../repos/storage";
+import { resolveRepoUpstreamSource } from "../repos/upstream-precedence";
 import { isCloneableUpstreamSourceUrl } from "../utils/detect-git-forge";
 import {
   getGraspServers,
@@ -380,6 +385,58 @@ export async function pushRepoToNostr(
       }
     } catch (e) {
       console.warn("⚠️ [Push Repo] Could not enrich repo links:", e);
+    }
+
+    // Recover forge upstream before building 30617 tags. After GRASP push we keep
+    // GitHub/GitLab on `source` only (not clone); if localStorage later drops
+    // sourceUrl, a re-push must not wipe the previous announcement's source tags.
+    {
+      let upstream =
+        resolveRepoUpstreamSource(repo) ||
+        (typeof repo.sourceUrl === "string" ? repo.sourceUrl.trim() : "") ||
+        (typeof repo.forkedFrom === "string" ? repo.forkedFrom.trim() : "");
+      if (
+        !upstream &&
+        subscribe &&
+        Array.isArray(defaultRelays) &&
+        defaultRelays.length > 0
+      ) {
+        try {
+          onProgress?.(
+            "Looking up previous forge source on Nostr (source/forkedFrom)..."
+          );
+          upstream = await queryNostrForGithubSourceUrl(
+            entity,
+            repoSlug,
+            subscribe,
+            defaultRelays
+          );
+          if (upstream) {
+            console.log(
+              `✅ [Push Repo] Recovered forge URL from prior 30617: ${upstream}`
+            );
+          }
+        } catch (e) {
+          console.warn(
+            "⚠️ [Push Repo] Could not query prior forge source tags:",
+            e
+          );
+        }
+      }
+      if (upstream) {
+        const clean = upstream.replace(/\.git$/, "");
+        if (!repo.sourceUrl) {
+          (repo as { sourceUrl?: string }).sourceUrl = clean;
+        }
+        if (!repo.forkedFrom) {
+          (repo as { forkedFrom?: string }).forkedFrom = clean;
+        }
+        try {
+          persistGithubSourceOnRepo(entity, repoSlug, clean);
+        } catch {
+          /* quota */
+        }
+      }
     }
 
     // Repair bare "owner/repo" or malformed https://OWNER/repo stored as sourceUrl (breaks file-content + UI)
@@ -2126,12 +2183,20 @@ export async function pushRepoToNostr(
       // NIP-34: Add "t" tag for "personal-fork" if this is a fork (optional)
       // We don't currently track this, but could add it if needed
 
-      // Keep legacy tags for backward compatibility (source, forkedFrom)
-      if (repo.sourceUrl) {
-        nip34Tags.push(["source", repo.sourceUrl]);
-      }
-      if (repo.forkedFrom) {
-        nip34Tags.push(["forkedFrom", repo.forkedFrom]);
+      // Keep forge provenance on every Push (like public-read). GRASP stays in
+      // clone[]; GitHub/GitLab go on source/forkedFrom so Refetch + sidebar work.
+      const forgeUpstream =
+        resolveRepoUpstreamSource(repo) ||
+        (typeof repo.sourceUrl === "string" ? repo.sourceUrl.trim() : "") ||
+        (typeof repo.forkedFrom === "string" ? repo.forkedFrom.trim() : "");
+      if (forgeUpstream) {
+        const sourceTag = forgeUpstream.replace(/\.git$/, "");
+        nip34Tags.push(["source", sourceTag]);
+        nip34Tags.push([
+          "forkedFrom",
+          (typeof repo.forkedFrom === "string" && repo.forkedFrom.trim()) ||
+            sourceTag,
+        ]);
       }
       if (repo.links && Array.isArray(repo.links)) {
         repo.links.forEach((link: any) => {
@@ -2598,6 +2663,85 @@ export async function pushRepoToNostr(
             refs = clonedRefs;
           }
         } else {
+          // If localStorage only has a subset of what's already on the bridge
+          // (common after Settings Save → Push with a thinned gittr_files index),
+          // pull missing paths' content from the bridge so we don't force-push a
+          // hollow tree. Server also seeds now; this is defense in depth.
+          try {
+            const bridgeListUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+              pubkey
+            )}&repo=${encodeURIComponent(
+              actualRepositoryName
+            )}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`;
+            const listRes = await fetch(bridgeListUrl, { cache: "no-store" });
+            if (listRes.ok) {
+              const listJson = (await listRes.json()) as {
+                files?: Array<{ type?: string; path?: string }>;
+              };
+              const bridgePaths = (listJson.files || [])
+                .filter(
+                  (f) =>
+                    f &&
+                    f.type !== "dir" &&
+                    typeof f.path === "string" &&
+                    f.path.trim()
+                )
+                .map((f) => String(f.path).replace(/^\/+/, ""));
+              const have = new Set(
+                pushableFiles.map((f) =>
+                  String(f.path || "")
+                    .replace(/^\/+/, "")
+                    .replace(/\\/g, "/")
+                )
+              );
+              const missing = bridgePaths.filter((p) => !have.has(p));
+              if (
+                bridgePaths.length > 0 &&
+                missing.length > 0 &&
+                pushableFiles.length < bridgePaths.length
+              ) {
+                onProgress?.(
+                  `📥 Completing push from bridge (${missing.length} path(s) missing locally)...`
+                );
+                console.warn(
+                  `⚠️ [Push Repo] Local push set (${pushableFiles.length}) is thinner than bridge (${bridgePaths.length}); fetching ${missing.length} missing path(s)`
+                );
+                for (const path of missing.slice(0, 200)) {
+                  try {
+                    const fc = await fetch(
+                      `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                        pubkey
+                      )}&repo=${encodeURIComponent(
+                        actualRepositoryName
+                      )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+                        repo.defaultBranch || "main"
+                      )}`,
+                      { cache: "no-store" }
+                    );
+                    if (!fc.ok) continue;
+                    const body = (await fc.json()) as {
+                      content?: string;
+                      encoding?: string;
+                    };
+                    if (typeof body.content !== "string") continue;
+                    pushableFiles.push({
+                      path,
+                      content: body.content,
+                      isBinary: body.encoding === "base64",
+                    });
+                  } catch {
+                    /* skip one path */
+                  }
+                }
+              }
+            }
+          } catch (thinErr) {
+            console.warn(
+              "⚠️ [Push Repo] Could not compare/merge with bridge tree before push:",
+              thinErr
+            );
+          }
+
           onProgress?.(
             `📤 Pushing ${pushableFiles.length} file(s) to bridge...`
           );

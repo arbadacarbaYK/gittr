@@ -4,13 +4,16 @@ import { fetchRepoOgData } from "@/lib/seo/fetch-repo-og-data";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 export const runtime = "nodejs";
-/** Always rebuild — owner picture / stars change; avoid year-long stale cards. */
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/**
+ * Cache at the edge for an hour so X/Telegram retries are fast.
+ * Composition still refreshes on deploy (Next content-hash query) and
+ * when layout bumps `?v=`.
+ */
+export const revalidate = 3600;
 
 /**
- * Bump when OG composition changes so Next’s `opengraph-image?<hash>` and
- * crawler caches (X Card Validator) pick up a new URL. Pic 220px: v4.
+ * Bump when OG composition / fetch budget changes so Next’s
+ * `opengraph-image?<hash>` and crawler caches pick up a new URL.
  */
 export const alt = "Repository on gittr";
 export const size = OG_SIZE;

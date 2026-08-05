@@ -665,8 +665,16 @@ export const loadDeletedRepos = (): Array<{
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
   " Open My Repositories (/repositories) to delete repos or clear foreign repositories.";
 
-export const saveStoredRepos = (repos: StoredRepo[]): void => {
-  if (typeof window === "undefined") return;
+/**
+ * Persist slimmed `gittr_repos`. Returns false if the write still fails after
+ * cleanup (caller may keep an in-memory list for Explore).
+ */
+export const saveStoredRepos = (
+  repos: StoredRepo[],
+  opts?: { quiet?: boolean }
+): boolean => {
+  if (typeof window === "undefined") return false;
+  const quiet = opts?.quiet === true;
   const toSave = slimReposForStorage(
     dedupeStoredReposByOwnerAndRepoLabel(repos)
   );
@@ -677,122 +685,111 @@ export const saveStoredRepos = (repos: StoredRepo[]): void => {
       } duplicate repo row(s) before save`
     );
   }
-  try {
-    localStorage.setItem("gittr_repos", JSON.stringify(toSave));
-  } catch (error: any) {
-    if (
-      error.name === "QuotaExceededError" ||
-      error.message?.includes("quota")
-    ) {
-      console.error(
-        `❌ [Storage] Quota exceeded when saving repos. Attempting cleanup...`
-      );
 
-      // Try to clean up old repos (older than 30 days)
-      try {
-        const now = Date.now();
-        const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const tryWrite = (list: StoredRepo[]): boolean => {
+    try {
+      localStorage.setItem("gittr_repos", JSON.stringify(list));
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
-        // Filter out old repos
-        const cleaned = toSave.filter((r: any) => {
-          const lastActivity =
-            r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
-          return lastActivity > thirtyDaysAgo;
-        });
+  if (tryWrite(toSave)) return true;
 
-        if (cleaned.length < toSave.length) {
-          console.log(
-            `🧹 [Storage] Cleaned up ${
-              toSave.length - cleaned.length
-            } old repos (older than 30 days)`
+  console.error(
+    `❌ [Storage] Quota exceeded when saving repos. Attempting cleanup...`
+  );
+
+  const now = Date.now();
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  const cleaned30 = toSave.filter((r: any) => {
+    const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
+    return lastActivity > thirtyDaysAgo;
+  });
+  if (cleaned30.length < toSave.length) {
+    console.log(
+      `🧹 [Storage] Cleaned up ${
+        toSave.length - cleaned30.length
+      } old repos (older than 30 days)`
+    );
+    const cleanedDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned30);
+    if (tryWrite(cleanedDeduped)) {
+      if (!quiet && typeof window !== "undefined") {
+        setTimeout(() => {
+          alert(
+            `⚠️ localStorage is getting full. Cleaned up old repos. ${cleanedDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
           );
-          // Try saving cleaned repos
-          try {
-            const cleanedDeduped =
-              dedupeStoredReposByOwnerAndRepoLabel(cleaned);
-            localStorage.setItem("gittr_repos", JSON.stringify(cleanedDeduped));
-            console.log(
-              `✅ [Storage] Successfully saved ${cleanedDeduped.length} repos after cleanup`
-            );
-            // Show user-friendly message
-            if (typeof window !== "undefined") {
-              setTimeout(() => {
-                alert(
-                  `⚠️ localStorage is getting full. Cleaned up old repos. ${cleanedDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-                );
-              }, 100);
-            }
-            return;
-          } catch (e2: any) {
-            console.error(
-              `❌ [Storage] Still quota exceeded after cleanup:`,
-              e2
-            );
-            // Try even more aggressive cleanup - remove repos older than 7 days
-            const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-            const aggressiveCleanup = cleaned.filter((r: any) => {
-              const lastActivity =
-                r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
-              return lastActivity > sevenDaysAgo;
-            });
-
-            if (aggressiveCleanup.length < cleaned.length) {
-              try {
-                const aggDeduped =
-                  dedupeStoredReposByOwnerAndRepoLabel(aggressiveCleanup);
-                localStorage.setItem("gittr_repos", JSON.stringify(aggDeduped));
-                console.log(
-                  `✅ [Storage] Aggressive cleanup: ${aggDeduped.length} repos remaining`
-                );
-                if (typeof window !== "undefined") {
-                  setTimeout(() => {
-                    alert(
-                      `⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-                    );
-                  }, 100);
-                }
-                return;
-              } catch (e3: any) {
-                console.error(
-                  `❌ [Storage] Still quota exceeded after aggressive cleanup:`,
-                  e3
-                );
-                if (typeof window !== "undefined") {
-                  setTimeout(() => {
-                    alert(
-                      `❌ Error: localStorage is full. You can also clear this site's data in your browser settings.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-                    );
-                  }, 100);
-                }
-                return;
-              }
-            } else {
-              return;
-            }
-          }
-        } else {
-          // No old repos to clean up, but still quota exceeded
-          console.error(
-            `❌ [Storage] Quota exceeded but no old repos to clean up`
-          );
-          if (typeof window !== "undefined") {
-            setTimeout(() => {
-              alert(
-                `❌ Error: localStorage is full.${LOCAL_STORAGE_REPOS_MANAGE_HINT} You can also clear this site's data in your browser settings.`
-              );
-            }, 100);
-          }
-          return;
-        }
-      } catch (cleanupError) {
-        console.error(`❌ [Storage] Cleanup failed:`, cleanupError);
-        return;
+        }, 100);
       }
-    } else {
-      console.error("❌ [Storage] Failed to save repos:", error);
-      return;
+      return true;
+    }
+
+    const cleaned7 = cleaned30.filter((r: any) => {
+      const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
+      return lastActivity > sevenDaysAgo;
+    });
+    if (cleaned7.length < cleaned30.length) {
+      const aggDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned7);
+      if (tryWrite(aggDeduped)) {
+        if (!quiet && typeof window !== "undefined") {
+          setTimeout(() => {
+            alert(
+              `⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
+            );
+          }, 100);
+        }
+        return true;
+      }
     }
   }
+
+  // Free space from file-tree caches (often the real quota hog).
+  const evicted = evictLargestOtherRepoFileKeys("", 20);
+  if (evicted > 0 && tryWrite(toSave)) {
+    console.log(
+      `✅ [Storage] Saved ${toSave.length} repos after evicting ${evicted} gittr_files key(s)`
+    );
+    return true;
+  }
+
+  // Last resort: keep a smaller discover cache (prefer recently active / owned).
+  const ranked = [...toSave].sort((a: any, b: any) => {
+    const score = (r: any) =>
+      (r.hasUnpushedEdits ? 1e15 : 0) +
+      (r.lastNostrEventCreatedAt
+        ? r.lastNostrEventCreatedAt * 1000
+        : r.updatedAt || r.createdAt || 0);
+    return score(b) - score(a);
+  });
+  const capped = ranked.slice(0, 400);
+  if (capped.length < toSave.length && tryWrite(capped)) {
+    console.warn(
+      `⚠️ [Storage] Saved capped gittr_repos (${capped.length}/${toSave.length}) after quota reclaim`
+    );
+    if (!quiet && typeof window !== "undefined") {
+      setTimeout(() => {
+        alert(
+          `⚠️ Browser storage was full — kept the ${capped.length} most recent repos locally.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
+        );
+      }, 100);
+    }
+    return true;
+  }
+
+  console.error(
+    `❌ [Storage] Quota exceeded; could not persist gittr_repos (${toSave.length} rows)`
+  );
+  if (!quiet && typeof window !== "undefined") {
+    setTimeout(() => {
+      alert(
+        `❌ Error: localStorage is full.${LOCAL_STORAGE_REPOS_MANAGE_HINT} You can also clear this site's data in your browser settings.`
+      );
+    }, 100);
+  }
+  return false;
 };
 
 export const isGitHostContributor = (

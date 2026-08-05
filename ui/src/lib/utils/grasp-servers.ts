@@ -182,7 +182,71 @@ export function isGraspServer(url: string): boolean {
     return true;
   }
 
+  // Path-based: some home GRASP deployments use https://host/grasp/npub…/repo
+  // (e.g. laantungir.net) — hostname alone is not in KNOWN_GRASP_DOMAINS.
+  if (hasGraspPathPrefix(url)) {
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * True when the URL path is a GRASP-shaped clone (`/grasp/…` or `/grasp` relay).
+ * Used so we do not treat those hosts as "prefer non-GRASP" publisher remotes.
+ */
+export function hasGraspPathPrefix(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    let raw = url.trim();
+    if (raw.startsWith("git@")) {
+      const m = raw.match(/^git@([^:]+):(.+)$/);
+      if (m) raw = `https://${m[1]}/${m[2]}`;
+    } else if (raw.startsWith("git://")) {
+      raw = raw.replace(/^git:\/\//, "https://");
+    } else if (raw.startsWith("nostr://")) {
+      return /@[^/]+\/grasp\b|\/grasp\b/i.test(raw);
+    } else if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+      raw = `https://${raw}`;
+    }
+    const pathname = new URL(raw).pathname.toLowerCase();
+    return (
+      pathname === "/grasp" ||
+      pathname.startsWith("/grasp/") ||
+      pathname.includes("/grasp/")
+    );
+  } catch {
+    return /\/grasp(\/|$)/i.test(url);
+  }
+}
+
+/**
+ * Clone/relay URL that should be handled as GRASP (known host or /grasp/ path).
+ */
+export function isGraspCloneUrl(url: string): boolean {
+  return isGraspServer(url);
+}
+
+/**
+ * Parse https://host/grasp/npub…/repo(.git) into npub + repo (home GRASP layout).
+ */
+export function parseGraspPathClone(
+  cloneUrl: string
+): { host: string; npub: string; repo: string } | null {
+  if (!cloneUrl || typeof cloneUrl !== "string") return null;
+  let normalized = cloneUrl.trim();
+  const ssh = normalized.match(/^git@([^:]+):(.+)$/);
+  if (ssh) normalized = `https://${ssh[1]}/${ssh[2]}`;
+  else if (normalized.startsWith("git://"))
+    normalized = normalized.replace(/^git:\/\//, "https://");
+  const bare = normalized.replace(/\.git$/i, "");
+  const m = bare.match(
+    /^https?:\/\/([^\/]+)\/grasp\/(npub[a-z0-9]+)\/([^\/]+)$/i
+  );
+  if (!m) return null;
+  const [, host, npub, repo] = m;
+  if (!host || !npub || !repo) return null;
+  return { host, npub, repo };
 }
 
 /**

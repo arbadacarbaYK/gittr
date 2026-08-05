@@ -76,6 +76,8 @@ Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. P
 3. **Bare mirror** — `POST /api/nostr/repo/clone`, then **await** bridge reads (poll ~12s); background poll + `grasp-repo-cloned` if still slow
 4. After a successful shallow clone, bare mirror runs **in the background** so the next visit hits the bridge
 
+**URL classification (Aug 2026):** `https://host/grasp/npub…/repo.git` (path-prefixed home GRASP, e.g. laantungir.net) is treated as GRASP/`nostr-git` via `hasGraspPathPrefix` / `parseGraspPathClone` — not as “unknown non-GRASP”. Empty remotes (info/refs with no heads) still clone-fail with **no valid HEAD**; a forge `source` tag or a non-empty GRASP mirror is required for content.
+
 Parallel `clone[]` sources use `Promise.race`: **first mirror that returns a non-empty tree wins**. A dead mirror (502) does not block a working one (e.g. `relay.ngit.dev`).
 
 Empty bare dir with no branches: nostr files API may return `files: []` — step 2–3 still run.
@@ -96,7 +98,7 @@ Improvement backlog: optional pass to compare commit SHAs from each successful s
 
 ## GitHub mirror
 
-Repos with a GitHub `source` / `clone` URL often treat GitHub as authoritative for the tree unless `hasUnpushedEdits`. README/About may still follow GitHub when a mirror exists.
+Repos with a GitHub `source` / `clone` URL often treat GitHub as authoritative for the tree unless `hasUnpushedEdits`. **About / description does not** — an owner-set About (Settings → Description, or a non-placeholder NIP-34 `description` tag) must not be overwritten by GitHub hub hydrate (`hydrateRepoFromGithub`) or the Code-page GitHub About fill. GitHub may only fill empty / placeholder About text (`Repository: <slug>`, blank, or `Imported from …`).
 
 ## Ops
 

@@ -290,6 +290,29 @@ export function parseGitSource(cloneUrl: string): GitSource {
     "jb55.com", // Custom git server (not GRASP, but supports git)
   ];
 
+  // Home GRASP path: https://laantungir.net/grasp/npub…/repo.git
+  // Must be recognized before the generic 3-segment self-hosted matcher, and
+  // must not fall through to "unknown" (which skips bridge + clone entirely).
+  const {
+    parseGraspPathClone,
+  } = require("@/lib/utils/grasp-servers") as {
+    parseGraspPathClone: (u: string) => {
+      host: string;
+      npub: string;
+      repo: string;
+    } | null;
+  };
+  const graspPath = parseGraspPathClone(normalizedUrl);
+  if (graspPath) {
+    return {
+      type: "nostr-git",
+      url: normalizedUrl,
+      displayName: graspPath.host,
+      npub: graspPath.npub,
+      repo: graspPath.repo,
+    };
+  }
+
   // Nostr git server (grasp) pattern: https://relay.ngit.dev/npub.../repo
   // Only treat as nostr-git when the host is a known GRASP. Home Freebox / NAS
   // remotes often reuse the /npub/repo path shape but must use self-hosted clone.
@@ -1655,7 +1678,39 @@ async function fetchFromNostrGit(
             branch
           );
           if (remoteFiles?.files?.length) {
-            scheduleBareCloneToBridge(normalizedCloneUrl, ownerPubkey, repo);
+            // Await mirror briefly so file-content opens don't 404 while the
+            // UI already shows a tree from the temp GRASP listing.
+            try {
+              await Promise.race([
+                fetch("/api/nostr/repo/clone", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    cloneUrl: normalizedCloneUrl,
+                    ownerPubkey,
+                    repo,
+                  }),
+                }).then(async (r) => {
+                  if (!r.ok) {
+                    console.warn(
+                      `⚠️ [Git Source] Bare mirror clone after list: ${r.status}`
+                    );
+                    scheduleBareCloneToBridge(
+                      normalizedCloneUrl,
+                      ownerPubkey,
+                      repo
+                    );
+                  }
+                }),
+                new Promise((resolve) => setTimeout(resolve, 12000)),
+              ]);
+            } catch (err) {
+              console.warn(
+                "⚠️ [Git Source] Bare mirror after list failed:",
+                err
+              );
+              scheduleBareCloneToBridge(normalizedCloneUrl, ownerPubkey, repo);
+            }
             return remoteFiles;
           }
 
@@ -1973,7 +2028,7 @@ export async function fetchFilesFromMultipleSources(
         graspRelayUrlsToDomains,
         prioritizeGraspServers,
       } = await import("@/lib/utils/grasp-list");
-      const { getGraspServers, isGraspServer } = await import(
+      const { getGraspServers, isGraspServer, isGraspCloneUrl } = await import(
         "@/lib/utils/grasp-servers"
       );
 
@@ -2015,7 +2070,11 @@ export async function fetchFilesFromMultipleSources(
             );
           });
 
-          if (isUserPreferredGrasp || isGraspServer(url)) {
+          if (
+            isUserPreferredGrasp ||
+            isGraspCloneUrl(url) ||
+            isGraspServer(url)
+          ) {
             graspCloneUrls.push(url);
           } else {
             otherCloneUrls.push(url);

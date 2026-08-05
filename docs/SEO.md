@@ -33,7 +33,7 @@ When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
 Explore discovers public Nostr repos (not only repos people Push’d from gittr). The sitemap already queries Nostr, but a **daily background refresh** writes a durable disk snapshot so crawlers still get a full list when a live relay query times out.
 
-The same snapshot **seeds `/explore`** when the browser cache is empty (`GET /api/explore/seed` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich.
+The same snapshot **seeds `/explore`** when the browser cache is empty (`GET /api/explore/seed` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich. Seed/sync writes go through `saveStoredRepos` (slim metadata only — no file trees). If localStorage is full, Explore still shows the seed **in memory** after reclaiming space (evict old `gittr_files__*` keys / cap cache) so the page is not stuck empty.
 
 **Client chrome on Explore:** leaving `/explore` (logo, personal menu, top nav) uses a hard `location.assign` via `appNavigate` when Explore is busy with relay streams. Soft App Router `push` after `preventDefault` can look like a dead click. Search already hard-assigns into Explore for the same reason.
 
@@ -98,7 +98,8 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 - **Canonical share URL** is always `/{entity}/{repo}` (no `?branch=` / `?file=` / tab path). Nested pages inherit the same `og:image`; Share/QR copies the root so social caches do not fork per deep link. File “Copy permalink” stays deep for collaborators.
 - `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.
 - Use full `https://` in `NEXT_PUBLIC_SITE_URL` in production.
-- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools. Repo OG URLs include `?v=…` (and Next’s content hash) so composition changes force a new image URL; paste the **page** URL again in Card Validator after deploy.
+- After meta changes, caches (X, Telegram, Cloudflare) may lag — purge CDN or use platform debug tools. Repo OG URLs include `?v=…` (and Next’s content hash) so composition changes force a new image URL; paste the **page** URL again in a third-party card checker after deploy (X’s official Card Validator is retired).
+- **X previews need a fast `og:image`:** Twitterbot often drops the card if the image takes longer than ~3–5s. Repo cards use a ~2.2s fetch budget + `revalidate = 3600` so the PNG is usually ready in time. HTML meta alone is not enough — X still fetches the image URL.
 
 ## Related
 

@@ -260,6 +260,8 @@ NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 
 **Repo Links (docs section → 30617):** Simple rules — (1) Import/batch/refetch: GitHub `homepage` → docs link if present, else nothing. (2) Settings: user can add more docs links anytime; all show under Repository Links. (3) Nostr Pages: add a docs link only when the gateway lists the site (not invented). (4) Push publishes whatever is in `repo.links`. Never invent `owner.github.io` or `*.pages.gittr.space`. (5) NIP-34 `web` browse URLs from other forges (e.g. `gitworkshop.dev/…/relay…/repo`) are **not** shown as Documentation; Iris `git.iris.to` remains labeled **Iris Git**. Logo URLs are not published in `web`.
 
+**Repo About (Settings → Description):** Owner text is authoritative. Saving Settings writes localStorage, publishes kind **30617** `description`, and notifies the Code page (`gittr:repos-updated`). GitHub mirror hydrate must not replace a non-placeholder About (stars/forks/activity still sync). See [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md).
+
 **gittr-mcp:** filter/CORS/`uploadpack` fixes on the git vhost apply to MCP users automatically when they clone that host. MCP **code** updates need `git pull` or a new `.mcpb` — see [gittr-mcp README](https://github.com/arbadacarbaYK/gittr-mcp#do-mcp-users-get-gittrs-filter--cors-server-fixes).
 
 ---

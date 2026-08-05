@@ -102,7 +102,7 @@ export function RepoLinks({ links = [] }: RepoLinksProps) {
   const types = Object.keys(grouped) as RepoLink["type"][];
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className="space-y-3">
       <h3 className="font-bold text-sm">Links</h3>
       <div className="space-y-2">
         {types.map((type) => {

@@ -28,7 +28,7 @@ import {
 } from "@/lib/nostr/useContributorMetadata";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
-import { loadStoredRepos } from "@/lib/repos/storage";
+import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   getEntityDisplayName,
@@ -927,9 +927,7 @@ function ExplorePageContent() {
     ) => {
       if (!seed.length) return;
       try {
-        const existing = JSON.parse(
-          localStorage.getItem("gittr_repos") || "[]"
-        ) as any[];
+        const existing = loadStoredRepos() as any[];
         const byKey = new Map<string, any>();
         for (const r of existing) {
           const entity = String(r.entity || "").toLowerCase();
@@ -938,8 +936,12 @@ function ExplorePageContent() {
           ).toLowerCase();
           if (entity && name) byKey.set(`${entity}/${name}`, r);
         }
+        // Prefer fresher SEO rows first so a capped write still shows activity.
+        const rankedSeed = [...seed].sort(
+          (a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)
+        );
         let added = 0;
-        for (const s of seed) {
+        for (const s of rankedSeed) {
           const entity = String(s.entity || "").trim();
           const name = String(s.repo || s.repoName || "").trim();
           if (!entity || !name) continue;
@@ -961,18 +963,52 @@ function ExplorePageContent() {
             syncedFromNostr: false,
           });
           added++;
+          // Soft cap growth from SEO seed so we don't try to shove 3000 rows
+          // into an already-full origin.
+          if (byKey.size >= 600) break;
         }
         if (added > 0) {
-          localStorage.setItem(
-            "gittr_repos",
-            JSON.stringify(Array.from(byKey.values()))
-          );
+          const merged = Array.from(byKey.values());
+          const saved = saveStoredRepos(merged as any, { quiet: true });
           if (!cancelled) {
-            loadRepos();
+            // Always refresh UI — even when quota blocks persist, show what we have.
+            if (saved) {
+              loadRepos();
+            } else {
+              console.warn(
+                "[Explore] seed merge could not persist (quota); applying in memory"
+              );
+              loadRepos();
+              // If storage stayed empty, force seed into React state.
+              setRepos((prev) => {
+                if (prev.length >= 40) return prev;
+                const deletedRepos = JSON.parse(
+                  localStorage.getItem("gittr_deleted_repos") || "[]"
+                ) as Array<{ entity: string; repo: string }>;
+                const deleted = new Set(
+                  deletedRepos.map(
+                    (d) => `${d.entity}/${d.repo}`.toLowerCase()
+                  )
+                );
+                const fromSeed = merged.filter((r: any) => {
+                  const entity = r.entity || "";
+                  const repo = r.repo || r.slug || "";
+                  if (!entity || !repo) return false;
+                  if (deleted.has(`${entity}/${repo}`.toLowerCase()))
+                    return false;
+                  if (r.deleted === true || r.archived === true) return false;
+                  if (isRepoFromBlocklistedOwner(r)) return false;
+                  return true;
+                });
+                return fromSeed.length > prev.length ? fromSeed : prev;
+              });
+            }
             if (byKey.size >= 40) setSyncing(false);
           }
           console.log(
-            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
+            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size}${
+              saved ? "" : ", persist skipped — quota"
+            })`
           );
         }
       } catch (e) {
@@ -982,14 +1018,12 @@ function ExplorePageContent() {
 
     (async () => {
       try {
-        const existing = JSON.parse(
-          localStorage.getItem("gittr_repos") || "[]"
-        ) as any[];
+        const existing = loadStoredRepos() as any[];
         // Always try SEO seed when cache is thin — recent-repos alone is only ~12.
         if (existing.length >= 200) return;
 
         const [seedRes, recentRes] = await Promise.all([
-          fetch("/api/explore/seed?limit=3000").catch(() => null),
+          fetch("/api/explore/seed?limit=600").catch(() => null),
           fetch("/api/stats/recent-repos").catch(() => null),
         ]);
         if (cancelled) return;
@@ -1295,10 +1329,7 @@ function ExplorePageContent() {
                 });
 
                 if (updated) {
-                  localStorage.setItem(
-                    "gittr_repos",
-                    JSON.stringify(updatedRepos)
-                  );
+                  saveStoredRepos(updatedRepos as any, { quiet: true });
                   // Trigger reload to update UI
                   setTimeout(() => {
                     loadRepos();
@@ -1633,10 +1664,9 @@ function ExplorePageContent() {
                                 existingRepos.push(repo);
                               }
 
-                              localStorage.setItem(
-                                "gittr_repos",
-                                JSON.stringify(existingRepos)
-                              );
+                              saveStoredRepos(existingRepos as any, {
+                                quiet: true,
+                              });
                               setTimeout(() => loadRepos(), 100);
 
                               console.log(
@@ -1760,7 +1790,7 @@ function ExplorePageContent() {
               });
               if (purged.length !== existingRepos.length) {
                 if (typeof window !== "undefined") {
-                  localStorage.setItem("gittr_repos", JSON.stringify(purged));
+                  saveStoredRepos(purged as any, { quiet: true });
                 }
                 setRepos(
                   purged.filter(
@@ -2181,12 +2211,29 @@ function ExplorePageContent() {
               existingRepos.push(newRepo);
             }
 
-            localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+            const saved = saveStoredRepos(existingRepos as any, {
+              quiet: true,
+            });
 
-            // CRITICAL: Trigger loadRepos to update UI immediately
-            // Use setTimeout to batch updates and prevent infinite loops
+            // CRITICAL: Update UI even when persist fails (quota) — otherwise
+            // Explore stays empty after seed/sync timeouts.
             setTimeout(() => {
-              loadRepos();
+              if (saved) {
+                loadRepos();
+              } else {
+                loadRepos();
+                setRepos((prev) =>
+                  prev.length > 0
+                    ? prev
+                    : existingRepos.filter(
+                        (r: any) =>
+                          r.deleted !== true &&
+                          r.archived !== true &&
+                          !r.hiddenFromExplore &&
+                          !isRepoFromBlocklistedOwner(r)
+                      )
+                );
+              }
               checkShouldStopSyncing();
             }, 100);
           } catch (error: any) {

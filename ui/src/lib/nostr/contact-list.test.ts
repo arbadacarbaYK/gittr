@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  followersCountFromContactEvents,
+  followingCountFromContactEvents,
   loadContactListBackup,
   loadKnownContactList,
   mergeContactLists,
@@ -177,5 +179,47 @@ describe("saveContactListBackup + rememberContactList", () => {
     expect(known.length).toBeGreaterThanOrEqual(30);
     expect(known).toContain("f".repeat(64));
     expect(session.has(sessionKey)).toBe(true);
+  });
+});
+
+describe("followingCountFromContactEvents / followersCountFromContactEvents", () => {
+  it("unions following across multiple kind-3 snapshots", () => {
+    const a = "a".repeat(64);
+    const b = "b".repeat(64);
+    const c = "c".repeat(64);
+    expect(
+      followingCountFromContactEvents([
+        { tags: [["p", a], ["p", b]], content: "" },
+        { tags: [["p", b], ["p", c]], content: "" },
+      ])
+    ).toBe(3);
+  });
+
+  it("counts followers from newest kind-3 per author", () => {
+    const profile = "f".repeat(64);
+    const author1 = "1".repeat(64);
+    const author2 = "2".repeat(64);
+    expect(
+      followersCountFromContactEvents(profile, [
+        {
+          pubkey: author1,
+          created_at: 10,
+          tags: [["p", profile]],
+          content: "",
+        },
+        {
+          pubkey: author1,
+          created_at: 20,
+          tags: [["p", "e".repeat(64)]], // unfollowed
+          content: "",
+        },
+        {
+          pubkey: author2,
+          created_at: 15,
+          tags: [["p", profile]],
+          content: "",
+        },
+      ])
+    ).toBe(1);
   });
 });

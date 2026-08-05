@@ -1,7 +1,8 @@
 /**
  * Server-side data for composed repo Open Graph cards.
- * Keeps timeouts bounded so social crawlers don't hang, but does not abort
- * on the first empty EOSE (other relays may still answer).
+ *
+ * X/Twitterbot often abandons og:image fetches after ~3–5s. Prefer a fast
+ * partial card over waiting full relay windows (old path was a fixed ~6s).
  */
 import {
   KIND_REACTION,
@@ -207,9 +208,13 @@ async function fetchAnnouncementBits(
     return await new Promise<AnnouncementBits>((resolve) => {
       let settled = false;
       let best: AnnouncementBits | null = null;
+      let settleTimer: ReturnType<typeof setTimeout> | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       const finish = (value: AnnouncementBits) => {
         if (settled) return;
         settled = true;
+        if (timer) clearTimeout(timer);
+        if (settleTimer) clearTimeout(settleTimer);
         try {
           pool.close();
         } catch {
@@ -217,7 +222,7 @@ async function fetchAnnouncementBits(
         }
         resolve(value);
       };
-      const timer = setTimeout(() => finish(best || empty), timeoutMs);
+      timer = setTimeout(() => finish(best || empty), timeoutMs);
       try {
         pool.subscribe(
           [
@@ -239,11 +244,13 @@ async function fetchAnnouncementBits(
             if (!best || bits.createdAt >= best.createdAt) {
               best = bits;
             }
+            // First useful hit: short grace for a newer replaceable event, then go.
+            if (best?.eventId && !settleTimer) {
+              settleTimer = setTimeout(() => finish(best || empty), 280);
+            }
           }
-          // Do NOT abort on first EOSE — other relays may still deliver.
         );
       } catch {
-        clearTimeout(timer);
         finish(best || empty);
       }
     });
@@ -263,9 +270,13 @@ async function fetchNostrStarCount(
     const events: any[] = [];
     return await new Promise<number | null>((resolve) => {
       let settled = false;
+      let earlyTimer: ReturnType<typeof setTimeout> | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (timer) clearTimeout(timer);
+        if (earlyTimer) clearTimeout(earlyTimer);
         try {
           pool.close();
         } catch {
@@ -274,7 +285,7 @@ async function fetchNostrStarCount(
         const { count } = aggregateRepoStarReactions(events as any);
         resolve(count);
       };
-      const timer = setTimeout(finish, timeoutMs);
+      timer = setTimeout(finish, timeoutMs);
       try {
         pool.subscribe(
           [
@@ -287,11 +298,13 @@ async function fetchNostrStarCount(
           OG_RELAYS,
           (event: any) => {
             events.push(event);
+            // Stars are decorative on the card — don't wait out the full window.
+            if (events.length >= 3 && !earlyTimer) {
+              earlyTimer = setTimeout(finish, 120);
+            }
           }
-          // Wait for timeout so slower relays can contribute.
         );
       } catch {
-        clearTimeout(timer);
         finish();
       }
     });
@@ -525,23 +538,50 @@ export async function fetchRepoOgData(
     };
   }
 
+  // Hard budget for social crawlers (X often drops images after ~3–5s total).
+  const HARD_MS = 2200;
+  const started = Date.now();
+  const remaining = () => Math.max(120, HARD_MS - (Date.now() - started));
+
   const [announcement, owner] = await Promise.all([
-    fetchAnnouncementBits(ownerPubkey, repoName, 3200),
-    fetchOwnerProfile(ownerPubkey, 2800),
+    fetchAnnouncementBits(ownerPubkey, repoName, Math.min(1100, remaining())),
+    fetchOwnerProfile(ownerPubkey, Math.min(900, remaining())),
   ]);
 
-  const [logoDataUrl, githubMeta, nostrStars] = await Promise.all([
-    logoToDataUrl(
-      ownerPubkey,
+  if (remaining() < 200) {
+    let description = announcement.description;
+    if (description && description.length > 140) {
+      description = `${description.slice(0, 137)}…`;
+    }
+    return {
       repoName,
-      announcement.imageUrl,
-      owner.pictureUrl
-    ),
+      ownerLabel: owner.label,
+      description,
+      logoDataUrl: null,
+      sourceStars: null,
+      sourceForks: null,
+      nostrStars: null,
+    };
+  }
+
+  const phase2Budget = remaining();
+  const [logoDataUrl, githubMeta, nostrStars] = await Promise.all([
+    Promise.race([
+      logoToDataUrl(
+        ownerPubkey,
+        repoName,
+        announcement.imageUrl,
+        owner.pictureUrl
+      ),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), phase2Budget)
+      ),
+    ]),
     announcement.github
       ? fetchGithubMeta(
           announcement.github.owner,
           announcement.github.repo,
-          2000
+          Math.min(800, phase2Budget)
         )
       : Promise.resolve({
           stars: null,
@@ -549,7 +589,10 @@ export async function fetchRepoOgData(
           description: null,
         } as GithubMeta),
     announcement.eventId
-      ? fetchNostrStarCount(announcement.eventId, 2500)
+      ? fetchNostrStarCount(
+          announcement.eventId,
+          Math.min(700, phase2Budget)
+        )
       : Promise.resolve(null),
   ]);
 

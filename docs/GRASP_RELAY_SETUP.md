@@ -27,6 +27,12 @@ Restart the relay after changes.
 
 **strfry:** set `eventKinds.allow` to the same set (see NIPS doc).
 
+## Pyramid (`relay.gittr.space`) notes
+
+- **`limits.max_indexable_tags`:** set to **64** (upstream default **14**). Larger NIP-65 kind `10002` lists and forge events with many single-letter tags otherwise get `blocked: too many indexable tags`.
+- **`open_kinds_spec`:** includes forge + social kinds (and `10002` / `10050`). “Members” on Pyramid is **not** a write whitelist for these kinds — anyone can publish open kinds.
+- **nostr.watch listing:** your kind `10002` advertising `wss://relay.gittr.space` is a discovery *hint*, not the listing itself. nostr.watch mainly shows relays after **NIP-66 monitors** publish kind **30166** checks. Keep the relay publicly reachable with a healthy NIP-11; appearance can take time (seed + monitor cycles), not instant.
+
 ## Self-hosted GRASP
 
 Follow upstream ngit/GRASP docs for your relay binary and git HTTP endpoint. Point gittr’s env and bridge config at your `wss://` URL.

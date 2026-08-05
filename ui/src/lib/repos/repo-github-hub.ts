@@ -1,7 +1,7 @@
 "use client";
 
-import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
 import {
   type StoredRepo,
   loadStoredRepos,
@@ -15,8 +15,8 @@ import {
 } from "@/lib/repos/upstream-precedence";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
-import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
@@ -24,6 +24,10 @@ import {
 import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
 
 import { nip19 } from "nostr-tools";
+
+import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+
+export { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
 
 export type GithubRepoMeta = {
   stars: number;
@@ -85,42 +89,7 @@ export function findStoredRepoForRoute(
   });
 }
 
-/**
- * Prefer an explicit `source` / `forkedFrom` GitHub URL, then any github.com
- * entry in multi-value `clone` / `web` / `link` tags (NIP-34 often puts GRASP
- * first and GitHub later on the same `clone` row).
- */
-function extractGithubUrlFromEventTags(tags: string[][]): string {
-  const preferOrder = ["source", "forkedFrom", "clone", "web", "link"] as const;
-  const byKind = new Map<string, string[]>();
-  for (const tag of tags) {
-    if (!Array.isArray(tag) || !tag[0]) continue;
-    const kind = String(tag[0]);
-    if (
-      kind !== "source" &&
-      kind !== "forkedFrom" &&
-      kind !== "clone" &&
-      kind !== "web" &&
-      kind !== "link"
-    ) {
-      continue;
-    }
-    const values = nip34TagValuesFromRow(tag);
-    if (!values.length) continue;
-    const prev = byKind.get(kind) || [];
-    byKind.set(kind, prev.concat(values));
-  }
-  for (const kind of preferOrder) {
-    for (const raw of byKind.get(kind) || []) {
-      if (!raw.includes("github.com")) continue;
-      if (!isRefetchableUpstreamSourceUrl(raw)) continue;
-      return raw;
-    }
-  }
-  return "";
-}
-
-/** Latest kind 30617/51 on relays — finds github.com in source/clone tags. */
+/** Latest kind 30617/51 on relays — finds forge URL in source/forkedFrom/clone/web/link. */
 export function queryNostrForGithubSourceUrl(
   entity: string,
   repoSlug: string,
@@ -194,7 +163,7 @@ export function persistGithubSourceOnRepo(
     sourceUrl,
     clone: [sourceUrl],
   });
-  if (!normalized.includes("github.com")) return;
+  if (!normalized || !isRefetchableUpstreamSourceUrl(normalized)) return;
 
   const repos = loadStoredRepos();
   const idx = repos.findIndex((r) => {
@@ -205,15 +174,31 @@ export function persistGithubSourceOnRepo(
 
   const existing = repos[idx]!;
   const clones = Array.isArray(existing.clone) ? [...existing.clone] : [];
-  if (!clones.some((c) => String(c).includes("github.com"))) {
+  const forgeHostHint = (() => {
+    try {
+      return new URL(
+        normalized.startsWith("http") ? normalized : `https://${normalized}`
+      ).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const alreadyHasForge = clones.some((c) => {
+    const s = String(c);
+    if (forgeHostHint && s.toLowerCase().includes(forgeHostHint)) return true;
+    return isRefetchableUpstreamSourceUrl(s);
+  });
+  // Keep forge discoverable locally; Push still omits it from clone when GRASP is present.
+  if (!alreadyHasForge) {
     clones.unshift(
       normalized.endsWith(".git") ? normalized : `${normalized}.git`
     );
   }
+  const clean = normalized.replace(/\.git$/, "");
   repos[idx] = {
     ...existing,
-    sourceUrl: normalized.replace(/\.git$/, ""),
-    forkedFrom: existing.forkedFrom || normalized.replace(/\.git$/, ""),
+    sourceUrl: clean,
+    forkedFrom: existing.forkedFrom || clean,
     clone: clones,
   };
   saveStoredRepos(repos);
@@ -331,11 +316,18 @@ export async function hydrateRepoFromGithub(
       return found !== undefined;
     });
     if (idx >= 0 && repos[idx]) {
+      const existing = repos[idx]!;
+      // Never clobber an owner-set About with GitHub hub metadata on tab visits.
+      // Placeholder / empty About may still be filled from the upstream mirror.
+      const existingDesc = existing.description || "";
+      const mayFillAbout =
+        !!meta.description &&
+        isPlaceholderRepositoryDescription(existingDesc, repoSlug);
       repos[idx] = {
-        ...repos[idx]!,
+        ...existing,
         stars: meta.stars,
         forks: meta.forks,
-        ...(meta.description ? { description: meta.description } : {}),
+        ...(mayFillAbout ? { description: meta.description } : {}),
         lastNostrEventCreatedAt: Math.floor(
           (meta.pushedAtMs || Date.now()) / 1000
         ),
@@ -367,7 +359,8 @@ export async function fetchGithubRepoDescription(
 export function persistRepoDescription(
   entity: string,
   repoSlug: string,
-  description: string
+  description: string,
+  opts?: { force?: boolean }
 ): void {
   const trimmed = description.trim();
   if (!trimmed) return;
@@ -378,6 +371,16 @@ export function persistRepoDescription(
   });
   if (idx < 0 || !repos[idx]) return;
   if (repos[idx]!.description === trimmed) return;
+  // Never clobber an owner-set About with a GitHub hub refresh (unless force from Nostr).
+  const existing = repos[idx]!.description || "";
+  if (
+    !opts?.force &&
+    existing &&
+    !isPlaceholderRepositoryDescription(existing, repoSlug) &&
+    trimmed !== existing
+  ) {
+    return;
+  }
   repos[idx] = { ...repos[idx]!, description: trimmed };
   saveStoredRepos(repos);
   if (typeof window !== "undefined") {

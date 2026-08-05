@@ -63,6 +63,26 @@ export function sidebarAboutText(
   return sanitizeDescriptionForMarkdown(d);
 }
 
+/**
+ * Prefer an owner-authored (non-placeholder) Nostr description over an empty
+ * or placeholder local value. Never replace a real local description with a
+ * placeholder event description.
+ */
+export function preferOwnedDescription(
+  current: string | undefined | null,
+  fromEvent: string | undefined | null,
+  repoName: string
+): string {
+  const eventDesc = (fromEvent || "").trim();
+  const cur = (current || "").trim();
+  const eventOk =
+    !!eventDesc && !isPlaceholderRepositoryDescription(eventDesc, repoName);
+  const curOk = !!cur && !isPlaceholderRepositoryDescription(cur, repoName);
+  if (eventOk) return eventDesc;
+  if (curOk) return cur;
+  return eventDesc || cur || "";
+}
+
 /** Repo cards (home, explore, repositories list): real blurb only, never "Imported from …". */
 export function repoCardDescriptionText(
   description: string | undefined | null,

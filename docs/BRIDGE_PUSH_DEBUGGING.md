@@ -1,5 +1,43 @@
 # Bridge Push Debugging Guide
 
+## Ghost file tree / content 404 (fixed Aug 2026)
+
+**Symptom**: Sidebar shows dozens of files; opening any file 404s on `/api/nostr/repo/file-content`. Git Server shows `git.gittr.space/...` even when the project is a GitHub import. Console: `GRASP repo not cloned yet`, `Clone API failed: 404`, `No sourceUrl, forkedFrom, or clone URL found`.
+
+**Cause**: File **list** can come from a temporary GRASP/`/api/git/repo-files` clone while this owner's bare mirror under `git-nostr-repositories/{hex}/{repo}.git` was never created (or only `git.gittr.space` was tried and 404'd while `relay.ngit.dev` had the objects). Content always reads the bare mirror. `isRefetchableUpstreamSourceUrl` also excludes GRASP, so Strategy 3 never tried those remotes for blobs.
+
+**Fix**: On content 404, try `/api/git/file-content` against every successful/clone HTTPS remote (forges first among non-success), then clone each onto the bare mirror until one works. Await bare mirror after a temp GRASP list. Git Server sidebar prefers a GitHub/GitLab/Codeberg URL from `clone[]` over `git.gittr.space`.
+
+## Empty tree + `Unknown source type` for `/grasp/…` clones (fixed Aug 2026)
+
+**Symptom**: Repo announcement has clone URLs like `https://laantungir.net/grasp/npub…/repo.git` plus ngit mirrors; UI logs `Preferring 1 non-GRASP clone URL(s)`, `Unknown source type`, then clone `500` (`no valid HEAD`) / `502` and shows **no files**.
+
+**Cause**: Home GRASP hosts use a `/grasp/npub/repo` path. That was not parsed as `nostr-git` (fell through to `unknown`, so bridge never ran for that URL) and was wrongly preferred *before* known GRASP mirrors. Empty remotes (no refs) still cannot invent a missing GitHub `source` tag — publishers should add `source`/`forkedFrom` when the real tree lives on a forge.
+
+**Fix**: Treat `/grasp/…` paths as GRASP (`isGraspServer` / `parseGitSource` → `nostr-git`). Do not classify them as forge upstreams in `extractGithubUrlFromEventTags`.
+
+## Tiny repo + wrong Git Server (`git.gittr.space` instead of announcement) (fixed Aug 2026)
+
+**Symptom**: e.g. `prod-replay-msfc22wy` shows only `src/pages/TicTacToe.tsx` and Git Server = `git.gittr.space/…`, while the NIP-34 event’s clone tag is `git.shakespeare.diy/…`.
+
+**Cause**: The on-disk tree really is that one file (not a wipe). The 3s file-fetch timeout inferred default GRASP clone URLs and **unsubscribed** before `nos.lol` / shakespeare delivered the announcement, so the sidebar preferred inferred `git.gittr.space`.
+
+**Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
+
+## Partial Push Can Wipe Folders (fixed Aug 2026)
+
+**Symptom**: After Settings → Save (About / Public-Private) and then **Push to Nostr**, folders like `scripts/` disappear. Bridge `/api/nostr/repo/files` shows only a few root files; deep links 404.
+
+**Cause**: Single-chunk `/api/nostr/repo/push` (`totalChunks === 1`, typical for ≤30 files) used to `git init` a **fresh** working tree and force-push. It only cloned the existing bare repo when `totalChunks > 1` or `files.length === 0`. A Push built from a thinned `gittr_files` index (e.g. 3 root files) therefore replaced the full tree.
+
+Settings Save itself only republishes kind **30617** metadata — it does not upload files. The wipe happens on the subsequent **Push**.
+
+**Fix**:
+- Always seed the working tree from the existing bare repo before overlaying payload files
+- Refuse force-push if the new tree would shrink by >15% (`409`, unless `allowTreeShrink: true`)
+- Client Push merges missing paths from the live bridge listing before upload
+- Settings Save no longer sets `hasUnpushedEdits` (metadata is already published as 30617)
+
 ## Why Bridge Might Be Empty After Push
 
 The bridge should have files after you push a repo to Nostr. If it's empty, here's what to check:

@@ -317,3 +317,57 @@ export function wouldWipeFollowList(args: {
   if (args.nextCount >= Math.max(5, Math.floor(known * 0.5))) return false;
   return true;
 }
+
+/** Following count = unique `p` tags across kind-3 events for one author (union). */
+export function followingCountFromContactEvents(
+  events: Array<{ tags?: string[][] | null; content?: string | null }>
+): number {
+  return mergeContactLists(...events.map((e) => parseContactListPubkeys(e)))
+    .length;
+}
+
+/**
+ * Follower count from kind-3 events that tag `profileHex` (`#p` filter).
+ * Keeps the newest event per author, then counts authors who still list them.
+ */
+export function followersCountFromContactEvents(
+  profileHex: string,
+  events: Array<{
+    pubkey?: string;
+    created_at?: number;
+    tags?: string[][] | null;
+    content?: string | null;
+  }>
+): number {
+  const target = normalizeContactPubkey(profileHex);
+  if (!target) return 0;
+
+  const newestByAuthor = new Map<
+    string,
+    {
+      created_at: number;
+      tags?: string[][] | null;
+      content?: string | null;
+    }
+  >();
+
+  for (const ev of events) {
+    const author = normalizeContactPubkey(ev.pubkey || "");
+    if (!author) continue;
+    const created = typeof ev.created_at === "number" ? ev.created_at : 0;
+    const prev = newestByAuthor.get(author);
+    if (!prev || created >= prev.created_at) {
+      newestByAuthor.set(author, {
+        created_at: created,
+        tags: ev.tags,
+        content: ev.content,
+      });
+    }
+  }
+
+  let count = 0;
+  for (const ev of newestByAuthor.values()) {
+    if (parseContactListPubkeys(ev).includes(target)) count += 1;
+  }
+  return count;
+}
