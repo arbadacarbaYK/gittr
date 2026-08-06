@@ -35,6 +35,8 @@ Explore discovers public Nostr repos (not only repos people Push’d from gittr)
 
 The same snapshot **seeds `/explore`** when the browser cache is empty (`GET /api/explore/seed` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich. Seed/sync writes go through `saveStoredRepos` (slim metadata only — no file trees). If localStorage is full, Explore still shows the seed **in memory** after reclaiming space (evict old `gittr_files__*` keys / cap cache) so the page is not stuck empty.
 
+**Reverse forge lookup:** the SEO seed only stores `npub/repo` paths — **no** upstream URLs. To find whether a GitHub/GitLab/Codeberg/Gitea/… repo already has a Nostr announce (and get the **npub** to DM), use exact match on kind **30617** `source` / `forkedFrom`: MCP `findReposBySource` or `GET /api/nostr/repos-by-github?source=https://…`.
+
 **Client chrome on Explore:** leaving `/explore` (logo, personal menu, top nav) uses a hard `location.assign` via `appNavigate` when Explore is busy with relay streams. Soft App Router `push` after `preventDefault` can look like a dead click. Search already hard-assigns into Explore for the same reason.
 
 ```bash
