@@ -60,5 +60,5 @@ export async function syncBridgeFromSource(opts: {
       details: json.details,
     };
   }
-  return { success: true, ...json };
+  return { ...json, success: true };
 }
