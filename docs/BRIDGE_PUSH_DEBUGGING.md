@@ -24,6 +24,18 @@
 
 **Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
 
+## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
+
+**Symptom**: After **Refetch from GitHub** → **Push to Nostr**, kind **30618** `refs/heads/main` is a bridge-only SHA (`Push from gittr (…)`), not the GitHub tip. Repo identity (`source` on 30617) is correct; tip is wrong.
+
+**Cause**: `/api/nostr/repo/push` always ran `git commit --allow-empty` + force-push. Refetch also filled local overrides, which disabled the “clone from source” fast path (`!hasOverrideContent`), so every clean refetch push invented a new tip.
+
+**Fix**:
+- Clean forge mirrors (`source` set, `hasUnpushedEdits` false) call `POST /api/nostr/repo/sync-from-source` and announce those exact SHAs
+- Overrides after refetch are cache, not “dirty”
+- Local-edit rewrite (`--allow-empty` / file overlay) only when `hasUnpushedEdits` is true (or no forge source)
+- Bridge `handleRepositoryEvent` also `git fetch`es upstream when the bare repo already exists
+
 ## Partial Push Can Wipe Folders (fixed Aug 2026)
 
 **Symptom**: After Settings → Save (About / Public-Private) and then **Push to Nostr**, folders like `scripts/` disappear. Bridge `/api/nostr/repo/files` shows only a few root files; deep links 404.

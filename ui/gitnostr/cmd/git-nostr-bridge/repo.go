@@ -220,6 +220,8 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 
 	// If repo already exists, ensure the source URL is registered as the "upstream" remote
 	// so the state event handler can fetch from it when commits are missing.
+	// Also refresh heads/tags from forge so Push-to-Nostr / 30618 can announce exact GitHub SHAs
+	// (instead of leaving a stale rewritten "Push from gittr" tip).
 	if repoExists && sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
 		upstreamCloneUrl := sourceUrl
 		if !strings.HasSuffix(upstreamCloneUrl, ".git") {
@@ -236,6 +238,13 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			}
 		} else {
 			log.Printf("🔗 [Bridge] Updated upstream remote: %s\n", upstreamCloneUrl)
+		}
+		fetchCmd := exec.Command("git", "--git-dir", repoPath, "fetch", "--prune", "upstream", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
+		if out, err := fetchCmd.CombinedOutput(); err != nil {
+			log.Printf("⚠️ [Bridge] Upstream fetch failed for %s: %v (%s)\n", upstreamCloneUrl, err, string(out))
+		} else {
+			log.Printf("✅ [Bridge] Refreshed bare mirror from upstream: %s\n", upstreamCloneUrl)
+			ensureRepoOwnedByGitNostr(repoPath)
 		}
 	}
 

@@ -20,7 +20,6 @@ import {
   saveStoredRepos,
 } from "../repos/storage";
 import { resolveRepoUpstreamSource } from "../repos/upstream-precedence";
-import { isCloneableUpstreamSourceUrl } from "../utils/detect-git-forge";
 import {
   getGraspServers,
   isGraspDomainForPushing,
@@ -42,7 +41,9 @@ import {
   storeRepoEventId,
 } from "./publish-with-confirmation";
 import type { RemoteSignerManager } from "./remoteSigner";
+import { shouldAnnounceUpstreamTip } from "./should-announce-upstream-tip";
 import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
+import { syncBridgeFromSource } from "./sync-bridge-from-source";
 
 function resolveWssRelayForGitHost(domain: string): string {
   const host = domain.trim().toLowerCase().replace(/\/+$/, "");
@@ -50,10 +51,6 @@ function resolveWssRelayForGitHost(domain: string): string {
 }
 
 const NGINX_SAFE_PUSH_BYTES = 9 * 1024 * 1024;
-
-function isUpstreamForgeSourceUrl(sourceUrl: string): boolean {
-  return isCloneableUpstreamSourceUrl(sourceUrl);
-}
 
 function estimatePushPayloadBytes(content: string | undefined): number {
   return content ? content.length * 1.4 + 200 : 500;
@@ -860,25 +857,23 @@ export async function pushRepoToNostr(
     });
 
     const upstreamSourceUrl =
-      normalizeGithubSourceUrl(repo.sourceUrl || "") || repo.sourceUrl || "";
-    const hasLocalFileContent = baseFiles.some(
-      (f: any) => f.content && String(f.content).length > 0
-    );
-    const hasOverrideContent = Object.values(savedOverrides).some(
-      (v) => typeof v === "string" && v.length > 0
-    );
-    const deferToBridgeSourceClone =
-      Boolean(upstreamSourceUrl) &&
-      isUpstreamForgeSourceUrl(upstreamSourceUrl) &&
-      !hasLocalFileContent &&
-      !hasOverrideContent;
+      normalizeGithubSourceUrl(repo.sourceUrl || "") ||
+      resolveRepoUpstreamSource(repo) ||
+      repo.sourceUrl ||
+      "";
+    // Refetch fills overrides as a cache — that must NOT force a rewritten bridge tip.
+    // Only real local edits (hasUnpushedEdits) should invent "Push from gittr" commits.
+    const deferToBridgeSourceClone = shouldAnnounceUpstreamTip({
+      sourceUrl: upstreamSourceUrl,
+      hasUnpushedEdits: repo.hasUnpushedEdits === true,
+    });
 
     if (deferToBridgeSourceClone) {
       onProgress?.(
-        "⚡ Upstream mirror — bridge will clone from source (skipping slow per-file upload)"
+        "⚡ Upstream tip — syncing bridge to forge SHAs (no local-edit rewrite)"
       );
       console.log(
-        `⚡ [Push Repo] Deferring HTTP file push — bridge clones from ${upstreamSourceUrl}`
+        `⚡ [Push Repo] Syncing bridge from upstream tip ${upstreamSourceUrl} (hasUnpushedEdits=false)`
       );
     }
 
@@ -2606,28 +2601,59 @@ export async function pushRepoToNostr(
       let refs: Array<{ ref: string; commit: string }> = [];
 
       if (deferToBridgeSourceClone) {
-        onProgress?.("⏳ Waiting for bridge to clone from upstream...");
-        const clonedRefs = await pollBridgeRepoRefs(
-          pubkey,
-          actualRepositoryName,
-          repo.defaultBranch || "main",
-          90000
-        );
-        if (clonedRefs.length > 0) {
-          refs = clonedRefs;
-          const refsWithCommits = refs.filter(
-            (r) => r.commit && r.commit.length > 0
-          ).length;
+        onProgress?.("⏳ Syncing bridge bare mirror to forge tip…");
+        try {
+          const syncResult = await syncBridgeFromSource({
+            ownerPubkey: pubkey,
+            repo: actualRepositoryName,
+            sourceUrl: upstreamSourceUrl,
+            branch: repo.defaultBranch || "main",
+            pubkey,
+            signer: getBridgeSigner()!,
+            authEvent: repoEvent,
+          });
+          if (syncResult.success && Array.isArray(syncResult.refs) && syncResult.refs.length > 0) {
+            refs = syncResult.refs;
+            const tip = syncResult.headCommit || refs.find((r) => r.commit)?.commit;
+            onProgress?.(
+              `✅ Bridge matches forge tip${tip ? ` (${String(tip).slice(0, 12)}…)` : ""}`
+            );
+            console.log(`✅ [Push Repo] sync-from-source ok tip=${tip}`, {
+              refs: refs.length,
+              syncedFrom: syncResult.syncedFrom,
+            });
+          } else {
+            onProgress?.(
+              `⚠️ Forge sync incomplete (${syncResult.error || "no refs"}) — polling bridge…`
+            );
+            console.warn(`⚠️ [Push Repo] sync-from-source soft-fail`, syncResult);
+          }
+        } catch (syncErr: any) {
+          console.warn(`⚠️ [Push Repo] sync-from-source error`, syncErr);
           onProgress?.(
-            `✅ Bridge cloned from upstream (${refsWithCommits} refs with commits)`
+            "⚠️ Forge sync error — polling existing bridge refs…"
           );
-          console.log(
-            `✅ [Push Repo] Skipped HTTP file push — bridge cloned ${refs.length} refs from upstream`
+        }
+        if (refs.length === 0) {
+          const clonedRefs = await pollBridgeRepoRefs(
+            pubkey,
+            actualRepositoryName,
+            repo.defaultBranch || "main",
+            90000
           );
-        } else {
-          onProgress?.(
-            "⚠️ Bridge clone still in progress — state event will sync when ready"
-          );
+          if (clonedRefs.length > 0) {
+            refs = clonedRefs;
+            const refsWithCommits = refs.filter(
+              (r) => r.commit && r.commit.length > 0
+            ).length;
+            onProgress?.(
+              `✅ Bridge refs ready (${refsWithCommits} with commits)`
+            );
+          } else {
+            onProgress?.(
+              "⚠️ Bridge sync still in progress — state event will sync when ready"
+            );
+          }
         }
       } else if (filesForBridge && filesForBridge.length > 0) {
         const oversizedPaths: string[] = [];
@@ -2883,10 +2909,40 @@ export async function pushRepoToNostr(
             // Continue anyway - we'll try to get refs, but may fail
           }
         }
+      } else if (
+        shouldAnnounceUpstreamTip({
+          sourceUrl: upstreamSourceUrl,
+          hasUnpushedEdits: repo.hasUnpushedEdits === true,
+        })
+      ) {
+        // Clean forge mirror with no file payload — still sync tip, never --allow-empty rewrite
+        onProgress?.("⏳ No local file payload — syncing bridge to forge tip…");
+        try {
+          const syncResult = await syncBridgeFromSource({
+            ownerPubkey: pubkey,
+            repo: actualRepositoryName,
+            sourceUrl: upstreamSourceUrl,
+            branch: repo.defaultBranch || "main",
+            pubkey,
+            signer: getBridgeSigner()!,
+            authEvent: repoEvent,
+          });
+          if (syncResult.success && Array.isArray(syncResult.refs)) {
+            refs = syncResult.refs;
+          }
+        } catch (e) {
+          console.warn(`⚠️ [Push Repo] clean-path sync failed`, e);
+        }
+        if (refs.length === 0) {
+          refs = await pollBridgeRepoRefs(
+            pubkey,
+            actualRepositoryName,
+            repo.defaultBranch || "main",
+            60000
+          );
+        }
       } else {
-        // No files to push - but we still need to create a new commit with --allow-empty
-        // This ensures every push creates a new commit with the current timestamp
-        // Otherwise, the state event will point to an old commit
+        // Pure Nostr / dirty without files — may create an empty timestamp commit
         onProgress?.(
           "📤 Pushing to bridge to create new commit (no file changes)..."
         );
