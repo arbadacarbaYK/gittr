@@ -2,6 +2,7 @@
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
+import { ProfilePagesAppsSections } from "@/components/profile/ProfilePagesAppsSections";
 import { Button } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -258,6 +259,8 @@ export default function EntityPage({
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
+  const [profilePagesCount, setProfilePagesCount] = useState(0);
+  const [profileAppsCount, setProfileAppsCount] = useState(0);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [contributionGraph, setContributionGraph] = useState<
     Array<{ date: string; count: number }>
@@ -3488,6 +3491,22 @@ export default function EntityPage({
                   {userRepos.length}
                 </span>
               </div>
+              {profilePagesCount > 0 ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Pages</span>
+                  <span className="text-cyan-400 font-semibold">
+                    {profilePagesCount}
+                  </span>
+                </div>
+              ) : null}
+              {profileAppsCount > 0 ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400">Apps</span>
+                  <span className="text-emerald-400 font-semibold">
+                    {profileAppsCount}
+                  </span>
+                </div>
+              ) : null}
               <Tooltip
                 content="People this account follows (NIP-02 contact list). Useful for Web of Trust / legitimacy."
                 mobileClickable
@@ -3859,6 +3878,14 @@ export default function EntityPage({
           </div>
         </div>
       </div>
+
+      <ProfilePagesAppsSections
+        ownerPubkeyHex={pubkeyForMetadata || fullPubkeyForMeta}
+        onCountsChange={({ pages, apps }) => {
+          setProfilePagesCount(pages);
+          setProfileAppsCount(apps);
+        }}
+      />
 
       {/* User Repositories */}
       {userRepos.length > 0 && (

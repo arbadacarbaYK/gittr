@@ -125,6 +125,7 @@ Profile pages show a **repo count** from Nostr stats, but the grid used to rely 
 - **`GET /api/nostr/profile-repos?ownerPubkey=<64-char-hex>`** — fetches kind **30617/30618** for `authors: [pubkey]` on the platform stats relay set. Rows include `name` / `description` from 30617 tags when present; **30618** updates activity timestamps without wiping announcement text.
 - The profile page passes the decoded hex pubkey (npub URLs are decoded client-side; do not pass npub to this API).
 - Response is **field-merged** with local repos (`mergeProfileRepoList`): sparse network rows must not erase About text, display names, or `userRole` (owner cards flipping to contributor green).
+- Below Repositories, the same profile also lists that person’s **Pages** (from **`GET /api/gittr-pages/status-sites`**, filtered by author pubkey / `npub…` site hostname) and **Apps** (from **`GET /api/nostr/software-catalog`**, filtered by publisher pubkey or NIP-82 `p` attribution). UI: `ProfilePagesAppsSections`.
 - Smoke test: `curl -sS 'https://YOUR_DOMAIN/api/nostr/profile-repos?ownerPubkey=<hex>' | jq '.repos | length'`
 
 ---
