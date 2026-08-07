@@ -27,8 +27,8 @@ import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
 import Link from "next/link";
 import { getEventHash } from "nostr-tools";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 type ThreadedComment = DiscussionComment & {
@@ -272,7 +272,7 @@ export default function DiscussionDetailPage({
               <div className="prose prose-invert max-w-none text-sm mb-3">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
+                  rehypePlugins={markdownRehypePlugins}
                   components={{
                     code: MarkdownCode,
                   }}
@@ -375,7 +375,7 @@ export default function DiscussionDetailPage({
             <div className="prose prose-invert max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
+                rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,
                 }}

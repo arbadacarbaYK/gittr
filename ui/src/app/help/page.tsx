@@ -124,7 +124,7 @@ export default function HelpPage() {
             nodeBorder: "#7c3aed",
             nodeTextColor: "#fff",
           },
-          securityLevel: "loose",
+          securityLevel: "antiscript",
           flowchart: {
             useMaxWidth: false,
             htmlLabels: true,

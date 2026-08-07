@@ -89,8 +89,8 @@ import { Reply } from "lucide-react";
 import Link from "next/link";
 import { type UnsignedEvent, nip19 } from "nostr-tools";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 interface Issue {
@@ -1713,7 +1713,7 @@ export default function IssueDetailPage({
             <div className="prose prose-invert max-w-none mb-4">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
+                rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,
                 }}

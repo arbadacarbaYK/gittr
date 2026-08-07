@@ -16,7 +16,7 @@ function getMermaid() {
       const mermaid = mod.default;
       mermaid.initialize({
         startOnLoad: false,
-        securityLevel: "loose",
+        securityLevel: "antiscript",
         theme: "dark",
         // Dark theme forces light labels; our host highlights need dark fills + light text
         // that survive theme CSS. !important beats Mermaid’s default node fills.

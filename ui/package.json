@@ -9,7 +9,7 @@
     "start": "next start",
     "prettier": "prettier src/**/*.{ts,tsx} --write",
     "eslint": "eslint --ext .ts,.tsx --fix .",
-    "test:unit": "npx vitest run src/lib/git/bare-repo-tree-last-commits.test.ts src/lib/utils/filter-display-clone-urls.test.ts src/lib/nostr/should-announce-upstream-tip.test.ts src/lib/repos/repo-file-tree-branch.test.ts src/lib/repos/forge-tree-shrink.test.ts",
+    "test:unit": "npx vitest run src/lib/git/bare-repo-tree-last-commits.test.ts src/lib/utils/filter-display-clone-urls.test.ts src/lib/nostr/should-announce-upstream-tip.test.ts src/lib/repos/repo-file-tree-branch.test.ts src/lib/repos/forge-tree-shrink.test.ts src/lib/security/markdown-rehype-plugins.test.ts",
     "test:regressions": "npm run test:unit",
     "delete:nostr-relaypool-ts": "rimraf ./node_modules/nostr-relaypool/*.ts",
     "generate-system-keypair": "node scripts/generate-system-keypair.js"
@@ -48,7 +48,8 @@
     "tailwindcss-animate": "^1.0.5",
     "utf-8-validate": "^6.0.5",
     "ws": "^8.21.0",
-    "zod": "^3.20.6"
+    "zod": "^3.25.76",
+    "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.4",
@@ -72,7 +73,8 @@
     "rimraf": "^4.3.1",
     "tailwind-scrollbar": "^2.1.0",
     "tailwindcss": "^3.2.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "rehype-stringify": "^10.0.1"
   },
   "ct3aMetadata": {
     "initVersion": "7.5.9"
