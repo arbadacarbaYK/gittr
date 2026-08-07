@@ -89,15 +89,16 @@ async function listRefs(
       `git --git-dir=${shellQuote(repoPath)} show-ref --heads --tags`,
       { timeout: 30000 }
     );
-    return stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [commit, ref] = line.split(/\s+/);
-        return { ref, commit };
-      })
-      .filter((r) => r.ref && r.commit && /^[0-9a-f]{40}$/i.test(r.commit));
+    const out: Array<{ ref: string; commit: string }> = [];
+    for (const line of stdout.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const [commit, ref] = trimmed.split(/\s+/);
+      if (ref && commit && /^[0-9a-f]{40}$/i.test(commit)) {
+        out.push({ ref, commit });
+      }
+    }
+    return out;
   } catch {
     return [];
   }
