@@ -127,7 +127,9 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import {
+  allowShrinkToSourceUpstreamTree,
   hasGithubUpstreamMirror,
+  isSourceUpstreamFetchStatus,
   markSourceTreeFresh,
   readSourceTreeFreshMs,
   readUpstreamSourceSession,
@@ -1137,7 +1139,11 @@ export function RepoCodePage() {
   }, [repoIsOwner]);
 
   const persistRepoFiles = useCallback(
-    (files: RepoFileEntry[], context: string) => {
+    (
+      files: RepoFileEntry[],
+      context: string,
+      opts?: { allowShrink?: boolean }
+    ) => {
       const currentRepo = repoDataRef.current;
       const ownerOrLocalEdits =
         repoIsOwner || currentRepo?.hasUnpushedEdits === true;
@@ -1169,12 +1175,16 @@ export function RepoCodePage() {
           existingIndexed.length,
           existingInMemory
         );
+        // Explicit Refetch = forge is source of truth (may delete local-only paths).
+        // Opt-in allowShrink for File Fetch when a forge listing beat a fat cache.
+        const allowShrink =
+          opts?.allowShrink === true || context === "[Refetch]";
         if (
+          !allowShrink &&
           (context === "[Bridge Fetch]" ||
             context === "[Bridge Fetch merged partial]" ||
             context === "[File Fetch]" ||
-            context.startsWith("[File Fetch]") ||
-            context === "[Refetch]") &&
+            context.startsWith("[File Fetch]")) &&
           existingCount > 0 &&
           files.length > 0 &&
           files.length < existingCount
@@ -5627,6 +5637,15 @@ export function RepoCodePage() {
               if (lastAppliedFileTreeKeyRef.current === applyKey) {
                 return;
               }
+              // Forge listings may shrink (deleted upstream). GRASP partials must not.
+              const allowShrink = allowShrinkToSourceUpstreamTree({
+                hasUnpushedEdits:
+                  repoDataRef.current?.hasUnpushedEdits === true,
+                sourceType: status.source?.type,
+                sourceUrl: repoDataRef.current?.sourceUrl,
+                forkedFrom: repoDataRef.current?.forkedFrom,
+                clone: (repoDataRef.current as { clone?: string[] })?.clone,
+              });
               // Never replace a richer local/index tree with a smaller GRASP/clone
               // listing — that wiped folder uploads after Push + hard refresh.
               const shouldApplyTree = shouldApplyFetchedFileTree(
@@ -5635,7 +5654,7 @@ export function RepoCodePage() {
                 activeBranch,
                 status.files.length,
                 {
-                  allowShrink: false,
+                  allowShrink,
                   existingNestedCount: existingNested,
                   incomingNestedCount: nestedFilePathCount(status.files),
                 }
@@ -5643,7 +5662,7 @@ export function RepoCodePage() {
               if (
                 !shouldApplyTree &&
                 shouldMergeFetchedFileTree(existingCount, status.files.length, {
-                  allowShrink: false,
+                  allowShrink,
                 })
               ) {
                 console.warn(
@@ -5840,15 +5859,35 @@ export function RepoCodePage() {
           const branchFromFetch =
             (successfulStatuses.find((s: any) => s.resolvedBranch)
               ?.resolvedBranch as string | undefined) || activeBranch;
-          // Never let preferUpstream wipe a richer local/folder tree with a
-          // smaller GRASP listing (npub routes always "prefer upstream").
+          const sourceSuccess = successfulStatuses.find((s: any) =>
+            isSourceUpstreamFetchStatus(
+              s,
+              repoDataRef.current?.sourceUrl,
+              repoDataRef.current?.forkedFrom
+            )
+          );
+          const filesFromSource =
+            !!sourceSuccess &&
+            Array.isArray(sourceSuccess.files) &&
+            sourceSuccess.files.length === files.length;
+          const allowShrink =
+            filesFromSource &&
+            allowShrinkToSourceUpstreamTree({
+              hasUnpushedEdits:
+                repoDataRef.current?.hasUnpushedEdits === true,
+              sourceType: sourceSuccess?.source?.type,
+              sourceUrl: repoDataRef.current?.sourceUrl,
+              forkedFrom: repoDataRef.current?.forkedFrom,
+            });
+          // Never let a smaller GRASP listing wipe a richer local/folder tree.
+          // Forge + no local edits may shrink (deleted files on GitHub).
           const shouldReplaceFileTree = shouldApplyFetchedFileTree(
             branchFromFetch,
             existingCount,
             activeBranch,
             files.length,
             {
-              allowShrink: false,
+              allowShrink,
               existingNestedCount: Math.max(
                 nestedFilePathCount(currentFiles),
                 nestedFilePathCount(indexedFiles)
@@ -5962,7 +6001,7 @@ export function RepoCodePage() {
 
           // Only persist when we actually replaced the in-memory tree
           if (shouldReplaceFileTree) {
-            persistRepoFiles(files, "[File Fetch]");
+            persistRepoFiles(files, "[File Fetch]", { allowShrink });
           }
 
           // Update localStorage - only store fileCount, not full files array
@@ -8538,13 +8577,22 @@ export function RepoCodePage() {
                           if (lastAppliedFileTreeKeyRef.current === applyKey) {
                             return;
                           }
+                          const allowShrink = allowShrinkToSourceUpstreamTree({
+                            hasUnpushedEdits:
+                              repoDataRef.current?.hasUnpushedEdits === true,
+                            sourceType: status.source?.type,
+                            sourceUrl: repoDataRef.current?.sourceUrl,
+                            forkedFrom: repoDataRef.current?.forkedFrom,
+                            clone: (repoDataRef.current as { clone?: string[] })
+                              ?.clone,
+                          });
                           const shouldApplyTree = shouldApplyFetchedFileTree(
                             branchFromFetch,
                             existingCount,
                             activeBranch,
                             status.files.length,
                             {
-                              allowShrink: false,
+                              allowShrink,
                               existingNestedCount: Math.max(
                                 nestedFilePathCount(currentFiles),
                                 nestedFilePathCount(indexedFiles)
@@ -8559,7 +8607,7 @@ export function RepoCodePage() {
                             shouldMergeFetchedFileTree(
                               existingCount,
                               status.files.length,
-                              { allowShrink: false }
+                              { allowShrink }
                             )
                           ) {
                             console.warn(
@@ -8748,16 +8796,71 @@ export function RepoCodePage() {
                     );
                     // Only update if we haven't already updated from the first success callback
                     const currentFiles = repoDataRef.current?.files;
+                    const indexedFilesEose = loadRepoFiles(
+                      resolvedParams.entity,
+                      resolveRepoStorageAlias(
+                        resolvedParams.entity,
+                        resolvedParams.repo
+                      )
+                    );
+                    const existingCountEose = Math.max(
+                      Array.isArray(currentFiles) ? currentFiles.length : 0,
+                      indexedFilesEose.length
+                    );
                     // Collect all successful sources for fallback during file opening
                     const successfulStatuses = statuses.filter(
                       (s) =>
                         s.status === "success" && s.files && s.files.length > 0
                     );
+                    const sourceSuccessEose = successfulStatuses.find((s) =>
+                      isSourceUpstreamFetchStatus(
+                        s,
+                        repoDataRef.current?.sourceUrl,
+                        repoDataRef.current?.forkedFrom
+                      )
+                    );
+                    const filesFromSourceEose =
+                      !!sourceSuccessEose &&
+                      Array.isArray(sourceSuccessEose.files) &&
+                      sourceSuccessEose.files.length === files.length;
+                    const allowShrinkEose =
+                      filesFromSourceEose &&
+                      allowShrinkToSourceUpstreamTree({
+                        hasUnpushedEdits:
+                          repoDataRef.current?.hasUnpushedEdits === true,
+                        sourceType: sourceSuccessEose?.source?.type,
+                        sourceUrl: repoDataRef.current?.sourceUrl,
+                        forkedFrom: repoDataRef.current?.forkedFrom,
+                      });
+                    const activeBranchEose = resolveActiveRepoBranch(
+                      repoDataRef.current,
+                      selectedBranchRef.current
+                    );
+                    const branchFromFetchEose =
+                      (successfulStatuses.find((s) => s.resolvedBranch)
+                        ?.resolvedBranch as string | undefined) ||
+                      activeBranchEose;
+                    const shouldReplaceEose = shouldApplyFetchedFileTree(
+                      branchFromFetchEose,
+                      existingCountEose,
+                      activeBranchEose,
+                      files.length,
+                      {
+                        allowShrink: allowShrinkEose,
+                        existingNestedCount: Math.max(
+                          nestedFilePathCount(currentFiles),
+                          nestedFilePathCount(indexedFilesEose)
+                        ),
+                        incomingNestedCount: nestedFilePathCount(files),
+                      }
+                    );
 
                     if (
-                      !currentFiles ||
-                      !Array.isArray(currentFiles) ||
-                      currentFiles.length === 0
+                      shouldReplaceEose &&
+                      (!currentFiles ||
+                        !Array.isArray(currentFiles) ||
+                        currentFiles.length === 0 ||
+                        allowShrinkEose)
                     ) {
                       const successfulSourcesArray = successfulStatuses.map(
                         (s) => ({
@@ -8858,9 +8961,12 @@ export function RepoCodePage() {
                       });
                     }
 
-                    // CRITICAL: Save files separately to avoid localStorage quota issues
-                    persistRepoFiles(files, "[File Fetch]");
-
+                    // Persist forge shrink / empty-local replace; never persist a GRASP shrink over fat cache
+                    if (shouldReplaceEose) {
+                      persistRepoFiles(files, "[File Fetch]", {
+                        allowShrink: allowShrinkEose,
+                      });
+                    }
                     // Update localStorage - only store fileCount, not full files array
                     try {
                       const repos = loadStoredRepos();
@@ -9198,6 +9304,15 @@ export function RepoCodePage() {
                       repoDataRef.current,
                       selectedBranchRef.current
                     );
+                    const allowShrink = allowShrinkToSourceUpstreamTree({
+                      hasUnpushedEdits:
+                        repoDataRef.current?.hasUnpushedEdits === true,
+                      sourceType: status.source?.type,
+                      sourceUrl: repoDataRef.current?.sourceUrl,
+                      forkedFrom: repoDataRef.current?.forkedFrom,
+                      clone: (repoDataRef.current as { clone?: string[] })
+                        ?.clone,
+                    });
                     if (
                       shouldApplyFetchedFileTree(
                         branchFromFetch,
@@ -9205,7 +9320,7 @@ export function RepoCodePage() {
                         activeBranch,
                         status.files.length,
                         {
-                          allowShrink: false,
+                          allowShrink,
                           existingNestedCount: Math.max(
                             nestedFilePathCount(currentFiles),
                             nestedFilePathCount(indexedFiles)

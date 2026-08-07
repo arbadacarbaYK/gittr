@@ -4,6 +4,8 @@
 
 **Same bare repo, other transports:** **HTTPS** (nginx in front of the bridge) and **`nostr://`** with [git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) when the repo is on the bridge.
 
+**SSH vs gittr Code tab:** SSH/HTTPS serve objects from this bridge’s `repositoryDir`. The website also walks NIP-34 `clone[]` / `source` and shows per-file last-commit times from `tree-last-commits` on that tip — see gittr [`docs/FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md) and [`docs/BRIDGE_PUSH_DEBUGGING.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/BRIDGE_PUSH_DEBUGGING.md). Local twin: [`docs/file-fetch-flow.md`](docs/file-fetch-flow.md).
+
 Hosts: **gittr.space** uses `git.gittr.space`, or run your own bridge — [README.md](README.md) · [docs/STANDALONE_BRIDGE_SETUP.md](docs/STANDALONE_BRIDGE_SETUP.md).
 
 The bridge kind-52 Authors filter includes **repo owners** (`Repository.OwnerPubKey`) and permission targets. Paste real OpenSSH pubkeys (`ssh-ed25519 …`); comments with spaces are accepted.

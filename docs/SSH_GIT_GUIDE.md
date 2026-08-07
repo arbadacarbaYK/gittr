@@ -4,6 +4,8 @@ SSH for gittr.space uses **[gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6
 
 **SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 
+**SSH vs Code tab:** `git clone` / `git pull` over SSH or HTTPS talk to the **bridge bare repo** (`git.gittr.space`). The website Code tab loads the tree from that same mirror **and** from published NIP-34 `clone[]` / `source` URLs (forge first, then GRASP). File timestamps and tip fidelity details: [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md). Push tip bugs / clone sidebar: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
+
 **SSH host:** always use **`git.gittr.space`** (not `gittr.space`). Example: `git clone git@git.gittr.space:<npub>/<repo>.git`.
 
 The bridge subscribes to kind **52** for repository **owners** and permission targets, then writes `authorized_keys`. Publishing from Settings → SSH Keys also POSTs the event directly to the bridge so you do not wait on relays.

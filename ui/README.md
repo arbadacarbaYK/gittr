@@ -302,28 +302,34 @@ When deploying to production (Vercel, Railway, Render, etc.):
 
 ## 🔐 NIP-05 Verification Setup
 
-NIP-05 allows your platform to be verified on Nostr (e.g., `_@gittr.space` or `gittr@gittr.space`).
+NIP-05 lets clients verify identifiers like `_@gittr.space`, `gittr@gittr.space`, or `relay@gittr.space` against a pubkey.
 
 ### Step 1: Generate or Use a Nostr Keypair
 
-You need a Nostr pubkey for the platform. You can:
-- Generate a new keypair using any Nostr client
-- Use an existing pubkey you control
+You need a Nostr pubkey for the platform (hex in `nostr.json`; npub is fine in env vars).
 
 ### Step 2: Update `.well-known/nostr.json`
 
-Edit `ui/public/.well-known/nostr.json` and replace `YOUR_PLATFORM_PUBKEY_HERE` with your actual pubkey (npub format):
+Edit `ui/public/.well-known/nostr.json`. **Keys are local-parts only** (not `name@domain`). Values are **64-char hex** pubkeys:
 
 ```json
 {
   "names": {
-    "_@gittr.space": "npub1your_actual_platform_pubkey_here",
-    "gittr@gittr.space": "npub1your_actual_platform_pubkey_here"
+    "_": "YOUR_PLATFORM_HEX_PUBKEY",
+    "gittr": "YOUR_PLATFORM_HEX_PUBKEY",
+    "relay": "YOUR_PLATFORM_HEX_PUBKEY"
+  },
+  "relays": {
+    "YOUR_PLATFORM_HEX_PUBKEY": ["wss://relay.gittr.space"]
   }
 }
 ```
 
-**Note**: The `_@gittr.space` entry verifies the root domain, while `gittr@gittr.space` provides a named identifier.
+Clients query `https://gittr.space/.well-known/nostr.json?name=relay` and check `names.relay`.
+
+Also set `nip05` in the platform kind-0 profile (e.g. `"nip05": "relay@gittr.space"`).
+
+Serve with `Access-Control-Allow-Origin: *` (configured in `next.config.js` for this path).
 
 ### Step 3: Set Environment Variable
 
@@ -337,13 +343,12 @@ NEXT_PUBLIC_PLATFORM_PUBKEY=npub1your_actual_platform_pubkey_here
 
 1. **Check the `.well-known` endpoint**:
    ```bash
-   curl https://gittr.space/.well-known/nostr.json
+   curl -s "https://gittr.space/.well-known/nostr.json?name=relay"
+   curl -sI "https://gittr.space/.well-known/nostr.json" | grep -i access-control
    ```
-   Should return the JSON with your pubkey.
 
 2. **Verify NIP-05**:
-   - Use a Nostr client or tool like https://nostr.com/ to verify `_@gittr.space`
-   - It should resolve to your platform pubkey
+   - Confirm kind 0 `nip05` matches a name in `nostr.json` for the same hex pubkey
 
 3. **Check NIP-11 endpoint**:
    ```bash

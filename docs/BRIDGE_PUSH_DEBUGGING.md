@@ -44,6 +44,8 @@ Code browser rows show **last commit message + relative time** for the currently
 - Local-edit rewrite (`--allow-empty` / file overlay) only when `hasUnpushedEdits` is true (or no forge source)
 - Bridge `handleRepositoryEvent` also `git fetch`es upstream when the bare repo already exists
 
+**Regression (required):** `cd ui && npm run test:regressions` covers tip gate + clone sidebar + tree timestamps. MCP smoke/`test:mcp-stdio` alone does **not**. See [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md#regression-tests-run-these--smoke-alone-is-not-enough).
+
 ## Partial Push Can Wipe Folders (fixed Aug 2026)
 
 **Symptom**: After Settings → Save (About / Public-Private) and then **Push to Nostr**, folders like `scripts/` disappear. Bridge `/api/nostr/repo/files` shows only a few root files; deep links 404.

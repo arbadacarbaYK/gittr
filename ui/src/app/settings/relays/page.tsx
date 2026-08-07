@@ -6,17 +6,22 @@ import SettingsHero from "@/components/settings-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import useLocalStorage from "@/lib/hooks/useLocalStorage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_GRASP_LIST, createGraspListEvent } from "@/lib/nostr/events";
+import {
+  KIND_GRASP_LIST,
+  KIND_RELAY_LIST,
+  createGraspListEvent,
+} from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import {
-  getUserGraspServers,
-  parseGraspListEvent,
-} from "@/lib/utils/grasp-list";
+  type Nip65RelayEntry,
+  buildRelayListTags,
+  getUserNip65Relays,
+} from "@/lib/nostr/nip65-relay-list";
+import { getUserGraspServers } from "@/lib/utils/grasp-list";
 import { getGraspServers, isGraspServer } from "@/lib/utils/grasp-servers";
 
 import {
@@ -29,14 +34,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { getEventHash } from "nostr-tools";
-import { type FieldValues, useForm } from "react-hook-form";
-
-type RelayType = "relay" | "gitserver";
-
-interface UserRelay {
-  url: string;
-  type: RelayType;
-}
 
 /** nostr-relaypool exposes WebSocket.readyState (not a custom enum). */
 const WS_CONNECTING = 0;
@@ -83,7 +80,6 @@ function mapGetNormalized<T>(map: Map<string, T>, url: string): T | undefined {
 export default function RelaysPage() {
   const {
     addRelay,
-    removeRelay,
     defaultRelays,
     getRelayStatuses,
     subscribe,
@@ -95,179 +91,36 @@ export default function RelaysPage() {
     new Map()
   );
   const [defaultRelaysExpanded, setDefaultRelaysExpanded] = useState(false);
-  const [userRelaysExpanded, setUserRelaysExpanded] = useState(true);
+  const [nip65Expanded, setNip65Expanded] = useState(true);
   const [graspListExpanded, setGraspListExpanded] = useState(true);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastReconnectNudgeRef = useRef<Map<string, number>>(new Map());
+  const relaysAddedRef = useRef<Set<string>>(new Set());
 
-  // GRASP list state
+  const [nip65Relays, setNip65Relays] = useState<Nip65RelayEntry[]>([]);
+  const [nip65Loading, setNip65Loading] = useState(false);
+  const [nip65Saving, setNip65Saving] = useState(false);
+  const [nip65Status, setNip65Status] = useState("");
+  const [newNip65Relay, setNewNip65Relay] = useState("wss://");
+
   const [graspListServers, setGraspListServers] = useState<string[]>([]);
   const [graspListLoading, setGraspListLoading] = useState(true);
   const [graspListSaving, setGraspListSaving] = useState(false);
   const [graspListStatus, setGraspListStatus] = useState<string>("");
   const [newGraspServer, setNewGraspServer] = useState<string>("wss://");
-  const { register, handleSubmit, reset, watch } = useForm<{
-    relay: string;
-    type: RelayType;
-  }>({
-    defaultValues: { relay: "wss://", type: "relay" },
-  });
 
-  // Load user relays from localStorage (stored as array of {url, type})
-  // CRITICAL: Migrate from old "relays" key to new "gittr_user_relays" format
-  const [userRelays, setUserRelays] = useLocalStorage<UserRelay[]>(
-    "gittr_user_relays",
-    (() => {
-      // Try to migrate from old format
-      if (typeof window !== "undefined") {
-        try {
-          const oldRelaysStr = localStorage.getItem("relays");
-          if (oldRelaysStr) {
-            const oldRelays = JSON.parse(oldRelaysStr) as string[];
-            if (Array.isArray(oldRelays) && oldRelays.length > 0) {
-              // Convert old format (string[]) to new format (UserRelay[])
-              const migrated = oldRelays
-                .filter((url) => url && url.startsWith("wss://"))
-                .map((url) => ({
-                  url,
-                  type: (isGraspServer(url)
-                    ? "gitserver"
-                    : "relay") as RelayType,
-                }));
-              if (migrated.length > 0) {
-                console.log(
-                  `[RelaysPage] Migrated ${migrated.length} relays from old format`
-                );
-                // Save in new format
-                localStorage.setItem(
-                  "gittr_user_relays",
-                  JSON.stringify(migrated)
-                );
-                // Remove old key
-                localStorage.removeItem("relays");
-                return migrated;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("[RelaysPage] Failed to migrate old relays:", e);
-        }
-      }
-      return [];
-    })()
-  );
-
-  // CRITICAL: Define defaultRelaysList BEFORE it's used in useEffect hooks
   const defaultRelaysList = defaultRelays || [];
-
-  // Separate default relays into git servers and regular relays
   const defaultGitServers = defaultRelaysList.filter(isGraspServer);
   const defaultRegularRelays = defaultRelaysList.filter(
     (r) => !isGraspServer(r)
   );
 
-  // Separate user relays
-  const userGitServers = (userRelays || []).filter(
-    (r) => r.type === "gitserver" || isGraspServer(r.url)
-  );
-  const userRegularRelays = (userRelays || []).filter(
-    (r) => r.type === "relay" && !isGraspServer(r.url)
-  );
-
-  // Prevent duplicate additions
-  const allRelayUrls = new Set([
-    ...defaultRelaysList,
-    ...(userRelays || []).map((r) => r.url),
-  ]);
-
-  const onFormSubmit = (data: FieldValues) => {
-    const url = (data.relay as string).trim();
-    const type =
-      (data.type as RelayType) || (isGraspServer(url) ? "gitserver" : "relay");
-
-    if (!url || !url.startsWith("wss://")) {
-      alert("Please enter a valid WebSocket URL (wss://...)");
-      return;
-    }
-
-    if (allRelayUrls.has(url)) {
-      alert("This relay is already added");
-      return;
-    }
-
-    if (addRelay) {
-      const newRelay: UserRelay = { url, type };
-      setUserRelays([...(userRelays || []), newRelay]);
-      addRelay(url);
-      reset({ relay: "wss://", type: "relay" });
-    }
-  };
-
-  const handleRemoval = (url: string) => {
-    if (removeRelay) {
-      removeRelay(url);
-      setUserRelays((userRelays || []).filter((r) => r.url !== url));
-    }
-  };
-
-  // Load user relays from a real NIP-07 extension only.
-  // Remote-signer adapter getRelays() returns bunker transport relays — merging
-  // those into the user's list + reconnect-nudging them breaks NIP-46.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.nostr) return;
-    if (remoteSigner?.getSession()) return;
-
-    const loadNip07Relays = async () => {
-      try {
-        const nip07Relays = await window.nostr.getRelays();
-        if (nip07Relays && typeof nip07Relays === "object") {
-          const relayUrls = Object.keys(nip07Relays).filter((url) =>
-            url.startsWith("wss://")
-          );
-          if (relayUrls.length > 0) {
-            console.log(
-              `[RelaysPage] Found ${relayUrls.length} relays from NIP-07:`,
-              relayUrls
-            );
-
-            // Merge with existing user relays (avoid duplicates)
-            const existingUrls = new Set((userRelays || []).map((r) => r.url));
-            const newRelays: UserRelay[] = relayUrls
-              .filter(
-                (url) =>
-                  !existingUrls.has(url) && !defaultRelaysList.includes(url)
-              )
-              .map((url) => ({
-                url,
-                type: (isGraspServer(url) ? "gitserver" : "relay") as RelayType,
-              }));
-
-            if (newRelays.length > 0) {
-              console.log(
-                `[RelaysPage] Adding ${newRelays.length} new relays from NIP-07`
-              );
-              setUserRelays([...(userRelays || []), ...newRelays]);
-            }
-          }
-        }
-      } catch (error) {
-        console.warn("[RelaysPage] Failed to load NIP-07 relays:", error);
-      }
-    };
-
-    loadNip07Relays();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
-
-  // CRITICAL: Ensure ALL relays (default + user) are added to the pool on mount
-  // Use a ref to prevent duplicate additions
-  const relaysAddedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!addRelay) return;
-
     try {
-      // Add ALL default relays to pool first
-      defaultRelaysList.forEach((url: string) => {
+      // Platform defaults only — never dump the user's full NIP-65 list into the
+      // app pool (that opens dozens of sockets and starves Amber bunker transport).
+      for (const url of defaultRelaysList) {
         if (
           url &&
           url.startsWith("wss://") &&
@@ -276,26 +129,12 @@ export default function RelaysPage() {
           addRelay(url);
           relaysAddedRef.current.add(url);
         }
-      });
-
-      // Then add user relays
-      (userRelays || []).forEach((relay: UserRelay) => {
-        if (
-          relay.url &&
-          relay.url.startsWith("wss://") &&
-          !relaysAddedRef.current.has(relay.url)
-        ) {
-          addRelay(relay.url);
-          relaysAddedRef.current.add(relay.url);
-        }
-      });
+      }
     } catch (error) {
       console.error("[RelaysPage] Failed to add relays to pool:", error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addRelay, (userRelays || []).length]); // Re-run if user relays change
+  }, [addRelay, defaultRelaysList]);
 
-  // Poll live WebSocket readyState from the pool; nudge CLOSED relays to reconnect.
   useEffect(() => {
     if (!getRelayStatuses) return;
 
@@ -324,8 +163,8 @@ export default function RelaysPage() {
                 item.status !== undefined
                   ? item.status
                   : item.staus !== undefined
-                  ? item.staus
-                  : undefined;
+                    ? item.staus
+                    : undefined;
               if (
                 url &&
                 typeof status === "number" &&
@@ -335,21 +174,14 @@ export default function RelaysPage() {
               }
             }
           });
-        } else {
-          console.error(
-            "[RelaysPage] getRelayStatuses() did not return an array:",
-            statuses
-          );
         }
 
         const bunkerTransport = new Set(
           (remoteSigner?.getTransportRelayUrls?.() || []).map(normalizeRelayUrl)
         );
 
-        const allRelaysToCheck = [
-          ...defaultRelaysList,
-          ...(userRelays || []).map((r) => r.url),
-        ];
+        // Status / reconnect only for platform defaults — not the full NIP-65 set.
+        const allRelaysToCheck = [...defaultRelaysList];
 
         const statusMap = new Map<string, number>();
 
@@ -358,16 +190,12 @@ export default function RelaysPage() {
           const poolStatus = poolByNorm.get(key);
           const isBunkerTransport = bunkerTransport.has(key);
 
-          // Live status only — never invent Connected from events / sticky cache.
           if (poolStatus !== undefined) {
             statusMap.set(url, poolStatus);
           } else {
-            // Not in pool yet → treat as connecting and ensure it's dialed.
             statusMap.set(url, WS_CONNECTING);
           }
 
-          // Never reconnect-nudge bunker URI relays from this page — that
-          // thrashes NIP-46 transport (Amber sign_event never arrives).
           const effective = statusMap.get(url);
           if (
             addRelay &&
@@ -382,17 +210,15 @@ export default function RelaysPage() {
           }
         });
 
-        console.log("[RelaysPage] Live status summary:", {
-          total: statusMap.size,
-          connected: [...statusMap.values()].filter((s) => s === WS_OPEN)
-            .length,
-          connecting: [...statusMap.values()].filter((s) => s === WS_CONNECTING)
-            .length,
-          closed: [...statusMap.values()].filter((s) => s === WS_CLOSED).length,
-          sample: [...statusMap.entries()]
-            .slice(0, 6)
-            .map(([u, s]) => [u, labelReadyState(s)]),
-        });
+        // Overlay NIP-65 rows with pool status when the URL already overlaps
+        // defaults — no extra sockets for the rest.
+        for (const entry of nip65Relays) {
+          const key = normalizeRelayUrl(entry.url);
+          const poolStatus = poolByNorm.get(key);
+          if (poolStatus !== undefined) {
+            statusMap.set(entry.url, poolStatus);
+          }
+        }
 
         setRelayStatuses(statusMap);
       } catch (error) {
@@ -414,7 +240,7 @@ export default function RelaysPage() {
     getRelayStatuses,
     addRelay,
     defaultRelaysList,
-    (userRelays || []).length,
+    nip65Relays,
     remoteSigner,
   ]);
 
@@ -424,7 +250,28 @@ export default function RelaysPage() {
   const getStatusLabel = (url: string) =>
     labelReadyState(mapGetNormalized(relayStatuses, url));
 
-  // Load user's GRASP list
+  useEffect(() => {
+    if (!pubkey || !subscribe || !defaultRelays) return;
+
+    const loadNip65 = async () => {
+      setNip65Loading(true);
+      try {
+        const entries = await getUserNip65Relays(
+          subscribe,
+          defaultRelays,
+          pubkey
+        );
+        setNip65Relays(entries);
+      } catch (error) {
+        console.error("[NIP-65] Failed to load:", error);
+      } finally {
+        setNip65Loading(false);
+      }
+    };
+
+    void loadNip65();
+  }, [pubkey, subscribe, defaultRelays]);
+
   useEffect(() => {
     if (!pubkey || !subscribe || !defaultRelays) return;
 
@@ -441,16 +288,94 @@ export default function RelaysPage() {
         setGraspListServers(userGraspServers);
       } catch (error) {
         console.error("[GRASP List] Failed to load:", error);
-        // Fallback to default GRASP servers
-        const defaultGraspRelays = getGraspServers(defaultRelays);
-        setGraspListServers(defaultGraspRelays);
+        setGraspListServers(getGraspServers(defaultRelays));
       } finally {
         setGraspListLoading(false);
       }
     };
 
-    loadGraspList();
+    void loadGraspList();
   }, [pubkey, subscribe, defaultRelays]);
+
+    // Save NIP-65 kind 10002 to Nostr (Amber / NIP-07 / nsec)
+  const saveNip65List = async () => {
+    if (!pubkey || !publish || !defaultRelays) {
+      setNip65Status("Error: Not logged in");
+      setTimeout(() => setNip65Status(""), 3000);
+      return;
+    }
+
+    setNip65Saving(true);
+    setNip65Status(
+      remoteSigner?.getSession()
+        ? "Waiting for signer…"
+        : "Saving…"
+    );
+
+    try {
+      const signingCreds = await resolveSigningCredentials({
+        remoteSigner,
+        maxWaitMs: 30_000,
+      });
+      if (!signingCreds) {
+        throw new Error(NO_SIGNING_METHOD_MESSAGE);
+      }
+      const { signer } = signingCreds;
+      const signerPubkey = await signer.getPublicKey();
+      let event: any = {
+        kind: KIND_RELAY_LIST,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: buildRelayListTags(nip65Relays),
+        content: "",
+        pubkey: signerPubkey,
+        id: "",
+        sig: "",
+      };
+      event.id = getEventHash(event);
+      event = await signer.signEvent(event);
+
+      const publishRelays = Array.from(
+        new Set([
+          ...defaultRelays,
+          "wss://nos.lol",
+          "wss://relay.primal.net",
+          "wss://purplepag.es",
+          "wss://relay.gittr.space",
+        ])
+      );
+      await publish(event, publishRelays);
+      setNip65Status("✅ Saved to Nostr!");
+      setTimeout(() => setNip65Status(""), 3000);
+    } catch (error: any) {
+      console.error("[NIP-65] Failed to save:", error);
+      setNip65Status(`Error: ${error.message || "Failed to save"}`);
+      setTimeout(() => setNip65Status(""), 8000);
+    } finally {
+      setNip65Saving(false);
+    }
+  };
+
+  const addNip65Relay = () => {
+    const url = newNip65Relay.trim().replace(/\/+$/, "");
+    if (!url.startsWith("wss://")) {
+      alert("Please enter a valid WebSocket URL (wss://...)");
+      return;
+    }
+    const key = normalizeRelayUrl(url);
+    if (nip65Relays.some((r) => normalizeRelayUrl(r.url) === key)) {
+      alert("This relay is already in your list");
+      return;
+    }
+    setNip65Relays([...nip65Relays, { url }]);
+    setNewNip65Relay("wss://");
+  };
+
+  const removeNip65Relay = (url: string) => {
+    const key = normalizeRelayUrl(url);
+    setNip65Relays(
+      nip65Relays.filter((r) => normalizeRelayUrl(r.url) !== key)
+    );
+  };
 
   // Save GRASP list to Nostr (add/remove servers, then publish kind 10317)
   const saveGraspList = async () => {
@@ -535,7 +460,7 @@ export default function RelaysPage() {
     setGraspListServers(graspListServers.filter((s) => s !== url));
   };
 
-  const renderRelayList = (relays: string[], showRemove = false) => {
+  const renderRelayList = (relays: string[]) => {
     if (relays.length === 0) return null;
 
     return (
@@ -558,12 +483,6 @@ export default function RelaysPage() {
                 }`}
                 title={getStatusLabel(relay)}
               />
-              {showRemove && (
-                <XIcon
-                  className="text-red-400 cursor-pointer hover:text-red-300 flex-shrink-0"
-                  onClick={() => handleRemoval(relay)}
-                />
-              )}
               <p className="ml-1 flex-1 break-all text-sm text-gray-300">
                 {relay}
               </p>
@@ -653,113 +572,122 @@ export default function RelaysPage() {
         </div>
       )}
 
-      {/* User-Added Relays Section */}
+      {/* Your Relays = NIP-65 kind 10002 (published on Nostr) */}
       <div className="mb-6">
         <button
-          onClick={() => setUserRelaysExpanded(!userRelaysExpanded)}
+          onClick={() => setNip65Expanded(!nip65Expanded)}
           className="flex items-center gap-2 w-full mb-2 font-semibold text-sm text-gray-300 hover:text-gray-200 transition-colors"
         >
-          {userRelaysExpanded ? (
+          {nip65Expanded ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
-          <span>Your Relays</span>
+          <Globe className="h-4 w-4 text-blue-400" />
+          <span>Your Relays (NIP-65)</span>
           <span className="text-xs text-gray-500 ml-auto">
-            ({(userRelays || []).length} total)
+            ({nip65Loading ? "…" : nip65Relays.length} total)
           </span>
         </button>
-        {userRelaysExpanded && (
+        {nip65Expanded && (
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
-              Additional relays you've added. These are stored locally and used
-              alongside default relays for connecting to Nostr and fetching
-              events.
-              <span className="block mt-1 text-yellow-400/80">
-                ⚠️ Note: Adding a GRASP server here adds it to your relay pool.
-                To prioritize it for NIP-34 operations (file fetching, PRs), add
-                it to your "Preferred GRASP Servers" list below.
-              </span>
+              Your preferred relays on Nostr (kind 10002). Status shows whether
+              this browser is connected. Changes are saved with your signer.
             </p>
 
-            <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3">
-              <div>
-                <Label htmlFor="relay" className="text-sm text-gray-400">
-                  Add relay or git server
-                </Label>
-                <Input
-                  type="text"
-                  id="relay"
-                  placeholder="wss://"
-                  required
-                  pattern="^wss:\/\/.*\..*$"
-                  maxLength={80}
-                  className="mt-2"
-                  {...register("relay")}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for connecting to Nostr and fetching events (stored
-                  locally)
-                </p>
-              </div>
-              <div>
-                <Label htmlFor="type" className="text-sm text-gray-400">
-                  Type
-                </Label>
-                <select
-                  id="type"
-                  {...register("type")}
-                  className="mt-2 w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300"
-                >
-                  <option value="relay">Relay (Nostr only)</option>
-                  <option value="gitserver">Git Server (GRASP)</option>
-                </select>
-              </div>
-              <Button
-                type="submit"
-                className="h-8 !border-[#383B42] bg-[#22262C]"
-                variant="outline"
-              >
-                Add
-              </Button>
-            </form>
-
-            {/* User Git Servers */}
-            {userGitServers.length > 0 && (
-              <div className="mt-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Server className="h-4 w-4 text-purple-400" />
-                  <h4 className="text-xs font-semibold text-gray-400">
-                    Your Git Servers ({userGitServers.length})
-                  </h4>
-                </div>
-                {renderRelayList(
-                  userGitServers.map((r) => r.url),
-                  true
-                )}
-              </div>
-            )}
-
-            {/* User Regular Relays */}
-            {userRegularRelays.length > 0 && (
-              <div className="mt-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Globe className="h-4 w-4 text-blue-400" />
-                  <h4 className="text-xs font-semibold text-gray-400">
-                    Your Relays ({userRegularRelays.length})
-                  </h4>
-                </div>
-                {renderRelayList(
-                  userRegularRelays.map((r) => r.url),
-                  true
-                )}
-              </div>
-            )}
-
-            {(userRelays || []).length === 0 && (
-              <p className="text-xs text-gray-500 mt-4 italic">
-                No additional relays added yet.
+            {!pubkey ? (
+              <p className="text-xs text-yellow-400/90 italic">
+                Log in to load your Nostr relay list.
               </p>
+            ) : nip65Loading ? (
+              <p className="text-xs text-gray-500 italic">
+                Loading your relay list from Nostr…
+              </p>
+            ) : (
+              <>
+                {nip65Relays.length > 0 ? (
+                  <div className="space-y-2">
+                    {nip65Relays.map((entry) => {
+                      const connected = isConnected(entry.url);
+                      const status = mapGetNormalized(relayStatuses, entry.url);
+                      return (
+                        <div
+                          key={entry.url}
+                          className="flex items-center gap-2 p-2 bg-gray-800/50 rounded border border-gray-700"
+                        >
+                          <div
+                            className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                              connected
+                                ? "bg-green-500"
+                                : status === WS_CONNECTING
+                                  ? "bg-yellow-500"
+                                  : "bg-red-500"
+                            }`}
+                            title={getStatusLabel(entry.url)}
+                          />
+                          <p className="flex-1 break-all text-sm text-gray-300">
+                            {entry.url}
+                            {entry.marker ? (
+                              <span className="ml-2 text-xs text-gray-500">
+                                ({entry.marker})
+                              </span>
+                            ) : null}
+                          </p>
+                          <span className="text-xs text-gray-500 flex-shrink-0">
+                            {getStatusLabel(entry.url)}
+                          </span>
+                          <XIcon
+                            className="text-red-400 cursor-pointer hover:text-red-300 flex-shrink-0"
+                            onClick={() => removeNip65Relay(entry.url)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 italic">
+                    No relay list published yet. Add relays and save.
+                  </p>
+                )}
+
+                <div className="space-y-3 border-t border-gray-700 pt-4">
+                  <div>
+                    <Label className="text-sm text-gray-400">Add relay</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        type="text"
+                        value={newNip65Relay}
+                        onChange={(e) => setNewNip65Relay(e.target.value)}
+                        placeholder="wss://"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 !border-[#383B42] bg-[#22262C]"
+                        onClick={addNip65Relay}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 !border-[#383B42] bg-[#22262C]"
+                    disabled={nip65Saving || !pubkey}
+                    onClick={saveNip65List}
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    {nip65Saving ? "Saving…" : "Save to Nostr"}
+                  </Button>
+                  {nip65Status ? (
+                    <p className="text-xs text-gray-300">{nip65Status}</p>
+                  ) : null}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -785,30 +713,13 @@ export default function RelaysPage() {
         {graspListExpanded && (
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
-              Your preferred GRASP servers for NIP-34 activities (file fetching,
-              PR creation, Push clone mirrors, repository cloning). These
-              servers are prioritized when available. Similar to NIP-65 relay
-              lists.
-              <span className="block mt-1 text-blue-400/80">
-                ℹ️ Saved to Nostr (kind 10317). On Push, hosts here are merged
-                with the app defaults (no duplicate hosts). Dead/private mirrors
-                (e.g. uid.ovh, ngit-relay.nostrver.se) are skipped. Relays above
-                are for connecting to Nostr.
-              </span>
-              <span className="block mt-1 text-gray-500">
-                gittr hosts: use{" "}
-                <code className="text-gray-400">wss://relay.gittr.space</code>{" "}
-                here (Nostr + GRASP).{" "}
-                <code className="text-gray-400">git.gittr.space</code> is the
-                bridge HTTPS/SSH git host — clone URLs — not a websocket relay,
-                so it belongs in clone tags / Push mirrors, not the normal
-                relays list.
-              </span>
+              Preferred GRASP servers for clone/push (kind 10317). Changes are
+              saved with your signer.
             </p>
 
             {graspListLoading ? (
               <p className="text-xs text-gray-500 italic">
-                Loading your GRASP list...
+                Loading your GRASP list…
               </p>
             ) : (
               <>
@@ -850,7 +761,7 @@ export default function RelaysPage() {
                       <Input
                         type="text"
                         id="grasp-server"
-                        placeholder="wss://relay.gittr.space"
+                        placeholder="wss://"
                         value={newGraspServer}
                         onChange={(e) => setNewGraspServer(e.target.value)}
                         className="flex-1"
@@ -862,14 +773,10 @@ export default function RelaysPage() {
                         className="h-8 !border-[#383B42] bg-[#22262C]"
                         variant="outline"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Only GRASP servers (git servers that are also Nostr
-                      relays) can be added. This list is saved to Nostr and used
-                      to prioritize clone URLs.
-                    </p>
                   </div>
 
                   <Button
@@ -879,14 +786,8 @@ export default function RelaysPage() {
                     className="h-8 !border-[#383B42] bg-[#22262C]"
                     variant="outline"
                   >
-                    {graspListSaving ? (
-                      <>Saving...</>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save GRASP List to Nostr
-                      </>
-                    )}
+                    <Save className="h-4 w-4 mr-1" />
+                    {graspListSaving ? "Saving…" : "Save to Nostr"}
                   </Button>
 
                   {graspListStatus && (
@@ -903,7 +804,7 @@ export default function RelaysPage() {
 
                   {!pubkey && (
                     <p className="text-xs text-yellow-400">
-                      ⚠️ You must be logged in to save your GRASP list to Nostr.
+                      Log in to save this list to Nostr.
                     </p>
                   )}
                 </div>

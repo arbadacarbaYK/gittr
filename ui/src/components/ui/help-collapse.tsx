@@ -119,22 +119,45 @@ export function HelpSubTopic({
   );
 }
 
-/** Open every &lt;details&gt; ancestor of the hash target, then scroll. */
-export function openHelpHashTargets(hashId: string): void {
-  if (!hashId || typeof document === "undefined") return;
-  const el = document.getElementById(hashId);
-  if (!el) return;
+function openDetailsChain(el: HTMLElement): void {
   let node: HTMLElement | null = el;
   while (node) {
     if (node.tagName === "DETAILS") {
-      (node as HTMLDetailsElement).open = true;
+      const details = node as HTMLDetailsElement;
+      details.open = true;
+      details.setAttribute("open", "");
     }
     node = node.parentElement;
   }
-  window.setTimeout(() => {
-    document.getElementById(hashId)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, 80);
+}
+
+/**
+ * Open every &lt;details&gt; ancestor of the hash target, then scroll.
+ * Retries: hash navigation often runs before hydration, and a later React
+ * paint can remount closed &lt;details&gt; — re-apply a few times.
+ */
+export function openHelpHashTargets(hashId: string): void {
+  if (!hashId || typeof document === "undefined") return;
+
+  const apply = (scroll: boolean, smooth: boolean) => {
+    const liveId = window.location.hash?.replace(/^#/, "") || hashId;
+    const el = document.getElementById(liveId);
+    if (!el) return false;
+    openDetailsChain(el);
+    if (scroll) {
+      el.scrollIntoView({
+        behavior: smooth ? "smooth" : "auto",
+        block: "start",
+      });
+    }
+    return true;
+  };
+
+  // Immediate + deferred re-applies (hydration / client nav / late layout)
+  apply(true, false);
+  for (const delay of [50, 100, 250, 500, 1000]) {
+    window.setTimeout(() => {
+      apply(delay >= 250, delay >= 250);
+    }, delay);
+  }
 }

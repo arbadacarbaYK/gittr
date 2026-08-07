@@ -103,12 +103,20 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
   "nip44_decrypt",
 ];
 
-/** Relays signers like Amber reliably use for NIP-46 (pairing + sign_event). */
-const NIP46_PAIRING_RELAY_FALLBACKS = ["wss://relay.damus.io", "wss://nos.lol"];
+/**
+ * Extra NIP-46 relays when the bunker URI list is thin.
+ * Damus last — browsers often fail wss://relay.damus.io under Cloudflare.
+ */
+const NIP46_PAIRING_RELAY_FALLBACKS = [
+  "wss://nos.lol",
+  "wss://relay.primal.net",
+  "wss://relay.damus.io",
+];
 
 /** Amber bunker default relays — must overlap QR pairing when user has no prior session. */
 const NIP46_SIGNER_DEFAULT_RELAYS = [
   "wss://relay.primal.net",
+  "wss://nos.lol",
   "wss://theforest.nostr1.com",
   "wss://nostr.oxtr.dev",
 ];
@@ -149,9 +157,13 @@ function relayUrlsMatch(a: string, b: string): boolean {
   );
 }
 
-/** Per-relay budget for first OPEN after hydrate (slow mobile / Amber defaults). */
-const BUNKER_RELAY_OPEN_BUDGET_MS = 15000;
-
+/**
+ * Per-relay OPEN budget. Kept short because we open in parallel and take the
+ * first success — a hung preferred host must not block Amber for 15s×N.
+ */
+const BUNKER_RELAY_OPEN_BUDGET_MS = 8000;
+/** Quiet re-warm so Push/Save is not the first cold dial after hydrate. */
+const BUNKER_KEEPALIVE_MS = 45000;
 /**
  * Relays embedded in nostrconnect QR — must NOT include GRASP/git relays (they reject kind 24133).
  * Use signer-friendly WSS relays that overlap Amber's bunker defaults.
@@ -603,6 +615,8 @@ export class RemoteSignerManager {
   /** True only after a successful NIP-46 RPC round-trip in this page lifetime. */
   private rpcHealthy = false;
   private healthProbeInFlight: Promise<void> | null = null;
+  private bunkerWarmInFlight: Promise<void> | null = null;
+  private bunkerKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: RemoteSignerDeps) {
     this.deps = deps;
@@ -732,6 +746,9 @@ export class RemoteSignerManager {
       this.applyNip07Adapter();
       // "idle" + adapter = logged in for browsing; signing will probe Amber.
       this.notifyState("idle");
+      // Warm bunker WebSockets in the background (no Amber popup). Push/Save
+      // should not be the first cold dial after a page load.
+      this.scheduleBackgroundBunkerWarm();
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
       this.rpcHealthy = false;
@@ -741,6 +758,7 @@ export class RemoteSignerManager {
           persistRemoteSignerSession(stored);
           this.applyNip07Adapter();
           this.notifyState("idle");
+          this.scheduleBackgroundBunkerWarm();
           return;
         } catch {
           // Fall through to clear.
@@ -945,10 +963,9 @@ export class RemoteSignerManager {
       this.nostrConnectSignerResolved = undefined;
       // Make pairing responses routable in handleIncomingEvent during connect phase.
       this.session = session;
-      await this.ensureRelays(session.relays);
-      await this.waitForRelayOpen(session.relays, 2500);
+      // Pairing: open bunker relays on directPool only (not the app relaypool).
       await this.waitForDirectPoolRelays(session.relays, 8000);
-      const transportRelays = this.resolveTransportRelays(session.relays);
+      const transportRelays = await this.listDirectOpenRelays(session.relays);
       if (transportRelays.length === 0) {
         throw new Error(
           "Could not connect to any bunker relay. Check network/relay availability and retry."
@@ -1228,12 +1245,11 @@ export class RemoteSignerManager {
   private async activateSession(session: RemoteSignerSession) {
     this.session = session;
     persistRemoteSignerSession(session);
-    await this.ensureRelays(session.relays);
-    await this.waitForRelayOpen(session.relays, 6000);
-    const openRelays = this.getOpenRelays(session.relays);
+    // Warm NIP-46 directPool only — never add bunker hosts into the app relaypool.
+    const open = await this.ensureDirectTransport(session);
     await this.startSubscription(
       session,
-      openRelays.length > 0 ? openRelays : session.relays
+      open.length > 0 ? open : session.relays
     );
     // This ensures we preserve NIP-07 extension even if it loads after constructor
     if (typeof window !== "undefined" && window.nostr) {
@@ -1244,6 +1260,7 @@ export class RemoteSignerManager {
       }
     }
     this.applyNip07Adapter();
+    this.startBunkerKeepalive();
   }
 
   /**
@@ -1283,14 +1300,16 @@ export class RemoteSignerManager {
       this.session = session;
       persistRemoteSignerSession(session);
     }
-    await this.ensureRelays(session.relays);
+    // NIP-46 must use directPool only. Do NOT addRelay bunker URLs into the
+    // app relaypool — duplicate sockets to the same hosts starve Amber transport.
 
     let open = await this.ensureDirectTransport(session);
     if (open.length === 0) {
       console.warn(
-        "[RemoteSigner] No bunker relays open after warm-up; retrying with fresh pool"
+        "[RemoteSigner] No bunker relays open after warm-up; freeing collisions and retrying"
       );
-      await new Promise((r) => setTimeout(r, 1000));
+      this.freeMainPoolBunkerCollisions(session.relays);
+      await new Promise((r) => setTimeout(r, 400));
       this.resetDirectPool();
       open = await this.ensureDirectTransport(session);
     }
@@ -1318,11 +1337,14 @@ export class RemoteSignerManager {
       }
     }
     this.applyNip07Adapter();
+    this.startBunkerKeepalive();
   }
 
   private clearSession() {
     this.rpcHealthy = false;
     this.healthProbeInFlight = null;
+    this.bunkerWarmInFlight = null;
+    this.stopBunkerKeepalive();
     this.nostrConnectSignerResolved = undefined;
     this.session = null;
     persistRemoteSignerSession(null);
@@ -1522,26 +1544,197 @@ export class RemoteSignerManager {
   }
 
   /**
+   * Ordered bunker dial targets: Amber URI relays first, then known-good defaults.
+   */
+  private buildBunkerTransportTargets(session: RemoteSignerSession): string[] {
+    const targets: string[] = [];
+    const seen = new Set<string>();
+    const add = (url: string) => {
+      const key = normalizeRelayUrl(url);
+      if (!key.startsWith("wss://") || seen.has(key) || isGraspServer(key)) {
+        return;
+      }
+      seen.add(key);
+      targets.push(key);
+    };
+    (session.relays || []).forEach(add);
+    NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
+    NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
+    return targets.slice(0, 8);
+  }
+
+  /**
+   * Main-pool sockets to the same bunker hosts steal browser connection slots.
+   * Drop them before a fresh directPool dial — discovery can re-add later.
+   */
+  private freeMainPoolBunkerCollisions(relays: string[]) {
+    if (!this.deps.removeRelay) return;
+    const targets = new Set(
+      this.expandBunkerRelays(relays).map((r) => normalizeRelayUrl(r))
+    );
+    const statuses = this.deps.getRelayStatuses?.() || [];
+    let freed = 0;
+    for (const [url] of statuses) {
+      if (!targets.has(normalizeRelayUrl(url))) continue;
+      try {
+        this.deps.removeRelay(url);
+        freed += 1;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (freed > 0) {
+      console.log(
+        `[RemoteSigner] Freed ${freed} main-pool socket(s) colliding with bunker hosts`
+      );
+    }
+  }
+
+  /** Idle warm of bunker WebSockets — no Amber connect/sign popup. */
+  private scheduleBackgroundBunkerWarm() {
+    if (typeof window === "undefined" || !this.session?.userPubkey) return;
+    const run = () => {
+      void this.warmBunkerTransportQuietly();
+    };
+    const idle = (window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }).requestIdleCallback;
+    if (typeof idle === "function") {
+      idle(run, { timeout: 4000 });
+    } else {
+      setTimeout(run, 1200);
+    }
+    this.startBunkerKeepalive();
+  }
+
+  private startBunkerKeepalive() {
+    if (typeof window === "undefined") return;
+    if (this.bunkerKeepaliveTimer) return;
+    this.bunkerKeepaliveTimer = setInterval(() => {
+      if (!this.session?.userPubkey) {
+        this.stopBunkerKeepalive();
+        return;
+      }
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      void this.warmBunkerTransportQuietly();
+    }, BUNKER_KEEPALIVE_MS);
+  }
+
+  private stopBunkerKeepalive() {
+    if (this.bunkerKeepaliveTimer) {
+      clearInterval(this.bunkerKeepaliveTimer);
+      this.bunkerKeepaliveTimer = null;
+    }
+  }
+
+  private async warmBunkerTransportQuietly() {
+    const session = this.session;
+    if (!session?.userPubkey) return;
+    if (this.bunkerWarmInFlight) return this.bunkerWarmInFlight;
+    this.bunkerWarmInFlight = (async () => {
+      try {
+        const expanded = this.expandBunkerRelays(session.relays);
+        if (expanded.length > (session.relays?.length || 0)) {
+          session.relays = expanded;
+          this.session = session;
+          persistRemoteSignerSession(session);
+        }
+        const already = await this.listDirectOpenRelays(
+          this.buildBunkerTransportTargets(session)
+        );
+        if (already.length > 0) return;
+        let open = await this.ensureDirectTransport(session);
+        if (open.length === 0) {
+          this.freeMainPoolBunkerCollisions(session.relays);
+          this.resetDirectPool();
+          open = await this.ensureDirectTransport(session);
+        }
+        if (open.length > 0) {
+          console.log("[RemoteSigner] Background bunker warm ready", {
+            open: open.map((u) => normalizeRelayUrl(u)),
+          });
+        }
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] Background bunker warm failed:",
+          error instanceof Error ? error.message : error
+        );
+      } finally {
+        this.bunkerWarmInFlight = null;
+      }
+    })();
+    return this.bunkerWarmInFlight;
+  }
+
+  /**
    * Re-open dead/stuck directPool sockets before publishing a NIP-46 request.
    * nostr-tools v1 relays never auto-reconnect: after a silent drop the
    * subscription is dead and trySend discards messages, so requests would
    * vanish and every RPC would "time out" even though Amber is online.
+   *
+   * Opens in parallel and returns as soon as one socket is OPEN — sequential
+   * 15s budgets were making Push look like Amber was down when one preferred
+   * host (often damus) hung under browser connection pressure.
    */
   private async ensureDirectTransport(
     session: RemoteSignerSession
   ): Promise<string[]> {
-    const targets = session.relays.filter((r) =>
-      normalizeRelayUrl(r).startsWith("wss://")
-    );
+    const targets = this.buildBunkerTransportTargets(session);
     if (targets.length === 0) return [];
 
-    const results = await Promise.all(
-      targets.map(async (url) => {
-        const ok = await this.openDirectRelay(url);
-        return ok ? url : null;
-      })
-    );
-    const openUrls = results.filter((u): u is string => !!u);
+    const alreadyOpen = await this.listDirectOpenRelays(targets);
+    if (alreadyOpen.length > 0) {
+      const openUrls = alreadyOpen.slice(0, 2);
+      console.log("[RemoteSigner] Direct transport ready (reuse)", {
+        open: openUrls.length,
+        total: targets.length,
+        openUrls: openUrls.map((u) => normalizeRelayUrl(u)),
+      });
+      try {
+        await this.startSubscription(session, openUrls);
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] Failed to refresh subscription after transport ensure:",
+          error
+        );
+      }
+      return openUrls;
+    }
+
+    const openUrls: string[] = [];
+    const overallMs = BUNKER_RELAY_OPEN_BUDGET_MS + 1500;
+    await new Promise<void>((resolve) => {
+      let pending = targets.length;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        resolve();
+      };
+      const timer = setTimeout(finish, overallMs);
+      const onOneDone = () => {
+        pending -= 1;
+        if (openUrls.length >= 1 || pending <= 0) {
+          clearTimeout(timer);
+          finish();
+        }
+      };
+      for (const url of targets) {
+        void this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS).then(
+          (ok) => {
+            if (ok && openUrls.length < 2) {
+              openUrls.push(url);
+            }
+            onOneDone();
+          }
+        );
+      }
+    });
 
     if (openUrls.length > 0) {
       console.log("[RemoteSigner] Direct transport ready", {
@@ -1740,6 +1933,7 @@ export class RemoteSignerManager {
   ) {
     this.unsubscribe?.();
     this.directUnsubscribe?.();
+    this.unsubscribe = undefined;
     const relays =
       relaysOverride && relaysOverride.length > 0
         ? relaysOverride
@@ -1766,17 +1960,9 @@ export class RemoteSignerManager {
           },
         ];
 
-    // Keep legacy app relaypool subscription (best-effort).
-    try {
-      this.unsubscribe = this.deps.subscribe(filters, relays, (event) =>
-        this.handleIncomingEvent(event)
-      );
-    } catch (error) {
-      console.warn("[RemoteSigner] relaypool subscribe failed:", error);
-      this.unsubscribe = undefined;
-    }
+    // NIP-46 responses only on directPool. Do NOT subscribe via the app
+    // relaypool — that silently addRelay's bunker hosts and starves Amber.
 
-    // Dedicated direct NIP-46 subscription path.
     const sub: any = this.directPool.sub(relays, filters as any[]);
     const onEvent = (event: any) => {
       const kind = typeof event?.kind === "number" ? event.kind : -1;
@@ -1992,16 +2178,15 @@ export class RemoteSignerManager {
     params: unknown[],
     timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<any> {
-    await this.ensureRelays(session.relays);
     // Repair the dedicated NIP-46 transport first — dead sockets silently
     // swallow requests AND responses (the "push fails silently" symptom).
+    // Do not addRelay bunker URLs into the app pool (socket starvation).
     const openDirect = await this.ensureDirectTransport(session);
     if (openDirect.length === 0) {
       throw new Error(
         "Could not open any bunker relay to reach Amber. Check your network, keep Amber open, then try again."
       );
     }
-    await this.waitForRelayOpen(session.relays, 6000);
     const id = randomRequestId();
     const payload = JSON.stringify({
       id,
@@ -2036,13 +2221,8 @@ export class RemoteSignerManager {
       // response can arrive before we track `id`, causing dropped acks/timeouts.
       void (async () => {
         try {
-          await this.publishWithRelayRetry(
-            requestEvent,
-            session.relays,
-            openDirect.length > 0 ? openDirect : session.relays
-          );
-          // Confirmed publish through dedicated SimplePool — requires at least
-          // one relay OK so we don't pretend Amber was notified.
+          // Publish NIP-46 only on directPool — app relaypool publish would
+          // dial bunker hosts again and fight for the same browser sockets.
           const okRelays = await this.publishDirectConfirmed(
             openDirect.length > 0 ? openDirect : session.relays,
             requestEvent
@@ -2074,11 +2254,6 @@ export class RemoteSignerManager {
               fallbackEvent.sig = signEvent(
                 fallbackEvent,
                 session.clientSecretKey
-              );
-              await this.publishWithRelayRetry(
-                fallbackEvent,
-                session.relays,
-                openDirect.length > 0 ? openDirect : session.relays
               );
               try {
                 const okFallback = await this.publishDirectConfirmed(

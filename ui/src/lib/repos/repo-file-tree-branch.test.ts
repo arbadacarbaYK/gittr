@@ -48,4 +48,10 @@ describe("shouldApplyFetchedFileTree", () => {
       })
     ).toBe(true);
   });
+
+  it("allows smaller remote when allowShrink is true (forge refetch)", () => {
+    expect(
+      shouldApplyFetchedFileTree("main", 64, "main", 62, { allowShrink: true })
+    ).toBe(true);
+  });
 });

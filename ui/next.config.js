@@ -37,6 +37,24 @@ const nextConfig = {
         ],
       },
       {
+        // NIP-05: browsers on other origins (clients, nostr.watch) must be able to fetch this.
+        source: "/.well-known/nostr.json",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, OPTIONS",
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=60, must-revalidate",
+          },
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           {

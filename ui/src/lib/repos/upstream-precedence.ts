@@ -5,6 +5,15 @@
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 
+export {
+  allowShrinkToForgeUpstreamTree,
+  allowShrinkToSourceUpstreamTree,
+  isSourceUpstreamFetchStatus,
+  isSourceUpstreamFetchType,
+  urlLooksLikeForgeUpstream,
+  urlLooksLikeSourceUpstream,
+} from "./forge-tree-shrink";
+
 export function isNostrEntityRoute(entity: string | undefined | null): boolean {
   if (!entity) return false;
   return entity.startsWith("npub") || /^[0-9a-f]{64}$/i.test(entity);

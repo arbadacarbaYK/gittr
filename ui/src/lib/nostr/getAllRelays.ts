@@ -1,15 +1,17 @@
 /**
- * Helper to get all relays (default + user relays from localStorage)
- * This ensures user-configured relays are used for metadata fetching, explore, and profile pages
+ * Helper to get all relays (default + optional browser-local extras).
+ * Used for metadata fetching, explore, and profile pages.
  *
- * In development mode, skips user relays to avoid connection spam and improve dev server performance
+ * Note: NIP-65 kind 10002 is the user's published list (Settings → Relays).
+ * `gittr_user_relays` is only legacy/local extras if present — never overwrite
+ * or replace the platform default env list.
+ *
+ * In development mode, skips local extras to avoid connection spam.
  */
 
 export function getAllRelays(defaultRelays: string[]): string[] {
   if (typeof window === "undefined") return defaultRelays;
 
-  // In dev mode, skip user relays to avoid connection spam and improve performance
-  // User relays often include many failing connections that slow down the dev server
   if (process.env.NODE_ENV === "development") {
     return defaultRelays;
   }
@@ -24,7 +26,6 @@ export function getAllRelays(defaultRelays: string[]): string[] {
       const userRelayUrls = userRelays
         .map((r) => r.url)
         .filter((url) => url && url.startsWith("wss://"));
-      // Combine default and user relays, removing duplicates
       const allRelays = [...defaultRelays];
       userRelayUrls.forEach((url) => {
         if (!allRelays.includes(url)) {

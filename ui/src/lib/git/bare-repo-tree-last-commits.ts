@@ -21,51 +21,36 @@ export type TreeLastCommit = {
 
 export type TreeLastCommitMap = Record<string, TreeLastCommit>;
 
-/**
- * Fill last commit for each direct child of `folderPath` ("" = repo root).
- * Stops once every child has a hit or maxCommits is reached.
- */
-export async function listBareRepoTreeLastCommits(
-  repoPath: string,
-  branch: string,
-  children: Array<{ type: "file" | "dir"; path: string }>,
-  opts?: { maxCommits?: number; timeoutMs?: number; folderPath?: string }
-): Promise<TreeLastCommitMap> {
-  const maxCommits = opts?.maxCommits ?? 400;
-  const timeout = opts?.timeoutMs ?? 25_000;
-  const folderPath = (opts?.folderPath || "").replace(/^\/+|\/+$/g, "");
+export type TreeChild = { type: "file" | "dir"; path: string };
 
+/** Marker prefix used in `git log --format` (must stay in sync with listBareRepoTreeLastCommits). */
+export const TREE_LAST_COMMIT_MARKER = ">>>COMMIT<<<";
+
+/**
+ * Parse `git log --format='>>>COMMIT<<<%H%x1f%s%x1f%an%x1f%at' --name-only` stdout.
+ *
+ * Regression: do NOT use `%x00` as a record separator with `--name-only` — NUL ends
+ * the pretty line and leaves path lines as orphan records (empty timestamps in UI).
+ */
+export function parseTreeLastCommitLog(
+  stdout: string,
+  children: TreeChild[]
+): TreeLastCommitMap {
   if (!children.length) return {};
 
   const needed = new Set(children.map((c) => c.path));
   const result: TreeLastCommitMap = {};
 
-  const pathArg = folderPath ? ` -- ${shellQuote(folderPath)}` : "";
-  // Marker-based records: do NOT use %x00 with --name-only (NUL ends the
-  // pretty line and leaves path lines as orphan "records").
-  const cmd =
-    `git --git-dir=${shellQuote(repoPath)} log ` +
-    `--format='>>>COMMIT<<<%H%x1f%s%x1f%an%x1f%at' --name-only ` +
-    `-n ${maxCommits} ${shellQuote(branch)}${pathArg}`;
+  const records = String(stdout || "")
+    .split(TREE_LAST_COMMIT_MARKER)
+    .filter((r) => r.trim());
 
-  let stdout = "";
-  try {
-    const out = await execAsync(cmd, {
-      timeout,
-      encoding: "utf8",
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    stdout = out.stdout || "";
-  } catch (e: any) {
-    // Partial output is still useful
-    stdout = e?.stdout || "";
-    if (!stdout) throw e;
-  }
-
-  const records = stdout.split(">>>COMMIT<<<").filter((r) => r.trim());
   for (const record of records) {
     if (needed.size === 0) break;
-    const lines = record.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = record
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (!lines.length) continue;
     const header = lines[0]!;
     const parts = header.split("\x1f");
@@ -106,4 +91,44 @@ export async function listBareRepoTreeLastCommits(
   }
 
   return result;
+}
+
+/**
+ * Fill last commit for each direct child of `folderPath` ("" = repo root).
+ * Stops once every child has a hit or maxCommits is reached.
+ */
+export async function listBareRepoTreeLastCommits(
+  repoPath: string,
+  branch: string,
+  children: TreeChild[],
+  opts?: { maxCommits?: number; timeoutMs?: number; folderPath?: string }
+): Promise<TreeLastCommitMap> {
+  const maxCommits = opts?.maxCommits ?? 400;
+  const timeout = opts?.timeoutMs ?? 25_000;
+  const folderPath = (opts?.folderPath || "").replace(/^\/+|\/+$/g, "");
+
+  if (!children.length) return {};
+
+  const pathArg = folderPath ? ` -- ${shellQuote(folderPath)}` : "";
+  // Marker-based records: do NOT use %x00 with --name-only (NUL ends the
+  // pretty line and leaves path lines as orphan "records").
+  const cmd =
+    `git --git-dir=${shellQuote(repoPath)} log ` +
+    `--format='${TREE_LAST_COMMIT_MARKER}%H%x1f%s%x1f%an%x1f%at' --name-only ` +
+    `-n ${maxCommits} ${shellQuote(branch)}${pathArg}`;
+
+  let stdout = "";
+  try {
+    const out = await execAsync(cmd, {
+      timeout,
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    stdout = out.stdout || "";
+  } catch (e: any) {
+    stdout = e?.stdout || "";
+    if (!stdout) throw e;
+  }
+
+  return parseTreeLastCommitLog(stdout, children);
 }

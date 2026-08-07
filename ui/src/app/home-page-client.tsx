@@ -104,10 +104,21 @@ export default function HomePage({
   const { isLoggedIn, name, picture, banner } = useSession();
   const { pubkey } = useNostrContext();
   const [mounted, setMounted] = useState(false);
+  const [sourceOfflineNoticeVisible, setSourceOfflineNoticeVisible] =
+    useState(false);
+
+  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v5";
 
   // Prevent hydration mismatch by only showing personalized message after mount
   useEffect(() => {
     setMounted(true);
+    try {
+      if (localStorage.getItem(SOURCE_OFFLINE_NOTICE_KEY) !== "1") {
+        setSourceOfflineNoticeVisible(true);
+      }
+    } catch {
+      setSourceOfflineNoticeVisible(true);
+    }
   }, []);
 
   const profileHref =
@@ -1097,6 +1108,64 @@ export default function HomePage({
           </div>
         </div>
       </header>
+
+      {mounted && sourceOfflineNoticeVisible && (
+        <div
+          className="mb-6 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]"
+          role="status"
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1 space-y-2 leading-relaxed">
+              <p>
+                Import your git from GitHub / Gitea / Codeberg or Gitlab so it
+                can still be discovered even if the source goes down. When that
+                already happened you can still{" "}
+                <Link
+                  href="/new"
+                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                >
+                  create a repo
+                </Link>{" "}
+                on nostr git with a local backup. Don&apos;t forget to{" "}
+                <strong className="text-[var(--color-text-primary)]">
+                  Push to Nostr
+                </strong>
+                !
+              </p>
+              <p>
+                <Link
+                  href="/help#when-source-goes-offline"
+                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                >
+                  More on this
+                </Link>
+                {" · "}
+                <Link
+                  href="/new"
+                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                >
+                  New repo
+                </Link>
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]"
+              aria-label="Dismiss notice"
+              onClick={() => {
+                setSourceOfflineNoticeVisible(false);
+                try {
+                  localStorage.setItem(SOURCE_OFFLINE_NOTICE_KEY, "1");
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Top Row: Most Active Repos, Most Active Users, Open Bounties */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

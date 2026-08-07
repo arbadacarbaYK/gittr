@@ -4,8 +4,10 @@ How the UI loads repo trees and file content. Implementation lives in:
 
 - `ui/src/lib/utils/git-source-fetcher.ts` — classify clones, list trees, GRASP / self-hosted shallow clone
 - `ui/src/components/repo/RepoCodePage.tsx` — Code tab orchestration (route `page.tsx` is a thin wrapper)
-- `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`
+- `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`, `tree-last-commits.ts`, `sync-from-source.ts`
 - `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` for any reachable HTTP(S) remote
+- `ui/src/lib/git/bare-repo-tree-last-commits.ts` — batched last-commit dates for the Code file list
+- `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar “Clone URL (event)” filter (keeps pushable GRASP mirrors)
 
 ## Security (outbound remotes)
 
@@ -108,7 +110,45 @@ Repos with a GitHub `source` / `clone` URL often treat GitHub as authoritative f
 
 Troubleshooting pushes: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
 
+## Code file list timestamps
+
+`GET /api/nostr/repo/tree-last-commits?ownerPubkey&repo&branch&path=` returns last-commit message/author/time for each **direct child** of the current folder on the selected tip/branch (one capped `git log --name-only` on the bare mirror). The Code tab shows message + relative time next to size.
+
+**Parser regression:** never use `%x00` as a record separator with `--name-only` — NUL ends the pretty line and leaves path names as orphan “records” (empty dates). Use a text marker (`>>>COMMIT<<<`) — see `parseTreeLastCommitLog` + `ui` `npm run test:regressions`.
+
+## Push tip fidelity (SSH / UI / MCP)
+
+- **SSH `git push`** and **HTTPS smart-HTTP** write objects into the bridge bare repo; tips are real git SHAs.
+- **UI Push to Nostr** with a forge `source` and **no** local edits (`hasUnpushedEdits` false) must **sync the bare tip from the forge** (`POST /api/nostr/repo/sync-from-source`) and announce those SHAs in kind **30618** — not invent a `Push from gittr` empty commit. Refetch filling local overrides is a **cache**, not dirty.
+- **MCP** `createRepo` / `mirrorRepo` must advertise the full GRASP push clone set (`buildFullGraspCloneUrls`) — never derive `clone[]` from a capped relay publish list. Forge URLs stay in `source` / `forkedFrom` only.
+
+## Sidebar “Clone URL (event)”
+
+Keep forge `source` + primary (`git.gittr.space`) + every host on `GRASP_SERVERS_FOR_PUSHING`. Do **not** hide shakespeare / gitnostr / ngit just because primary is present. Helper-tools snippet must stay in sync (`snippets/filter-display-clone-urls`, synced 2026-08-07).
+
+## Richer local tree vs SOURCE (64 vs 62)
+
+Console `Keeping richer local tree` / `Skipping persist` is **intentional for GRASP partial listings** (avoids wiping folders). It is **wrong** when a declared NIP-34 **`source` / `forkedFrom`** is authoritative and returned fewer paths (deletes upstream).
+
+Shrink is allowed when:
+- `source` or `forkedFrom` is an **external git** (GitHub, GitLab.com, Codeberg, Gitea / other self-hosted HTTPS), **or**
+- the user clicked **Refetch** (`[Refetch]` persist)
+
+Not limited to github.com. **Nostr-only** repos (no `source`/`forkedFrom`) keep the no-shrink safety so a thin GRASP listing cannot erase a richer tree. See `allowShrinkToSourceUpstreamTree` + `npm run test:regressions`.
+
+`no files field in event` and `forge-releases` 404 are **normal** (NIP-34 metadata only; no Zapstore APK).
+
+## Regression tests (run these — smoke alone is not enough)
+
+| Suite | Command |
+| --- | --- |
+| UI tip / clone / timestamps | `cd ui && npm run test:regressions` |
+| MCP clone set + forge match | `cd ../gittr-mcp && npm run test:regressions` |
+| Full MCP package | `cd ../gittr-mcp && npm test` |
+| Live MCP stdio (optional) | `cd ../gittr-mcp && npm run test:mcp-stdio` |
+
 ## Integrators (helper-tools / MCP)
 
 - Snippets: [gittr-helper-tools `snippets/file-fetching`](https://github.com/arbadacarbaYK/gittr-helper-tools) — keep `parseGitSource` in sync with this file.
+- Also sync `snippets/filter-display-clone-urls` when changing sidebar policy.
 - MCP `getFile` / bridge reads are **not** full Code-tab parity (bridge + hardcoded GRASP raw URLs). Prefer `bridgeListFiles` after `importRemoteToBridge` / `mirrorRepo`, or resolve **30617 `clone[]`** and call the same HTTP APIs the UI uses. See gittr-mcp `docs/MCP-GITTR-PARITY.md`.

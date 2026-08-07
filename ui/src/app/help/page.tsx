@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import {
   HelpSection,
@@ -45,8 +45,8 @@ import Link from "next/link";
 export default function HelpPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
 
-  // Deep links from repo sidebar / TOC (e.g. /help#gittr-pages)
-  useEffect(() => {
+  // Deep links from repo sidebar / TOC / homepage (e.g. /help#when-source-goes-offline)
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     const scrollToHash = () => {
@@ -57,7 +57,31 @@ export default function HelpPage() {
 
     scrollToHash();
     window.addEventListener("hashchange", scrollToHash);
-    return () => window.removeEventListener("hashchange", scrollToHash);
+    // Next client nav to /help#… sometimes skips hashchange; catch clicks on in-page anchors
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest?.("a[href^='#']") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") || "";
+      const id = href.startsWith("#") ? href.slice(1) : "";
+      if (!id) return;
+      // Let the browser update the hash, then open (hashchange may also fire)
+      window.setTimeout(() => openHelpHashTargets(id), 0);
+    };
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("hashchange", scrollToHash);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
+
+  // After async chunks (mermaid, etc.) settle, re-apply hash once more
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = window.location.hash?.replace(/^#/, "");
+    if (!id) return;
+    const t = window.setTimeout(() => openHelpHashTargets(id), 600);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Render Mermaid diagram
@@ -272,6 +296,15 @@ export default function HelpPage() {
             <li>
               •{" "}
               <Link
+                href="#importing-repositories"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Importing Repositories
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
                 href="#payments"
                 className="text-purple-400 hover:text-purple-300"
               >
@@ -332,6 +365,15 @@ export default function HelpPage() {
                 className="text-green-400 hover:text-green-300"
               >
                 Push to Nostr
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#when-source-goes-offline"
+                className="text-green-400 hover:text-green-300"
+              >
+                When your git host goes dark
               </Link>
             </li>
             <li>
@@ -816,17 +858,7 @@ export default function HelpPage() {
 
             <HelpTopic title={<>File Sources & NIP-34 Architecture</>}>
               <p>
-                gittr.space follows the{" "}
-                <a
-                  href={SCHEMATA_NIP34}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300 underline"
-                >
-                  NIP-34
-                </a>{" "}
-                architecture for file storage. Files are stored on git servers
-                (via{" "}
+                Files live on git hosts (GRASP /{" "}
                 <a
                   href={GITTR_DOC_GITNOSTR_ARCHITECTURE}
                   target="_blank"
@@ -835,68 +867,111 @@ export default function HelpPage() {
                 >
                   gitnostr bridge
                 </a>
-                ), not in Nostr events. The repository&apos;s &quot;About&quot;
-                sidebar shows where files come from:
-              </p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li>
-                  <span className="text-gray-400">📦 Embedded</span> - Files
-                  stored directly in Nostr event (legacy repos)
-                </li>
-                <li>
-                  <span className="text-gray-400">⚡ git-nostr-bridge</span> -
-                  Files stored on decentralized git server
-                </li>
-                <li>
-                  <span className="text-gray-400">🐙 GitHub</span> - Files
-                  fetched from GitHub API
-                </li>
-                <li>
-                  <span className="text-gray-400">🦊 GitLab</span> - Files
-                  fetched from GitLab API
-                </li>
-              </ul>
-              <p className="mt-2 text-sm text-gray-400">
-                This architecture ensures files are stored efficiently and can
-                be fetched from multiple sources for redundancy.
+                ), not inside Nostr events.{" "}
+                <a
+                  href={SCHEMATA_NIP34}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  NIP-34
+                </a>{" "}
+                announcements carry metadata and{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                URLs. The Code sidebar shows where the tree is loading from:
+                bridge / GRASP, GitHub, GitLab, and so on. Legacy “embedded in
+                the event” trees are rare.
               </p>
             </HelpTopic>
 
-            <HelpTopic title={<>Importing Repositories</>}>
-              <p>You can import repositories from:</p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li>
-                  <strong>GitHub</strong> - Single repo or bulk import (link
-                  your GitHub identity via NIP-39 in Profile settings)
-                </li>
-                <li>
-                  <strong>
-                    GitLab, Codeberg, Gitea / Forgejo, self-hosted
-                  </strong>{" "}
-                  — paste a full HTTPS or{" "}
-                  <code className="bg-blue-900/50 px-1 rounded">git@…</code> URL
-                  on <strong>Create repository</strong> (Option 1). The server
-                  clones the public remote (same as{" "}
-                  <code className="bg-blue-900/50 px-1 rounded">git clone</code>
-                  ). Bulk import remains GitHub-only.
-                </li>
-              </ul>
-              <p className="mt-2 text-sm text-gray-400">
-                Imported repos maintain a link to their source (sourceUrl) and
-                fetch files from the original git server.
+            <HelpTopic id="importing-repositories" title={<>Importing Repositories</>}>
+              <p>
+                Bring an existing remote into gittr, then{" "}
+                <Link
+                  href="#push-to-nostr"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  Push to Nostr
+                </Link>{" "}
+                so others can discover and clone it from GRASP / the bridge
+                (not only from the original host). Details:{" "}
+                <Link
+                  href="#when-source-goes-offline"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  When your git host goes dark
+                </Link>
+                .
               </p>
 
-              <HelpSubTopic title={<>Private repository support</>}>
-                <p className="text-sm text-gray-300 mb-2">
-                  <strong>Private on gittr:</strong> Settings → Private saves
-                  locally and publishes a gittr extension tag on your kind{" "}
-                  <code className="bg-blue-900/50 px-1 rounded">30617</code>{" "}
-                  announcement:{" "}
-                  <code className="bg-blue-900/50 px-1 rounded">
-                    ["public-read","false"]
+              <ul className="list-disc list-inside space-y-2 ml-1 mt-3 text-sm">
+                <li>
+                  <strong className="text-white">GitHub</strong> — single repo
+                  or bulk import. Link GitHub via NIP-39 under Settings →
+                  Profile when you need identity mapping.
+                </li>
+                <li>
+                  <strong className="text-white">
+                    GitLab, Codeberg, Gitea / Forgejo, other HTTPS / git@ URLs
+                  </strong>{" "}
+                  — paste the full clone URL on{" "}
+                  <Link
+                    href="/new"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    Create repository
+                  </Link>{" "}
+                  (Option 1). The server runs a normal public{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">git clone</code>
+                  . Bulk import is GitHub-only.
+                </li>
+              </ul>
+
+              <HelpSubTopic title={<>Size limits</>}>
+                <p>
+                  <strong className="text-white">GitHub import</strong> (
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    /api/import
                   </code>
-                  . That is what listings use after a localStorage clear — not a
-                  browser-only flag. Core{" "}
+                  ) returns file <em>paths</em> and metadata, not file bodies.
+                  If that JSON is still larger than ~4 MB (very large trees),
+                  you get{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    Repository is too large
+                  </code>{" "}
+                  /{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    repo_too_large
+                  </code>
+                  . Import a smaller repo, or use a URL clone +{" "}
+                  <Link
+                    href="#push-to-nostr"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    Push to Nostr
+                  </Link>{" "}
+                  so the bridge holds the objects.
+                </p>
+                <p className="mt-2 text-sm text-gray-400">
+                  Paste-URL imports (
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    /api/import-git
+                  </code>
+                  ) do not use that same 4 MB metadata cap. Huge binaries still
+                  belong in git LFS / releases on a real git host, not in the
+                  browser editor.
+                </p>
+              </HelpSubTopic>
+
+              <HelpSubTopic title={<>Private repositories</>}>
+                <p>
+                  Privacy on gittr is tied to your{" "}
+                  <strong className="text-white">Nostr pubkey</strong>, not your
+                  GitHub username. Settings → Private publishes{" "}
+                  <code className="bg-blue-900/50 px-1 rounded text-xs">
+                    [&quot;public-read&quot;,&quot;false&quot;]
+                  </code>{" "}
+                  on kind 30617 (gittr extension; not core{" "}
                   <a
                     href={SCHEMATA_NIP34}
                     target="_blank"
@@ -904,162 +979,35 @@ export default function HelpPage() {
                     className="text-purple-400 hover:text-purple-300 underline"
                   >
                     NIP-34
-                  </a>{" "}
-                  does not define those tags; gittr and the bridge do. File/git
-                  access is still enforced via{" "}
-                  <code className="bg-blue-900/50 px-1 rounded">
-                    maintainers
-                  </code>{" "}
-                  + bridge ACL.
+                  </a>
+                  ). After Push, listings and the bridge honor that.
                 </p>
-                <ul className="text-sm text-blue-100 space-y-1 list-disc list-inside ml-2 mb-3">
+                <ul className="list-disc list-inside space-y-1 ml-1 mt-2 text-sm">
                   <li>
-                    <strong>After Push:</strong> Save Private in Settings (or
-                    Push to Nostr) so relays get{" "}
-                    <code className="bg-blue-900/50 px-1 rounded">
-                      public-read:false
-                    </code>
-                    . Clearing local data then reloads that status from Nostr.
-                  </li>
-                  <li>
-                    <strong>Files Access:</strong> Files from private GitHub
-                    repos require GitHub authentication. Connect your GitHub
-                    account via OAuth (Settings → SSH Keys) to access private
-                    repo files.
-                  </li>
-                  <li>
-                    <strong>Other Clients:</strong> Other NIP-34 clients may
-                    still list the announcement (name/description on relays).
-                    gittr hides private repos from Explore/profile for
-                    strangers; clone/file access stays blocked at the bridge for
-                    non-maintainers.
-                  </li>
-                  <li>
-                    <strong>Access Control:</strong> Only the owner and users in{" "}
-                    <code className="bg-blue-900/50 px-1 rounded">
+                    Only the owner and npubs listed under Settings →
+                    Contributors /{" "}
+                    <code className="bg-blue-900/50 px-1 rounded text-xs">
                       maintainers
                     </code>{" "}
-                    / Contributors can open private repos. Enforced for
-                    SSH/HTTPS git and file APIs.
+                    can open private repos (web, SSH, HTTPS).
+                  </li>
+                  <li>
+                    Being a GitHub maintainer is not enough until the owner adds
+                    your npub (or you are mapped via OAuth / NIP-39).
+                  </li>
+                  <li>
+                    Private GitHub <em>source</em> files may still need GitHub
+                    OAuth (Settings → SSH Keys) while reading from GitHub
+                    itself.
+                  </li>
+                  <li>
+                    SSH denial looks like{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      permission denied for read operation
+                    </code>
+                    — ask the owner to add your npub.
                   </li>
                 </ul>
-
-                <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
-                  <p className="text-sm font-semibold text-yellow-200 mb-2">
-                    🔗 Identity Mapping & Access Control
-                  </p>
-                  <p className="text-sm text-yellow-100 mb-2">
-                    <strong>How Access Works:</strong> Access to private
-                    repositories is determined by your{" "}
-                    <strong>Nostr pubkey (npub)</strong>, not your GitHub
-                    username. This means:
-                  </p>
-                  <ul className="text-sm text-yellow-100 space-y-1 list-disc list-inside ml-2 mb-3">
-                    <li>
-                      <strong>Owner:</strong> The repository owner (the Nostr
-                      pubkey that created/pushed the repo) has full access
-                    </li>
-                    <li>
-                      <strong>Maintainers:</strong> Users whose Nostr pubkey
-                      (npub) is explicitly added as a maintainer in Repository
-                      Settings → Contributors
-                    </li>
-                    <li>
-                      <strong>GitHub Identity:</strong> If you're a maintainer
-                      on GitHub but haven't linked your Nostr identity, you
-                      won't have access until the owner adds your npub
-                    </li>
-                  </ul>
-                  <p className="text-sm text-yellow-100 mb-2">
-                    <strong>Why This Matters:</strong> When importing from
-                    GitHub, contributors are mapped to Nostr identities using:
-                  </p>
-                  <ol className="text-sm text-yellow-100 space-y-1 list-decimal list-inside ml-2 mb-3">
-                    <li>
-                      <strong>OAuth Mapping:</strong> If you've done GitHub
-                      OAuth, your GitHub username is linked to your Nostr pubkey
-                      in localStorage
-                    </li>
-                    <li>
-                      <strong>NIP-39 Claims:</strong> If you&apos;ve published a
-                      kind 10011 event with{" "}
-                      <code className="bg-yellow-900/50 px-1 rounded">
-                        ["i", "github:username"]
-                      </code>{" "}
-                      tags (Settings → Profile), your identity is claimed on
-                      Nostr (legacy kind 0 i-tags still work for reading)
-                    </li>
-                    <li>
-                      <strong>Manual Addition:</strong> The repository owner can
-                      manually add maintainers by their npub in Repository
-                      Settings
-                    </li>
-                  </ol>
-                  <p className="text-sm text-yellow-200 font-semibold mb-1">
-                    ⚠️ Common Issue: "Access Denied" for Maintainers
-                  </p>
-                  <p className="text-sm text-yellow-100 mb-2">
-                    If you're a maintainer on GitHub but can't access a private
-                    repo on gittr.space:
-                  </p>
-                  <ul className="text-sm text-yellow-100 space-y-1 list-disc list-inside ml-2">
-                    <li>
-                      The repository owner needs to add your{" "}
-                      <strong>Nostr pubkey (npub)</strong> as a maintainer in
-                      Repository Settings → Contributors
-                    </li>
-                    <li>
-                      Your GitHub username alone isn't enough - you need your
-                      npub explicitly added
-                    </li>
-                    <li>
-                      This ensures security: only the owner can grant access,
-                      and it's tied to your Nostr identity, not just GitHub
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/30 rounded">
-                  <p className="text-sm font-semibold text-purple-200 mb-2">
-                    💻 CLI & API Access
-                  </p>
-                  <p className="text-sm text-purple-100 mb-2">
-                    When accessing private repositories via Git CLI or API:
-                  </p>
-                  <ul className="text-sm text-purple-100 space-y-1 list-disc list-inside ml-2 mb-2">
-                    <li>
-                      <strong>Git Clone:</strong> Requires SSH keys configured
-                      in Settings → SSH Keys. The bridge checks your pubkey
-                      against the repository's maintainers list.
-                    </li>
-                    <li>
-                      <strong>Error Message:</strong> If access is denied,
-                      you'll see:{" "}
-                      <code className="bg-purple-900/50 px-1 rounded">
-                        fatal: permission denied for read operation
-                      </code>{" "}
-                      with hints on how to get access.
-                    </li>
-                    <li>
-                      <strong>API Endpoints:</strong> Private repo endpoints
-                      gracefully return null/404 for unauthorized users (no
-                      errors thrown).
-                    </li>
-                  </ul>
-                  <p className="text-sm text-purple-100">
-                    <strong>Note:</strong> The same access control applies - you
-                    need your npub added as a maintainer by the owner,
-                    regardless of whether you access via web UI, CLI, or API.
-                  </p>
-                </div>
-              </HelpSubTopic>
-
-              <HelpSubTopic title={<>4 MB import limit</>}>
-                <p>
-                  Next.js API routes hard-cap responses at ~4 MB. Large repos
-                  (releases/binaries) may fail with “Repository is too large”.
-                  Trim heavy artifacts or import a slimmer subset.
-                </p>
               </HelpSubTopic>
             </HelpTopic>
           </div>
@@ -1218,6 +1166,32 @@ export default function HelpPage() {
                 the repo shows ✓/✗ per source.
               </p>
               <p className="mt-2 text-xs text-gray-400">
+                <strong>SSH / CLI vs Code tab:</strong>{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  git clone git@git.gittr.space:…
+                </code>{" "}
+                reads the same bridge bare repo the Code tab uses. The website
+                additionally walks published{" "}
+                <code className="bg-gray-800 px-1 rounded">clone[]</code> /
+                <code className="bg-gray-800 px-1 rounded">source</code> URLs
+                (forge first, then GRASP mirrors). File timestamps on the Code
+                list come from the selected tip/branch on that mirror. Clone URL
+                chips should list every pushable GRASP host from the event (not
+                only git.gittr.space). After a clean Push with a forge{" "}
+                <code className="bg-gray-800 px-1 rounded">source</code>, the tip
+                should match the forge — not a new empty “Push from gittr”
+                commit. Details:{" "}
+                <a
+                  href={GITTR_DOC_FILE_FETCHING}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  FILE_FETCHING_INSIGHTS.md
+                </a>
+                .
+              </p>
+              <p className="mt-2 text-xs text-gray-400">
                 <strong>Newest metadata:</strong> we use the latest kind 30617
                 from relays. <strong>Newest commit across all mirrors:</strong>{" "}
                 we currently show the first mirror that responds with a tree,
@@ -1341,9 +1315,9 @@ export default function HelpPage() {
                 mirrors/links, not “everything lives only on gittr.”
               </p>
               <p className="mt-2 text-xs text-gray-400">
-                If you see &quot;Local changes are not visible in other clients
-                yet&quot;, Push to Nostr so relays (and the mirror attempt) get
-                those edits. Import alone stays local until you Push.
+                If you see &quot;Please repush on local edits&quot;, use Push to
+                Nostr so relays (and the mirror attempt) get those edits. Import
+                alone stays local until you Push.
               </p>
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-1">
@@ -1421,6 +1395,258 @@ export default function HelpPage() {
                   </li>
                 </ul>
               </HelpSubTopic>
+            </HelpTopic>
+
+            <HelpTopic
+              id="when-source-goes-offline"
+              title={<>When your git host goes dark</>}
+            >
+              <p>
+                Rough week for some self-hosted Git setups — here&apos;s the
+                practical bit, no panic.
+              </p>
+              <p className="mt-2">
+                A normal{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  git clone
+                </code>{" "}
+                or gittr <strong>import</strong> only copies{" "}
+                <strong>repo objects</strong> (commits, trees, blobs). It does{" "}
+                <strong>not</strong> bring over Gitea&apos;s{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">app.ini</code>
+                , internal token, or planted service hooks. Those stay on the
+                compromised or shut-down host. So code you already imported into
+                gittr is not carrying that server compromise with it.
+              </p>
+              <p className="mt-2">
+                What keeps the repo{" "}
+                <strong>visible and cloneable online</strong> is an independent
+                mirror: import (or clone) into gittr, then{" "}
+                <Link
+                  href="#push-to-nostr"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  Push to Nostr
+                </Link>
+                . That publishes the announcement on relays and puts objects on
+                GRASP / the bridge (
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  git.gittr.space
+                </code>{" "}
+                and other{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                hosts). Others can keep discovering and cloning without the
+                original forge.
+              </p>
+              <p className="mt-2 text-sm text-gray-400">
+                Quick check: can someone still{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  git clone
+                </code>{" "}
+                from a URL in your announcement{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                without the original host? If yes, that snapshot is fine. If
+                every clone URL still points only at the dead host, finish a
+                Push (or push to a GRASP remote) so the tree has somewhere else
+                to live.
+              </p>
+
+              <div className="mt-4 overflow-x-auto rounded border border-slate-600">
+                <table className="w-full min-w-[720px] text-left text-sm text-gray-300">
+                  <thead className="bg-slate-800/80 text-slate-100">
+                    <tr>
+                      <th className="p-3 font-semibold">Path</th>
+                      <th className="p-3 font-semibold">What is stored</th>
+                      <th className="p-3 font-semibold">
+                        If that host dies or gets taken down
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700">
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        gittr import, never Push to Nostr
+                      </td>
+                      <td className="p-3 align-top">
+                        Mostly browser localStorage plus a pointer (
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          source
+                        </code>
+                        ) at the original forge. Objects are not the Gitea
+                        server compromise.
+                      </td>
+                      <td className="p-3 align-top text-amber-200/90">
+                        Not enough for others yet. Only your browser has the
+                        files; Push so relays and GRASP can serve them.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        gittr import + successful Push to Nostr
+                      </td>
+                      <td className="p-3 align-top">
+                        Kind 30617 / 30618 on relays, and objects mirrored onto
+                        the GRASP / bridge hosts listed in{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          clone[]
+                        </code>{" "}
+                        (for example{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          git.gittr.space
+                        </code>
+                        )
+                      </td>
+                      <td className="p-3 align-top text-emerald-200/90">
+                        Safe for that snapshot and still discoverable. Others
+                        clone from GRASP, not the original forge. If the old
+                        host was compromised, rotate secrets that lived only
+                        there (and any tokens you once committed inside the
+                        repo).
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        nak / git-remote-nostr announce with{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          clone
+                        </code>{" "}
+                        /{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          source
+                        </code>{" "}
+                        = original forge only
+                      </td>
+                      <td className="p-3 align-top">
+                        Metadata on Nostr pointing at the original forge
+                      </td>
+                      <td className="p-3 align-top text-amber-200/90">
+                        Not enough. The announcement stays; the tree is gone
+                        when the forge is. Push objects to a GRASP remote (or
+                        import + Push on gittr).
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        nak / git-remote-nostr that actually pushed to a GRASP
+                        remote
+                      </td>
+                      <td className="p-3 align-top">
+                        Objects on that GRASP host plus the announcement
+                      </td>
+                      <td className="p-3 align-top text-emerald-200/90">
+                        Same idea as a good gittr push: independent mirror,
+                        still findable.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded space-y-2">
+                <p className="text-sm text-blue-100">
+                  <strong className="text-blue-50">What to do now</strong>
+                </p>
+                <ul className="list-disc list-inside text-sm text-blue-100 space-y-1.5">
+                  <li>
+                    <strong className="text-blue-50">
+                      Source still reachable?
+                    </strong>{" "}
+                    Import it into gittr while you can (
+                    <Link
+                      href="#importing-repositories"
+                      className="underline hover:text-blue-50"
+                    >
+                      Importing Repositories
+                    </Link>
+                    , or{" "}
+                    <Link
+                      href="/new"
+                      className="underline hover:text-blue-50"
+                    >
+                      Create repository
+                    </Link>{" "}
+                    and paste the clone URL), then{" "}
+                    <Link
+                      href="#push-to-nostr"
+                      className="underline hover:text-blue-50"
+                    >
+                      Push to Nostr
+                    </Link>
+                    .
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      Only a local backup / disk copy left?
+                    </strong>{" "}
+                    Create a new repo from that tree on{" "}
+                    <Link
+                      href="/new"
+                      className="underline hover:text-blue-50"
+                    >
+                      /new
+                    </Link>
+                    , then Push to Nostr so others can clone without the old
+                    host.
+                  </li>
+                </ul>
+                <p className="text-xs text-blue-200/80">
+                  Looking for a Nostr mirror of a known forge repo (GitHub,
+                  GitLab, Codeberg, Gitea, … — exact URL /{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    owner/repo
+                  </code>
+                  , not fuzzy name)? Use MCP{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    findReposBySource
+                  </code>{" "}
+                  or{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    GET /api/nostr/repos-by-github?source=https://…
+                  </code>
+                  — returns npub + gittr URL so you can reach them on Nostr
+                  (profile / DM) when the forge is unreachable. Needs a Push to
+                  Nostr announce that kept the{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    source
+                  </code>{" "}
+                  tag. Import / clone only copies repo objects (commits, trees,
+                  blobs) — not the old forge&apos;s server config. After Push,
+                  confirm a{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    clone[]
+                  </code>{" "}
+                  URL works without the original host. If you still run
+                  self-hosted Gitea older than 1.27.1, patch that machine
+                  separately:{" "}
+                  <a
+                    href="https://github.com/go-gitea/gitea/security/advisories/GHSA-6v53-hr58-556r"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-blue-100"
+                  >
+                    GHSA-6v53-hr58-556r
+                  </a>
+                  ,{" "}
+                  <a
+                    href="https://github.com/go-gitea/gitea/security/advisories/GHSA-rcr6-4jqh-j84m"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-blue-100"
+                  >
+                    GHSA-rcr6-4jqh-j84m
+                  </a>
+                  ,{" "}
+                  <a
+                    href="https://blog.gitea.com/release-of-1.27.1/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-blue-100"
+                  >
+                    Gitea 1.27.1
+                  </a>
+                  .
+                </p>
+              </div>
             </HelpTopic>
 
             <HelpTopic id="ssh-keys" title={<>SSH Keys</>}>

@@ -23,6 +23,7 @@ export const KIND_STATUS_CLOSED = 1632; // NIP-34: Status - Closed
 export const KIND_STATUS_DRAFT = 1633; // NIP-34: Status - Draft
 export const KIND_COVER_NOTE = 1624; // Experimental: PR/issue cover notes (ngit ecosystem)
 export const KIND_GRASP_LIST = 10317; // NIP-34: User GRASP list (preferred GRASP servers)
+export const KIND_RELAY_LIST = 10002; // NIP-65: Preferred relays (read/write)
 export const KIND_GIT_REPOSITORIES_LIST = 10018; // NIP-51: Followed Git repositories list
 export const KIND_LABEL_OVERLAY = 1985; // NIP-32: Label overlays for post-hoc metadata
 /** NIP-23: Long-form content. Used for repo discussion topics (replies use NIP-22 kind 1111). */
