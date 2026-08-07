@@ -37,6 +37,8 @@ import {
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
+import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -261,12 +263,18 @@ function ExplorePageContent() {
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const searchParams = useSearchParams();
   const qRaw = searchParams?.get("q") || "";
   const q = qRaw.toLowerCase();
   const userFilter = searchParams?.get("user") || null;
   const openRepoInNewTab = !!(qRaw.trim() || userFilter);
   const { defaultRelays, subscribe, pubkey, addRelay } = useNostrContext();
+
+  // Reset page window when search/filter changes (keep scroll stable on Load more).
+  useEffect(() => {
+    setVisibleRepoCount(REPO_LIST_PAGE_SIZE);
+  }, [q, userFilter]);
 
   // DEBUG: Log context values
   useEffect(() => {
@@ -2700,6 +2708,24 @@ function ExplorePageContent() {
     return deduplicated;
   }, [sorted, q, userFilter, pubkey, ownerMetadata]); // Include ownerMetadata so filteredRepos updates when metadata loads
 
+  // Valid cards only (same pre-filter as the grid), then Load-more window.
+  const displayableRepos = useMemo(() => {
+    return filteredRepos.filter((r) => {
+      if (!r || !r.entity) return false;
+      const entity = r.entity;
+      const repo =
+        r.repo ||
+        (r.slug && typeof r.slug === "string" && r.slug.includes("/")
+          ? r.slug.split("/")[1]
+          : r.slug || "");
+      const ownerPubkey = getRepoOwnerPubkey(r, entity);
+      if (!ownerPubkey || !repo || !entity) return false;
+      return Boolean(String(repo).trim());
+    });
+  }, [filteredRepos]);
+
+  const visibleExploreRepos = displayableRepos.slice(0, visibleRepoCount);
+
   // Render repo cards directly (like homepage) - React will handle updates efficiently
   // Don't use useMemo here as it can cause issues with constant re-renders blocking clicks
 
@@ -2807,34 +2833,7 @@ function ExplorePageContent() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
         {!isLoadingRepos &&
-          filteredRepos
-            .filter((r) => {
-              // Pre-filter repos with invalid data to prevent warnings and render loops
-              // CRITICAL: Check for null/undefined before accessing properties
-              if (!r || !r.entity) {
-                return false;
-              }
-
-              const entity = r.entity;
-              const repo =
-                r.repo ||
-                (r.slug && typeof r.slug === "string" && r.slug.includes("/")
-                  ? r.slug.split("/")[1]
-                  : r.slug || "");
-              const ownerPubkey = getRepoOwnerPubkey(r, entity);
-
-              // Skip repos with missing critical data (silently, no warnings)
-              if (!ownerPubkey || !repo || !entity) {
-                return false;
-              }
-
-              const cleanRepo = String(repo).trim();
-              if (!cleanRepo) {
-                return false;
-              }
-
-              return true;
-            })
+          visibleExploreRepos
             .map((r) => {
               // Use entity/repo structure if available, otherwise parse from slug
               const entity = r.entity!;
@@ -3010,6 +3009,16 @@ function ExplorePageContent() {
               );
             })
             .filter(Boolean)}
+        {!isLoadingRepos && (
+          <LoadMoreButton
+            visibleCount={visibleExploreRepos.length}
+            totalCount={displayableRepos.length}
+            pageSize={REPO_LIST_PAGE_SIZE}
+            onLoadMore={() =>
+              setVisibleRepoCount((n) => n + REPO_LIST_PAGE_SIZE)
+            }
+          />
+        )}
         {!isLoadingRepos &&
           !syncing &&
           filteredRepos.length === 0 &&
