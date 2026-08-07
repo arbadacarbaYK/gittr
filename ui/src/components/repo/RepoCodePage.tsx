@@ -18206,10 +18206,12 @@ export function RepoCodePage() {
                             className="w-full h-full border-0"
                             title={selectedFile}
                           >
+                            {/* PDF-only fallback: no scripts; browser PDF viewers work without allow-scripts */}
                             <iframe
                               src={fileContent}
                               className="w-full h-full border-0"
                               title={selectedFile}
+                              sandbox=""
                             />
                           </object>
                         </div>
@@ -18254,11 +18256,12 @@ export function RepoCodePage() {
                         ) {
                           return (
                             <div className="w-full h-[70vh] border border-[#383B42] rounded">
+                              {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
                               <iframe
                                 src={content}
                                 className="w-full h-full border-0"
                                 title={selectedFile}
-                                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                                sandbox="allow-scripts allow-popups allow-forms"
                               />
                             </div>
                           );
@@ -18325,11 +18328,12 @@ export function RepoCodePage() {
 
                         return (
                           <div className="w-full h-[70vh] border border-[#383B42] rounded">
+                            {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
                             <iframe
                               srcDoc={htmlContent}
                               className="w-full h-full border-0"
                               title={selectedFile}
-                              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+                              sandbox="allow-scripts allow-popups allow-forms allow-modals"
                             />
                           </div>
                         );
