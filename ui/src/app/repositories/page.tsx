@@ -12,25 +12,26 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { getUserActivities } from "@/lib/activity-tracking";
 import {
   isPublisherBlocklisted,
   isRepoFromBlocklistedOwner,
 } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { usableCloneUrls } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
-import { usableCloneUrls } from "@/lib/nostr/clone-url-quality";
 import {
   CLONE_REPUBLISH_BADGE_LABEL,
   CLONE_REPUBLISH_BADGE_TITLE,
   cloneListNeedsRepublish,
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
+import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -39,14 +40,15 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
-import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
   clearForeignReposFromStorage,
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -133,6 +135,7 @@ export default function RepositoriesPage() {
   const [pushingRepos, setPushingRepos] = useState<Set<string>>(new Set());
   const [repairingCloneUrls, setRepairingCloneUrls] = useState(false);
   const [clickedRepo, setClickedRepo] = useState<string | null>(null); // Track which repo is being navigated to
+  const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const syncedFromActivitiesRef = useRef<Set<string>>(new Set()); // Track which repos we've already synced
   const router = useRouter();
   const { name: userName, isLoggedIn } = useSession();
@@ -1079,8 +1082,7 @@ export default function RepositoriesPage() {
                   else if (tagName === "r" && tagValue && tag[2] === "euc") {
                     // Extract earliest unique commit from "r" tag with "euc" marker
                     repoData.earliestUniqueCommit = tagValue;
-                  }
-                  else if (tagName === "public-read" && tagValue) {
+                  } else if (tagName === "public-read" && tagValue) {
                     // gittr extension on 30617 — required so Private survives localStorage clear
                     repoData.publicRead = tagValue.toLowerCase() !== "false";
                   } else if (tagName === "public-write" && tagValue) {
@@ -2000,7 +2002,11 @@ export default function RepositoriesPage() {
             publicRead?: boolean;
           }>;
         };
-        if (!Array.isArray(data.repos) || data.repos.length === 0 || cancelled) {
+        if (
+          !Array.isArray(data.repos) ||
+          data.repos.length === 0 ||
+          cancelled
+        ) {
           return;
         }
 
@@ -2824,235 +2830,33 @@ export default function RepositoriesPage() {
         {showReposLoading && <p className="text-gray-400">Loading...</p>}
         {!showReposLoading &&
           repos.filter((r: Repo) => {
-          // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
-          if (
-            isRepoCorrupted(
-              r,
-              (r as any).nostrEventId || (r as any).lastNostrEventId
-            )
-          ) {
-            return false; // Never show corrupted repos
-          }
-
-          // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
-          if (!pubkey) return false; // Not logged in = no repos
-
-          // Priority 1: Check direct ownerPubkey match (most reliable)
-          if (
-            (r as any).ownerPubkey &&
-            (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase()
-          )
-            return true;
-
-          // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
-          const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-          if (
-            repoOwnerPubkey &&
-            repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
-          )
-            return true;
-
-          // Priority 3: Check contributors for owner with matching pubkey
-          if (r.contributors && Array.isArray(r.contributors)) {
-            const ownerContributor = r.contributors.find(
-              (c: any) =>
-                c.pubkey &&
-                c.pubkey.toLowerCase() === pubkey.toLowerCase() &&
-                (c.weight === 100 || c.role === "owner")
-            );
-            if (ownerContributor) return true;
-          }
-
-          // Priority 4: Check if entity (npub format) matches current user's pubkey
-          if (r.entity && r.entity.startsWith("npub")) {
-            try {
-              const decoded = nip19.decode(r.entity);
-              if (decoded.type === "npub") {
-                const entityPubkey = decoded.data as string;
-                if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                  // Additional check: ensure ownerPubkey matches if it exists
-                  if (
-                    (r as any).ownerPubkey &&
-                    (r as any).ownerPubkey.toLowerCase() !==
-                      pubkey.toLowerCase()
-                  )
-                    return false;
-                  return true;
-                }
-              }
-            } catch {}
-          }
-
-          return false;
-        }).length === 0 && <p>No repositories yet.</p>}
-        {!showReposLoading &&
-          (() => {
-          // Load list of locally-deleted repos (user deleted them, don't show)
-          const deletedRepos =
-            typeof window === "undefined"
-              ? []
-              : (JSON.parse(
-                  localStorage.getItem("gittr_deleted_repos") || "[]"
-                ) as Array<{
-                  entity: string;
-                  repo: string;
-                  deletedAt: number;
-                  ownerPubkey?: string;
-                }>);
-
-          // Helper function to check if repo is deleted (robust matching)
-          const isRepoDeleted = (r: any): boolean => {
-            const repo = r.repo || r.slug || "";
-            const entity = r.entity || "";
-
-            // Check direct match by entity (npub format)
-            const repoKey = `${entity}/${repo}`.toLowerCase();
+            // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
             if (
-              deletedRepos.some(
-                (d) => `${d.entity}/${d.repo}`.toLowerCase() === repoKey
+              isRepoCorrupted(
+                r,
+                (r as any).nostrEventId || (r as any).lastNostrEventId
               )
-            )
-              return true;
-
-            // Check by ownerPubkey (most reliable - handles npub entity mismatches)
-            if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
-              const ownerPubkey = r.ownerPubkey.toLowerCase();
-              // Check if deleted entity is npub for same pubkey
-              if (
-                deletedRepos.some((d) => {
-                  if (d.entity.startsWith("npub")) {
-                    try {
-                      const dDecoded = nip19.decode(d.entity);
-                      if (
-                        dDecoded.type === "npub" &&
-                        (dDecoded.data as string).toLowerCase() === ownerPubkey
-                      ) {
-                        return d.repo.toLowerCase() === repo.toLowerCase();
-                      }
-                    } catch {}
-                  }
-                  return false;
-                })
-              )
-                return true;
+            ) {
+              return false; // Never show corrupted repos
             }
-
-            return false;
-          };
-
-          // Filter, sort, and deduplicate repos
-          const filtered = repos.filter((r: Repo) => {
-            // CRITICAL: Exclude corrupted repos using general corruption check
-            const repoForValidation = {
-              repositoryName:
-                (r as any).repositoryName || r.repo || r.slug || r.name || "",
-              entity: r.entity || "",
-              ownerPubkey: (r as any).ownerPubkey || "",
-            };
-
-            const eventId =
-              (r as any).nostrEventId || (r as any).lastNostrEventId;
-
-            if (isRepoCorrupted(repoForValidation, eventId)) {
-              // Silently filter out - don't spam console
-              return false; // Always exclude corrupted repos
-            }
-
-            // Get repo name for filtering logic
-            const repoName =
-              (r as any).repositoryName || r.repo || r.slug || r.name || "";
-            const isTides = repoName.toLowerCase() === "tides";
-
-            // CRITICAL: Filter out duplicate/corrupted tides repos
-            // If there are multiple tides repos with the same entity but different ownerPubkeys, exclude all but one
-            // This handles the case where corrupted repos were created with wrong ownerPubkey
-            if (isTides && pubkey) {
-              // Check if ownerPubkey matches current user - if not, exclude it
-              const ownerPubkey = (r as any).ownerPubkey;
-              if (
-                ownerPubkey &&
-                ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
-              ) {
-                // Also check if entity matches current user
-                try {
-                  if (r.entity && r.entity.startsWith("npub")) {
-                    const decoded = nip19.decode(r.entity);
-                    if (decoded.type === "npub") {
-                      const entityPubkey = decoded.data as string;
-                      if (entityPubkey.toLowerCase() !== pubkey.toLowerCase()) {
-                        console.log(
-                          "❌ [Repositories] Filtering out tides repo - owner doesn't match:",
-                          {
-                            repo: repoName,
-                            entity: r.entity,
-                            entityPubkey: entityPubkey.slice(0, 16),
-                            ownerPubkey: ownerPubkey.slice(0, 16),
-                            currentUser: pubkey.slice(0, 16),
-                          }
-                        );
-                        return false; // Exclude if neither entity nor ownerPubkey matches
-                      }
-                    }
-                  }
-                } catch {}
-              }
-            }
-
-            // CRITICAL: Filter out deleted repos FIRST (before ownership checks)
-            // Skip if locally deleted (completely hidden - no note shown)
-            if (isRepoDeleted(r)) return false;
-
-            // Skip if owner marked as deleted/archived on Nostr (completely hidden - no note shown)
-            if ((r as any).deleted === true || (r as any).archived === true)
-              return false;
 
             // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
             if (!pubkey) return false; // Not logged in = no repos
 
-            // repoName already defined above in the filter
-            const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-            const directOwnerPubkey = (r as any).ownerPubkey;
-
-            // Debug logging for tides repo
-            if (repoName.toLowerCase() === "tides") {
-              console.log("🔍 [Repositories] Filtering tides repo:", {
-                repoName,
-                entity: r.entity,
-                repoOwnerPubkey: repoOwnerPubkey?.slice(0, 8),
-                directOwnerPubkey: directOwnerPubkey?.slice(0, 8),
-                currentUserPubkey: pubkey?.slice(0, 8),
-                hasContributors: !!(
-                  r.contributors && Array.isArray(r.contributors)
-                ),
-                ownerContributor: r.contributors?.find(
-                  (c: any) => c.weight === 100
-                ),
-              });
-            }
-
             // Priority 1: Check direct ownerPubkey match (most reliable)
             if (
-              directOwnerPubkey &&
-              directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
-            ) {
-              if (repoName.toLowerCase() === "tides")
-                console.log(
-                  "✅ [Repositories] tides matched by direct ownerPubkey"
-                );
+              (r as any).ownerPubkey &&
+              (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase()
+            )
               return true;
-            }
 
             // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
+            const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
             if (
               repoOwnerPubkey &&
               repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
-            ) {
-              if (repoName.toLowerCase() === "tides")
-                console.log(
-                  "✅ [Repositories] tides matched by repoOwnerPubkey"
-                );
+            )
               return true;
-            }
 
             // Priority 3: Check contributors for owner with matching pubkey
             if (r.contributors && Array.isArray(r.contributors)) {
@@ -3062,14 +2866,10 @@ export default function RepositoriesPage() {
                   c.pubkey.toLowerCase() === pubkey.toLowerCase() &&
                   (c.weight === 100 || c.role === "owner")
               );
-              if (ownerContributor) {
-                if (repoName.toLowerCase() === "tides")
-                  console.log("✅ [Repositories] tides matched by contributor");
-                return true;
-              }
+              if (ownerContributor) return true;
             }
 
-            // Priority 4: Check if entity (npub format) matches current user's pubkey (fallback)
+            // Priority 4: Check if entity (npub format) matches current user's pubkey
             if (r.entity && r.entity.startsWith("npub")) {
               try {
                 const decoded = nip19.decode(r.entity);
@@ -3078,583 +2878,832 @@ export default function RepositoriesPage() {
                   if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
                     // Additional check: ensure ownerPubkey matches if it exists
                     if (
-                      directOwnerPubkey &&
-                      directOwnerPubkey.toLowerCase() !== pubkey.toLowerCase()
-                    ) {
-                      if (repoName.toLowerCase() === "tides")
-                        console.log(
-                          "❌ [Repositories] tides excluded - npub entity matches but ownerPubkey doesn't"
-                        );
+                      (r as any).ownerPubkey &&
+                      (r as any).ownerPubkey.toLowerCase() !==
+                        pubkey.toLowerCase()
+                    )
                       return false;
-                    }
-                    if (repoName.toLowerCase() === "tides")
-                      console.log(
-                        "✅ [Repositories] tides matched by npub entity"
-                      );
                     return true;
                   }
                 }
-              } catch (e) {
+              } catch {}
+            }
+
+            return false;
+          }).length === 0 && <p>No repositories yet.</p>}
+        {!showReposLoading &&
+          (() => {
+            // Load list of locally-deleted repos (user deleted them, don't show)
+            const deletedRepos =
+              typeof window === "undefined"
+                ? []
+                : (JSON.parse(
+                    localStorage.getItem("gittr_deleted_repos") || "[]"
+                  ) as Array<{
+                    entity: string;
+                    repo: string;
+                    deletedAt: number;
+                    ownerPubkey?: string;
+                  }>);
+
+            // Helper function to check if repo is deleted (robust matching)
+            const isRepoDeleted = (r: any): boolean => {
+              const repo = r.repo || r.slug || "";
+              const entity = r.entity || "";
+
+              // Check direct match by entity (npub format)
+              const repoKey = `${entity}/${repo}`.toLowerCase();
+              if (
+                deletedRepos.some(
+                  (d) => `${d.entity}/${d.repo}`.toLowerCase() === repoKey
+                )
+              )
+                return true;
+
+              // Check by ownerPubkey (most reliable - handles npub entity mismatches)
+              if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
+                const ownerPubkey = r.ownerPubkey.toLowerCase();
+                // Check if deleted entity is npub for same pubkey
+                if (
+                  deletedRepos.some((d) => {
+                    if (d.entity.startsWith("npub")) {
+                      try {
+                        const dDecoded = nip19.decode(d.entity);
+                        if (
+                          dDecoded.type === "npub" &&
+                          (dDecoded.data as string).toLowerCase() ===
+                            ownerPubkey
+                        ) {
+                          return d.repo.toLowerCase() === repo.toLowerCase();
+                        }
+                      } catch {}
+                    }
+                    return false;
+                  })
+                )
+                  return true;
+              }
+
+              return false;
+            };
+
+            // Filter, sort, and deduplicate repos
+            const filtered = repos.filter((r: Repo) => {
+              // CRITICAL: Exclude corrupted repos using general corruption check
+              const repoForValidation = {
+                repositoryName:
+                  (r as any).repositoryName || r.repo || r.slug || r.name || "",
+                entity: r.entity || "",
+                ownerPubkey: (r as any).ownerPubkey || "",
+              };
+
+              const eventId =
+                (r as any).nostrEventId || (r as any).lastNostrEventId;
+
+              if (isRepoCorrupted(repoForValidation, eventId)) {
+                // Silently filter out - don't spam console
+                return false; // Always exclude corrupted repos
+              }
+
+              // Get repo name for filtering logic
+              const repoName =
+                (r as any).repositoryName || r.repo || r.slug || r.name || "";
+              const isTides = repoName.toLowerCase() === "tides";
+
+              // CRITICAL: Filter out duplicate/corrupted tides repos
+              // If there are multiple tides repos with the same entity but different ownerPubkeys, exclude all but one
+              // This handles the case where corrupted repos were created with wrong ownerPubkey
+              if (isTides && pubkey) {
+                // Check if ownerPubkey matches current user - if not, exclude it
+                const ownerPubkey = (r as any).ownerPubkey;
+                if (
+                  ownerPubkey &&
+                  ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
+                ) {
+                  // Also check if entity matches current user
+                  try {
+                    if (r.entity && r.entity.startsWith("npub")) {
+                      const decoded = nip19.decode(r.entity);
+                      if (decoded.type === "npub") {
+                        const entityPubkey = decoded.data as string;
+                        if (
+                          entityPubkey.toLowerCase() !== pubkey.toLowerCase()
+                        ) {
+                          console.log(
+                            "❌ [Repositories] Filtering out tides repo - owner doesn't match:",
+                            {
+                              repo: repoName,
+                              entity: r.entity,
+                              entityPubkey: entityPubkey.slice(0, 16),
+                              ownerPubkey: ownerPubkey.slice(0, 16),
+                              currentUser: pubkey.slice(0, 16),
+                            }
+                          );
+                          return false; // Exclude if neither entity nor ownerPubkey matches
+                        }
+                      }
+                    }
+                  } catch {}
+                }
+              }
+
+              // CRITICAL: Filter out deleted repos FIRST (before ownership checks)
+              // Skip if locally deleted (completely hidden - no note shown)
+              if (isRepoDeleted(r)) return false;
+
+              // Skip if owner marked as deleted/archived on Nostr (completely hidden - no note shown)
+              if ((r as any).deleted === true || (r as any).archived === true)
+                return false;
+
+              // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
+              if (!pubkey) return false; // Not logged in = no repos
+
+              // repoName already defined above in the filter
+              const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+              const directOwnerPubkey = (r as any).ownerPubkey;
+
+              // Debug logging for tides repo
+              if (repoName.toLowerCase() === "tides") {
+                console.log("🔍 [Repositories] Filtering tides repo:", {
+                  repoName,
+                  entity: r.entity,
+                  repoOwnerPubkey: repoOwnerPubkey?.slice(0, 8),
+                  directOwnerPubkey: directOwnerPubkey?.slice(0, 8),
+                  currentUserPubkey: pubkey?.slice(0, 8),
+                  hasContributors: !!(
+                    r.contributors && Array.isArray(r.contributors)
+                  ),
+                  ownerContributor: r.contributors?.find(
+                    (c: any) => c.weight === 100
+                  ),
+                });
+              }
+
+              // Priority 1: Check direct ownerPubkey match (most reliable)
+              if (
+                directOwnerPubkey &&
+                directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
+              ) {
                 if (repoName.toLowerCase() === "tides")
                   console.log(
-                    "❌ [Repositories] tides - failed to decode npub entity:",
-                    r.entity
+                    "✅ [Repositories] tides matched by direct ownerPubkey"
                   );
+                return true;
               }
-            }
 
-            // Filter out repos without valid entity (npub format required)
-            if (
-              !r.entity ||
-              r.entity === "user" ||
-              !r.entity.startsWith("npub")
-            ) {
-              // Try one more time to migrate if user is now logged in AND repo belongs to them
+              // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
               if (
-                isLoggedIn &&
-                userName &&
-                userName !== "Anonymous Nostrich" &&
-                pubkey
+                repoOwnerPubkey &&
+                repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
               ) {
-                // CRITICAL: Only migrate if repo belongs to current user (check ownerPubkey)
-                const isUserRepo =
-                  (r as any).ownerPubkey === pubkey ||
-                  (r.contributors &&
-                    r.contributors.some(
-                      (c: any) => c.pubkey === pubkey && c.weight === 100
-                    ));
+                if (repoName.toLowerCase() === "tides")
+                  console.log(
+                    "✅ [Repositories] tides matched by repoOwnerPubkey"
+                  );
+                return true;
+              }
 
-                if (isUserRepo) {
-                  // Use npub format for entity (GRASP protocol standard)
-                  let entityNpub: string;
-                  try {
-                    entityNpub = nip19.npubEncode(pubkey);
-                  } catch (e) {
-                    console.error(
-                      "Failed to encode npub for entity migration:",
-                      e
+              // Priority 3: Check contributors for owner with matching pubkey
+              if (r.contributors && Array.isArray(r.contributors)) {
+                const ownerContributor = r.contributors.find(
+                  (c: any) =>
+                    c.pubkey &&
+                    c.pubkey.toLowerCase() === pubkey.toLowerCase() &&
+                    (c.weight === 100 || c.role === "owner")
+                );
+                if (ownerContributor) {
+                  if (repoName.toLowerCase() === "tides")
+                    console.log(
+                      "✅ [Repositories] tides matched by contributor"
                     );
-                    return false; // Can't migrate without valid npub
+                  return true;
+                }
+              }
+
+              // Priority 4: Check if entity (npub format) matches current user's pubkey (fallback)
+              if (r.entity && r.entity.startsWith("npub")) {
+                try {
+                  const decoded = nip19.decode(r.entity);
+                  if (decoded.type === "npub") {
+                    const entityPubkey = decoded.data as string;
+                    if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
+                      // Additional check: ensure ownerPubkey matches if it exists
+                      if (
+                        directOwnerPubkey &&
+                        directOwnerPubkey.toLowerCase() !== pubkey.toLowerCase()
+                      ) {
+                        if (repoName.toLowerCase() === "tides")
+                          console.log(
+                            "❌ [Repositories] tides excluded - npub entity matches but ownerPubkey doesn't"
+                          );
+                        return false;
+                      }
+                      if (repoName.toLowerCase() === "tides")
+                        console.log(
+                          "✅ [Repositories] tides matched by npub entity"
+                        );
+                      return true;
+                    }
                   }
-                  const updated = repos.map((rr: Repo) =>
-                    rr === r
-                      ? {
-                          ...rr,
-                          entity: entityNpub,
-                          entityDisplayName:
-                            userName || entityNpub.slice(0, 12) + "...", // Use userName or shortened npub for display
-                          ownerPubkey: pubkey, // Ensure ownerPubkey is set
-                        }
-                      : rr
-                  );
-                  localStorage.setItem("gittr_repos", JSON.stringify(updated));
-                  // Return true to show it this time, but it will be properly migrated next render
-                  return false; // Still filter it out this render
+                } catch (e) {
+                  if (repoName.toLowerCase() === "tides")
+                    console.log(
+                      "❌ [Repositories] tides - failed to decode npub entity:",
+                      r.entity
+                    );
                 }
               }
-              return false; // Filter out invalid repos
-            }
 
-            // All checks above should have caught it - if we get here, it's not the user's repo
-            return false;
-          });
-
-          // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
-          // This ensures repos with recent updates appear first
-          // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
-          const sorted = filtered.sort((a: Repo, b: Repo) => {
-            // Get latest event date in milliseconds for comparison
-            const aLatest = (a as any).lastNostrEventCreatedAt
-              ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-              : (a as any).updatedAt || a.createdAt || 0;
-            const bLatest = (b as any).lastNostrEventCreatedAt
-              ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-              : (b as any).updatedAt || b.createdAt || 0;
-            return bLatest - aLatest; // Newest first
-          });
-
-          // Deduplicate repos by entity/repo combination
-          // CRITICAL: Merge local and Nostr versions intelligently:
-          // - If both exist, merge them (preserve local logoUrl, keep Nostr metadata)
-          // - Only show local version if it has unpushed edits
-          const dedupeMap = new Map<string, any>();
-          sorted.forEach((r: any) => {
-            const entity = (r.entity || "").trim();
-            const repo = (r.repo || r.slug || r.name || "").trim();
-            // Normalize repo name for matching (handle variations like bitcoin_meetup_calendar vs bitcoin-meetup-calendar)
-            const normalizedRepo = repo.toLowerCase().replace(/[_-]/g, "");
-            const key = `${entity}/${normalizedRepo}`.toLowerCase(); // Case-insensitive comparison
-            const existing = dedupeMap.get(key);
-
-            if (!existing) {
-              dedupeMap.set(key, r);
-            } else {
-              // Merge repos: preserve local logoUrl, keep Nostr metadata
-              const status = getRepoStatus(r);
-              const existingStatus = getRepoStatus(existing);
-
-              // If one is local and one is published, merge them
+              // Filter out repos without valid entity (npub format required)
               if (
-                (status === "local" && isPublishedRepoStatus(existingStatus)) ||
-                (existingStatus === "local" && isPublishedRepoStatus(status))
+                !r.entity ||
+                r.entity === "user" ||
+                !r.entity.startsWith("npub")
               ) {
-                // Merge: keep Nostr version as base, but preserve local logoUrl and unpushed edits
-                const localVersion = status === "local" ? r : existing;
-                const nostrVersion = status === "local" ? existing : r;
+                // Try one more time to migrate if user is now logged in AND repo belongs to them
+                if (
+                  isLoggedIn &&
+                  userName &&
+                  userName !== "Anonymous Nostrich" &&
+                  pubkey
+                ) {
+                  // CRITICAL: Only migrate if repo belongs to current user (check ownerPubkey)
+                  const isUserRepo =
+                    (r as any).ownerPubkey === pubkey ||
+                    (r.contributors &&
+                      r.contributors.some(
+                        (c: any) => c.pubkey === pubkey && c.weight === 100
+                      ));
 
-                const merged = {
-                  ...nostrVersion, // Use Nostr version as base (has all metadata)
-                  // Preserve local logoUrl if it exists and is different from Nostr
-                  logoUrl: localVersion.logoUrl || nostrVersion.logoUrl,
-                  // Preserve local unpushed edits flag
-                  hasUnpushedEdits:
-                    localVersion.hasUnpushedEdits ||
-                    nostrVersion.hasUnpushedEdits,
-                  // Keep the most recent modification time
-                  lastModifiedAt: Math.max(
-                    localVersion.lastModifiedAt || 0,
-                    nostrVersion.lastModifiedAt || 0
-                  ),
-                  // Keep both event IDs if they exist
-                  nostrEventId:
-                    nostrVersion.nostrEventId || localVersion.nostrEventId,
-                  lastNostrEventId:
-                    nostrVersion.lastNostrEventId ||
-                    localVersion.lastNostrEventId,
-                  // Preserve local status if it has unpushed edits
-                  status:
-                    localVersion.hasUnpushedEdits ||
-                    (localVersion.lastModifiedAt &&
-                      nostrVersion.lastNostrEventCreatedAt &&
-                      localVersion.lastModifiedAt >
-                        nostrVersion.lastNostrEventCreatedAt * 1000)
-                      ? "live_with_edits"
-                      : nostrVersion.status || "live",
-                };
+                  if (isUserRepo) {
+                    // Use npub format for entity (GRASP protocol standard)
+                    let entityNpub: string;
+                    try {
+                      entityNpub = nip19.npubEncode(pubkey);
+                    } catch (e) {
+                      console.error(
+                        "Failed to encode npub for entity migration:",
+                        e
+                      );
+                      return false; // Can't migrate without valid npub
+                    }
+                    const updated = repos.map((rr: Repo) =>
+                      rr === r
+                        ? {
+                            ...rr,
+                            entity: entityNpub,
+                            entityDisplayName:
+                              userName || entityNpub.slice(0, 12) + "...", // Use userName or shortened npub for display
+                            ownerPubkey: pubkey, // Ensure ownerPubkey is set
+                          }
+                        : rr
+                    );
+                    localStorage.setItem(
+                      "gittr_repos",
+                      JSON.stringify(updated)
+                    );
+                    // Return true to show it this time, but it will be properly migrated next render
+                    return false; // Still filter it out this render
+                  }
+                }
+                return false; // Filter out invalid repos
+              }
 
-                dedupeMap.set(key, merged);
+              // All checks above should have caught it - if we get here, it's not the user's repo
+              return false;
+            });
+
+            // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
+            // This ensures repos with recent updates appear first
+            // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
+            const sorted = filtered.sort((a: Repo, b: Repo) => {
+              // Get latest event date in milliseconds for comparison
+              const aLatest = (a as any).lastNostrEventCreatedAt
+                ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+                : (a as any).updatedAt || a.createdAt || 0;
+              const bLatest = (b as any).lastNostrEventCreatedAt
+                ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+                : (b as any).updatedAt || b.createdAt || 0;
+              return bLatest - aLatest; // Newest first
+            });
+
+            // Deduplicate repos by entity/repo combination
+            // CRITICAL: Merge local and Nostr versions intelligently:
+            // - If both exist, merge them (preserve local logoUrl, keep Nostr metadata)
+            // - Only show local version if it has unpushed edits
+            const dedupeMap = new Map<string, any>();
+            sorted.forEach((r: any) => {
+              const entity = (r.entity || "").trim();
+              const repo = (r.repo || r.slug || r.name || "").trim();
+              // Normalize repo name for matching (handle variations like bitcoin_meetup_calendar vs bitcoin-meetup-calendar)
+              const normalizedRepo = repo.toLowerCase().replace(/[_-]/g, "");
+              const key = `${entity}/${normalizedRepo}`.toLowerCase(); // Case-insensitive comparison
+              const existing = dedupeMap.get(key);
+
+              if (!existing) {
+                dedupeMap.set(key, r);
               } else {
-                // Both are same type, keep the most recent one
-                if ((r.createdAt || 0) > (existing.createdAt || 0)) {
-                  dedupeMap.set(key, r);
+                // Merge repos: preserve local logoUrl, keep Nostr metadata
+                const status = getRepoStatus(r);
+                const existingStatus = getRepoStatus(existing);
+
+                // If one is local and one is published, merge them
+                if (
+                  (status === "local" &&
+                    isPublishedRepoStatus(existingStatus)) ||
+                  (existingStatus === "local" && isPublishedRepoStatus(status))
+                ) {
+                  // Merge: keep Nostr version as base, but preserve local logoUrl and unpushed edits
+                  const localVersion = status === "local" ? r : existing;
+                  const nostrVersion = status === "local" ? existing : r;
+
+                  const merged = {
+                    ...nostrVersion, // Use Nostr version as base (has all metadata)
+                    // Preserve local logoUrl if it exists and is different from Nostr
+                    logoUrl: localVersion.logoUrl || nostrVersion.logoUrl,
+                    // Preserve local unpushed edits flag
+                    hasUnpushedEdits:
+                      localVersion.hasUnpushedEdits ||
+                      nostrVersion.hasUnpushedEdits,
+                    // Keep the most recent modification time
+                    lastModifiedAt: Math.max(
+                      localVersion.lastModifiedAt || 0,
+                      nostrVersion.lastModifiedAt || 0
+                    ),
+                    // Keep both event IDs if they exist
+                    nostrEventId:
+                      nostrVersion.nostrEventId || localVersion.nostrEventId,
+                    lastNostrEventId:
+                      nostrVersion.lastNostrEventId ||
+                      localVersion.lastNostrEventId,
+                    // Preserve local status if it has unpushed edits
+                    status:
+                      localVersion.hasUnpushedEdits ||
+                      (localVersion.lastModifiedAt &&
+                        nostrVersion.lastNostrEventCreatedAt &&
+                        localVersion.lastModifiedAt >
+                          nostrVersion.lastNostrEventCreatedAt * 1000)
+                        ? "live_with_edits"
+                        : nostrVersion.status || "live",
+                  };
+
+                  dedupeMap.set(key, merged);
+                } else {
+                  // Both are same type, keep the most recent one
+                  if ((r.createdAt || 0) > (existing.createdAt || 0)) {
+                    dedupeMap.set(key, r);
+                  }
                 }
               }
-            }
-          });
+            });
 
-          const deduplicatedRepos = Array.from(dedupeMap.values());
+            const deduplicatedRepos = Array.from(dedupeMap.values());
+            const visibleRepos = deduplicatedRepos.slice(0, visibleRepoCount);
 
-          const needsCloneRepublish = deduplicatedRepos.filter((r: any) =>
-            cloneListNeedsRepublish(r.clone)
-          );
-
-          const runBatchCloneRepublish = async () => {
-            if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
-              alert("Sign in and wait for relays before republishing.");
-              return;
-            }
-            if (needsCloneRepublish.length === 0) return;
-            const ok = window.confirm(
-              `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
-                `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
-                `Republish all ${needsCloneRepublish.length} now?`
+            const needsCloneRepublish = deduplicatedRepos.filter((r: any) =>
+              cloneListNeedsRepublish(r.clone)
             );
-            if (!ok) return;
-            setRepairingCloneUrls(true);
-            try {
-              const signer = await resolveNostrSigner({ remoteSigner });
-              if (!signer) {
-                alert(NO_SIGNING_METHOD_MESSAGE);
+
+            const runBatchCloneRepublish = async () => {
+              if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
+                alert("Sign in and wait for relays before republishing.");
                 return;
               }
-              const { repaired, failed } = await repairHostOnlyCloneAnnounces({
-                repoSlugs: needsCloneRepublish.map((r: any) => ({
-                  entity: r.entity,
-                  repoSlug: r.repositoryName || r.repo || r.slug,
-                })),
-                publish,
-                subscribe,
-                defaultRelays,
-                pubkey,
-                remoteSigner,
-                privateKey: signer.privateKey,
-                onProgress: (m) => console.log("[repair clone URLs]", m),
-              });
-              const updatedRepos = JSON.parse(
-                localStorage.getItem("gittr_repos") || "[]"
+              if (needsCloneRepublish.length === 0) return;
+              const ok = window.confirm(
+                `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
+                  `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
+                  `Republish all ${needsCloneRepublish.length} now?`
               );
-              setRepos([...updatedRepos]);
-              alert(
-                `Republished ${repaired.length} of ${needsCloneRepublish.length} repo(s).` +
-                  (failed.length
-                    ? `\nFailed: ${failed
-                        .map((f) => `${f.repo}: ${f.error}`)
-                        .join("; ")}`
-                    : "")
-              );
-              window.dispatchEvent(new Event("storage"));
-            } catch (e: any) {
-              alert(`Republish failed: ${e?.message || e}`);
-            } finally {
-              setRepairingCloneUrls(false);
-            }
-          };
-
-          return (
-            <>
-              {needsCloneRepublish.length > 0 && (
-                <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
-                  <span>
-                    {needsCloneRepublish.length} repo(s) need a republish —
-                    clone URL is only a bare host, localhost, or similar. Hidden
-                    from explore until fixed. Each repo needs its own Push /
-                    signatures; this can take a while, please leave the tab open
-                    until finished.
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={repairingCloneUrls}
-                    onClick={() => void runBatchCloneRepublish()}
-                    className="shrink-0"
-                  >
-                    {repairingCloneUrls ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-1" />{" "}
-                        Republishing…
-                      </>
-                    ) : (
-                      `Republish broken clones (${needsCloneRepublish.length})`
-                    )}
-                  </Button>
-                </div>
-              )}
-              {deduplicatedRepos.map((r: any, index: number) => {
-            // Entity is guaranteed to be valid here
-            const entity = r.entity!;
-            // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-            // Priority: repositoryName > repo > slug
-            // For display, use original name (r.name)
-            const rAny = r;
-            const repoForUrl =
-              rAny?.repositoryName || r.repo || r.slug || "unnamed-repo";
-            const displayName = r.name || repoForUrl; // CRITICAL: Use original name for display
-
-            // CRITICAL: Resolve full owner pubkey for proper metadata fetching
-            const ownerPubkey = getRepoOwnerPubkey(r, entity);
-
-            // CRITICAL: Use npub format for URLs (GRASP protocol standard)
-            // Convert ownerPubkey to npub format for consistent URLs
-            let repoHref: string;
-
-            if (ownerPubkey) {
+              if (!ok) return;
+              setRepairingCloneUrls(true);
               try {
-                const npub = nip19.npubEncode(ownerPubkey);
-                repoHref = `/${npub}/${repoForUrl}`;
-              } catch (error) {
-                console.error("⚠️ [Repositories] Failed to encode npub:", {
-                  ownerPubkey,
-                  error,
-                });
-                // Fallback to entity format if npub encoding fails
-                repoHref = `/${entity}/${repoForUrl}`;
+                const signer = await resolveNostrSigner({ remoteSigner });
+                if (!signer) {
+                  alert(NO_SIGNING_METHOD_MESSAGE);
+                  return;
+                }
+                const { repaired, failed } = await repairHostOnlyCloneAnnounces(
+                  {
+                    repoSlugs: needsCloneRepublish.map((r: any) => ({
+                      entity: r.entity,
+                      repoSlug: r.repositoryName || r.repo || r.slug,
+                    })),
+                    publish,
+                    subscribe,
+                    defaultRelays,
+                    pubkey,
+                    remoteSigner,
+                    privateKey: signer.privateKey,
+                    onProgress: (m) => console.log("[repair clone URLs]", m),
+                  }
+                );
+                const updatedRepos = JSON.parse(
+                  localStorage.getItem("gittr_repos") || "[]"
+                );
+                setRepos([...updatedRepos]);
+                alert(
+                  `Republished ${repaired.length} of ${needsCloneRepublish.length} repo(s).` +
+                    (failed.length
+                      ? `\nFailed: ${failed
+                          .map((f) => `${f.repo}: ${f.error}`)
+                          .join("; ")}`
+                      : "")
+                );
+                window.dispatchEvent(new Event("storage"));
+              } catch (e: any) {
+                alert(`Republish failed: ${e?.message || e}`);
+              } finally {
+                setRepairingCloneUrls(false);
               }
-            } else {
-              // Fallback if no ownerPubkey
-              repoHref = `/${entity}/${repoForUrl}`;
-            }
-
-            // Fetch owner metadata using full pubkey
-            const ownerMeta = ownerPubkey
-              ? ownerMetadata[ownerPubkey]
-              : undefined;
-
-            // Use owner's Nostr metadata name if available, otherwise fallback to entity (npub format)
-            // CRITICAL: Never use r.entityDisplayName - it might be wrong (set to current user's name)
-            const entityDisplay =
-              ownerMeta?.name ||
-              ownerMeta?.display_name ||
-              (entity.startsWith("npub")
-                ? entity.slice(0, 12) + "..."
-                : entity);
-
-            // Resolve icon - this will update reactively when ownerMetadata changes
-            const iconUrl = resolveRepoIcon(r);
-
-            const status = getRepoStatus(r);
-            const needsRepublish = cloneListNeedsRepublish(r.clone);
-            const isLocal =
-              statusNeedsPushAction(status) || needsRepublish;
-            const isPushing = pushingRepos.has(`${entity}/${repoForUrl}`);
-
-            const repoKey = `${entity}/${repoForUrl}`;
-            const isNavigating = clickedRepo === repoKey;
+            };
 
             return (
-              <div
-                key={`${entity}/${repoForUrl}-${index}`}
-                className={`border p-3 transition-all duration-200 ${
-                  isNavigating
-                    ? "bg-purple-500/20 border-purple-500/50 shadow-lg"
-                    : "hover:bg-white/5"
-                }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                  <div
-                    className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                    onClick={(e: MouseEvent) => {
-                      // CRITICAL: Use window.location for immediate navigation (bypasses React completely)
-                      // This ensures navigation happens instantly, even during heavy re-renders
-                      e.preventDefault();
-                      e.stopPropagation();
-
-                      // Set clicked state immediately for visual feedback
-                      setClickedRepo(repoKey);
-
-                      // Navigate immediately using window.location (completely bypasses React)
-                      window.location.href = repoHref;
-                    }}
-                  >
-                    {/* Repo icon with fallback */}
-                    {iconUrl ? (
-                      <img
-                        src={iconUrl}
-                        alt="repo"
-                        className="h-6 w-6 rounded-sm object-contain flex-shrink-0"
-                        onError={(
-                          e: SyntheticEvent<HTMLImageElement, Event>
-                        ) => {
-                          // Fallback to empty square on error
-                          e.currentTarget.style.display = "none";
-                          const parent = e.currentTarget.parentElement;
-                          if (
-                            parent &&
-                            !parent.querySelector(".icon-fallback")
-                          ) {
-                            const fallback = document.createElement("span");
-                            fallback.className =
-                              "icon-fallback inline-block h-6 w-6 rounded-sm bg-[#22262C] flex-shrink-0";
-                            parent.insertBefore(fallback, e.currentTarget);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span className="inline-block h-6 w-6 rounded-sm bg-[#22262C] flex-shrink-0" />
-                    )}
-                    {/* Repo name and info - flex column to avoid wrapping issues */}
-                    <div className="flex flex-col gap-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
-                          {isNavigating && (
-                            <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
-                          )}
-                          <span className="truncate">{displayName}</span>
-                          <span className="opacity-70 hidden sm:inline">
-                            / {entityDisplay}
-                          </span>
-                        </div>
-                        {/* Status badge */}
-                        {(() => {
-                          const style = getStatusBadgeStyle(status);
-                          return (
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                            >
-                              {style.label}
-                            </span>
-                          );
-                        })()}
-                        {needsRepublish && (
-                          <span
-                            className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
-                            title={CLONE_REPUBLISH_BADGE_TITLE}
-                          >
-                            {CLONE_REPUBLISH_BADGE_LABEL}
-                          </span>
-                        )}
-                        <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
-                          {r.publicRead !== false ? (
-                            <>
-                              <Globe className="h-3 w-3" />
-                              Public
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="h-3 w-3" />
-                              Private
-                            </>
-                          )}
-                        </Badge>
-                      </div>
-                      {(() => {
-                        const cardDesc = repoCardDescriptionText(
-                          r.description,
-                          r.repo || r.slug || r.name || ""
-                        );
-                        return cardDesc ? (
-                          <div className="text-sm opacity-70 line-clamp-2">
-                            {cardDesc}
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
+              <>
+                {needsCloneRepublish.length > 0 && (
+                  <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
+                    <span>
+                      {needsCloneRepublish.length} repo(s) need a republish —
+                      clone URL is only a bare host, localhost, or similar.
+                      Hidden from explore until fixed. Each repo needs its own
+                      Push / signatures; this can take a while, please leave the
+                      tab open until finished.
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={repairingCloneUrls}
+                      onClick={() => void runBatchCloneRepublish()}
+                      className="shrink-0"
+                    >
+                      {repairingCloneUrls ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-1" />{" "}
+                          Republishing…
+                        </>
+                      ) : (
+                        `Republish broken clones (${needsCloneRepublish.length})`
+                      )}
+                    </Button>
                   </div>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 flex-shrink-0 w-full sm:w-auto">
-                    {/* Push button for local repos - only visible to owner */}
-                    {isLocal &&
-                      pubkey &&
-                      isOwner(pubkey, r.contributors, r.ownerPubkey) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={isPushing}
-                          className="text-xs whitespace-nowrap w-full sm:w-auto"
-                          onClick={async (e: MouseEvent) => {
+                )}
+                {visibleRepos.map((r: any, index: number) => {
+                  // Entity is guaranteed to be valid here
+                  const entity = r.entity!;
+                  // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+                  // Priority: repositoryName > repo > slug
+                  // For display, use original name (r.name)
+                  const rAny = r;
+                  const repoForUrl =
+                    rAny?.repositoryName || r.repo || r.slug || "unnamed-repo";
+                  const displayName = r.name || repoForUrl; // CRITICAL: Use original name for display
+
+                  // CRITICAL: Resolve full owner pubkey for proper metadata fetching
+                  const ownerPubkey = getRepoOwnerPubkey(r, entity);
+
+                  // CRITICAL: Use npub format for URLs (GRASP protocol standard)
+                  // Convert ownerPubkey to npub format for consistent URLs
+                  let repoHref: string;
+
+                  if (ownerPubkey) {
+                    try {
+                      const npub = nip19.npubEncode(ownerPubkey);
+                      repoHref = `/${npub}/${repoForUrl}`;
+                    } catch (error) {
+                      console.error(
+                        "⚠️ [Repositories] Failed to encode npub:",
+                        {
+                          ownerPubkey,
+                          error,
+                        }
+                      );
+                      // Fallback to entity format if npub encoding fails
+                      repoHref = `/${entity}/${repoForUrl}`;
+                    }
+                  } else {
+                    // Fallback if no ownerPubkey
+                    repoHref = `/${entity}/${repoForUrl}`;
+                  }
+
+                  // Fetch owner metadata using full pubkey
+                  const ownerMeta = ownerPubkey
+                    ? ownerMetadata[ownerPubkey]
+                    : undefined;
+
+                  // Use owner's Nostr metadata name if available, otherwise fallback to entity (npub format)
+                  // CRITICAL: Never use r.entityDisplayName - it might be wrong (set to current user's name)
+                  const entityDisplay =
+                    ownerMeta?.name ||
+                    ownerMeta?.display_name ||
+                    (entity.startsWith("npub")
+                      ? entity.slice(0, 12) + "..."
+                      : entity);
+
+                  // Resolve icon - this will update reactively when ownerMetadata changes
+                  const iconUrl = resolveRepoIcon(r);
+
+                  const status = getRepoStatus(r);
+                  const needsRepublish = cloneListNeedsRepublish(r.clone);
+                  const isLocal =
+                    statusNeedsPushAction(status) || needsRepublish;
+                  const isPushing = pushingRepos.has(`${entity}/${repoForUrl}`);
+
+                  const repoKey = `${entity}/${repoForUrl}`;
+                  const isNavigating = clickedRepo === repoKey;
+
+                  return (
+                    <div
+                      key={`${entity}/${repoForUrl}-${index}`}
+                      className={`border p-3 transition-all duration-200 ${
+                        isNavigating
+                          ? "bg-purple-500/20 border-purple-500/50 shadow-lg"
+                          : "hover:bg-white/5"
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                        <div
+                          className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                          onClick={(e: MouseEvent) => {
+                            // CRITICAL: Use window.location for immediate navigation (bypasses React completely)
+                            // This ensures navigation happens instantly, even during heavy re-renders
                             e.preventDefault();
                             e.stopPropagation();
 
-                            if (
-                              !pubkey ||
-                              !publish ||
-                              !subscribe ||
-                              !defaultRelays
-                            ) {
-                              alert("Please log in to push repositories");
-                              return;
-                            }
+                            // Set clicked state immediately for visual feedback
+                            setClickedRepo(repoKey);
 
-                            try {
-                              const signer = await resolveNostrSigner({
-                                remoteSigner,
-                              });
-                              if (!signer) {
-                                alert(NO_SIGNING_METHOD_MESSAGE);
-                                return;
-                              }
-                              const privateKey = signer.privateKey;
-
-                              // CRITICAL: Validate repo before pushing (prevent signing corrupted repos)
-                              const validation = validateRepoForForkOrSign(r);
-                              if (!validation.valid) {
-                                alert(
-                                  `Cannot push corrupted repository: ${validation.error}`
-                                );
-                                return;
-                              }
-
-                              const ownerPubkey =
-                                getRepoOwnerPubkey(r as StoredRepo, entity) ||
-                                r.ownerPubkey ||
-                                "";
-                              const paymentAuth =
-                                await ensurePushPaymentAuthorization({
-                                  entity,
-                                  repo: repoForUrl,
-                                  ownerPubkey: ownerPubkey.toLowerCase(),
-                                  payerPubkey: pubkey,
-                                  privateKey: privateKey || undefined,
-                                  signer: signer.signEvent,
-                                });
-                              if (!paymentAuth.ok) {
-                                alert(
-                                  `Push blocked: ${
-                                    paymentAuth.error ||
-                                    "payment authorization failed"
-                                  }`
-                                );
-                                return;
-                              }
-
-                              setPushingRepos((prev: Set<string>) =>
-                                new Set(prev).add(`${entity}/${repoForUrl}`)
-                              );
-
-                              const result = await pushRepoToNostr({
-                                repoSlug: repoForUrl,
-                                entity,
-                                publish,
-                                subscribe,
-                                defaultRelays,
-                                privateKey,
-                                pubkey,
-                                remoteSigner,
-                                onProgress: (message) => {
-                                  console.log(
-                                    `[Push ${repoForUrl}] ${message}`
-                                  );
-                                },
-                              });
-
-                              if (result.success) {
-                                // Bridge sync already happens inside pushRepoToNostr.
-                                // Do not run a second bridge push from this page.
-                                // Reload repos to show updated status
-                                const updatedRepos = JSON.parse(
-                                  localStorage.getItem("gittr_repos") || "[]"
-                                );
-                                setRepos([...updatedRepos]);
-
-                                alert(formatPushRepoSuccessAlert(result));
-                              } else {
-                                alert(`❌ Failed to push: ${result.error}`);
-                              }
-                            } catch (error: any) {
-                              console.error("Failed to push repo:", error);
-                              alert(
-                                `Failed to push: ${
-                                  error.message || "Unknown error"
-                                }`
-                              );
-                            } finally {
-                              setPushingRepos((prev: Set<string>) => {
-                                const next = new Set(prev);
-                                next.delete(`${entity}/${repoForUrl}`);
-                                return next;
-                              });
-                            }
+                            // Navigate immediately using window.location (completely bypasses React)
+                            window.location.href = repoHref;
                           }}
                         >
-                          <Upload className="h-3 w-3 mr-1" />
-                          {isPushing
-                            ? "Pushing..."
-                            : needsRepublish
-                              ? "Republish"
-                              : "Push to Nostr"}
-                        </Button>
-                      )}
-                    <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
-                      {r.lastNostrEventCreatedAt ? (
-                        <>
-                          <span className="hidden sm:inline">Last push: </span>
-                          {formatDateTime24h(r.lastNostrEventCreatedAt * 1000)}
-                        </>
-                      ) : r.lastPushAttempt ? (
-                        <>
-                          <span className="hidden sm:inline">
-                            Push attempted:{" "}
-                          </span>
-                          {formatDateTime24h(r.lastPushAttempt)}
-                        </>
-                      ) : r.lastModifiedAt ? (
-                        <>
-                          <span className="hidden sm:inline">Modified: </span>
-                          {formatDateTime24h(r.lastModifiedAt)}
-                        </>
-                      ) : (
-                        <>
-                          <span className="hidden sm:inline">Created: </span>
-                          {formatDateTime24h(r.createdAt)}
-                        </>
-                      )}
+                          {/* Repo icon with fallback */}
+                          {iconUrl ? (
+                            <img
+                              src={iconUrl}
+                              alt="repo"
+                              className="h-6 w-6 rounded-sm object-contain flex-shrink-0"
+                              onError={(
+                                e: SyntheticEvent<HTMLImageElement, Event>
+                              ) => {
+                                // Fallback to empty square on error
+                                e.currentTarget.style.display = "none";
+                                const parent = e.currentTarget.parentElement;
+                                if (
+                                  parent &&
+                                  !parent.querySelector(".icon-fallback")
+                                ) {
+                                  const fallback =
+                                    document.createElement("span");
+                                  fallback.className =
+                                    "icon-fallback inline-block h-6 w-6 rounded-sm bg-[#22262C] flex-shrink-0";
+                                  parent.insertBefore(
+                                    fallback,
+                                    e.currentTarget
+                                  );
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span className="inline-block h-6 w-6 rounded-sm bg-[#22262C] flex-shrink-0" />
+                          )}
+                          {/* Repo name and info - flex column to avoid wrapping issues */}
+                          <div className="flex flex-col gap-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
+                                {isNavigating && (
+                                  <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
+                                )}
+                                <span className="truncate">{displayName}</span>
+                                <span className="opacity-70 hidden sm:inline">
+                                  / {entityDisplay}
+                                </span>
+                              </div>
+                              {/* Status badge */}
+                              {(() => {
+                                const style = getStatusBadgeStyle(status);
+                                return (
+                                  <span
+                                    className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                                  >
+                                    {style.label}
+                                  </span>
+                                );
+                              })()}
+                              {needsRepublish && (
+                                <span
+                                  className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
+                                  title={CLONE_REPUBLISH_BADGE_TITLE}
+                                >
+                                  {CLONE_REPUBLISH_BADGE_LABEL}
+                                </span>
+                              )}
+                              <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
+                                {r.publicRead !== false ? (
+                                  <>
+                                    <Globe className="h-3 w-3" />
+                                    Public
+                                  </>
+                                ) : (
+                                  <>
+                                    <Lock className="h-3 w-3" />
+                                    Private
+                                  </>
+                                )}
+                              </Badge>
+                            </div>
+                            <div className="sm:hidden text-xs opacity-70 truncate">
+                              {entityDisplay}
+                            </div>
+                            {(() => {
+                              const cardDesc = repoCardDescriptionText(
+                                r.description,
+                                r.repo || r.slug || r.name || ""
+                              );
+                              return cardDesc ? (
+                                <div className="text-sm opacity-70 line-clamp-2">
+                                  {cardDesc}
+                                </div>
+                              ) : null;
+                            })()}
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 flex-shrink-0 w-full sm:w-auto">
+                          {/* Push button for local repos - only visible to owner */}
+                          {isLocal &&
+                            pubkey &&
+                            isOwner(pubkey, r.contributors, r.ownerPubkey) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isPushing}
+                                className="text-xs whitespace-nowrap w-full sm:w-auto"
+                                onClick={async (e: MouseEvent) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+
+                                  if (
+                                    !pubkey ||
+                                    !publish ||
+                                    !subscribe ||
+                                    !defaultRelays
+                                  ) {
+                                    alert("Please log in to push repositories");
+                                    return;
+                                  }
+
+                                  try {
+                                    const signer = await resolveNostrSigner({
+                                      remoteSigner,
+                                    });
+                                    if (!signer) {
+                                      alert(NO_SIGNING_METHOD_MESSAGE);
+                                      return;
+                                    }
+                                    const privateKey = signer.privateKey;
+
+                                    // CRITICAL: Validate repo before pushing (prevent signing corrupted repos)
+                                    const validation =
+                                      validateRepoForForkOrSign(r);
+                                    if (!validation.valid) {
+                                      alert(
+                                        `Cannot push corrupted repository: ${validation.error}`
+                                      );
+                                      return;
+                                    }
+
+                                    const ownerPubkey =
+                                      getRepoOwnerPubkey(
+                                        r as StoredRepo,
+                                        entity
+                                      ) ||
+                                      r.ownerPubkey ||
+                                      "";
+                                    const paymentAuth =
+                                      await ensurePushPaymentAuthorization({
+                                        entity,
+                                        repo: repoForUrl,
+                                        ownerPubkey: ownerPubkey.toLowerCase(),
+                                        payerPubkey: pubkey,
+                                        privateKey: privateKey || undefined,
+                                        signer: signer.signEvent,
+                                      });
+                                    if (!paymentAuth.ok) {
+                                      alert(
+                                        `Push blocked: ${
+                                          paymentAuth.error ||
+                                          "payment authorization failed"
+                                        }`
+                                      );
+                                      return;
+                                    }
+
+                                    setPushingRepos((prev: Set<string>) =>
+                                      new Set(prev).add(
+                                        `${entity}/${repoForUrl}`
+                                      )
+                                    );
+
+                                    const result = await pushRepoToNostr({
+                                      repoSlug: repoForUrl,
+                                      entity,
+                                      publish,
+                                      subscribe,
+                                      defaultRelays,
+                                      privateKey,
+                                      pubkey,
+                                      remoteSigner,
+                                      onProgress: (message) => {
+                                        console.log(
+                                          `[Push ${repoForUrl}] ${message}`
+                                        );
+                                      },
+                                    });
+
+                                    if (result.success) {
+                                      // Bridge sync already happens inside pushRepoToNostr.
+                                      // Do not run a second bridge push from this page.
+                                      // Reload repos to show updated status
+                                      const updatedRepos = JSON.parse(
+                                        localStorage.getItem("gittr_repos") ||
+                                          "[]"
+                                      );
+                                      setRepos([...updatedRepos]);
+
+                                      alert(formatPushRepoSuccessAlert(result));
+                                    } else {
+                                      alert(
+                                        `❌ Failed to push: ${result.error}`
+                                      );
+                                    }
+                                  } catch (error: any) {
+                                    console.error(
+                                      "Failed to push repo:",
+                                      error
+                                    );
+                                    alert(
+                                      `Failed to push: ${
+                                        error.message || "Unknown error"
+                                      }`
+                                    );
+                                  } finally {
+                                    setPushingRepos((prev: Set<string>) => {
+                                      const next = new Set(prev);
+                                      next.delete(`${entity}/${repoForUrl}`);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                <Upload className="h-3 w-3 mr-1" />
+                                {isPushing
+                                  ? "Pushing..."
+                                  : needsRepublish
+                                  ? "Republish"
+                                  : "Push to Nostr"}
+                              </Button>
+                            )}
+                          <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
+                            {r.lastNostrEventCreatedAt ? (
+                              <>
+                                <span>Last push: </span>
+                                {formatDateTime24h(
+                                  r.lastNostrEventCreatedAt * 1000
+                                )}
+                              </>
+                            ) : r.lastPushAttempt ? (
+                              <>
+                                <span>Push attempted: </span>
+                                {formatDateTime24h(r.lastPushAttempt)}
+                              </>
+                            ) : r.lastModifiedAt ? (
+                              <>
+                                <span>Modified: </span>
+                                {formatDateTime24h(r.lastModifiedAt)}
+                              </>
+                            ) : (
+                              <>
+                                <span>Created: </span>
+                                {formatDateTime24h(r.createdAt)}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
+                  );
+                })}
+                <LoadMoreButton
+                  visibleCount={visibleRepos.length}
+                  totalCount={deduplicatedRepos.length}
+                  pageSize={REPO_LIST_PAGE_SIZE}
+                  onLoadMore={() =>
+                    setVisibleRepoCount((n) => n + REPO_LIST_PAGE_SIZE)
+                  }
+                  className="flex justify-center pt-4 pb-2 w-full"
+                />
+              </>
             );
-          })}
-            </>
-          );
-        })()}
+          })()}
       </div>
     </div>
   );

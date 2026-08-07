@@ -3,8 +3,10 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { TrustBadge } from "@/components/ui/trust-badge";
+import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
   type NostrActivityCounts,
   backfillActivities,
@@ -255,10 +257,15 @@ export default function EntityPage({
   const [userRepos, setUserRepos] = useState<any[]>([]);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
+  const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [contributionGraph, setContributionGraph] = useState<
     Array<{ date: string; count: number }>
   >([]);
+
+  useEffect(() => {
+    setVisibleRepoCount(REPO_LIST_PAGE_SIZE);
+  }, [resolvedParams.entity]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(
     {}
   );
@@ -3860,7 +3867,7 @@ export default function EntityPage({
             Repositories ({userRepos.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {userRepos.map((repo: any) => {
+            {userRepos.slice(0, visibleRepoCount).map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
               // For display, use original name (repo.name)
               const repoForUrl = repo.repo || repo.slug;
@@ -4280,6 +4287,14 @@ export default function EntityPage({
                 </a>
               );
             })}
+            <LoadMoreButton
+              visibleCount={Math.min(visibleRepoCount, userRepos.length)}
+              totalCount={userRepos.length}
+              pageSize={REPO_LIST_PAGE_SIZE}
+              onLoadMore={() =>
+                setVisibleRepoCount((n) => n + REPO_LIST_PAGE_SIZE)
+              }
+            />
           </div>
         </div>
       )}
