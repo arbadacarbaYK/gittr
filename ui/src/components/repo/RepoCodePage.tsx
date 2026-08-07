@@ -128,6 +128,7 @@ import {
 } from "@/lib/repos/storage";
 import {
   allowShrinkToSourceUpstreamTree,
+  hasForgeUpstreamMirror,
   hasGithubUpstreamMirror,
   isSourceUpstreamFetchStatus,
   markSourceTreeFresh,
@@ -140,6 +141,7 @@ import {
   shouldSkipLegacyKind51EmbeddedFiles,
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
+import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
@@ -823,25 +825,18 @@ export function RepoCodePage() {
     const indexedB = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
     const indexed = mergeRepoFileIndexes(indexedA, indexedB);
     const repoFiles = repoData?.files;
+    const hasUnpushedEdits = (repoData as any)?.hasUnpushedEdits === true;
     const preferUpstream = shouldPreferUpstreamMirror(resolvedParams.entity, {
       sourceUrl: repoData?.sourceUrl,
       forkedFrom: repoData?.forkedFrom,
       clone: (repoData as { clone?: string[] })?.clone,
-      hasUnpushedEdits: (repoData as any)?.hasUnpushedEdits,
+      hasUnpushedEdits,
     });
-    const candidates: RepoFileEntry[][] = [];
-    if (preferUpstream && Array.isArray(repoFiles) && repoFiles.length > 0) {
-      candidates.push(repoFiles);
-    }
-    if (Array.isArray(indexed) && indexed.length > 0) {
-      candidates.push(indexed);
-    }
-    if (!preferUpstream && Array.isArray(repoFiles) && repoFiles.length > 0) {
-      candidates.push(repoFiles);
-    }
-    if (Array.isArray(bridgeFiles) && bridgeFiles.length > 0) {
-      candidates.push(bridgeFiles);
-    }
+    const forgeUpstreamAuthoritative = hasForgeUpstreamMirror(
+      repoData?.sourceUrl,
+      repoData?.forkedFrom,
+      ...((repoData as { clone?: string[] })?.clone || [])
+    );
     const ownerHex =
       (repoData as { ownerPubkey?: string } | null)?.ownerPubkey &&
       /^[0-9a-f]{64}$/i.test(
@@ -859,15 +854,16 @@ export function RepoCodePage() {
         ownerPubkeyHex: ownerHex,
       });
 
-    let best: RepoFileEntry[] = [];
-    let bestLen = Number.MAX_SAFE_INTEGER;
-    for (const list of candidates) {
-      const filtered = scrub(list);
-      if (filtered.length > 0 && filtered.length < bestLen) {
-        best = filtered;
-        bestLen = filtered.length;
-      }
-    }
+    const best = selectDisplayRepoFileTree({
+      indexed,
+      repoFiles: Array.isArray(repoFiles) ? repoFiles : [],
+      bridgeFiles: Array.isArray(bridgeFiles) ? bridgeFiles : [],
+      preferUpstream,
+      hasUnpushedEdits,
+      forgeUpstreamAuthoritative,
+      scrub,
+      mergeIndexes: mergeRepoFileIndexes,
+    });
     return capRepoFileTreeForDisplay(best).files;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -875,6 +871,7 @@ export function RepoCodePage() {
     filesTreeVersionKey,
     repoData?.files?.length,
     repoData?.sourceUrl,
+    (repoData as any)?.hasUnpushedEdits,
   ]);
 
   useEffect(() => {
@@ -12208,6 +12205,16 @@ export function RepoCodePage() {
             } catch (e) {
               console.warn("[Folder README] Clone source fetch failed:", e);
             }
+          }
+          // Prefer local indexed body before giving up when multifetch already
+          // succeeded (otherwise a thin remote README miss blanks a local upload).
+          if (
+            row &&
+            typeof (row as any).content === "string" &&
+            String((row as any).content).trim().length > 0
+          ) {
+            finish(String((row as any).content));
+            return;
           }
           // When multifetch already found working sources, don't re-hammer every
           // clone URL with main/master — that was the console 400/404 storm.

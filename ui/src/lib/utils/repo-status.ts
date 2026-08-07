@@ -9,6 +9,7 @@
  * - live: fully live (“Live on Nostr”)
  * - live_with_edits: was live, has local changes not pushed yet
  */
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 export type RepoStatus =
   | "local"
@@ -337,35 +338,27 @@ export function markRepoAsEdited(repoSlug: string, entity: string): void {
     const repos = JSON.parse(
       localStorage.getItem("gittr_repos") || "[]"
     ) as any[];
-    const repoIndex = repos.findIndex(
-      (r: any) =>
-        (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+    const match = findRepoByEntityAndName(repos, entity, repoSlug);
+    if (!match) return;
+    const repoIndex = repos.indexOf(match);
+    if (repoIndex < 0) return;
+
+    const repo = repos[repoIndex];
+    const wasLive = !!(
+      repo.lastNostrEventId ||
+      repo.nostrEventId ||
+      repo.syncedFromNostr
     );
 
-    if (repoIndex >= 0) {
-      const repo = repos[repoIndex];
-      const wasLive = !!(
-        repo.lastNostrEventId ||
-        repo.nostrEventId ||
-        repo.syncedFromNostr
-      );
-
-      if (wasLive) {
-        repos[repoIndex] = {
-          ...repo,
-          hasUnpushedEdits: true,
-          lastModifiedAt: Date.now(),
-        };
-        localStorage.setItem("gittr_repos", JSON.stringify(repos));
-      } else {
-        repos[repoIndex] = {
-          ...repo,
-          status: "local",
-          lastModifiedAt: Date.now(),
-        };
-        localStorage.setItem("gittr_repos", JSON.stringify(repos));
-      }
-    }
+    // Always set hasUnpushedEdits so Code-tab tree selection prefers local
+    // upload (npub routes otherwise treat remote/bridge as authoritative).
+    repos[repoIndex] = {
+      ...repo,
+      hasUnpushedEdits: true,
+      lastModifiedAt: Date.now(),
+      ...(wasLive ? {} : { status: "local" }),
+    };
+    localStorage.setItem("gittr_repos", JSON.stringify(repos));
   } catch (error) {
     console.error("Failed to mark repo as edited:", error);
   }

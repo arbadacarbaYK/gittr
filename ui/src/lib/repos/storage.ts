@@ -1,3 +1,4 @@
+import { shouldDropFlatBasenameForNestedUpload } from "@/lib/repos/select-display-file-tree";
 import {
   getRepoStorageKey,
   normalizeEntityForStorage,
@@ -1350,6 +1351,10 @@ export function addFilesToRepo(
       }
     });
 
+    // Paths in this batch — nested docs/README.md must not erase root README.md
+    // that was uploaded in the same folder pick.
+    const pathsInThisUpload = new Set(validFiles.map((f) => f.path));
+
     // Add or update files
     validFiles.forEach((file) => {
       const normalizedPath = file.path;
@@ -1368,10 +1373,19 @@ export function addFilesToRepo(
       };
       existingFileMap.set(normalizedPath, fileEntry);
 
-      // Nested upload wins over a stale flat basename from an earlier pick
+      // Nested upload wins over a *stale* flat basename from an earlier pick —
+      // but never drop a flat path that is also in this same upload batch.
       if (normalizedPath.includes("/")) {
         const base = normalizedPath.split("/").pop() || "";
-        if (base && base !== normalizedPath && existingFileMap.has(base)) {
+        if (
+          base &&
+          shouldDropFlatBasenameForNestedUpload(
+            normalizedPath,
+            base,
+            pathsInThisUpload
+          ) &&
+          existingFileMap.has(base)
+        ) {
           existingFileMap.delete(base);
         }
       }
@@ -1400,7 +1414,15 @@ export function addFilesToRepo(
         overrides[file.path] = file.content;
         if (file.path.includes("/")) {
           const base = file.path.split("/").pop() || "";
-          if (base && base !== file.path && overrides[base] !== undefined) {
+          if (
+            base &&
+            shouldDropFlatBasenameForNestedUpload(
+              file.path,
+              base,
+              pathsInThisUpload
+            ) &&
+            overrides[base] !== undefined
+          ) {
             delete overrides[base];
           }
         }

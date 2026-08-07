@@ -136,6 +136,8 @@ Shrink is allowed when:
 
 Not limited to github.com. **Nostr-only** repos (no `source`/`forkedFrom`) keep the no-shrink safety so a thin GRASP listing cannot erase a richer tree. See `allowShrinkToSourceUpstreamTree` + `npm run test:regressions`.
 
+**Code-tab display (`safeFiles`)** must match that policy via `selectDisplayRepoFileTree`: after a folder upload, **never** pick the *shortest* candidate (that hid root `README.md` when a thinner bridge listing arrived). With `hasUnpushedEdits`, union network + local index (local last). Upload must not delete a flat basename that is also in the **same** upload batch (`README.md` + `docs/README.md`).
+
 `no files field in event` and `forge-releases` 404 are **normal** (NIP-34 metadata only; no Zapstore APK).
 
 ## Regression tests (run these — smoke alone is not enough)
