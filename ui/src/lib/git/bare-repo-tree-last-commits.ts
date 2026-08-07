@@ -41,10 +41,11 @@ export async function listBareRepoTreeLastCommits(
   const result: TreeLastCommitMap = {};
 
   const pathArg = folderPath ? ` -- ${shellQuote(folderPath)}` : "";
-  // %x1f field sep, %x00 record sep between commits; name-only paths follow each header
+  // Marker-based records: do NOT use %x00 with --name-only (NUL ends the
+  // pretty line and leaves path lines as orphan "records").
   const cmd =
     `git --git-dir=${shellQuote(repoPath)} log ` +
-    `--format='%H%x1f%s%x1f%an%x1f%at%x00' --name-only ` +
+    `--format='>>>COMMIT<<<%H%x1f%s%x1f%an%x1f%at' --name-only ` +
     `-n ${maxCommits} ${shellQuote(branch)}${pathArg}`;
 
   let stdout = "";
@@ -61,7 +62,7 @@ export async function listBareRepoTreeLastCommits(
     if (!stdout) throw e;
   }
 
-  const records = stdout.split("\0").filter((r) => r.trim());
+  const records = stdout.split(">>>COMMIT<<<").filter((r) => r.trim());
   for (const record of records) {
     if (needed.size === 0) break;
     const lines = record.split("\n").map((l) => l.trim()).filter(Boolean);
