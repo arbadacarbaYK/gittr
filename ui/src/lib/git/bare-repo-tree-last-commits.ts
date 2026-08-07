@@ -66,16 +66,20 @@ export async function listBareRepoTreeLastCommits(
     if (needed.size === 0) break;
     const lines = record.split("\n").map((l) => l.trim()).filter(Boolean);
     if (!lines.length) continue;
-    const header = lines[0];
-    const [id, message, author, atRaw] = header.split("\x1f");
-    const timestamp = parseInt(atRaw || "", 10);
+    const header = lines[0]!;
+    const parts = header.split("\x1f");
+    const id = parts[0] || "";
+    const message = parts[1] || "";
+    const author = parts[2] || "";
+    const atRaw = parts[3] || "";
+    const timestamp = parseInt(atRaw, 10);
     if (!id || !/^[0-9a-f]{40}$/i.test(id) || !Number.isFinite(timestamp)) {
       continue;
     }
     const meta: TreeLastCommit = {
       id,
-      message: (message || "").trim() || "(no message)",
-      author: (author || "").trim() || "unknown",
+      message: message.trim() || "(no message)",
+      author: author.trim() || "unknown",
       timestamp,
     };
     for (let i = 1; i < lines.length; i++) {
