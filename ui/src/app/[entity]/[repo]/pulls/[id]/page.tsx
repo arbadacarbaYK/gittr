@@ -86,8 +86,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 import { getEventHash } from "nostr-tools";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 interface ChangedFile {
@@ -2062,7 +2062,7 @@ export default function PRDetailPage({
             <div className="prose prose-invert max-w-none mb-4">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
+                rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,
                 }}

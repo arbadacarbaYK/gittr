@@ -240,8 +240,8 @@ import {
   useSearchParams,
 } from "next/navigation";
 import { nip19 } from "nostr-tools";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 /** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
@@ -17754,7 +17754,7 @@ export function RepoCodePage() {
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
+                      rehypePlugins={markdownRehypePlugins}
                       components={{
                         ...readmeHeadingComponents,
                         ...markdownProseCodeSafeComponents,
@@ -18382,7 +18382,7 @@ export function RepoCodePage() {
                       >
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeRaw]}
+                          rehypePlugins={markdownRehypePlugins}
                           components={{
                             ...fileHeadingComponents,
                             ...markdownProseCodeSafeComponents,
@@ -18703,7 +18703,7 @@ export function RepoCodePage() {
             sidebarAboutText(repoData?.description, resolvedParams.repo) ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
+                rehypePlugins={markdownRehypePlugins}
                 components={{
                   a: repoDescriptionMarkdownAnchor,
                 }}

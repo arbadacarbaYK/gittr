@@ -93,7 +93,7 @@ export default function ArchitecturePage({
             fontFamily:
               "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
           },
-          securityLevel: "loose",
+          securityLevel: "antiscript",
           flowchart: {
             useMaxWidth: false,
             htmlLabels: true,
