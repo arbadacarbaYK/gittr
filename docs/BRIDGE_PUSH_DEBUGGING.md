@@ -24,6 +24,14 @@
 
 **Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
 
+## File tree last-commit dates (Aug 2026)
+
+Code browser rows show **last commit message + relative time** for the currently selected tip/branch. Data comes from `GET /api/nostr/repo/tree-last-commits` (one capped `git log --name-only` on the bare mirror — not per-path N+1). Dates track the bridge tip for that branch, which should match GitHub after a clean Refetch → Push.
+
+## Clone URL sidebar (Aug 2026)
+
+"Clone URL (event)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING` (gittr, shakespeare, gitnostr, ngit, …). It no longer collapses to only primary gittr + GitHub.
+
 ## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
 
 **Symptom**: After **Refetch from GitHub** → **Push to Nostr**, kind **30618** `refs/heads/main` is a bridge-only SHA (`Push from gittr (…)`), not the GitHub tip. Repo identity (`source` on 30617) is correct; tip is wrong.

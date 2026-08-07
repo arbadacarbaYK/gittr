@@ -1,4 +1,7 @@
-import { isGraspServer } from "@/lib/utils/grasp-servers";
+import {
+  isGraspDomainForPushing,
+  isGraspServer,
+} from "./grasp-servers";
 
 const UPSTREAM_HOSTS = ["github.com", "gitlab.com", "codeberg.org"] as const;
 
@@ -58,14 +61,9 @@ function sourceMatchesUpstreamClone(
 }
 
 /**
- * Older repository announcements listed many public GRASP HTTPS/SSH mirrors even though
- * the repo was only pushed to the primary git host. When the list already includes that
- * primary host (from NEXT_PUBLIC_GIT_SERVER_URL), hide other GRASP hosts for sidebar display.
- * If the announcement does not mention the primary host, keep all URLs (avoid breaking
- * repos that only advertise a third-party GRASP host).
- *
- * Also hides bare IP clone hosts (e.g. http://23.x.x.x:7334/…) when any named-host
- * clone URL exists — those are legacy grasp mirrors and confuse the sidebar.
+ * Sidebar clone list: keep primary git host + forge `source` + every host on the
+ * Push allowlist (GRASP_SERVERS_FOR_PUSHING). Hide bare IP mirrors and random
+ * third-party GRASP hosts that are not in the push set (legacy noise).
  */
 export function filterDisplayCloneUrlsForSidebar(
   urls: string[],
@@ -92,17 +90,16 @@ export function filterDisplayCloneUrlsForSidebar(
 
   const primary = primaryGitHostFromEnv(options.primaryGitServerEnv);
   const src = options.sourceUrl?.trim();
-  if (!primary) return withoutBareIps;
-
-  const hasPrimary = withoutBareIps.some((u) => gitUrlHostname(u) === primary);
-  if (!hasPrimary) return withoutBareIps;
 
   return withoutBareIps.filter((u) => {
     if (u.startsWith("nostr://")) return true;
     if (src && sourceMatchesUpstreamClone(u, src)) return true;
     const h = gitUrlHostname(u);
-    if (h === primary) return true;
-    if (isGraspServer(u) && h !== primary) return false;
+    if (primary && h === primary) return true;
+    // Keep mirrors we actually advertise on Push to Nostr
+    if (isGraspDomainForPushing(h) || isGraspDomainForPushing(u)) return true;
+    // Drop other GRASP hosts not on the push allowlist
+    if (isGraspServer(u)) return false;
     return true;
   });
 }

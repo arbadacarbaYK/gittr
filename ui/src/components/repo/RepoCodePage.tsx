@@ -146,7 +146,7 @@ import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
-import { formatDate24h } from "@/lib/utils/date-format";
+import { formatDate24h, formatDateTime24h, formatRelativeShort } from "@/lib/utils/date-format";
 import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { detectGitForge } from "@/lib/utils/detect-git-forge";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -12821,6 +12821,85 @@ export function RepoCodePage() {
     });
   }, [safeFiles, currentPath, deletedPaths, folderListings]);
 
+  const [treeLastCommits, setTreeLastCommits] = useState<
+    Record<
+      string,
+      { id: string; message: string; author: string; timestamp: number }
+    >
+  >({});
+
+  // Last commit date/message for each row — keyed to selected tip/branch
+  useEffect(() => {
+    if (!mounted || items.length === 0) {
+      setTreeLastCommits({});
+      return;
+    }
+    let ownerPubkey =
+      repoOwnerPubkey ||
+      ((repoData as any)?.ownerPubkey as string | undefined) ||
+      "";
+    if (
+      !ownerPubkey &&
+      resolvedParams.entity?.startsWith("npub")
+    ) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub") {
+          ownerPubkey = (decoded.data as string).toLowerCase();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return;
+    const repoName = decodedRepo || resolvedParams.repo;
+    if (!repoName) return;
+    const branch =
+      (selectedBranch || "").trim() ||
+      resolveActiveRepoBranch(repoData as any, selectedBranch) ||
+      "main";
+
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const qs = new URLSearchParams({
+      ownerPubkey,
+      repo: repoName,
+      branch,
+      path: currentPath || "",
+    });
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/nostr/repo/tree-last-commits?${qs.toString()}`,
+          { signal: ctrl.signal, cache: "no-store" }
+        );
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        if (cancelled) return;
+        setTreeLastCommits(
+          json?.commits && typeof json.commits === "object" ? json.commits : {}
+        );
+      } catch {
+        if (!cancelled) setTreeLastCommits({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [
+    mounted,
+    items,
+    currentPath,
+    selectedBranch,
+    repoOwnerPubkey,
+    (repoData as any)?.ownerPubkey,
+    (repoData as any)?.filesBranch,
+    decodedRepo,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
   // Infer shallow mode when the loaded tree has only top-level paths (no nested files)
   useEffect(() => {
     if (treeListingMode) return;
@@ -17286,15 +17365,17 @@ export function RepoCodePage() {
             {mounted && items.length > 0 && (
               <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
                 <ul className="divide-y dark:divide-lightgray">
-                  {items.map((it) => (
+                  {items.map((it) => {
+                    const last = treeLastCommits[it.path];
+                    return (
                     <li
                       key={it.path}
-                      className="text-gray-400 grid grid-cols-2 p-2 text-sm sm:grid-cols-4 hover:bg-[#171B21]"
+                      className="text-gray-400 grid grid-cols-2 gap-x-2 p-2 text-sm sm:grid-cols-12 hover:bg-[#171B21]"
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 sm:col-span-4">
                         {it.type === "dir" ? (
                           <>
-                            <Folder className="text-gray-400 ml-2 h-4 w-4" />{" "}
+                            <Folder className="text-gray-400 ml-2 h-4 w-4 shrink-0" />{" "}
                             <button
                               className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
                               onClick={(e) => {
@@ -17435,44 +17516,36 @@ export function RepoCodePage() {
                           </>
                         )}
                       </div>
-                      <div className="hidden col-span-2 sm:block pl-4 min-w-0">
-                        {it.type === "file" ? (
-                          <button
-                            className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate block max-w-full"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              openFile(it.path);
-                            }}
-                            title={it.path}
+                      <div className="hidden sm:block sm:col-span-4 pl-2 min-w-0">
+                        {last?.message ? (
+                          <span
+                            className="text-gray-500 truncate block"
+                            title={`${last.message} — ${last.author}`}
                           >
-                            {/* Only show path if it's different from filename (i.e., in a subdirectory) */}
-                            {it.path.includes("/") ? (
-                              it.path
-                            ) : (
-                              <span className="text-gray-500 italic">-</span>
-                            )}
-                          </button>
-                        ) : it.type === "dir" ? (
-                          <button
-                            className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate block max-w-full"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setCurrentPath(it.path);
-                              updateURL({ path: it.path });
-                            }}
-                            title={it.path}
-                          >
-                            {it.path}/
-                          </button>
+                            {last.message}
+                          </span>
                         ) : (
-                          <span className="text-gray-500">-</span>
+                          <span className="text-gray-600 italic">—</span>
                         )}
                       </div>
-                      <div className="text-right whitespace-nowrap">
-                        {it.size ? `${it.size} B` : "-"}
+                      <div
+                        className="text-right whitespace-nowrap sm:col-span-2 text-xs sm:text-sm text-gray-500"
+                        title={
+                          last?.timestamp
+                            ? formatDateTime24h(last.timestamp * 1000)
+                            : undefined
+                        }
+                      >
+                        {last?.timestamp
+                          ? formatRelativeShort(last.timestamp * 1000)
+                          : "—"}
+                      </div>
+                      <div className="text-right whitespace-nowrap sm:col-span-2">
+                        {it.size ? `${it.size} B` : "—"}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -21384,16 +21457,12 @@ export function RepoCodePage() {
                                 )?.toLowerCase()}
                                 payerPubkey={currentUserPubkey}
                               />
-                              <p className="text-xs text-gray-500 mt-2">
-                                Requires 2 signatures. Confirmed after both are
-                                signed.
-                              </p>
                               {(repo?.hasUnpushedEdits === true ||
                                 statusNeedsPushAction(getRepoStatus(repo))) && (
-                                <p className="text-xs text-amber-400 mt-1">
+                                <p className="text-xs text-amber-400 mt-2">
                                   {getRepoStatus(repo) === "live_soon"
                                     ? "Published on Nostr — clone/files are still finishing. It will show as Live on Nostr shortly."
-                                    : "Local changes are not visible in other clients yet. Push to Nostr to publish them."}
+                                    : "Please repush on local edits."}
                                 </p>
                               )}
                             </>

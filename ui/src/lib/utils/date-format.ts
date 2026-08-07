@@ -92,3 +92,21 @@ export function formatTime24h(
 
   return `${hours}:${minutes}`;
 }
+
+/**
+ * Short relative time for file trees (e.g. "2d ago", "just now").
+ * Falls back to formatDate24h for older than ~60 days.
+ */
+export function formatRelativeShort(
+  timestamp: number | string | Date | null | undefined
+): string {
+  const date = toDate(timestamp);
+  if (isNaN(date.getTime())) return "—";
+  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+  if (seconds < 45) return "just now";
+  if (seconds < 90) return "1m ago";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 3600 * 36) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 3600 * 24 * 60) return `${Math.floor(seconds / (3600 * 24))}d ago`;
+  return formatDate24h(date);
+}
