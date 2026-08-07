@@ -675,7 +675,7 @@ export async function pushRepoToNostr(
           subscribe,
           defaultRelays,
           pubkey,
-          [],
+          defaultGraspRelays,
           { timeoutMs: 2500 }
         );
       } catch (e) {

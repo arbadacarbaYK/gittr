@@ -161,7 +161,7 @@ function relayUrlsMatch(a: string, b: string): boolean {
  * Per-relay OPEN budget. Kept short because we open in parallel and take the
  * first success — a hung preferred host must not block Amber for 15s×N.
  */
-const BUNKER_RELAY_OPEN_BUDGET_MS = 8000;
+const BUNKER_RELAY_OPEN_BUDGET_MS = 10000;
 /** Quiet re-warm so Push/Save is not the first cold dial after hydrate. */
 const BUNKER_KEEPALIVE_MS = 45000;
 /**
@@ -1314,13 +1314,37 @@ export class RemoteSignerManager {
       open = await this.ensureDirectTransport(session);
     }
     if (open.length === 0) {
-      const statuses = await this.snapshotDirectRelayStatuses(session.relays);
+      // Last resort: force Amber-friendly defaults (ignore thin/damus-only session
+      // lists) and give sockets a longer budget after a cold hydrate.
+      const forced = [
+        ...NIP46_SIGNER_DEFAULT_RELAYS,
+        ...NIP46_PAIRING_RELAY_FALLBACKS,
+      ].filter((u) => u.startsWith("wss://") && !isGraspServer(u));
+      console.warn(
+        "[RemoteSigner] Still no bunker sockets — forcing signer default relays",
+        forced
+      );
+      session.relays = [...new Set([...forced, ...(session.relays || [])])].slice(
+        0,
+        8
+      );
+      this.session = session;
+      persistRemoteSignerSession(session);
+      this.freeMainPoolBunkerCollisions(session.relays);
+      await new Promise((r) => setTimeout(r, 600));
+      this.resetDirectPool();
+      open = await this.ensureDirectTransport(session);
+    }
+    if (open.length === 0) {
+      const statuses = await this.snapshotDirectRelayStatuses(
+        this.buildBunkerTransportTargets(session)
+      );
       console.error(
         "[RemoteSigner] Bunker relay statuses after warm-up:",
         statuses
       );
       throw new Error(
-        "Could not open any bunker relay to reach Amber. Check your network, keep Amber open, then try again."
+        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
       );
     }
     try {
@@ -1654,10 +1678,31 @@ export class RemoteSignerManager {
           this.resetDirectPool();
           open = await this.ensureDirectTransport(session);
         }
+        if (open.length === 0) {
+          session.relays = [
+            ...new Set([
+              ...NIP46_SIGNER_DEFAULT_RELAYS,
+              ...NIP46_PAIRING_RELAY_FALLBACKS,
+              ...(session.relays || []),
+            ]),
+          ].slice(0, 8);
+          this.session = session;
+          persistRemoteSignerSession(session);
+          this.freeMainPoolBunkerCollisions(session.relays);
+          this.resetDirectPool();
+          open = await this.ensureDirectTransport(session);
+        }
         if (open.length > 0) {
           console.log("[RemoteSigner] Background bunker warm ready", {
             open: open.map((u) => normalizeRelayUrl(u)),
           });
+        } else {
+          console.warn(
+            "[RemoteSigner] Background bunker warm: still no OPEN sockets",
+            await this.snapshotDirectRelayStatuses(
+              this.buildBunkerTransportTargets(session)
+            )
+          );
         }
       } catch (error) {
         console.warn(
@@ -2184,7 +2229,7 @@ export class RemoteSignerManager {
     const openDirect = await this.ensureDirectTransport(session);
     if (openDirect.length === 0) {
       throw new Error(
-        "Could not open any bunker relay to reach Amber. Check your network, keep Amber open, then try again."
+        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
       );
     }
     const id = randomRequestId();
