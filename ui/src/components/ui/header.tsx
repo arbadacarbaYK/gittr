@@ -17,6 +17,7 @@ import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import useSession from "@/lib/nostr/useSession";
 import { startWarmAllReposIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
 import {
   readRepoIssuesFromLocalStorage,
@@ -189,40 +190,53 @@ export function Header() {
     };
   }, [mounted, isLoggedIn, refreshGlobalIssuePrCounts]);
 
-  // The counts above read only localStorage — repos never visited would count
-  // zero forever (numbers "built up" as tabs were clicked). Warm all
-  // manageable repos from Nostr in one combined subscription, at most once
-  // per 10 minutes per session.
+  // The counts above read only localStorage — /issues and /pulls fill that
+  // cache (Nostr + GitHub) when opened; without a matching warm here, the
+  // header stayed at "visited repos only". Warm all manageable repos on
+  // login (throttled per pubkey; mark only after a warm actually starts).
   useEffect(() => {
     if (!mounted || !isLoggedIn || !pubkey) return;
     if (!subscribe || !defaultRelays?.length) return;
+    const warmKey = `gittr_global_issue_pr_warm:${pubkey.slice(0, 16)}`;
     try {
-      const last = Number(
-        sessionStorage.getItem("gittr_global_issue_pr_warm") || 0
-      );
-      if (Date.now() - last < 10 * 60_000) return;
-      sessionStorage.setItem("gittr_global_issue_pr_warm", String(Date.now()));
+      const last = Number(sessionStorage.getItem(warmKey) || 0);
+      // 2 min — short enough that a failed first attempt recovers on refresh
+      if (Date.now() - last < 2 * 60_000) return;
     } catch {
       /* warm anyway */
     }
     const manageable = loadStoredRepos()
       .filter((repo) => repoAllowsUserToManagePRsAndIssues(repo, pubkey))
-      .map((repo) => ({
-        entity:
+      .map((repo) => {
+        const entity =
           repo.entity ||
           repo.slug?.split("/")[0] ||
           repo.ownerPubkey?.slice(0, 8) ||
-          "",
-        repo:
-          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "",
-      }))
+          "";
+        const name =
+          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "";
+        return {
+          entity,
+          repo: name,
+          githubSourceUrl:
+            entity && name
+              ? resolveGithubUpstreamForTabs(entity, name, repo)
+              : null,
+        };
+      })
       .filter((r) => r.entity && r.repo);
     if (!manageable.length) return;
-    return startWarmAllReposIssuePrFromNostr({
+    const cleanup = startWarmAllReposIssuePrFromNostr({
       repos: manageable,
       subscribe,
       relays: getAllRelays(defaultRelays),
     });
+    try {
+      sessionStorage.setItem(warmKey, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    return cleanup;
   }, [mounted, isLoggedIn, pubkey, subscribe, defaultRelays]);
 
   const navItems = useMemo(

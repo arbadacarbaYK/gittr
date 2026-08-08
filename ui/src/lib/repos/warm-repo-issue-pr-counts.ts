@@ -22,9 +22,20 @@ import {
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import {
+  syncGithubIssuesForRepo,
+  syncGithubPullsForRepo,
+} from "@/lib/utils/sync-github-repo-issues-prs";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SubscribeFn = (...args: any[]) => () => void;
+
+export type WarmableRepo = {
+  entity: string;
+  repo: string;
+  /** GitHub https URL when this repo mirrors a forge — same source as /issues + /pulls. */
+  githubSourceUrl?: string | null;
+};
 
 function resolveOwnerHex(entity: string, repo: string): string | null {
   const resolved = resolveEntityToPubkey(entity);
@@ -199,13 +210,14 @@ function applyStatus(
 }
 
 /**
- * Warm gittr_issues / gittr_prs for ALL of a user's manageable repos in one
- * combined subscription — the header's global open-issue/PR totals read only
- * localStorage, so unvisited repos otherwise count as zero until clicked.
- * Returns cleanup.
+ * Warm gittr_issues / gittr_prs for ALL of a user's manageable repos — the
+ * header's global open-issue/PR totals read only localStorage, and the
+ * Issues/Pulls tabs only fill that cache when opened. Match those tabs:
+ * Nostr (#a + #repo per repo) plus GitHub sync for mirrored repos.
+ * Returns cleanup for the Nostr subscriptions.
  */
 export function startWarmAllReposIssuePrFromNostr(opts: {
-  repos: Array<{ entity: string; repo: string }>;
+  repos: WarmableRepo[];
   subscribe: SubscribeFn;
   relays: string[];
 }): () => void {
@@ -219,15 +231,12 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
     string,
     Array<{ entity: string; repo: string; ownerHex: string | null }>
   >();
-  const repoTagOwnerVals = new Set<string>();
   for (const r of repos) {
     const ownerHex = resolveOwnerHex(r.entity, r.repo);
     if (ownerHex) byAddr.set(`30617:${ownerHex}:${r.repo}`, r);
     const list = byName.get(r.repo) || [];
-    list.push({ ...r, ownerHex });
+    list.push({ entity: r.entity, repo: r.repo, ownerHex });
     byName.set(r.repo, list);
-    repoTagOwnerVals.add(r.entity);
-    if (ownerHex) repoTagOwnerVals.add(ownerHex);
   }
 
   const resolveTarget = (event: {
@@ -252,42 +261,69 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
   const unsubs: Array<() => void> = [];
   let cancelled = false;
 
-  // Chunk filters — relays commonly cap tag-filter list sizes.
+  // Same filter shape as /issues and /pulls pages (per-repo), chunked so
+  // relays that cap filter-array size still accept the request.
   const filters: any[] = [];
-  const addrs = [...byAddr.keys()];
-  for (let i = 0; i < addrs.length; i += 40) {
+  for (const r of repos) {
+    const ownerHex = resolveOwnerHex(r.entity, r.repo);
     filters.push({
       kinds: [KIND_ISSUE, KIND_PULL_REQUEST],
-      "#a": addrs.slice(i, i + 40),
+      "#repo": [r.entity, r.repo],
     });
-  }
-  // Legacy events carry `repo` tags instead of `a`; match loosely by
-  // owner/entity — resolveTarget verifies the exact repo before upserting.
-  const ownerVals = [...repoTagOwnerVals];
-  for (let i = 0; i < ownerVals.length; i += 40) {
-    filters.push({
-      kinds: [KIND_ISSUE, KIND_PULL_REQUEST],
-      "#repo": ownerVals.slice(i, i + 40),
-    });
+    if (ownerHex) {
+      filters.push({
+        kinds: [KIND_ISSUE, KIND_PULL_REQUEST],
+        "#a": [`30617:${ownerHex}:${r.repo}`],
+      });
+    }
   }
 
-  unsubs.push(
-    subscribe(filters, relays, (event: any) => {
-      if (cancelled) return;
-      if (event.kind !== KIND_ISSUE && event.kind !== KIND_PULL_REQUEST) return;
-      const target = resolveTarget(event);
-      if (!target) return;
-      try {
-        if (event.kind === KIND_ISSUE) {
-          upsertIssue(target.entity, target.repo, event);
-        } else {
-          upsertPr(target.entity, target.repo, event);
+  const FILTER_CHUNK = 30;
+  for (let i = 0; i < filters.length; i += FILTER_CHUNK) {
+    const chunk = filters.slice(i, i + FILTER_CHUNK);
+    unsubs.push(
+      subscribe(chunk, relays, (event: any) => {
+        if (cancelled) return;
+        if (event.kind !== KIND_ISSUE && event.kind !== KIND_PULL_REQUEST)
+          return;
+        const target = resolveTarget(event);
+        if (!target) return;
+        try {
+          if (event.kind === KIND_ISSUE) {
+            upsertIssue(target.entity, target.repo, event);
+          } else {
+            upsertPr(target.entity, target.repo, event);
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
+      })
+    );
+  }
+
+  // GitHub mirror sync — this is what makes /issues and /pulls counts jump
+  // when those tabs are opened. Without it, header totals stay at
+  // "visited Nostr-only" forever for forge-mirrored repos.
+  void (async () => {
+    const queue = repos.filter(
+      (r) => r.githubSourceUrl && /github\.com/i.test(r.githubSourceUrl)
+    );
+    const concurrency = 3;
+    let idx = 0;
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (!cancelled && idx < queue.length) {
+        const r = queue[idx++];
+        if (!r?.githubSourceUrl) continue;
+        try {
+          await syncGithubIssuesForRepo(r.entity, r.repo, r.githubSourceUrl);
+          await syncGithubPullsForRepo(r.entity, r.repo, r.githubSourceUrl);
+        } catch {
+          /* ignore per-repo failures */
+        }
       }
-    })
-  );
+    });
+    await Promise.all(workers);
+  })();
 
   // Status pass after root events land (global warm gets more data → 4s).
   const statusTimer = window.setTimeout(() => {
@@ -346,7 +382,12 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
       "issues"
     );
     subscribeStatuses(
-      [KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED, KIND_STATUS_DRAFT],
+      [
+        KIND_STATUS_OPEN,
+        KIND_STATUS_APPLIED,
+        KIND_STATUS_CLOSED,
+        KIND_STATUS_DRAFT,
+      ],
       prIdToRepo,
       "prs"
     );
