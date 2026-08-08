@@ -73,6 +73,28 @@ describe("package-lock.json v7+", () => {
     expect(lodash).toMatchObject({ version: "4.17.21", precision: "pinned" });
     expect(pkgs.find((p) => p.name === "bar")?.version).toBe("1.0.0");
   });
+
+  it("only root-listed deps are direct — hoisted transitives are not", () => {
+    const pkgs = parseManifest(
+      "package-lock.json",
+      JSON.stringify({
+        packages: {
+          "": {
+            name: "root",
+            dependencies: { react: "^18.0.0" },
+            devDependencies: { vitest: "^1.0.0" },
+          },
+          "node_modules/react": { version: "18.3.1" },
+          "node_modules/vitest": { version: "1.2.0" },
+          // hoisted transitive: top-level path but not in root deps
+          "node_modules/minimatch": { version: "3.1.2" },
+        },
+      })
+    );
+    expect(pkgs.find((p) => p.name === "react")?.direct).toBe(true);
+    expect(pkgs.find((p) => p.name === "vitest")?.direct).toBe(true);
+    expect(pkgs.find((p) => p.name === "minimatch")?.direct).toBe(false);
+  });
 });
 
 describe("yarn.lock", () => {
@@ -168,5 +190,45 @@ describe("mergeManifestPackages", () => {
     ]);
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ precision: "pinned", direct: true });
+  });
+
+  it("propagates directness by name from package.json to lockfile pins", () => {
+    // package.json knows react is direct (but only a range); yarn.lock knows
+    // the exact version (but nothing about directness).
+    const merged = mergeManifestPackages([
+      [
+        {
+          ecosystem: "npm",
+          name: "react",
+          version: "18.0.0",
+          direct: true,
+          precision: "range-min",
+          sourceFile: "package.json",
+        },
+      ],
+      [
+        {
+          ecosystem: "npm",
+          name: "react",
+          version: "18.3.1",
+          direct: false,
+          precision: "pinned",
+          sourceFile: "yarn.lock",
+        },
+        {
+          ecosystem: "npm",
+          name: "minimatch",
+          version: "3.1.2",
+          direct: false,
+          precision: "pinned",
+          sourceFile: "yarn.lock",
+        },
+      ],
+    ]);
+    const pinnedReact = merged.find(
+      (p) => p.name === "react" && p.version === "18.3.1"
+    );
+    expect(pinnedReact?.direct).toBe(true);
+    expect(merged.find((p) => p.name === "minimatch")?.direct).toBe(false);
   });
 });

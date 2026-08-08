@@ -104,15 +104,25 @@ function parsePackageLock(content: string, file: string): ManifestPackage[] {
   }
   // npm v7+ lockfile: { packages: { "node_modules/foo": { version } } }
   if (json?.packages && typeof json.packages === "object") {
+    // Hoisting puts almost every transitive dep at top-level node_modules/,
+    // so "top-level" ≠ "direct". Only the root entry's dependency lists name
+    // the repo's real direct deps — the bot must not alert on transitives.
+    const root = json.packages[""] || {};
+    const rootDeps = new Set<string>([
+      ...Object.keys(root.dependencies || {}),
+      ...Object.keys(root.devDependencies || {}),
+      ...Object.keys(root.optionalDependencies || {}),
+    ]);
     for (const [path, meta] of Object.entries<any>(json.packages)) {
       if (!path || !meta?.version) continue;
       const name = path.replace(/^.*node_modules\//, "");
       if (!name) continue;
+      const topLevel = !path.includes("node_modules/", 1);
       pushUnique(out, {
         ecosystem: "npm",
         name,
         version: String(meta.version),
-        direct: !path.includes("node_modules/", 1),
+        direct: topLevel && rootDeps.has(name),
         precision: "pinned",
         sourceFile: file,
       });
@@ -317,23 +327,33 @@ export function parseManifest(path: string, content: string): ManifestPackage[] 
 /**
  * Merge packages from several manifests. When the same package appears from a
  * lockfile (pinned) and package.json (range-min), keep the pinned one.
+ * Directness propagates by package name: package.json knows which deps are
+ * direct, lockfiles (yarn.lock especially) know the exact version — a pinned
+ * entry becomes direct when any manifest lists that name as direct.
  */
 export function mergeManifestPackages(
   groups: ManifestPackage[][]
 ): ManifestPackage[] {
+  const directNames = new Set<string>();
+  for (const group of groups) {
+    for (const pkg of group) {
+      if (pkg.direct) directNames.add(`${pkg.ecosystem}|${pkg.name}`);
+    }
+  }
   const byPkg = new Map<string, ManifestPackage>();
   for (const group of groups) {
     for (const pkg of group) {
       const key = `${pkg.ecosystem}|${pkg.name}|${pkg.version}`;
+      const direct =
+        pkg.direct || directNames.has(`${pkg.ecosystem}|${pkg.name}`);
       const prev = byPkg.get(key);
       if (!prev) {
-        byPkg.set(key, pkg);
+        byPkg.set(key, { ...pkg, direct });
         continue;
       }
-      // Prefer pinned precision and direct=true when duplicated
       byPkg.set(key, {
         ...prev,
-        direct: prev.direct || pkg.direct,
+        direct: prev.direct || direct,
         precision:
           prev.precision === "pinned" || pkg.precision === "pinned"
             ? "pinned"
