@@ -61,9 +61,16 @@ function getMermaid() {
 
 /** Belt-and-suspenders: dark theme sometimes strips class fills after paint. */
 function enforceHighlightContrast(svg: string): string {
-  if (typeof DOMParser === "undefined") return svg;
+  if (typeof document === "undefined") return svg;
   try {
-    const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    // Parse as HTML, NOT XML. Mermaid htmlLabels serialize to HTML (unclosed
+    // <br> inside <p>) which is fine in the DOM but fatal to an XML DOMParser:
+    // that returns a <parsererror> document ("Opening and ending tag mismatch:
+    // br and p") which we would then serialize and show instead of the diagram.
+    const tpl = document.createElement("template");
+    tpl.innerHTML = svg;
+    const doc = tpl.content.querySelector("svg");
+    if (!doc) return svg;
     const apply = (
       sel: string,
       fill: string,
@@ -93,8 +100,8 @@ function enforceHighlightContrast(svg: string): string {
     };
     apply("g.node.youAreHere", "#0f766e", "#5eead4", "#ecfdf5", "3");
     apply("g.node.hostUrl", "#164e63", "#22d3ee", "#ecfeff", "2.5");
-    const out = new XMLSerializer().serializeToString(doc.documentElement);
-    return out || svg;
+    // HTML serialization (innerHTML) — the string is injected into HTML anyway.
+    return tpl.innerHTML || svg;
   } catch {
     return svg;
   }
