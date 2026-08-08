@@ -24,6 +24,8 @@
 
 **Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
 
+**Follow-up (Aug 2026)**: Do not treat *all* `KNOWN_GRASP_DOMAINS` URLs as inferred guesses when picking Git Server. If `git.gittr.space` is on the 30617 `clone` tags (normal after Push from gittr), it must win over shakespeare/ngit mirrors. Only strip inferred URLs that are **not** on the event.
+
 ## File tree last-commit dates (Aug 2026)
 
 Code browser rows show **last commit message + relative time** for the currently selected tip/branch. Data comes from `GET /api/nostr/repo/tree-last-commits` (one capped `git log --name-only` on the bare mirror — not per-path N+1). Dates track the bridge tip for that branch, which should match GitHub after a clean Refetch → Push.

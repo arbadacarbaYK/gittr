@@ -277,15 +277,19 @@ export default function RepoLayoutClient({
     enabled: mounted && !!ownerHexForZaps,
   });
 
-  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(
-    () => {
-      if (typeof window === "undefined") return null;
-      return readCachedRepoAnnouncementEventId(
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
+  // Start null on both server and client, then hydrate from the session cache
+  // after mount — reading storage in the useState initializer made the first
+  // client render differ from SSR (React #418 hydration mismatch).
+  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(null);
+  useEffect(() => {
+    const cached = readCachedRepoAnnouncementEventId(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    if (cached) {
+      setRelayRepoEventId((prev) => prev ?? cached);
     }
-  );
+  }, [resolvedParams.entity, resolvedParams.repo]);
   const [resolvingRepoEventId, setResolvingRepoEventId] = useState(false);
 
   const repoNostrEventId = useMemo(() => {

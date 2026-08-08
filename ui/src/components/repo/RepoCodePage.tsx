@@ -15935,7 +15935,10 @@ export function RepoCodePage() {
         kind: "source" as const,
       };
     }
-    // Prefer announcement clones over timeout-inferred git.gittr.space guesses.
+    // Prefer real 30617 clone tags over timeout-inferred GRASP guesses.
+    // Do NOT treat every KNOWN_GRASP URL as "inferred": Push publishes
+    // git.gittr.space on purpose, and excluding it made Shakespeare/ngit win
+    // the Git Server label even when git.gittr.space was on the event.
     const inferredKeys = new Set(
       buildGraspHttpsCloneCandidates(
         resolvedParams.entity,
@@ -15944,9 +15947,16 @@ export function RepoCodePage() {
         4
       ).map(normalizeCloneUrlKey)
     );
-    const announcementClones = httpCloneUrls.filter(
-      (url) => !inferredKeys.has(normalizeCloneUrlKey(url))
+    const eventCloneKeys = new Set(
+      (Array.isArray(repoData?.clone) ? repoData.clone : [])
+        .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+        .map(normalizeCloneUrlKey)
     );
+    const announcementClones = httpCloneUrls.filter((url) => {
+      const key = normalizeCloneUrlKey(url);
+      if (eventCloneKeys.has(key)) return true;
+      return !inferredKeys.has(key);
+    });
     const preferredHosts = [
       (() => {
         try {
@@ -16029,6 +16039,7 @@ export function RepoCodePage() {
       ? (repoData as any).forkedFrom
       : "",
     httpCloneUrls.join("|"),
+    Array.isArray(repoData?.clone) ? repoData.clone.join("|") : "",
     resolvedParams.entity,
     resolvedParams.repo,
   ]);

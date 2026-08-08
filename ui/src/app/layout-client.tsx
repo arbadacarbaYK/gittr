@@ -271,19 +271,43 @@ export default function ClientLayout({
     return () => window.removeEventListener("load", registerServiceWorker);
   }, []);
 
-  // After deploy, stale lazy-loaded chunks 404 — one hard reload fixes it.
+  // After deploy, stale lazy-loaded chunks 404 / webpack "undefined.call" —
+  // one hard reload fixes it (same symptom users see on soft-nav to new repos).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onChunkError = (event: ErrorEvent) => {
-      const msg = event.message || "";
-      if (!/loading chunk|chunkloaderror/i.test(msg)) return;
+    const maybeReload = (msg: string) => {
+      if (
+        !/loading chunk|chunkloaderror|reading ['"]call['"]/i.test(msg) &&
+        !/Cannot read properties of undefined \(reading ['"]call['"]\)/i.test(
+          msg
+        )
+      ) {
+        return;
+      }
       const key = "gittr_chunk_reload";
       if (sessionStorage.getItem(key)) return;
       sessionStorage.setItem(key, "1");
       window.location.reload();
     };
+    const onChunkError = (event: ErrorEvent) => {
+      maybeReload(event.message || "");
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const msg =
+        typeof reason === "string"
+          ? reason
+          : reason instanceof Error
+            ? reason.message
+            : String(reason ?? "");
+      maybeReload(msg);
+    };
     window.addEventListener("error", onChunkError);
-    return () => window.removeEventListener("error", onChunkError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onChunkError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
   }, []);
 
   return (
