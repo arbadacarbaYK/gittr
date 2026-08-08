@@ -323,17 +323,33 @@ export async function hydrateRepoFromGithub(
       const mayFillAbout =
         !!meta.description &&
         isPlaceholderRepositoryDescription(existingDesc, repoSlug);
-      repos[idx] = {
-        ...existing,
-        stars: meta.stars,
-        forks: meta.forks,
-        ...(mayFillAbout ? { description: meta.description } : {}),
-        lastNostrEventCreatedAt: Math.floor(
-          (meta.pushedAtMs || Date.now()) / 1000
-        ),
-      } as StoredRepo;
-      saveStoredRepos(repos);
-      window.dispatchEvent(new Event("gittr:repos-updated"));
+      // Without pushedAtMs, keep the previous timestamp — a Date.now() fallback
+      // made every hydrate look like a change, and the repos-updated dispatch
+      // below re-triggered hydrate listeners in an endless loop (page flicker).
+      const existingCreatedAt = (
+        existing as StoredRepo & { lastNostrEventCreatedAt?: number }
+      ).lastNostrEventCreatedAt;
+      const nextCreatedAt = meta.pushedAtMs
+        ? Math.floor(meta.pushedAtMs / 1000)
+        : existingCreatedAt;
+      const changed =
+        existing.stars !== meta.stars ||
+        existing.forks !== meta.forks ||
+        (mayFillAbout && existingDesc !== meta.description) ||
+        existingCreatedAt !== nextCreatedAt;
+      if (changed) {
+        repos[idx] = {
+          ...existing,
+          stars: meta.stars,
+          forks: meta.forks,
+          ...(mayFillAbout ? { description: meta.description } : {}),
+          ...(nextCreatedAt !== undefined
+            ? { lastNostrEventCreatedAt: nextCreatedAt }
+            : {}),
+        } as StoredRepo;
+        saveStoredRepos(repos);
+        window.dispatchEvent(new Event("gittr:repos-updated"));
+      }
     }
   }
 

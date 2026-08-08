@@ -59,8 +59,17 @@ function persistMergedReleases(
   merged: SyncedGithubRelease[]
 ): void {
   const key = getRepoStorageKey("gittr_releases", entity, repoSlug);
+  const payload = JSON.stringify(merged);
   try {
-    localStorage.setItem(key, JSON.stringify(merged));
+    // No change → no write and no repo-updated dispatch. Hydrate runs this on
+    // every repo visit; dispatching unchanged data re-rendered the whole repo
+    // page (image flicker) and could re-trigger hydrate listeners.
+    if (localStorage.getItem(key) === payload) return;
+  } catch {
+    /* fall through to write */
+  }
+  try {
+    localStorage.setItem(key, payload);
   } catch (e) {
     console.warn("[Releases] Failed to write gittr_releases__*:", e);
   }

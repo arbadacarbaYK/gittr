@@ -1199,11 +1199,13 @@ export default function RepoLayoutClient({
 
     let cancelled = false;
     let retryTimer: number | undefined;
+    let hydrateInFlight = false;
 
     const runHydrate = (attempt: number) => {
       if (cancelled || githubHydrateKeyRef.current === `${routeKey}:full`) {
         return;
       }
+      hydrateInFlight = true;
       const record = findStoredRepoForRoute(
         resolvedParams.entity,
         resolvedParams.repo
@@ -1267,6 +1269,8 @@ export default function RepoLayoutClient({
               2000
             );
           }
+        } finally {
+          hydrateInFlight = false;
         }
       })();
     };
@@ -1274,7 +1278,14 @@ export default function RepoLayoutClient({
     const timer = window.setTimeout(() => runHydrate(0), 400);
 
     const onReposUpdated = () => {
-      if (githubHydrateKeyRef.current === `${routeKey}:full`) return;
+      // Hydrate itself dispatches repos-updated when it stores fresh metadata.
+      // Re-running on our own dispatch (or mid-run) created an endless
+      // hydrate → dispatch → hydrate loop that re-rendered the repo page every
+      // ~2s (image flicker) and thrashed relay sockets (broke Amber signing).
+      // Partial results are retried by the bounded attempt chain and by tab
+      // visits — this listener is only for repos stored later by OTHER code.
+      if (hydrateInFlight) return;
+      if (githubHydrateKeyRef.current.startsWith(`${routeKey}:`)) return;
       runHydrate(0);
     };
     window.addEventListener("gittr:repos-updated", onReposUpdated);

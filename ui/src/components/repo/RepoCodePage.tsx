@@ -3985,15 +3985,29 @@ export function RepoCodePage() {
             filesArray = updatedRepo.files;
           }
 
-          // Update repoData with new files
+          // Update repoData with new files — but keep the previous state object
+          // when nothing changed. Unconditional new objects re-rendered the
+          // whole tree (README images flickered) on every stray update event.
           setRepoData((prev) => {
             if (!prev) return null;
+            const prevFiles = Array.isArray(prev.files) ? prev.files : [];
             const resolvedFiles =
-              filesArray.length > 0
-                ? filesArray
-                : Array.isArray(prev.files)
-                ? prev.files
-                : [];
+              filesArray.length > 0 ? filesArray : prevFiles;
+            if (resolvedFiles === prevFiles) return prev;
+            if (prevFiles.length === resolvedFiles.length) {
+              const unchanged = resolvedFiles.every((f, i) => {
+                const p = prevFiles[i] as
+                  | (RepoFileEntry & { content?: string })
+                  | undefined;
+                const n = f as RepoFileEntry & { content?: string };
+                return (
+                  p !== undefined &&
+                  p.path === n.path &&
+                  p.content === n.content
+                );
+              });
+              if (unchanged) return prev;
+            }
             return {
               ...prev,
               files: resolvedFiles,
@@ -4014,7 +4028,17 @@ export function RepoCodePage() {
             ...loadRepoOverrides(resolvedParams.entity, storageRepo),
             ...loadRepoOverrides(resolvedParams.entity, resolvedParams.repo),
           };
-          setOverrides(merged);
+          setOverrides((prev) => {
+            const keys = Object.keys(merged);
+            const prevKeys = Object.keys(prev);
+            if (
+              keys.length === prevKeys.length &&
+              keys.every((k) => prev[k] === merged[k])
+            ) {
+              return prev;
+            }
+            return merged;
+          });
         } catch {
           /* ignore */
         }
