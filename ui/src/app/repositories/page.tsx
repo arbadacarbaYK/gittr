@@ -2556,23 +2556,23 @@ export default function RepositoriesPage() {
           )}
           <button
             onClick={() => setShowClearConfirm(true)}
-            className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-3 py-1 rounded transition-colors"
-            title="Clear all locally stored repositories and related data (files, issues, PRs, commits) from localStorage. Repos published to Nostr will be re-synced. ⚠️ Recommended to run this regularly to free up browser storage space."
+            className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-3 py-1 rounded transition-colors text-sm"
+            title="Flush your repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Also use after import when you want a fresh refetch. Unpushed local-only work is lost."
           >
-            Clear Local Repos
+            Flush my browser cache
           </button>
 
           {pubkey && (
             <button
               onClick={() => setShowClearForeignConfirm(true)}
-              className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-3 py-1 rounded transition-colors"
-              title="Clear all foreign repositories (repos you don't own) and their related data from localStorage. Your own repos will be kept. ⚠️ Recommended to run this regularly to free up browser storage space."
+              className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-3 py-1 rounded transition-colors text-sm"
+              title="Flush other people’s repos from this browser’s cache (Explore/import leftovers). Your own repos stay. Safe anytime — they can be re-fetched from Nostr. Frees storage after browsing."
             >
-              Clear Foreign Repos
+              Flush others&apos; browser cache
             </button>
           )}
 
-          {/* Clear Foreign Repos Confirmation Modal */}
+          {/* Flush others' browser cache Confirmation Modal */}
           {showClearForeignConfirm && (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
@@ -2583,35 +2583,33 @@ export default function RepositoriesPage() {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <h2 className="text-xl font-bold mb-4 text-orange-400">
-                  ⚠️ Clear Foreign Repositories
+                  Flush others&apos; browser cache?
                 </h2>
 
                 <div className="space-y-4 mb-6">
                   <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
                     <p className="font-semibold text-yellow-300 mb-2">
-                      What will be deleted:
+                      What will be removed from this browser:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
-                      <li>All repositories you don't own (foreign repos)</li>
+                      <li>Cached copies of repos you don&apos;t own</li>
                       <li>
-                        All imported files, issues, PRs, and commits for foreign
-                        repos
+                        Imported files, issues, PRs, and commits for those repos
                       </li>
-                      <li>All local data for repos owned by other users</li>
+                      <li>Explore leftovers from other people&apos;s repos</li>
                     </ul>
                   </div>
 
                   <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
                     <p className="font-semibold text-green-300 mb-2">
-                      ✅ What will NOT be deleted:
+                      ✅ What stays:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
-                      <li>Your own repositories (repos you own)</li>
+                      <li>Your own repositories in this browser</li>
                       <li>
-                        All data for your own repos (files, issues, PRs,
-                        commits)
+                        Files / issues / PRs for your own repos
                       </li>
-                      <li>Any data stored on the Nostr network</li>
+                      <li>Everything already on Nostr (unchanged)</li>
                     </ul>
                   </div>
 
@@ -2620,26 +2618,19 @@ export default function RepositoriesPage() {
                       When to use this:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>To free up browser storage space</li>
-                      <li>To remove repos you've browsed but don't own</li>
-                      <li>To clean up imported/explored repos</li>
-                      <li>To keep only your own repositories locally</li>
+                      <li>After Explore/import filled the browser cache</li>
+                      <li>To free space so your own repos keep syncing</li>
+                      <li>Anytime — other people&apos;s repos can be re-fetched</li>
                     </ul>
                   </div>
 
                   <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
                     <p className="font-semibold text-red-300 mb-2">
-                      ⚠️ Important:
+                      ⚠️ Note:
                     </p>
                     <p className="text-sm text-red-200/90">
-                      This action cannot be undone. Foreign repos will be
-                      removed from localStorage. You can always re-browse them
-                      later, but any local changes or data will be lost.
-                    </p>
-                    <p className="text-sm text-yellow-200/90 mt-2">
-                      💡 <strong>Tip:</strong> Running this regularly (e.g.,
-                      weekly) helps free up browser storage space and keeps your
-                      local data clean.
+                      This only clears your browser. Opening those repos again
+                      will download a fresh copy from Nostr.
                     </p>
                   </div>
                 </div>
@@ -2655,7 +2646,7 @@ export default function RepositoriesPage() {
                     onClick={() => {
                       if (!pubkey) {
                         alert(
-                          "Error: Not logged in. Cannot identify foreign repos."
+                          "Error: Not logged in. Cannot identify other people's cached repos."
                         );
                         setShowClearForeignConfirm(false);
                         return;
@@ -2670,34 +2661,39 @@ export default function RepositoriesPage() {
                         });
 
                         console.log(
-                          "✅ Cleared foreign repos from localStorage:",
+                          "✅ Flushed others' repos from browser cache:",
                           result
                         );
 
                         setShowClearForeignConfirm(false);
 
                         alert(
-                          `✅ Successfully cleared!\n\n• Removed ${result.clearedRepos} foreign repositories\n• Removed ${result.clearedKeys} related storage keys (files, issues, PRs, commits)\n• Kept ${result.keptRepos} repositories\n\nForeign repos can be re-browsed from Nostr relays.`
+                          `✅ Browser cache flushed!\n\n• Removed ${result.clearedRepos} other people's repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} of your repos\n\nThey can be re-fetched from Nostr anytime.`
                         );
 
                         loadRepos();
                         window.location.reload();
                       } catch (error) {
-                        console.error("Failed to clear foreign repos:", error);
-                        alert(`❌ Error clearing foreign repos: ${error}`);
+                        console.error(
+                          "Failed to flush others' browser cache:",
+                          error
+                        );
+                        alert(
+                          `❌ Error flushing others' browser cache: ${error}`
+                        );
                         setShowClearForeignConfirm(false);
                       }
                     }}
                     className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-4 py-2 rounded transition-colors font-semibold"
                   >
-                    Yes, Clear Foreign Repos
+                    Yes, flush others&apos; cache
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Clear Local Repos Confirmation Modal */}
+          {/* Flush my browser cache Confirmation Modal */}
           {showClearConfirm && (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
@@ -2708,34 +2704,33 @@ export default function RepositoriesPage() {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <h2 className="text-xl font-bold mb-4 text-red-400">
-                  ⚠️ Clear Local Repositories
+                  Flush my browser cache?
                 </h2>
 
                 <div className="space-y-4 mb-6">
                   <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
                     <p className="font-semibold text-yellow-300 mb-2">
-                      What will be deleted:
+                      What will be removed from this browser:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
-                      <li>All local repositories (not yet pushed to Nostr)</li>
+                      <li>Cached repo list and imported file trees</li>
+                      <li>Cached issues, PRs, and commits</li>
                       <li>
-                        All imported files, issues, PRs, and commits stored
-                        locally
+                        Unpushed local-only work (not yet on Nostr)
                       </li>
-                      <li>All local edits and changes not yet published</li>
                     </ul>
                   </div>
 
                   <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
                     <p className="font-semibold text-green-300 mb-2">
-                      ✅ What will NOT be deleted:
+                      ✅ What stays:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
                       <li>
-                        Repositories published to Nostr (they will be re-synced
-                        from relays)
+                        Anything already pushed to Nostr (re-fetches after
+                        reload)
                       </li>
-                      <li>Any data stored on the Nostr network</li>
+                      <li>Data on the Nostr network itself</li>
                     </ul>
                   </div>
 
@@ -2744,10 +2739,13 @@ export default function RepositoriesPage() {
                       When to use this:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>To free up browser storage space</li>
-                      <li>To reset local data and re-sync from Nostr</li>
-                      <li>To remove corrupted local data</li>
-                      <li>To start fresh after testing or development</li>
+                      <li>
+                        After push already happened — safe way to free space
+                      </li>
+                      <li>
+                        After import when you want a clean refetch from relays
+                      </li>
+                      <li>If browser storage is full or data looks stale</li>
                     </ul>
                   </div>
 
@@ -2756,14 +2754,9 @@ export default function RepositoriesPage() {
                       ⚠️ Important:
                     </p>
                     <p className="text-sm text-red-200/90">
-                      This action cannot be undone for local repositories. Any
-                      repos that haven't been pushed to Nostr will be
-                      permanently lost.
-                    </p>
-                    <p className="text-sm text-yellow-200/90 mt-2">
-                      💡 <strong>Tip:</strong> Running this regularly (e.g.,
-                      weekly) helps free up browser storage space and keeps your
-                      local data clean.
+                      Only flush after you&apos;ve pushed (or you don&apos;t
+                      need unpushed local work). Unpushed local-only repos
+                      cannot be recovered from Nostr.
                     </p>
                   </div>
                 </div>
@@ -2803,14 +2796,14 @@ export default function RepositoriesPage() {
 
                       const totalCleared = keysToRemove.length;
                       console.log(
-                        `✅ Cleared all locally stored repos and ${totalCleared} separate storage keys from localStorage`
+                        `✅ Flushed browser cache: repos + ${totalCleared} separate storage keys`
                       );
 
                       setShowClearConfirm(false);
 
                       // Show success feedback
                       alert(
-                        `✅ Successfully cleared!\n\n• Removed all local repositories\n• Removed ${totalCleared} separate storage keys (files, issues, PRs, commits)\n\nRepos published to Nostr will be re-synced from relays.`
+                        `✅ Browser cache flushed!\n\n• Cleared cached repositories\n• Removed ${totalCleared} related cache keys\n\nAlready-pushed repos will re-fetch from Nostr.`
                       );
 
                       loadRepos();
@@ -2818,7 +2811,7 @@ export default function RepositoriesPage() {
                     }}
                     className="border border-red-500/50 bg-red-900/20 hover:bg-red-900/30 text-red-300 px-4 py-2 rounded transition-colors font-semibold"
                   >
-                    Yes, Clear Local Data
+                    Yes, flush my browser cache
                   </button>
                 </div>
               </div>

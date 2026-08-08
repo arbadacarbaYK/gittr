@@ -280,6 +280,13 @@ function ExplorePageContent() {
   const userFilter = searchParams?.get("user") || null;
   const openRepoInNewTab = !!(qRaw.trim() || userFilter);
   const { defaultRelays, subscribe, pubkey, addRelay } = useNostrContext();
+  // Session catalog: grows with every Nostr event even when localStorage quota
+  // blocks persist. Never reset this from a failed save + loadRepos() loop.
+  const exploreCatalogRef = useRef<Repo[] | null>(null);
+  const catalogPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const catalogUiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset page window when search/filter changes (keep scroll stable on Load more).
   useEffect(() => {
@@ -791,10 +798,121 @@ function ExplorePageContent() {
   };
 
   // Load repos from localStorage and sync from Nostr
+  const applyReposToUi = useCallback((list: Repo[]) => {
+    const deletedRepos = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    ) as Array<{ entity: string; repo: string; deletedAt: number }>;
+    const deletedReposSet = new Set(
+      deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
+    );
+
+    const filtered = list
+      .map((r: any) => {
+        if (
+          (!r.entity || r.entity === "user") &&
+          r.ownerPubkey &&
+          /^[0-9a-f]{64}$/i.test(r.ownerPubkey)
+        ) {
+          let entityDisplay = r.entityDisplayName;
+          if (!entityDisplay) {
+            try {
+              entityDisplay =
+                nip19.npubEncode(r.ownerPubkey).substring(0, 16) + "...";
+            } catch {
+              entityDisplay = r.ownerPubkey.substring(0, 16) + "...";
+            }
+          }
+          return {
+            ...r,
+            entity: nip19.npubEncode(r.ownerPubkey),
+            entityDisplayName: entityDisplay,
+          };
+        }
+        return r;
+      })
+      .filter((r: any) => {
+        const entity = r.entity || "";
+        const repo = r.repo || r.slug || "";
+        const repoKey = `${entity}/${repo}`.toLowerCase();
+        if (deletedReposSet.has(repoKey)) return false;
+        if (r.deleted === true || r.archived === true) return false;
+        if (!r.entity || r.entity === "user") {
+          console.warn("⚠️ [Explore] Skipping repo without entity:", {
+            slug: r.slug,
+            repo: r.repo,
+            hasOwnerPubkey: !!r.ownerPubkey,
+          });
+          return false;
+        }
+        if (isRepoFromBlocklistedOwner(r)) return false;
+        return true;
+      });
+
+    const finalRepos = filtered.map((r: any) => ({
+      ...r,
+      ownerPubkey: r.ownerPubkey,
+      contributors: r.contributors || [],
+    }));
+
+    console.log("🔍 [Explore] applyReposToUi:", {
+      catalog: list.length,
+      shown: finalRepos.length,
+    });
+    setRepos(finalRepos);
+  }, []);
+
+  const readExploreCatalog = useCallback((): Repo[] => {
+    if (exploreCatalogRef.current) return exploreCatalogRef.current;
+    const fromLs = loadStoredRepos() as Repo[];
+    exploreCatalogRef.current = fromLs;
+    return fromLs;
+  }, []);
+
+  /** Persist best-effort; always keep session catalog + UI in sync with `list`. */
+  const commitExploreCatalog = useCallback(
+    (list: Repo[], opts?: { immediate?: boolean }) => {
+      exploreCatalogRef.current = list;
+      const flushUi = () => {
+        if (exploreCatalogRef.current) {
+          applyReposToUi(exploreCatalogRef.current);
+        }
+      };
+      const flushPersist = () => {
+        if (!exploreCatalogRef.current) return false;
+        return saveStoredRepos(exploreCatalogRef.current as any, {
+          quiet: true,
+        });
+      };
+
+      if (opts?.immediate) {
+        if (catalogUiTimerRef.current) {
+          clearTimeout(catalogUiTimerRef.current);
+          catalogUiTimerRef.current = null;
+        }
+        if (catalogPersistTimerRef.current) {
+          clearTimeout(catalogPersistTimerRef.current);
+          catalogPersistTimerRef.current = null;
+        }
+        flushUi();
+        return flushPersist();
+      }
+
+      if (catalogUiTimerRef.current) clearTimeout(catalogUiTimerRef.current);
+      catalogUiTimerRef.current = setTimeout(flushUi, 120);
+
+      if (catalogPersistTimerRef.current)
+        clearTimeout(catalogPersistTimerRef.current);
+      catalogPersistTimerRef.current = setTimeout(() => {
+        flushPersist();
+      }, 600);
+      return true;
+    },
+    [applyReposToUi]
+  );
+
   const loadRepos = useCallback(() => {
     setIsLoadingRepos(true);
     try {
-      // DEBUG: Check raw localStorage first
       const rawRepos = localStorage.getItem("gittr_repos");
       console.log("🔍 [Explore] loadRepos - raw localStorage:", {
         hasData: !!rawRepos,
@@ -811,9 +929,19 @@ function ExplorePageContent() {
           : [],
       });
 
-      const list = loadStoredRepos();
+      const fromLs = loadStoredRepos() as Repo[];
+      const mem = exploreCatalogRef.current;
+      // Prefer the larger session catalog when quota blocked persist — otherwise
+      // every loadRepos() after a failed save snapped UI back to ~180 rows.
+      const list =
+        mem && mem.length > fromLs.length
+          ? mem
+          : ((exploreCatalogRef.current = fromLs), fromLs);
+
       console.log("🔍 [Explore] loadRepos - after loadStoredRepos:", {
-        loadedCount: list.length,
+        loadedCount: fromLs.length,
+        sessionCatalog: mem?.length ?? 0,
+        using: list.length,
         sample: list.slice(0, 2).map((r) => ({
           entity: r.entity,
           repo: r.repo || r.slug,
@@ -821,92 +949,14 @@ function ExplorePageContent() {
         })),
       });
 
-      // Load list of locally-deleted repos (user deleted them, don't show)
-      const deletedRepos = JSON.parse(
-        localStorage.getItem("gittr_deleted_repos") || "[]"
-      ) as Array<{ entity: string; repo: string; deletedAt: number }>;
-      const deletedReposSet = new Set(
-        deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
-      );
-
-      // Filter out locally-deleted repos AND repos marked as deleted/archived on Nostr
-      // CRITICAL: Also ensure all repos have entity (derive from ownerPubkey if missing)
-      const filtered = list
-        .map((r: any) => {
-          // Derive entity from ownerPubkey if missing
-          if (
-            (!r.entity || r.entity === "user") &&
-            r.ownerPubkey &&
-            /^[0-9a-f]{64}$/i.test(r.ownerPubkey)
-          ) {
-            // CRITICAL: Use npub format, not shortened pubkey
-            let entityDisplay = r.entityDisplayName;
-            if (!entityDisplay) {
-              try {
-                entityDisplay =
-                  nip19.npubEncode(r.ownerPubkey).substring(0, 16) + "...";
-              } catch {
-                entityDisplay = r.ownerPubkey.substring(0, 16) + "...";
-              }
-            }
-            return {
-              ...r,
-              entity: nip19.npubEncode(r.ownerPubkey), // Use npub format
-              entityDisplayName: entityDisplay,
-            };
-          }
-          return r;
-        })
-        .filter((r: any) => {
-          const entity = r.entity || "";
-          const repo = r.repo || r.slug || "";
-          const repoKey = `${entity}/${repo}`.toLowerCase();
-
-          // Skip if locally deleted (completely hidden from explore - no note shown)
-          if (deletedReposSet.has(repoKey)) return false;
-
-          // Skip if owner marked as deleted/archived on Nostr (completely hidden from explore - no note shown)
-          if (r.deleted === true || r.archived === true) return false;
-
-          // Skip if still no entity (can't display without entity)
-          if (!r.entity || r.entity === "user") {
-            console.warn("⚠️ [Explore] Skipping repo without entity:", {
-              slug: r.slug,
-              repo: r.repo,
-              hasOwnerPubkey: !!r.ownerPubkey,
-            });
-            return false;
-          }
-
-          if (isRepoFromBlocklistedOwner(r)) return false;
-
-          return true;
-        });
-
-      // Ensure we load all repo fields including ownerPubkey and contributors
-      const finalRepos = filtered.map((r: any) => ({
-        ...r,
-        ownerPubkey: r.ownerPubkey,
-        contributors: r.contributors || [],
-      }));
-
-      console.log("🔍 [Explore] loadRepos - final repos to set:", {
-        count: finalRepos.length,
-        sample: finalRepos.slice(0, 2).map((r) => ({
-          entity: r.entity,
-          repo: r.repo || r.slug,
-          hasOwnerPubkey: !!r.ownerPubkey,
-        })),
-      });
-
-      setRepos(finalRepos);
+      applyReposToUi(list);
     } catch (err) {
       console.error("❌ [Explore] loadRepos error:", err);
       setRepos([]);
     } finally {
       setIsLoadingRepos(false);
     }
-  }, []);
+  }, [applyReposToUi]);
 
   useEffect(() => {
     loadRepos();
@@ -945,7 +995,7 @@ function ExplorePageContent() {
     ) => {
       if (!seed.length) return;
       try {
-        const existing = loadStoredRepos() as any[];
+        const existing = readExploreCatalog() as any[];
         const byKey = new Map<string, any>();
         for (const r of existing) {
           const entity = String(r.entity || "").toLowerCase();
@@ -985,45 +1035,18 @@ function ExplorePageContent() {
           if (byKey.size >= EXPLORE_SEED_CACHE_CAP) break;
         }
         if (added > 0) {
-          const merged = Array.from(byKey.values());
-          const saved = saveStoredRepos(merged as any, { quiet: true });
+          const merged = Array.from(byKey.values()) as Repo[];
           if (!cancelled) {
-            // Always refresh UI — even when quota blocks persist, show what we have.
-            if (saved) {
-              loadRepos();
-            } else {
+            const saved = commitExploreCatalog(merged, { immediate: true });
+            if (!saved) {
               console.warn(
-                "[Explore] seed merge could not persist (quota); applying in memory"
+                "[Explore] seed merge could not persist (quota); session catalog kept in memory"
               );
-              loadRepos();
-              // If storage stayed empty, force seed into React state.
-              setRepos((prev) => {
-                if (prev.length >= 40) return prev;
-                const deletedRepos = JSON.parse(
-                  localStorage.getItem("gittr_deleted_repos") || "[]"
-                ) as Array<{ entity: string; repo: string }>;
-                const deleted = new Set(
-                  deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
-                );
-                const fromSeed = merged.filter((r: any) => {
-                  const entity = r.entity || "";
-                  const repo = r.repo || r.slug || "";
-                  if (!entity || !repo) return false;
-                  if (deleted.has(`${entity}/${repo}`.toLowerCase()))
-                    return false;
-                  if (r.deleted === true || r.archived === true) return false;
-                  if (isRepoFromBlocklistedOwner(r)) return false;
-                  return true;
-                });
-                return fromSeed.length > prev.length ? fromSeed : prev;
-              });
             }
             if (byKey.size >= 40) setSyncing(false);
           }
           console.log(
-            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size}${
-              saved ? "" : ", persist skipped — quota"
-            })`
+            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
           );
         }
       } catch (e) {
@@ -1033,7 +1056,7 @@ function ExplorePageContent() {
 
     (async () => {
       try {
-        const existing = loadStoredRepos() as any[];
+        const existing = readExploreCatalog() as any[];
         // Re-seed until near full catalog — old gate at 200 left people stuck at the
         // previous 600 soft cap with no path to pull the rest of the SEO snapshot.
         if (existing.length >= EXPLORE_SEED_SKIP_IF_CACHED) return;
@@ -1080,7 +1103,7 @@ function ExplorePageContent() {
     return () => {
       cancelled = true;
     };
-  }, [loadRepos]);
+  }, [loadRepos, commitExploreCatalog, readExploreCatalog]);
 
   // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own
@@ -1115,13 +1138,9 @@ function ExplorePageContent() {
       return () => clearTimeout(timeout);
     }
 
-    // CRITICAL: Clear old repos from localStorage to force fresh fetch
-    // This ensures we get ALL repos from Nostr, not just cached ones
-    const existingRepos = JSON.parse(
-      localStorage.getItem("gittr_repos") || "[]"
-    );
+    const existingRepos = readExploreCatalog();
     console.log(
-      "📊 [Explore] Current repos in localStorage:",
+      "📊 [Explore] Current repos in session catalog:",
       existingRepos.length
     );
 
@@ -1159,7 +1178,7 @@ function ExplorePageContent() {
       // Stop showing "syncing" status if we've received EOSE from at least 2 GRASP relays
       // OR if we've received repos from at least 5 regular relays and waited 5 seconds
       // OR if we've received a very large number of repos (2000+) - we have enough initial data
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+      const repos = readExploreCatalog();
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
       // Seed / early events: hide spinner once we can search, keep listening.
@@ -1201,8 +1220,7 @@ function ExplorePageContent() {
       console.log("⏱️ [Explore] Sync timeout after 15s:", {
         eoseReceived: eoseReceived.size,
         graspRelaysReceived: graspRelaysReceived.size,
-        totalRepos: JSON.parse(localStorage.getItem("gittr_repos") || "[]")
-          .length,
+        totalRepos: readExploreCatalog().length,
       });
       setSyncing(false);
       if (minRelaysTimeout) clearTimeout(minRelaysTimeout);
@@ -1317,9 +1335,7 @@ function ExplorePageContent() {
                 );
 
                 // Find repos with this event ID and mark them as deleted
-                const existingRepos = JSON.parse(
-                  localStorage.getItem("gittr_repos") || "[]"
-                ) as Repo[];
+                const existingRepos = [...readExploreCatalog()];
                 let updated = false;
 
                 const updatedRepos = existingRepos.map((r: any) => {
@@ -1344,11 +1360,7 @@ function ExplorePageContent() {
                 });
 
                 if (updated) {
-                  saveStoredRepos(updatedRepos as any, { quiet: true });
-                  // Trigger reload to update UI
-                  setTimeout(() => {
-                    loadRepos();
-                  }, 100);
+                  commitExploreCatalog(updatedRepos, { immediate: true });
                 }
               }
             }
@@ -1627,9 +1639,7 @@ function ExplorePageContent() {
                                 return; // Don't store corrupted repos
                               }
 
-                              const existingRepos = JSON.parse(
-                                localStorage.getItem("gittr_repos") || "[]"
-                              ) as Repo[];
+                              const existingRepos = [...readExploreCatalog()];
 
                               // Check if deleted
                               const deletedRepos = JSON.parse(
@@ -1678,9 +1688,12 @@ function ExplorePageContent() {
                                   newEvent.created_at * 1000,
                                 updatedAt: newEvent.created_at * 1000,
                                 entityDisplayName: entity,
-                                files: repoData.files,
+                                // Never embed file trees in the explore catalog (quota).
                                 topics: repoData.topics || [],
                                 contributors: repoData.contributors || [],
+                                syncedFromNostr: true,
+                                lastNostrEventId: newEvent.id,
+                                lastNostrEventCreatedAt: newEvent.created_at,
                               };
 
                               if (existingIndex >= 0) {
@@ -1692,10 +1705,7 @@ function ExplorePageContent() {
                                 existingRepos.push(repo);
                               }
 
-                              saveStoredRepos(existingRepos as any, {
-                                quiet: true,
-                              });
-                              setTimeout(() => loadRepos(), 100);
+                              commitExploreCatalog(existingRepos);
 
                               console.log(
                                 "✅ [GRASP-02] Stored repo from discovered relay:",
@@ -1738,10 +1748,8 @@ function ExplorePageContent() {
               eventId: event.id.slice(0, 8),
             });
 
-            // Load existing repos
-            const existingRepos = JSON.parse(
-              localStorage.getItem("gittr_repos") || "[]"
-            ) as Repo[];
+            // Session catalog (grows past localStorage quota)
+            const existingRepos = [...readExploreCatalog()];
 
             // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
             const deletedRepos = JSON.parse(
@@ -1817,17 +1825,7 @@ function ExplorePageContent() {
                 return true;
               });
               if (purged.length !== existingRepos.length) {
-                if (typeof window !== "undefined") {
-                  saveStoredRepos(purged as any, { quiet: true });
-                }
-                setRepos(
-                  purged.filter(
-                    (r: any) =>
-                      r.deleted !== true &&
-                      r.archived !== true &&
-                      !r.hiddenFromExplore
-                  )
-                );
+                commitExploreCatalog(purged, { immediate: true });
               }
               return;
             }
@@ -2239,29 +2237,10 @@ function ExplorePageContent() {
               existingRepos.push(newRepo);
             }
 
-            const saved = saveStoredRepos(existingRepos as any, {
-              quiet: true,
-            });
-
-            // CRITICAL: Update UI even when persist fails (quota) — otherwise
-            // Explore stays empty after seed/sync timeouts.
+            // Persist best-effort; always refresh UI from session catalog
+            // (never reload from localStorage alone — that stuck Explore at ~180).
+            commitExploreCatalog(existingRepos);
             setTimeout(() => {
-              if (saved) {
-                loadRepos();
-              } else {
-                loadRepos();
-                setRepos((prev) =>
-                  prev.length > 0
-                    ? prev
-                    : existingRepos.filter(
-                        (r: any) =>
-                          r.deleted !== true &&
-                          r.archived !== true &&
-                          !r.hiddenFromExplore &&
-                          !isRepoFromBlocklistedOwner(r)
-                      )
-                );
-              }
               checkShouldStopSyncing();
             }, 100);
           } catch (error: any) {
@@ -2340,9 +2319,7 @@ function ExplorePageContent() {
         }
 
         // Log summary after EOSE
-        const allRepos = JSON.parse(
-          localStorage.getItem("gittr_repos") || "[]"
-        );
+        const allRepos = readExploreCatalog();
         const foreignRepos = pubkey
           ? allRepos.filter(
               (r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey
@@ -2829,7 +2806,8 @@ function ExplorePageContent() {
         !isLoadingRepos &&
         typeof window !== "undefined" &&
         (() => {
-          const repoCount = loadStoredRepos().length;
+          const repoCount =
+            exploreCatalogRef.current?.length ?? loadStoredRepos().length;
           return (
             <div className="mb-4 p-4 border border-purple-500/50 rounded bg-[#171B21]">
               <div className="flex items-center gap-2 text-purple-400">
@@ -2842,8 +2820,8 @@ function ExplorePageContent() {
               </div>
               <div className="text-xs text-gray-500 mt-2">
                 This count is everything stored under gittr_repos (discovery
-                cache), not only your repos. Trim or clear foreign repos on My
-                Repositories (/repositories). The syncing indicator hides when
+                cache), not only your repos. Trim with My Repositories → Flush
+                others&apos; browser cache. The syncing indicator hides when
                 enough relays respond or after 15 seconds; the subscription
                 keeps listening.
               </div>

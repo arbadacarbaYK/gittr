@@ -93,9 +93,13 @@ export interface StoredRepo {
   // Runtime properties (not always in storage)
   entityDisplayName?: string;
   createdAt?: number;
+  updatedAt?: number;
+  lastModifiedAt?: number;
   branches?: string[];
   tags?: string[];
   lastNostrEventId?: string;
+  /** Unix seconds (Nostr created_at) of the latest kind 30617/51 we applied */
+  lastNostrEventCreatedAt?: number;
   nostrEventId?: string;
   stateEventId?: string;
   lastStateEventId?: string;
@@ -585,6 +589,12 @@ export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
     pulls?: unknown[];
     commits?: unknown[];
     readme?: string;
+    releases?: unknown[];
+    branches?: string[];
+    tags?: string[];
+    entityDisplayName?: string;
+    logoUrl?: string;
+    languages?: Record<string, number>;
   };
   const files = r.files;
   const slim: StoredRepo = { ...r };
@@ -592,8 +602,43 @@ export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
   delete (slim as { issues?: unknown[] }).issues;
   delete (slim as { pulls?: unknown[] }).pulls;
   delete (slim as { commits?: unknown[] }).commits;
-  if (typeof r.readme === "string" && r.readme.length > 2000) {
-    delete (slim as { readme?: string }).readme;
+  delete (slim as { releases?: unknown[] }).releases;
+  delete (slim as { branches?: string[] }).branches;
+  delete (slim as { tags?: string[] }).tags;
+  delete (slim as { entityDisplayName?: string }).entityDisplayName;
+  delete (slim as { logoUrl?: string }).logoUrl;
+  // README / About body never belongs in the explore catalog blob.
+  delete (slim as { readme?: string }).readme;
+
+  if (typeof slim.description === "string" && slim.description.length > 280) {
+    slim.description = slim.description.slice(0, 280);
+  }
+  if (Array.isArray(slim.clone) && slim.clone.length > 4) {
+    slim.clone = slim.clone.slice(0, 4);
+  }
+  if (Array.isArray(slim.relays) && slim.relays.length > 6) {
+    slim.relays = slim.relays.slice(0, 6);
+  }
+  if (Array.isArray(slim.topics) && slim.topics.length > 12) {
+    slim.topics = slim.topics.slice(0, 12);
+  }
+  if (Array.isArray(slim.links) && slim.links.length > 6) {
+    slim.links = slim.links.slice(0, 6);
+  }
+  if (Array.isArray(slim.contributors) && slim.contributors.length > 6) {
+    const owners = slim.contributors.filter(
+      (c) => c.role === "owner" || c.weight === 100
+    );
+    const rest = slim.contributors.filter(
+      (c) => !(c.role === "owner" || c.weight === 100)
+    );
+    slim.contributors = [...owners, ...rest].slice(0, 6);
+  }
+  if (r.languages && typeof r.languages === "object") {
+    const entries = Object.entries(r.languages).sort((a, b) => b[1] - a[1]);
+    if (entries.length > 3) {
+      slim.languages = Object.fromEntries(entries.slice(0, 3));
+    }
   }
   if (Array.isArray(files) && files.length > 0 && !slim.fileCount) {
     slim.fileCount = files.length;
@@ -601,8 +646,67 @@ export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
   return slim;
 }
 
+/** Ultra-compact row for discover cache when even slim rows won't fit. */
+function ultraSlimRepoForCatalog(repo: StoredRepo): StoredRepo {
+  const name = repo.repo || repo.slug || repo.name || "";
+  const ownerOnly = Array.isArray(repo.contributors)
+    ? repo.contributors
+        .filter((c) => c.role === "owner" || c.weight === 100)
+        .slice(0, 1)
+    : undefined;
+  const out: StoredRepo = {
+    entity: repo.entity,
+    repo: name,
+    slug: repo.slug || name,
+    name: repo.name || name,
+    ownerPubkey: repo.ownerPubkey,
+    createdAt: repo.createdAt,
+    syncedFromNostr: repo.syncedFromNostr,
+    fromNostr: repo.fromNostr,
+    deleted: repo.deleted,
+    hasUnpushedEdits: repo.hasUnpushedEdits,
+    status: repo.status,
+    nostrEventId: repo.nostrEventId,
+    lastNostrEventId: repo.lastNostrEventId,
+    lastNostrEventCreatedAt: repo.lastNostrEventCreatedAt,
+    stars: repo.stars,
+    forks: repo.forks,
+    fileCount: repo.fileCount,
+    publicRead: repo.publicRead,
+    publicWrite: repo.publicWrite,
+  };
+  if (typeof repo.description === "string" && repo.description) {
+    out.description = repo.description.slice(0, 160);
+  }
+  if (Array.isArray(repo.topics) && repo.topics.length) {
+    out.topics = repo.topics.slice(0, 8);
+  }
+  if (Array.isArray(repo.clone) && repo.clone.length) {
+    out.clone = repo.clone.slice(0, 2);
+  }
+  if (ownerOnly && ownerOnly.length) {
+    out.contributors = ownerOnly.map((c) => ({
+      pubkey: c.pubkey,
+      role: c.role,
+      weight: c.weight,
+    }));
+  }
+  return out;
+}
+
 function slimReposForStorage(repos: StoredRepo[]): StoredRepo[] {
   return repos.map(slimRepoForStorage);
+}
+
+function rankReposForQuotaKeep(repos: StoredRepo[]): StoredRepo[] {
+  return [...repos].sort((a: any, b: any) => {
+    const score = (r: any) =>
+      (r.hasUnpushedEdits || r.status === "local" ? 1e15 : 0) +
+      (r.lastNostrEventCreatedAt
+        ? r.lastNostrEventCreatedAt * 1000
+        : r.updatedAt || r.createdAt || 0);
+    return score(b) - score(a);
+  });
 }
 
 export const loadStoredRepos = (): StoredRepo[] => {
@@ -664,7 +768,7 @@ export const loadDeletedRepos = (): Array<{
 
 /** Appended to quota / localStorage alerts so users know where to trim cached repos */
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
-  " Open My Repositories (/repositories) to delete repos or clear foreign repositories.";
+  " Open My Repositories (/repositories) → Flush others' browser cache (or Flush my browser cache after you've pushed).";
 
 /**
  * Persist slimmed `gittr_repos`. Returns false if the write still fails after
@@ -702,13 +806,29 @@ export const saveStoredRepos = (
     `❌ [Storage] Quota exceeded when saving repos. Attempting cleanup...`
   );
 
+  // File trees / issue caches are usually the real hog — free them first.
+  const evictedFirst = evictAllRepoFileCaches(250);
+  if (evictedFirst > 0 && tryWrite(toSave)) {
+    console.log(
+      `✅ [Storage] Saved ${toSave.length} repos after evicting ${evictedFirst} cache key(s)`
+    );
+    return true;
+  }
+
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
   const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
   const cleaned30 = toSave.filter((r: any) => {
-    const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
-    return lastActivity > thirtyDaysAgo;
+    const lastActivity =
+      (r.lastNostrEventCreatedAt
+        ? r.lastNostrEventCreatedAt * 1000
+        : 0) ||
+      r.updatedAt ||
+      r.lastModifiedAt ||
+      r.createdAt ||
+      0;
+    return lastActivity > thirtyDaysAgo || r.hasUnpushedEdits || r.status === "local";
   });
   if (cleaned30.length < toSave.length) {
     console.log(
@@ -729,8 +849,15 @@ export const saveStoredRepos = (
     }
 
     const cleaned7 = cleaned30.filter((r: any) => {
-      const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
-      return lastActivity > sevenDaysAgo;
+      const lastActivity =
+        (r.lastNostrEventCreatedAt
+          ? r.lastNostrEventCreatedAt * 1000
+          : 0) ||
+        r.updatedAt ||
+        r.lastModifiedAt ||
+        r.createdAt ||
+        0;
+      return lastActivity > sevenDaysAgo || r.hasUnpushedEdits || r.status === "local";
     });
     if (cleaned7.length < cleaned30.length) {
       const aggDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned7);
@@ -747,37 +874,53 @@ export const saveStoredRepos = (
     }
   }
 
-  // Free space from file-tree caches (often the real quota hog).
-  const evicted = evictLargestOtherRepoFileKeys("", 20);
+  // Sweep remaining fat caches again, then progressive caps (Explore can keep
+  // the full list in memory even when we only persist a subset).
+  const evicted = evictAllRepoFileCaches(500);
   if (evicted > 0 && tryWrite(toSave)) {
     console.log(
-      `✅ [Storage] Saved ${toSave.length} repos after evicting ${evicted} gittr_files key(s)`
+      `✅ [Storage] Saved ${toSave.length} repos after evicting ${evicted} cache key(s)`
     );
     return true;
   }
 
-  // Last resort: keep a smaller discover cache (prefer recently active / owned).
-  const ranked = [...toSave].sort((a: any, b: any) => {
-    const score = (r: any) =>
-      (r.hasUnpushedEdits ? 1e15 : 0) +
-      (r.lastNostrEventCreatedAt
-        ? r.lastNostrEventCreatedAt * 1000
-        : r.updatedAt || r.createdAt || 0);
-    return score(b) - score(a);
-  });
-  const capped = ranked.slice(0, 400);
-  if (capped.length < toSave.length && tryWrite(capped)) {
-    console.warn(
-      `⚠️ [Storage] Saved capped gittr_repos (${capped.length}/${toSave.length}) after quota reclaim`
-    );
-    if (!quiet && typeof window !== "undefined") {
-      setTimeout(() => {
-        alert(
-          `⚠️ Browser storage was full — kept the ${capped.length} most recent repos locally.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-        );
-      }, 100);
+  const ranked = rankReposForQuotaKeep(toSave);
+  const capSizes = [2000, 1200, 800, 500, 350, 250, 150];
+  for (const cap of capSizes) {
+    if (cap >= ranked.length) continue;
+    const capped = ranked.slice(0, cap);
+    if (tryWrite(capped)) {
+      console.warn(
+        `⚠️ [Storage] Saved capped gittr_repos (${capped.length}/${toSave.length}) after quota reclaim`
+      );
+      if (!quiet && typeof window !== "undefined") {
+        setTimeout(() => {
+          alert(
+            `⚠️ Browser storage was full — kept the ${capped.length} most recent repos locally.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
+          );
+        }, 100);
+      }
+      return true;
     }
+  }
+
+  // Last resort: ultra-slim catalog rows (drop clone/relays/langs bulk).
+  const ultra = rankReposForQuotaKeep(toSave.map(ultraSlimRepoForCatalog));
+  if (tryWrite(ultra)) {
+    console.warn(
+      `⚠️ [Storage] Saved ultra-slim gittr_repos (${ultra.length} rows) after quota reclaim`
+    );
     return true;
+  }
+  for (const cap of [1500, 800, 400, 200, 100]) {
+    if (cap >= ultra.length) continue;
+    const capped = ultra.slice(0, cap);
+    if (tryWrite(capped)) {
+      console.warn(
+        `⚠️ [Storage] Saved ultra-slim capped gittr_repos (${capped.length}/${toSave.length})`
+      );
+      return true;
+    }
   }
 
   console.error(
@@ -950,6 +1093,10 @@ function evictLargestOtherRepoFileKeys(
     );
   }
   return removed;
+}
+
+function evictAllRepoFileCaches(maxRemovals = 200): number {
+  return evictLargestOtherRepoFileKeys("", maxRemovals);
 }
 
 export const saveRepoFiles = (
