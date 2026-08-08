@@ -19,6 +19,7 @@ import {
   loadStoredRepos,
   normalizeFilePath,
 } from "@/lib/repos/storage";
+import { splitStagedUploadsByGitignore } from "@/lib/repos/gitignore-upload-filter";
 import {
   type StagedUploadFile,
   mergeStagedUploads,
@@ -106,6 +107,11 @@ export default function UploadPage({
 }) {
   const resolvedParams = use(params);
   const [staged, setStaged] = useState<StagedFile[]>([]);
+  // Async gitignore filtering needs the latest staged list outside setState
+  const stagedRef = useRef<StagedFile[]>([]);
+  useEffect(() => {
+    stagedRef.current = staged;
+  }, [staged]);
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -165,13 +171,40 @@ export default function UploadPage({
     }
   }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
-  const addFromFileList = useCallback((list: FileList | File[]) => {
-    const incoming = Array.from(list).map((file) => ({
-      file,
-      path: pathFromUploadFile(file),
-    }));
-    setStaged((prev) => mergeStagedUploads(prev, incoming));
-  }, []);
+  // Merge, then re-filter the whole set against the .gitignore files it
+  // contains (works no matter which order files/folders were added in).
+  const stageWithGitignore = useCallback(
+    async (prev: StagedFile[], incoming: StagedFile[]): Promise<StagedFile[]> => {
+      const merged = mergeStagedUploads(prev, incoming);
+      try {
+        const { kept, skipped } = await splitStagedUploadsByGitignore(merged);
+        if (skipped.length > 0) {
+          setStatus(
+            `Skipped ${skipped.length} ignored file(s) (.gitignore / .git internals)`
+          );
+        }
+        return kept;
+      } catch {
+        return merged;
+      }
+    },
+    []
+  );
+
+  const addFromFileList = useCallback(
+    (list: FileList | File[]) => {
+      const incoming = Array.from(list).map((file) => ({
+        file,
+        path: pathFromUploadFile(file),
+      }));
+      void (async () => {
+        const prev = stagedRef.current;
+        const next = await stageWithGitignore(prev, incoming);
+        setStaged(next);
+      })();
+    },
+    [stageWithGitignore]
+  );
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
@@ -193,7 +226,10 @@ export default function UploadPage({
           "Warning: folder paths were not detected (files landed at repo root). Try Drag & drop the folder instead of Choose folder."
         );
       }
-      setStaged((prev) => mergeStagedUploads(prev, incoming));
+      void (async () => {
+        const next = await stageWithGitignore(stagedRef.current, incoming);
+        setStaged(next);
+      })();
     }
     // Allow selecting the same folder/files again
     e.target.value = "";
@@ -217,7 +253,8 @@ export default function UploadPage({
     setDragOver(false);
     try {
       const incoming = await stagedFromDataTransfer(e.dataTransfer);
-      setStaged((prev) => mergeStagedUploads(prev, incoming));
+      const next = await stageWithGitignore(stagedRef.current, incoming);
+      setStaged(next);
     } catch (err) {
       console.error("Drop failed:", err);
       setStatus("Error: Could not read dropped files or folders");
