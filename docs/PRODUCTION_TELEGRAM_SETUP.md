@@ -14,12 +14,14 @@
 In `ui/.env.local` (or your production environment):
 
 ```bash
-# Telegram Bot Token (get from @BotFather) as for example
-TELEGRAM_BOT_TOKEN=7972195915:ANHK03RXP567KGMt95QxgBY343gFnTqSLIl9gUa8
+# Telegram Bot Token (get from @BotFather) — NEVER commit the real token!
+# A real token committed here was abused in the wild (bot renamed, webhook
+# hijacked). Tokens grant full bot control incl. reading users' messages.
+TELEGRAM_BOT_TOKEN=123456789:REPLACE_WITH_TOKEN_FROM_BOTFATHER
 
 # Telegram Channel ID (get by running: node ui/get-channel-id.js)
-# Example: -1003473049390 (for @gittrspace channel)
-TELEGRAM_CHAT_ID=-1003845303000
+# Usually negative with a -100 prefix.
+TELEGRAM_CHAT_ID=-100REPLACE_WITH_CHANNEL_ID
 ```
 
 ### 2. Get Channel ID
