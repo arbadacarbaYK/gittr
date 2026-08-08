@@ -1139,6 +1139,20 @@ export default function HomePage({
                 !
               </p>
               <p>
+                Every repo here also gets a free security audit — known CVEs in
+                its dependencies show on the repo&apos;s{" "}
+                <strong className="text-[var(--color-text-primary)]">
+                  Dependencies
+                </strong>{" "}
+                tab, exact-version matches only.{" "}
+                <Link
+                  href="/help#security-alerts"
+                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                >
+                  How to get alerted
+                </Link>
+              </p>
+              <p>
                 <Link
                   href="/help#when-source-goes-offline"
                   className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"

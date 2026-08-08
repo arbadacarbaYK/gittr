@@ -2209,6 +2209,94 @@ export default function HelpPage() {
               </p>
             </HelpTopic>
 
+            <HelpTopic
+              id="security-alerts"
+              title={<>Security (CVE) Alerts — no alarm spam, by design</>}
+            >
+              <p>
+                Supply-chain attacks on git forges are a hot topic. gittr scans
+                the dependencies of every repo against the public{" "}
+                <a
+                  href="https://osv.dev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  OSV.dev
+                </a>{" "}
+                vulnerability database and shows the result on the repo&apos;s{" "}
+                <strong>Dependencies</strong> tab.
+              </p>
+              <p className="mt-2">
+                <strong>Exact matches only:</strong> an advisory is only
+                reported as confirmed when the exact dependency version from
+                your committed lockfile (
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  package-lock.json
+                </code>
+                ,{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  yarn.lock
+                </code>
+                ,{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  Cargo.lock
+                </code>
+                ,{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">go.mod</code>
+                , pinned{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  requirements.txt
+                </code>
+                , …) falls inside the version range the advisory declares as
+                affected. Versions guessed from ranges in{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  package.json
+                </code>{" "}
+                are listed separately as unconfirmed and never trigger alarms.
+              </p>
+              <p className="mt-2">
+                <strong>How alerts will reach you (Dependabot-style):</strong>{" "}
+                when a confirmed CVE affects your repo, the gittr platform bot
+                opens an issue on that repo — public, auditable, and delivered
+                through your normal issue notifications. No unsolicited DMs,
+                ever. Opt out any time via Settings → Notifications →
+                &quot;Security&quot;. The bot is rolling out carefully and is
+                not live yet; the on-page audit already is.
+              </p>
+              <p className="mt-3 font-semibold text-gray-300">
+                Get the most protection:
+              </p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-1 text-sm">
+                <li>
+                  <strong>Commit your lockfiles.</strong> Without them, exact
+                  versions can&apos;t be verified and you only get unconfirmed
+                  hints.
+                </li>
+                <li>
+                  <strong>Pin versions</strong> where your ecosystem supports it
+                  (e.g.{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    package==1.2.3
+                  </code>{" "}
+                  in requirements.txt).
+                </li>
+                <li>
+                  <strong>Keep issue notifications enabled</strong> in Settings
+                  → Notifications — that&apos;s the channel security issues will
+                  arrive on.
+                </li>
+                <li>
+                  <strong>Check the Dependencies tab</strong> after importing a
+                  repo and after dependency updates.
+                </li>
+                <li>
+                  <strong>Update affected packages</strong> to a version outside
+                  the advisory&apos;s affected range, then re-check the tab.
+                </li>
+              </ul>
+            </HelpTopic>
+
             <HelpTopic title={<>Bounty Notifications</>}>
               <p>Bounty notifications are sent to:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm">

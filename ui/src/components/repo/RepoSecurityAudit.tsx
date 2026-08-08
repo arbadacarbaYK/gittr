@@ -257,24 +257,20 @@ export function RepoSecurityAudit({
           </div>
         )}
 
-        {state.phase === "done" && state.advisories.length === 0 && (
-          <p className="flex items-center gap-2 text-sm text-green-400">
-            <ShieldCheck className="h-4 w-4" />
-            No known vulnerabilities across {state.scanned} package(s).
-          </p>
-        )}
-
-        {state.phase === "done" && state.advisories.length > 0 && (
-          <AdvisoryList
-            advisories={state.advisories}
-            scanned={state.scanned}
-          />
+        {state.phase === "done" && (
+          <AdvisoryList advisories={state.advisories} scanned={state.scanned} />
         )}
       </div>
     </section>
   );
 }
 
+/**
+ * Confirmed = the exact version from a lockfile / `==` pin sits inside the
+ * advisory's affected range. Range-derived guesses (package.json without a
+ * lockfile) are shown separately as unconfirmed and never counted as alarms —
+ * the whole point is to not cry wolf.
+ */
 function AdvisoryList({
   advisories,
   scanned,
@@ -282,7 +278,10 @@ function AdvisoryList({
   advisories: Advisory[];
   scanned: number;
 }) {
-  const counts = advisories.reduce<Record<string, number>>((acc, a) => {
+  const confirmed = advisories.filter((a) => a.precision === "pinned");
+  const possible = advisories.filter((a) => a.precision !== "pinned");
+
+  const counts = confirmed.reduce<Record<string, number>>((acc, a) => {
     acc[a.severity] = (acc[a.severity] || 0) + 1;
     return acc;
   }, {});
@@ -296,22 +295,54 @@ function AdvisoryList({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-[var(--color-text-primary)]">
-          {advisories.length} advisory(ies) across {scanned} package(s):
-        </span>
-        {order
-          .filter((s) => counts[s])
-          .map((s) => (
-            <span
-              key={s}
-              className={`rounded border px-2 py-0.5 text-xs font-medium ${severityStyle[s]}`}
-            >
-              {counts[s]} {s.toLowerCase()}
-            </span>
-          ))}
-      </div>
+      {confirmed.length === 0 && (
+        <p className="flex items-center gap-2 text-sm text-green-400">
+          <ShieldCheck className="h-4 w-4" />
+          No confirmed vulnerabilities across {scanned} package(s) with exact
+          versions.
+        </p>
+      )}
 
+      {confirmed.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-[var(--color-text-primary)]">
+            {confirmed.length} confirmed advisory(ies) — exact versions in this
+            repo are inside the affected range:
+          </span>
+          {order
+            .filter((s) => counts[s])
+            .map((s) => (
+              <span
+                key={s}
+                className={`rounded border px-2 py-0.5 text-xs font-medium ${severityStyle[s]}`}
+              >
+                {counts[s]} {s.toLowerCase()}
+              </span>
+            ))}
+        </div>
+      )}
+
+      {confirmed.length > 0 && <AdvisoryItems advisories={confirmed} />}
+
+      {possible.length > 0 && (
+        <details className="rounded border border-[var(--color-border)] px-3 py-2">
+          <summary className="cursor-pointer text-xs text-[var(--color-text-secondary)]">
+            {possible.length} possible advisory(ies) from package.json version
+            ranges — unconfirmed. Commit a lockfile (package-lock.json /
+            yarn.lock) so exact versions can be checked.
+          </summary>
+          <div className="mt-2">
+            <AdvisoryItems advisories={possible} />
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function AdvisoryItems({ advisories }: { advisories: Advisory[] }) {
+  return (
+    <>
       <ul className="space-y-2">
         {advisories.map((a, idx) => {
           const cve = a.aliases.find((x) => x.startsWith("CVE-"));
@@ -365,6 +396,6 @@ function AdvisoryList({
           );
         })}
       </ul>
-    </div>
+    </>
   );
 }

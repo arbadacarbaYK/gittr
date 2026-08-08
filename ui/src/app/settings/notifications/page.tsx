@@ -23,7 +23,8 @@ type EventKey =
   | "pr_merged"
   | "mention"
   | "bounty_funded"
-  | "bounty_released";
+  | "bounty_released"
+  | "security_cve";
 
 type NotificationPrefs = {
   channels: {
@@ -50,6 +51,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
     mention: true,
     bounty_funded: true,
     bounty_released: true,
+    security_cve: true,
   },
 };
 
@@ -231,6 +233,10 @@ export default function NotificationsPage() {
                 ["mention", "I am @mentioned"],
                 ["bounty_funded", "My Bounties"],
                 ["bounty_released", "Bounty released to me"],
+                [
+                  "security_cve",
+                  "Security: a known CVE affects my repo's exact dependency versions",
+                ],
               ] as [EventKey, string][]
             ).map(([key, label]) => (
               <label
@@ -245,6 +251,34 @@ export default function NotificationsPage() {
                 <span>{label}</span>
               </label>
             ))}
+          </div>
+
+          <div className="space-y-1.5 rounded border border-[#383B42] bg-black/20 p-3 text-xs text-gray-400">
+            <p className="font-semibold text-gray-300">
+              About security (CVE) alerts
+            </p>
+            <p>
+              Every repo already shows a live vulnerability audit on its{" "}
+              <strong>Dependencies</strong> tab (powered by OSV.dev). An alert
+              only counts as confirmed when the <strong>exact version</strong>{" "}
+              from your committed lockfile falls inside an advisory&apos;s
+              affected range — never from guessed version ranges, so no alarm
+              spam.
+            </p>
+            <p>
+              Alerts will be delivered Dependabot-style: the gittr platform bot
+              opens an issue on your affected repo, and you are notified through
+              your normal issue notifications above. No unsolicited DMs. The bot
+              is not live yet — the on-page audit already is.
+            </p>
+            <p>
+              <a
+                href="/help#security-alerts"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                How to get the most out of this (lockfiles, watching, opt-in) →
+              </a>
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
