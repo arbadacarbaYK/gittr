@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 import {
   type ManifestPackage,
   isManifestPath,
@@ -52,7 +53,16 @@ const severityStyle: Record<Advisory["severity"], string> = {
   UNKNOWN: "bg-gray-800 text-gray-300 border-gray-700",
 };
 
-export function RepoSecurityAudit({
+export function RepoSecurityAudit(props: {
+  entity: string;
+  repo: string;
+  branch: string;
+}) {
+  if (!SECURITY_AUDIT_UI_ENABLED) return null;
+  return <RepoSecurityAuditInner {...props} />;
+}
+
+function RepoSecurityAuditInner({
   entity,
   repo,
   branch,

@@ -17,6 +17,7 @@ import {
   GITTR_REPO_GITTR,
   GITTR_REPO_HELPER_TOOLS,
 } from "@/lib/gittr-repo-links";
+import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 import {
   SCHEMATA_NIP25,
   SCHEMATA_NIP34,
@@ -2209,6 +2210,7 @@ export default function HelpPage() {
               </p>
             </HelpTopic>
 
+            {SECURITY_AUDIT_UI_ENABLED && (
             <HelpTopic
               id="security-alerts"
               title={<>Security (CVE) Alerts — no alarm spam, by design</>}
@@ -2296,6 +2298,7 @@ export default function HelpPage() {
                 </li>
               </ul>
             </HelpTopic>
+            )}
 
             <HelpTopic title={<>Bounty Notifications</>}>
               <p>Bounty notifications are sent to:</p>

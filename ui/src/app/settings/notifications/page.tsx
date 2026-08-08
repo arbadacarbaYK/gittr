@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 
 import { nip19 } from "nostr-tools";
 
@@ -238,7 +239,11 @@ export default function NotificationsPage() {
                   "Security: a known CVE affects my repo's exact dependency versions",
                 ],
               ] as [EventKey, string][]
-            ).map(([key, label]) => (
+            )
+              .filter(
+                ([key]) => key !== "security_cve" || SECURITY_AUDIT_UI_ENABLED
+              )
+              .map(([key, label]) => (
               <label
                 key={key}
                 className="flex items-center gap-2 cursor-pointer"
@@ -253,6 +258,7 @@ export default function NotificationsPage() {
             ))}
           </div>
 
+          {SECURITY_AUDIT_UI_ENABLED && (
           <div className="space-y-1.5 rounded border border-[#383B42] bg-black/20 p-3 text-xs text-gray-400">
             <p className="font-semibold text-gray-300">
               About security (CVE) alerts
@@ -280,6 +286,7 @@ export default function NotificationsPage() {
               </a>
             </p>
           </div>
+          )}
 
           <div className="flex items-center gap-3">
             <Button onClick={save}>SAVE NOW</Button>
