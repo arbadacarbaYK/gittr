@@ -30,6 +30,8 @@ const REPOS: Array<{ owner: string; repo: string; label: string }> = [
   // Our own (known-clean after today's fixes)
   { owner: "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c", repo: "gittr", label: "gittr (ours, fixed today)" },
   { owner: "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c", repo: "gitnostr", label: "gitnostr (ours, Go)" },
+  { owner: "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c", repo: "pyramid", label: "pyramid (ours, relay)" },
+  { owner: "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c", repo: "gittr-mcp", label: "gittr-mcp (ours)" },
 ];
 
 type Advisory = {
