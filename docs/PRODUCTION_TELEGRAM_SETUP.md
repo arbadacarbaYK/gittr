@@ -64,7 +64,7 @@ Should show:
 
 2. **Bot replies in channel** with message ID
 
-3. **DM the bot** (`@ngitspacebot`) with `/start`
+3. **DM the bot** (`@gittrupdatebot`) with `/start`
 
 4. **Bot sends DM** with both User ID and Message ID
 
@@ -79,7 +79,7 @@ The bot must be an **admin** in the channel with:
 **To check/update:**
 1. Open channel `@gittrspace`
 2. Settings → Administrators
-3. Find `@ngitspacebot`
+3. Find `@gittrupdatebot`
 4. Ensure "Post Messages" is enabled
 
 ---
@@ -171,7 +171,7 @@ Should show `webhookConfigured: true` and `webhookUrl` with your ngrok URL.
 
 2. Bot should reply in channel with message ID
 
-3. DM bot (`@ngitspacebot`) with `/start`
+3. DM bot (`@gittrupdatebot`) with `/start`
 
 4. Bot sends DM with User ID + Message ID
 

@@ -165,7 +165,7 @@ export default async function handler(
               `• Message ID: <code>${messageId}</code>\n` +
               `• Proof format: <code>${proofFormat}</code>\n\n` +
               `💬 <b>To get your User ID:</b>\n` +
-              `Send me a DM (@ngitspacebot) with your npub:\n` +
+              `Send me a DM (@gittrupdatebot) with your npub:\n` +
               `"<code>${npub || "npub1..."}</code>"\n\n` +
               `I'll match it to this message and send you both User ID and Message ID!`;
 
@@ -241,7 +241,7 @@ export default async function handler(
                 text:
                   `✅ Verification message detected!\n\n` +
                   `To complete verification, please:\n` +
-                  `1. Start a conversation with me (@ngitspacebot) and send /start\n` +
+                  `1. Start a conversation with me (@gittrupdatebot) and send /start\n` +
                   `2. Then I'll send you your User ID and the proof format\n\n` +
                   `Your message ID: <code>${messageId}</code>\n` +
                   `Proof format: <code>${proofFormat}</code>`,

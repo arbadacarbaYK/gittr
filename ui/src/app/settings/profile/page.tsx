@@ -1270,12 +1270,12 @@ export default function ProfilePage() {
                           your message in the channel with your message ID. Then
                           start a conversation with{" "}
                           <a
-                            href="https://t.me/ngitspacebot"
+                            href="https://t.me/gittrupdatebot"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-purple-400 hover:text-purple-300"
                           >
-                            @ngitspacebot
+                            @gittrupdatebot
                           </a>{" "}
                           (send{" "}
                           <code className="bg-[#22262C] px-1 rounded">
