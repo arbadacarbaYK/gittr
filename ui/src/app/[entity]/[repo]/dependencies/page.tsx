@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { RepoSecurityAudit } from "@/components/repo/RepoSecurityAudit";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type RepoFileEntry,
@@ -2702,6 +2703,11 @@ export default function DependenciesPage({
 
   return (
     <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
+      <RepoSecurityAudit
+        entity={resolvedParams.entity}
+        repo={resolvedParams.repo}
+        branch={branch}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <GitBranch className="h-5 w-5 text-purple-500" />

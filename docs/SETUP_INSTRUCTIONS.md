@@ -298,6 +298,8 @@ curl -sI https://your.domain | head -1
 
 Import fails with “>4 MB”: Next API body limit — trim large binaries in the import. See README.
 
+**Security audit (Dependencies tab):** each repo's Dependencies page runs a client-side scan of package manifests (`package.json`, `package-lock.json`, `yarn.lock`, `requirements.txt`, `go.mod`, `Cargo.lock`, `Gemfile.lock`, `composer.lock` — parsed by `ui/src/lib/security/dependency-manifest-parser.ts`) and checks the extracted packages against **OSV.dev** via `POST /api/security/audit` (no API key needed; the server batch-queries OSV and caches advisory details for 6h). Results render as a severity-sorted advisory list (`RepoSecurityAudit.tsx`) with CVE/GHSA links. Versions from lockfiles are `pinned`; versions inferred from `package.json` ranges are marked `approx. version` (lower bound) so false-positive risk is visible. This is display-only — Phase 2 (opt-in Nostr DM alerts to repo owners, default-on only for repos created/imported on this instance, pinned-version matches only) is planned but not implemented.
+
 **Non-GitHub import (`/new` Option 1):** GitLab / Codeberg / Gitea / self-hosted HTTPS or `git@` URLs go to **`POST /api/import-git`** (server `git clone --depth 1`). GitHub uses **`POST /api/import`**. The Import button shows an “Importing…” state and status under the control; web UI paths like `…/-/tree/main` are stripped before clone. Bulk **`/import`** remains **GitHub-only** (list + multi-select); other forges must use Option 1 one repo at a time. After import, **Push** defers to the bridge cloning the `source` URL for any cloneable HTTPS/git@ remote (not only github.com / gitlab.com / codeberg.org), so metadata-only imports do not publish empty bare repos.
 
 ---
