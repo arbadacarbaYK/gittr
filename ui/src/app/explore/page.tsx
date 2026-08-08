@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import {
   isPublisherBlocklisted,
   isRepoFromBlocklistedOwner,
@@ -29,6 +30,7 @@ import {
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
+import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   getEntityDisplayName,
@@ -37,12 +39,19 @@ import {
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
-import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
-import { LoadMoreButton } from "@/components/ui/load-more-button";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
+
+/**
+ * Cold-start SEO seed for /explore (not the 48-card Load more page size).
+ * Snapshot has ~2k+ paths; 600 was a soft quota guard that looked like “stuck”.
+ */
+const EXPLORE_SEED_FETCH_LIMIT = 3000;
+const EXPLORE_SEED_CACHE_CAP = 3000;
+/** Skip re-seed only when cache is already near full catalog size. */
+const EXPLORE_SEED_SKIP_IF_CACHED = 2000;
 
 export const dynamic = "force-dynamic";
 
@@ -971,9 +980,8 @@ function ExplorePageContent() {
             syncedFromNostr: false,
           });
           added++;
-          // Soft cap growth from SEO seed so we don't try to shove 3000 rows
-          // into an already-full origin.
-          if (byKey.size >= 600) break;
+          // Soft cap SEO seed growth (quota) — keep aligned with EXPLORE_SEED_FETCH_LIMIT.
+          if (byKey.size >= EXPLORE_SEED_CACHE_CAP) break;
         }
         if (added > 0) {
           const merged = Array.from(byKey.values());
@@ -994,9 +1002,7 @@ function ExplorePageContent() {
                   localStorage.getItem("gittr_deleted_repos") || "[]"
                 ) as Array<{ entity: string; repo: string }>;
                 const deleted = new Set(
-                  deletedRepos.map(
-                    (d) => `${d.entity}/${d.repo}`.toLowerCase()
-                  )
+                  deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
                 );
                 const fromSeed = merged.filter((r: any) => {
                   const entity = r.entity || "";
@@ -1027,11 +1033,14 @@ function ExplorePageContent() {
     (async () => {
       try {
         const existing = loadStoredRepos() as any[];
-        // Always try SEO seed when cache is thin — recent-repos alone is only ~12.
-        if (existing.length >= 200) return;
+        // Re-seed until near full catalog — old gate at 200 left people stuck at the
+        // previous 600 soft cap with no path to pull the rest of the SEO snapshot.
+        if (existing.length >= EXPLORE_SEED_SKIP_IF_CACHED) return;
 
         const [seedRes, recentRes] = await Promise.all([
-          fetch("/api/explore/seed?limit=600").catch(() => null),
+          fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
+            () => null
+          ),
           fetch("/api/stats/recent-repos").catch(() => null),
         ]);
         if (cancelled) return;
@@ -1061,10 +1070,7 @@ function ExplorePageContent() {
             })
           : null;
 
-        mergeSeed([
-          ...(seedJson?.repos || []),
-          ...(recentJson?.repos || []),
-        ]);
+        mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
       } catch (e) {
         console.warn("[Explore] seed fetch failed:", e);
       }
@@ -3023,49 +3029,49 @@ function ExplorePageContent() {
           !syncing &&
           filteredRepos.length === 0 &&
           repos.length === 0 && (
-          <div className="col-span-2 p-8 text-center text-gray-400">
-            {userFilter ? (
-              <p>No public repositories found for this user.</p>
-            ) : q ? (
-              <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
-            ) : (
-              <p>No repositories yet.</p>
-            )}
-          </div>
-        )}
+            <div className="col-span-2 p-8 text-center text-gray-400">
+              {userFilter ? (
+                <p>No public repositories found for this user.</p>
+              ) : q ? (
+                <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
+              ) : (
+                <p>No repositories yet.</p>
+              )}
+            </div>
+          )}
         {!isLoadingRepos &&
           !syncing &&
           filteredRepos.length === 0 &&
           repos.length > 0 &&
           (q || userFilter) && (
-          <div className="col-span-2 p-8 text-center text-gray-400">
-            {userFilter ? (
-              <p>No public repositories found for this user.</p>
-            ) : (
-              <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
-            )}
-          </div>
-        )}
+            <div className="col-span-2 p-8 text-center text-gray-400">
+              {userFilter ? (
+                <p>No public repositories found for this user.</p>
+              ) : (
+                <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
+              )}
+            </div>
+          )}
         {!isLoadingRepos &&
           syncing &&
           filteredRepos.length === 0 &&
           repos.length === 0 && (
-          <div className="col-span-2 p-8 text-center text-gray-400">
-            <p>Looking up repositories on Nostr relays…</p>
-          </div>
-        )}
+            <div className="col-span-2 p-8 text-center text-gray-400">
+              <p>Looking up repositories on Nostr relays…</p>
+            </div>
+          )}
         {!isLoadingRepos &&
           syncing &&
           filteredRepos.length === 0 &&
           repos.length > 0 &&
           (q || userFilter) && (
-          <div className="col-span-2 p-8 text-center text-gray-400">
-            <p>
-              Still syncing… {repos.length} repos loaded so far
-              {q ? ` (no match for “${qRaw.trim()}” yet)` : ""}.
-            </p>
-          </div>
-        )}
+            <div className="col-span-2 p-8 text-center text-gray-400">
+              <p>
+                Still syncing… {repos.length} repos loaded so far
+                {q ? ` (no match for “${qRaw.trim()}” yet)` : ""}.
+              </p>
+            </div>
+          )}
       </div>
     </div>
   );
