@@ -47,6 +47,7 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { startWarmRepoIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import {
   type StoredContributor,
@@ -1717,6 +1718,28 @@ export default function RepoLayoutClient({
       : mounted && !repoLogo && ownerPicture
       ? ownerPicture
       : "/logo.svg";
+
+  // Foreign clients sometimes announce storage paths ("<hex>/name") or other
+  // junk as the NIP-34 d tag. Those identifiers can never resolve on our
+  // routes, bridge, or GRASP mirrors — show a notice instead of mounting the
+  // repo tabs (which would probe git servers with generated nonsense URLs).
+  if (!isRenderableRepoName(resolvedParams.repo)) {
+    return (
+      <section className="mx-auto max-w-[95%] px-4 py-16 md:px-6 xl:max-w-[90%] 2xl:max-w-[85%]">
+        <div className="mx-auto max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-6 text-center">
+          <h1 className="mb-2 text-lg font-semibold text-[var(--color-text-primary)]">
+            Unsupported repository identifier
+          </h1>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            This repository was announced on Nostr with an identifier gittr
+            cannot serve (it contains path separators or control characters).
+            The announcing client likely published its internal storage path
+            instead of a repository name.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <>

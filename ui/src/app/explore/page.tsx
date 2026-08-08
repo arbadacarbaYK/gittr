@@ -28,6 +28,7 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
@@ -1425,6 +1426,19 @@ function ExplorePageContent() {
                   eventId: event.id.slice(0, 8),
                   hasRepoData: !!repoData,
                   hasRepositoryName: !!repoData?.repositoryName,
+                }
+              );
+              return;
+            }
+
+            // Foreign clients sometimes announce storage paths ("<hex>/name")
+            // as the d tag — those can never resolve on gittr, so don't list.
+            if (!isRenderableRepoName(repoData.repositoryName)) {
+              console.warn(
+                "⚠️ [Explore] Skipping repo with unrenderable identifier:",
+                {
+                  eventId: event.id.slice(0, 8),
+                  repositoryName: String(repoData.repositoryName).slice(0, 80),
                 }
               );
               return;

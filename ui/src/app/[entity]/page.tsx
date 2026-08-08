@@ -46,6 +46,7 @@ import {
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -681,6 +682,9 @@ export default function EntityPage({
       const ownerPubkey = event.pubkey;
 
       if (!repoName || !ownerPubkey) return;
+      // Foreign clients sometimes announce storage paths ("<hex>/name") as
+      // the d tag — those can never resolve on gittr, so don't list them.
+      if (!isRenderableRepoName(repoName)) return;
 
       const existingIndex = existingRepos.findIndex((r: any) => {
         const rOwner =

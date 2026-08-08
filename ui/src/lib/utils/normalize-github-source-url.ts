@@ -16,8 +16,16 @@ export function normalizeGithubSourceUrl(
     try {
       const u = new URL(s);
       const host = u.hostname || "";
-      // e.g. https://PMK/week_calendar — host is mistaken for org name
-      if (host && !host.includes(".") && u.pathname) {
+      // e.g. https://PMK/week_calendar — host is mistaken for org name.
+      // Never "repair" localhost/dev URLs (e.g. http://localhost:5444/forge/…
+      // from a foreign client's announcement) into fake GitHub URLs.
+      if (
+        host &&
+        !host.includes(".") &&
+        u.pathname &&
+        host.toLowerCase() !== "localhost" &&
+        !u.port
+      ) {
         const parts = u.pathname.split("/").filter(Boolean);
         const repoSeg = (parts[0] || "").replace(/\.git$/i, "");
         if (/^[a-z0-9._-]+$/i.test(host) && repoSeg) {
