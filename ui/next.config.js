@@ -37,6 +37,18 @@ const nextConfig = {
         ],
       },
       {
+        // Service worker must update immediately after deploys — a cached
+        // (stale) SW kept serving old page data for hours (React #418 /
+        // webpack chunk errors until hard refresh).
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, must-revalidate",
+          },
+        ],
+      },
+      {
         // NIP-05: browsers on other origins (clients, nostr.watch) must be able to fetch this.
         source: "/.well-known/nostr.json",
         headers: [

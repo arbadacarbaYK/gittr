@@ -104,6 +104,10 @@ export default function HomePage({
   const { isLoggedIn, name, picture, banner } = useSession();
   const { pubkey } = useNostrContext();
   const [mounted, setMounted] = useState(false);
+  // NostrContext restores pubkey from localStorage synchronously, so the first
+  // client render is "logged in" while SSR was "logged out" — every pubkey-
+  // dependent branch below must use this instead to avoid React #418.
+  const hydratedPubkey = mounted ? pubkey : null;
   const [sourceOfflineNoticeVisible, setSourceOfflineNoticeVisible] =
     useState(false);
 
@@ -605,7 +609,7 @@ export default function HomePage({
       metadata: a.metadata,
     });
 
-    if (pubkey) {
+    if (hydratedPubkey) {
       let repos: any[] = [];
       try {
         repos = loadStoredRepos();
@@ -613,7 +617,7 @@ export default function HomePage({
         repos = [];
       }
       const fromPlatform = platformRecentActivities
-        .filter((a) => activityOnUsersRepo(a, pubkey, repos))
+        .filter((a) => activityOnUsersRepo(a, hydratedPubkey, repos))
         .map(mapPlatform);
       const byId = new Map<string, Activity>();
       for (const a of [...fromPlatform, ...recentActivity]) {
@@ -628,7 +632,7 @@ export default function HomePage({
       return platformRecentActivities.map(mapPlatform);
     }
     return recentActivity;
-  }, [recentActivity, platformRecentActivities, pubkey]);
+  }, [recentActivity, platformRecentActivities, hydratedPubkey]);
 
   // Get metadata for user avatars (stats)
   const userPubkeys = useMemo(
@@ -651,17 +655,17 @@ export default function HomePage({
     (repoLike: any): boolean => {
       const isPrivate = repoLike?.publicRead === false;
       if (!isPrivate) return true;
-      if (!pubkey) return false;
+      if (!hydratedPubkey) return false;
 
       const ownerPubkey = getRepoOwnerPubkey(repoLike, repoLike?.entity);
       return hasPrivateRepoAccess(
-        pubkey,
+        hydratedPubkey,
         repoLike?.contributors || [],
         ownerPubkey,
         repoLike?.maintainers || []
       );
     },
-    [pubkey]
+    [hydratedPubkey]
   );
 
   const isValidRecentRepoCard = useCallback(
@@ -686,9 +690,11 @@ export default function HomePage({
         description: p.description,
         syncedFromNostr: true,
       };
-      // Merge local owner flags so HP badge matches My Repositories when possible
+      // Merge local owner flags so HP badge matches My Repositories when possible.
+      // Only after mount — merging localStorage into the first client render
+      // diverges from SSR HTML (hydration mismatch).
       try {
-        if (typeof window === "undefined") return base;
+        if (typeof window === "undefined" || !mounted) return base;
         const stored = loadStoredRepos();
         const match = stored.find((r: any) => {
           const name = r.repositoryName || r.repo || r.slug || r.name;
@@ -717,7 +723,7 @@ export default function HomePage({
         return base;
       }
     },
-    []
+    [mounted]
   );
 
   // Same list for everyone: live API first, then SSR/leaderboard snapshot.
@@ -1698,7 +1704,7 @@ export default function HomePage({
       {(statsLoaded || displayRecentActivity.length > 0) && (
         <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
           <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
-            {pubkey ? "Your recent activity" : "Recent Activity"}
+            {hydratedPubkey ? "Your recent activity" : "Recent Activity"}
           </h3>
           {displayRecentActivity.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
@@ -1932,8 +1938,8 @@ export default function HomePage({
                             {displayName}/{r.name || repo}
                           </div>
                           {/* Status badge */}
-                          {pubkey &&
-                            (r as any).ownerPubkey === pubkey &&
+                          {hydratedPubkey &&
+                            (r as any).ownerPubkey === hydratedPubkey &&
                             (() => {
                               const status = getRepoStatus(r);
                               const style = getStatusBadgeStyle(status);
