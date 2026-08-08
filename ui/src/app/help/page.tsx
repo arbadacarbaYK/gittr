@@ -2139,9 +2139,17 @@ export default function HelpPage() {
                   on Nostr
                 </li>
                 <li>
-                  <strong>Telegram</strong> - Get notifications via Telegram
-                  DMs. Configure your Telegram User ID to receive private
-                  notifications for PRs, issues, and bounties.
+                  <strong>Telegram</strong> - Private DMs via{" "}
+                  <a
+                    href="https://t.me/gittrupdatebot"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    @gittrupdatebot
+                  </a>
+                  : send <code>/start</code>, paste the User ID into Settings →
+                  Notifications. No public channel post required.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">
@@ -2154,7 +2162,7 @@ export default function HelpPage() {
                 >
                   @gittrspace
                 </a>{" "}
-                channel.
+                channel (announcements only — not used for auth).
               </p>
             </HelpTopic>
 

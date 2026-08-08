@@ -955,7 +955,7 @@ export default function ProfilePage() {
                       : newIdentityPlatform === "twitter"
                       ? "Proof (Tweet ID from x.com/username/status/1234567890)"
                       : newIdentityPlatform === "telegram"
-                      ? "Proof (channel/message_id, e.g., nostrdirectory/770)"
+                      ? "Proof (optional)"
                       : newIdentityPlatform === "mastodon"
                       ? "Proof (Post ID)"
                       : "Proof (optional)"
@@ -1208,67 +1208,14 @@ export default function ProfilePage() {
                     )}
                   </button>
                   {newIdentityPlatform === "telegram" && (
-                    <div className="p-2 border-t border-[#383B42]">
-                      <p className="mb-2">Post in a public channel/group:</p>
-                      <ol className="list-decimal list-inside ml-2 mt-1 space-y-2">
+                    <div className="p-2 border-t border-[#383B42] space-y-2 text-sm text-gray-400">
+                      <p>
+                        For notifications you only need your numeric User ID —
+                        no public channel post.
+                      </p>
+                      <ol className="list-decimal list-inside ml-2 space-y-2">
                         <li>
-                          <strong>Post verification message:</strong> In the{" "}
-                          <a
-                            href="https://t.me/gittrspace"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-400 hover:text-purple-300"
-                          >
-                            @gittrspace
-                          </a>{" "}
-                          channel, post:
-                          <div className="mt-1 p-2 bg-[#22262C] border border-[#383B42] rounded flex items-center gap-2 group">
-                            <code
-                              className="flex-1 text-xs select-all"
-                              id="telegram-verification-text"
-                            >
-                              Verifying that I control the following Nostr
-                              public key: "npub1abc123..."
-                            </code>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={async (e) => {
-                                const text =
-                                  document.getElementById(
-                                    "telegram-verification-text"
-                                  )?.textContent || "";
-                                try {
-                                  await navigator.clipboard.writeText(text);
-                                  const btn =
-                                    e.currentTarget as HTMLButtonElement;
-                                  if (btn) {
-                                    const originalHTML = btn.innerHTML;
-                                    btn.innerHTML = "✓";
-                                    btn.className =
-                                      "h-6 w-6 p-0 text-green-400";
-                                    setTimeout(() => {
-                                      btn.innerHTML = originalHTML;
-                                      btn.className =
-                                        "h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity";
-                                    }, 2000);
-                                  }
-                                } catch (err) {
-                                  console.error("Failed to copy:", err);
-                                }
-                              }}
-                              title="Copy to clipboard"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </li>
-                        <li>
-                          <strong>Get your info:</strong> The bot will reply to
-                          your message in the channel with your message ID. Then
-                          start a conversation with{" "}
+                          Open{" "}
                           <a
                             href="https://t.me/gittrupdatebot"
                             target="_blank"
@@ -1277,83 +1224,24 @@ export default function ProfilePage() {
                           >
                             @gittrupdatebot
                           </a>{" "}
-                          (send{" "}
+                          and send{" "}
                           <code className="bg-[#22262C] px-1 rounded">
                             /start
                           </code>
-                          ) to get your User ID.
+                          . The bot DMs you your User ID (only you see it).
                         </li>
                         <li>
-                          <strong>Add to gittr.space:</strong> Use the values
-                          from the bot:
-                          <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                            <li>
-                              Platform:{" "}
-                              <code className="bg-[#22262C] px-1 rounded">
-                                telegram
-                              </code>
-                            </li>
-                            <li>
-                              User ID:{" "}
-                              <code className="bg-[#22262C] px-1 rounded">
-                                from bot's DM
-                              </code>
-                            </li>
-                            <li>
-                              Proof:{" "}
-                              <code className="bg-[#22262C] px-1 rounded">
-                                gittrspace/message_id
-                              </code>{" "}
-                              (from bot's DM)
-                            </li>
-                          </ul>
+                          Paste that User ID here (and in{" "}
+                          <strong className="text-gray-300">
+                            Settings → Notifications
+                          </strong>{" "}
+                          if you want alerts). Proof is optional.
                         </li>
                       </ol>
-                      <div className="text-xs text-gray-500 mt-2 p-2 bg-[#171B21] border border-[#383B42] rounded">
-                        <p className="font-semibold text-gray-400 mb-1">
-                          💡 Alternative ways to get your User ID (if needed):
-                        </p>
-                        <ul className="list-disc list-inside ml-2 space-y-1">
-                          <li>
-                            Message{" "}
-                            <a
-                              href="https://t.me/userinfobot"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-purple-400 hover:text-purple-300"
-                            >
-                              @userinfobot
-                            </a>{" "}
-                            or{" "}
-                            <a
-                              href="https://t.me/MissRose_bot"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-purple-400 hover:text-purple-300"
-                            >
-                              @MissRose_bot
-                            </a>{" "}
-                            on Telegram
-                          </li>
-                          <li>
-                            Telegram Desktop: Settings → Advanced → Experimental
-                            → Enable "Show Peer ID" (then view your profile)
-                          </li>
-                          <li>
-                            Telegram Web: Your User ID is in the URL when
-                            viewing your profile (e.g.,{" "}
-                            <code className="bg-[#22262C] px-1 rounded">
-                              web.telegram.org/k/#-123456789
-                            </code>
-                            )
-                          </li>
-                        </ul>
-                        <p className="mt-2 text-gray-400">
-                          Note: The bot will send you your User ID
-                          automatically, so you usually don't need these
-                          alternatives!
-                        </p>
-                      </div>
+                      <p className="text-xs">
+                        @gittrspace is for public announcements only — never
+                        required for linking Telegram.
+                      </p>
                     </div>
                   )}
                 </div>

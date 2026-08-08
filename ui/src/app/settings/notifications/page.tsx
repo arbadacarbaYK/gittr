@@ -203,16 +203,18 @@ export default function NotificationsPage() {
                     }
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    Get your ID: Message{" "}
+                    Open{" "}
                     <a
-                      href="https://t.me/userinfobot"
+                      href="https://t.me/gittrupdatebot"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-purple-400 hover:text-purple-300"
                     >
-                      @userinfobot
-                    </a>{" "}
-                    on Telegram
+                      @gittrupdatebot
+                    </a>
+                    , send <code className="text-gray-300">/start</code>, and
+                    paste the User ID it replies with. Private DM only — nothing
+                    is posted to the public channel.
                   </p>
                 </div>
               </div>
