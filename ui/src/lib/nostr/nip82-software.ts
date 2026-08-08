@@ -36,6 +36,23 @@ export function readTagAll(event: NostrEventLike, key: string): string[] {
     .map((t) => t[1] as string);
 }
 
+/**
+ * Events are attacker-controlled: anyone can publish kind 32267/3063 with
+ * `url: javascript:…` or `icon: data:text/html…`. These values land in
+ * href/src attributes, so only allow http(s) here at the parse boundary.
+ */
+export function safeHttpUrlTag(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
+    if (u.username || u.password) return undefined;
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ParsedSoftwareApp {
   pubkey: string;
   appId: string;
@@ -75,9 +92,9 @@ export function parseSoftwareApp(
     appId,
     name,
     summary: readTag(event, "summary"),
-    icon: readTag(event, "icon"),
-    repository: readTag(event, "repository"),
-    webUrl: readTag(event, "url"),
+    icon: safeHttpUrlTag(readTag(event, "icon")),
+    repository: safeHttpUrlTag(readTag(event, "repository")),
+    webUrl: safeHttpUrlTag(readTag(event, "url")),
     topics: readTagAll(event, "t")
       .map((x) => x.trim())
       .filter(Boolean),
@@ -152,7 +169,7 @@ export function parseSoftwareAsset(
     id: event.id,
     pubkey: event.pubkey,
     appId: readTag(event, "i"),
-    url: readTag(event, "url"),
+    url: safeHttpUrlTag(readTag(event, "url")),
     mime,
     sha256,
     version: readTag(event, "version"),

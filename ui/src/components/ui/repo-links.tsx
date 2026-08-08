@@ -93,12 +93,25 @@ const groupLinksByType = (links: RepoLink[]) => {
   return grouped;
 };
 
+/** Links come from Nostr events / stored repos (attacker-controlled) —
+ *  only http(s) may reach an href (blocks javascript:/data: injection). */
+const isSafeLinkHref = (url: unknown): boolean => {
+  if (typeof url !== "string" || !url.trim()) return false;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
 export function RepoLinks({ links = [] }: RepoLinksProps) {
-  if (!links || links.length === 0) {
+  const safeLinks = (links || []).filter((l) => isSafeLinkHref(l?.url));
+  if (safeLinks.length === 0) {
     return null;
   }
 
-  const grouped = groupLinksByType(links);
+  const grouped = groupLinksByType(safeLinks);
   const types = Object.keys(grouped) as RepoLink["type"][];
 
   return (

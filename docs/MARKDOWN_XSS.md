@@ -31,6 +31,25 @@ Repo file preview for `.html` (and PDF fallback) in
   browser PDF viewers do not need `allow-scripts`; prefer this over leaving the
   iframe unsandboxed.
 
+## URL attributes from Nostr events (Apps / Pages / Repo Links)
+
+React escapes text, but `href={…}` / `src={…}` fed from **attacker-published
+events** are still an XSS sink (`javascript:` executes on click). Guarded at
+two choke points:
+
+- **NIP-82 software catalog** (kinds 32267 / 3063): `icon`, `repository`,
+  `url` (website), and asset download `url` pass `safeHttpUrlTag` in
+  `ui/src/lib/nostr/nip82-software.ts` — http(s) only, no userinfo. Covers
+  `/apps`, profile Pages & Apps sections, and the software-catalog API.
+- **Repo sidebar Links** (30617 `links` / stored repos): `RepoLinks`
+  (`ui/src/components/ui/repo-links.tsx`) drops any link whose URL is not
+  http(s) before rendering.
+
+The kind-0 profile `website` link is safe by construction (non-`http`-prefixed
+values get `https://` prepended, so no `javascript:` can survive). Mermaid
+diagrams render with `securityLevel: "antiscript"`; the theme script in
+`layout.tsx` is static (no user input).
+
 ## README relative images (Nostr / GRASP)
 
 Relative image paths in READMEs (e.g. `![…](docs/assets/foo.png)`) must **display**
