@@ -199,6 +199,173 @@ function applyStatus(
 }
 
 /**
+ * Warm gittr_issues / gittr_prs for ALL of a user's manageable repos in one
+ * combined subscription — the header's global open-issue/PR totals read only
+ * localStorage, so unvisited repos otherwise count as zero until clicked.
+ * Returns cleanup.
+ */
+export function startWarmAllReposIssuePrFromNostr(opts: {
+  repos: Array<{ entity: string; repo: string }>;
+  subscribe: SubscribeFn;
+  relays: string[];
+}): () => void {
+  const { repos, subscribe, relays } = opts;
+  if (!repos.length || !subscribe || !relays.length) {
+    return () => {};
+  }
+
+  const byAddr = new Map<string, { entity: string; repo: string }>();
+  const byName = new Map<
+    string,
+    Array<{ entity: string; repo: string; ownerHex: string | null }>
+  >();
+  const repoTagOwnerVals = new Set<string>();
+  for (const r of repos) {
+    const ownerHex = resolveOwnerHex(r.entity, r.repo);
+    if (ownerHex) byAddr.set(`30617:${ownerHex}:${r.repo}`, r);
+    const list = byName.get(r.repo) || [];
+    list.push({ ...r, ownerHex });
+    byName.set(r.repo, list);
+    repoTagOwnerVals.add(r.entity);
+    if (ownerHex) repoTagOwnerVals.add(ownerHex);
+  }
+
+  const resolveTarget = (event: {
+    tags: string[][];
+  }): { entity: string; repo: string } | null => {
+    const aTag = event.tags?.find((t) => t[0] === "a");
+    if (aTag?.[1]) {
+      const hit = byAddr.get(aTag[1]);
+      if (hit) return hit;
+    }
+    const repoTag = event.tags?.find((t) => t[0] === "repo");
+    if (repoTag?.[1] && repoTag[2]) {
+      const candidates = byName.get(repoTag[2]) || [];
+      const hit = candidates.find(
+        (c) => c.entity === repoTag[1] || c.ownerHex === repoTag[1]
+      );
+      if (hit) return { entity: hit.entity, repo: hit.repo };
+    }
+    return null;
+  };
+
+  const unsubs: Array<() => void> = [];
+  let cancelled = false;
+
+  // Chunk filters — relays commonly cap tag-filter list sizes.
+  const filters: any[] = [];
+  const addrs = [...byAddr.keys()];
+  for (let i = 0; i < addrs.length; i += 40) {
+    filters.push({
+      kinds: [KIND_ISSUE, KIND_PULL_REQUEST],
+      "#a": addrs.slice(i, i + 40),
+    });
+  }
+  // Legacy events carry `repo` tags instead of `a`; match loosely by
+  // owner/entity — resolveTarget verifies the exact repo before upserting.
+  const ownerVals = [...repoTagOwnerVals];
+  for (let i = 0; i < ownerVals.length; i += 40) {
+    filters.push({
+      kinds: [KIND_ISSUE, KIND_PULL_REQUEST],
+      "#repo": ownerVals.slice(i, i + 40),
+    });
+  }
+
+  unsubs.push(
+    subscribe(filters, relays, (event: any) => {
+      if (cancelled) return;
+      if (event.kind !== KIND_ISSUE && event.kind !== KIND_PULL_REQUEST) return;
+      const target = resolveTarget(event);
+      if (!target) return;
+      try {
+        if (event.kind === KIND_ISSUE) {
+          upsertIssue(target.entity, target.repo, event);
+        } else {
+          upsertPr(target.entity, target.repo, event);
+        }
+      } catch {
+        /* ignore */
+      }
+    })
+  );
+
+  // Status pass after root events land (global warm gets more data → 4s).
+  const statusTimer = window.setTimeout(() => {
+    if (cancelled) return;
+    const issueIdToRepo = new Map<string, { entity: string; repo: string }>();
+    const prIdToRepo = new Map<string, { entity: string; repo: string }>();
+    for (const r of repos) {
+      for (const row of readRepoIssuesFromLocalStorage(
+        r.entity,
+        r.repo
+      ) as any[]) {
+        const id = row.nostrEventId || row.id;
+        if (id) issueIdToRepo.set(id, r);
+      }
+      for (const row of readRepoPullsFromLocalStorage(
+        r.entity,
+        r.repo
+      ) as any[]) {
+        const id = row.nostrEventId || row.id;
+        if (id) prIdToRepo.set(id, r);
+      }
+    }
+
+    const subscribeStatuses = (
+      kinds: number[],
+      idToRepo: Map<string, { entity: string; repo: string }>,
+      kind: "issues" | "prs"
+    ) => {
+      const ids = [...idToRepo.keys()];
+      for (let i = 0; i < ids.length; i += 200) {
+        unsubs.push(
+          subscribe(
+            [{ kinds, "#e": ids.slice(i, i + 200) }],
+            relays,
+            (event: any) => {
+              if (cancelled) return;
+              const rootTag = event.tags?.find(
+                (t: string[]) => t[0] === "e" && t[3] === "root"
+              );
+              const target = rootTag?.[1] ? idToRepo.get(rootTag[1]) : null;
+              if (!target) return;
+              try {
+                applyStatus(target.entity, target.repo, kind, event);
+              } catch {
+                /* ignore */
+              }
+            }
+          )
+        );
+      }
+    };
+
+    subscribeStatuses(
+      [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+      issueIdToRepo,
+      "issues"
+    );
+    subscribeStatuses(
+      [KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED, KIND_STATUS_DRAFT],
+      prIdToRepo,
+      "prs"
+    );
+  }, 4000);
+
+  return () => {
+    cancelled = true;
+    window.clearTimeout(statusTimer);
+    for (const u of unsubs) {
+      try {
+        u();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+}
+
+/**
  * Subscribe to NIP-34 issues + PRs (+ status) for badge warming.
  * Returns cleanup. Safe alongside Issues/PRs page subscriptions.
  */

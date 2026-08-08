@@ -13,7 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import useSession from "@/lib/nostr/useSession";
+import { startWarmAllReposIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
 import {
@@ -112,7 +114,7 @@ const restGitInfo = DropdownItems.slice(8);
 
 export function Header() {
   const { picture, name, initials, isLoggedIn } = useSession();
-  const { signOut, pubkey } = useNostrContext();
+  const { signOut, pubkey, subscribe, defaultRelays } = useNostrContext();
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -169,16 +171,59 @@ export function Header() {
   useEffect(() => {
     if (!mounted || !isLoggedIn) return;
     refreshGlobalIssuePrCounts();
-    const bump = () => refreshGlobalIssuePrCounts();
+    // Debounced: the global warm below can deliver hundreds of events in a
+    // burst; recount once per burst instead of per event.
+    let timer: number | undefined;
+    const bump = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refreshGlobalIssuePrCounts, 300);
+    };
     window.addEventListener("gittr:issue-updated", bump);
     window.addEventListener("gittr:pr-updated", bump);
     window.addEventListener("gittr:repos-updated", bump);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener("gittr:issue-updated", bump);
       window.removeEventListener("gittr:pr-updated", bump);
       window.removeEventListener("gittr:repos-updated", bump);
     };
   }, [mounted, isLoggedIn, refreshGlobalIssuePrCounts]);
+
+  // The counts above read only localStorage — repos never visited would count
+  // zero forever (numbers "built up" as tabs were clicked). Warm all
+  // manageable repos from Nostr in one combined subscription, at most once
+  // per 10 minutes per session.
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !pubkey) return;
+    if (!subscribe || !defaultRelays?.length) return;
+    try {
+      const last = Number(
+        sessionStorage.getItem("gittr_global_issue_pr_warm") || 0
+      );
+      if (Date.now() - last < 10 * 60_000) return;
+      sessionStorage.setItem("gittr_global_issue_pr_warm", String(Date.now()));
+    } catch {
+      /* warm anyway */
+    }
+    const manageable = loadStoredRepos()
+      .filter((repo) => repoAllowsUserToManagePRsAndIssues(repo, pubkey))
+      .map((repo) => ({
+        entity:
+          repo.entity ||
+          repo.slug?.split("/")[0] ||
+          repo.ownerPubkey?.slice(0, 8) ||
+          "",
+        repo:
+          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "",
+      }))
+      .filter((r) => r.entity && r.repo);
+    if (!manageable.length) return;
+    return startWarmAllReposIssuePrFromNostr({
+      repos: manageable,
+      subscribe,
+      relays: getAllRelays(defaultRelays),
+    });
+  }, [mounted, isLoggedIn, pubkey, subscribe, defaultRelays]);
 
   const navItems = useMemo(
     () =>
