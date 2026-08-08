@@ -1,129 +1,222 @@
 "use client";
 
+import {
+  mimeForRepoImagePath,
+  resolveReadmeMarkdownImage,
+} from "@/lib/repos/resolve-readme-markdown-image";
 import { useEffect, useState } from "react";
 
 type Props = {
   alt?: string;
-  primarySrc: string;
-  /** Relative path in the repo (for same-origin API fallback). */
-  repoPath?: string;
-  sourceUrl?: string;
+  /** Raw markdown `src` (relative or absolute). */
+  src?: string;
   branch?: string;
+  forgeSourceUrl?: string | null;
+  cloneUrls?: string[] | null;
+  ownerPubkey?: string | null;
+  repoName?: string | null;
   className?: string;
 };
 
+type FetchOk = { dataUrl: string };
+
+async function fetchViaGitFileContent(
+  sourceUrl: string,
+  path: string,
+  branch: string
+): Promise<FetchOk | null> {
+  const q = new URLSearchParams({
+    sourceUrl: sourceUrl.replace(/\.git$/, ""),
+    path,
+    branch,
+  });
+  const res = await fetch(`/api/git/file-content?${q.toString()}`);
+  if (!res.ok) return null;
+  const data = (await res.json()) as { content?: string; isBinary?: boolean };
+  if (!data.content) return null;
+  const mime = mimeForRepoImagePath(path);
+  if (data.isBinary) {
+    return {
+      dataUrl: `data:${mime};base64,${data.content.replace(/\s/g, "")}`,
+    };
+  }
+  if (mime === "image/svg+xml") {
+    return {
+      dataUrl: `data:${mime};charset=utf-8,${encodeURIComponent(data.content)}`,
+    };
+  }
+  return {
+    dataUrl: `data:${mime};base64,${btoa(data.content)}`,
+  };
+}
+
+async function fetchViaNostrBridge(
+  ownerPubkey: string,
+  repo: string,
+  path: string,
+  branch: string
+): Promise<FetchOk | null> {
+  const q = new URLSearchParams({
+    ownerPubkey,
+    repo,
+    path,
+    branch,
+  });
+  const res = await fetch(`/api/nostr/repo/file-content?${q.toString()}`);
+  if (!res.ok) return null;
+  const data = (await res.json()) as { content?: string; isBinary?: boolean };
+  if (!data.content) return null;
+  const mime = mimeForRepoImagePath(path);
+  if (data.isBinary) {
+    return {
+      dataUrl: `data:${mime};base64,${data.content.replace(/\s/g, "")}`,
+    };
+  }
+  if (mime === "image/svg+xml") {
+    return {
+      dataUrl: `data:${mime};charset=utf-8,${encodeURIComponent(data.content)}`,
+    };
+  }
+  return {
+    dataUrl: `data:${mime};base64,${btoa(data.content)}`,
+  };
+}
+
 /**
- * README images often point at raw.githubusercontent.com. Some browsers / Brave
- * shields fail those hotlinks (especially SVG). Fall back to our file-content API
- * (same origin) and render a data URL.
+ * README images: relative paths (e.g. docs/assets/*.png) must render on
+ * Nostr-native / GRASP repos via same-origin file APIs — not invent /raw/ URLs
+ * and not require Blossom for in-repo assets.
  */
 export function ReadmeMarkdownImage({
   alt = "",
-  primarySrc,
-  repoPath,
-  sourceUrl,
+  src = "",
   branch = "main",
+  forgeSourceUrl,
+  cloneUrls,
+  ownerPubkey,
+  repoName,
   className = "max-w-full h-auto rounded",
 }: Props) {
-  const [src, setSrc] = useState(primarySrc);
-  const [triedApi, setTriedApi] = useState(false);
+  const [displaySrc, setDisplaySrc] = useState("");
+  const [apiTried, setApiTried] = useState(false);
+  const [meta, setMeta] = useState(() =>
+    resolveReadmeMarkdownImage({
+      src,
+      branch,
+      forgeSourceUrl,
+      cloneUrls,
+      ownerPubkey,
+      repoName,
+    })
+  );
 
   useEffect(() => {
-    setSrc(primarySrc);
-    setTriedApi(false);
-  }, [primarySrc, repoPath, sourceUrl, branch]);
+    const next = resolveReadmeMarkdownImage({
+      src,
+      branch,
+      forgeSourceUrl,
+      cloneUrls,
+      ownerPubkey,
+      repoName,
+    });
+    setMeta(next);
+    setDisplaySrc(next?.primarySrc || "");
+    setApiTried(false);
+  }, [src, branch, forgeSourceUrl, cloneUrls, ownerPubkey, repoName]);
 
   useEffect(() => {
-    if (!src || triedApi || !repoPath || !sourceUrl) return;
-    // Prefer same-origin for SVG up front — raw GitHub SVG often fails as <img> in Brave.
-    if (!/\.svg(\?|#|$)/i.test(repoPath) && !/\.svg(\?|#|$)/i.test(primarySrc)) {
-      return;
-    }
+    if (!meta?.repoPath || apiTried) return;
+    const needsApi =
+      meta.preferApi ||
+      !meta.primarySrc ||
+      /\.svg(\?|#|$)/i.test(meta.repoPath);
+
+    if (!needsApi && meta.primarySrc) return;
+
     let cancelled = false;
     (async () => {
       try {
-        const q = new URLSearchParams({
-          sourceUrl: sourceUrl.replace(/\.git$/, ""),
-          path: repoPath,
-          branch,
-        });
-        const res = await fetch(`/api/git/file-content?${q.toString()}`);
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          content?: string;
-          isBinary?: boolean;
-        };
-        if (!data.content || cancelled) return;
-        const b64 = data.content.replace(/\s/g, "");
-        const dataUrl = data.isBinary
-          ? `data:image/svg+xml;base64,${b64}`
-          : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(data.content)}`;
-        setTriedApi(true);
-        setSrc(dataUrl);
+        let ok: FetchOk | null = null;
+        if (meta.sourceUrl) {
+          ok = await fetchViaGitFileContent(
+            meta.sourceUrl,
+            meta.repoPath!,
+            branch
+          );
+        }
+        if (!ok && meta.ownerPubkey && meta.repoName) {
+          ok = await fetchViaNostrBridge(
+            meta.ownerPubkey,
+            meta.repoName,
+            meta.repoPath!,
+            branch
+          );
+        }
+        if (!cancelled) {
+          setApiTried(true);
+          if (ok?.dataUrl) setDisplaySrc(ok.dataUrl);
+        }
       } catch {
-        /* keep primarySrc; onError may retry */
+        if (!cancelled) setApiTried(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [src, triedApi, repoPath, sourceUrl, branch, primarySrc]);
+  }, [
+    apiTried,
+    branch,
+    meta?.preferApi,
+    meta?.primarySrc,
+    meta?.repoPath,
+    meta?.sourceUrl,
+    meta?.ownerPubkey,
+    meta?.repoName,
+  ]);
 
-  if (!src) return null;
+  if (!meta) return null;
+  if (!displaySrc && !meta.preferApi) return null;
+  if (!displaySrc) {
+    return (
+      <span className="text-sm text-gray-500 italic" title={meta.repoPath}>
+        {alt || "Loading image…"}
+      </span>
+    );
+  }
 
   return (
     <img
-      src={src}
+      src={displaySrc}
       alt={alt}
       className={className}
       style={{ maxWidth: "100%", width: "auto", height: "auto" }}
       onError={async () => {
-        if (triedApi || !repoPath || !sourceUrl) {
-          console.warn("⚠️ [README] Image failed to load:", primarySrc);
+        if (apiTried || !meta.repoPath) {
+          console.warn("⚠️ [README] Image failed to load:", src);
           return;
         }
-        setTriedApi(true);
+        setApiTried(true);
         try {
-          const q = new URLSearchParams({
-            sourceUrl: sourceUrl.replace(/\.git$/, ""),
-            path: repoPath,
-            branch,
-          });
-          const res = await fetch(`/api/git/file-content?${q.toString()}`);
-          if (!res.ok) {
-            console.warn("⚠️ [README] Image failed to load:", primarySrc);
-            return;
-          }
-          const data = (await res.json()) as {
-            content?: string;
-            isBinary?: boolean;
-          };
-          if (!data.content) {
-            console.warn("⚠️ [README] Image failed to load:", primarySrc);
-            return;
-          }
-          const ext = (repoPath.split(".").pop() || "").toLowerCase();
-          const mime =
-            ext === "svg"
-              ? "image/svg+xml"
-              : ext === "png"
-                ? "image/png"
-                : ext === "jpg" || ext === "jpeg"
-                  ? "image/jpeg"
-                  : ext === "gif"
-                    ? "image/gif"
-                    : ext === "webp"
-                      ? "image/webp"
-                      : "application/octet-stream";
-          if (data.isBinary) {
-            setSrc(`data:${mime};base64,${data.content.replace(/\s/g, "")}`);
-          } else {
-            setSrc(
-              `data:${mime};charset=utf-8,${encodeURIComponent(data.content)}`
+          let ok: FetchOk | null = null;
+          if (meta.sourceUrl) {
+            ok = await fetchViaGitFileContent(
+              meta.sourceUrl,
+              meta.repoPath,
+              branch
             );
           }
+          if (!ok && meta.ownerPubkey && meta.repoName) {
+            ok = await fetchViaNostrBridge(
+              meta.ownerPubkey,
+              meta.repoName,
+              meta.repoPath,
+              branch
+            );
+          }
+          if (ok?.dataUrl) setDisplaySrc(ok.dataUrl);
+          else console.warn("⚠️ [README] Image failed to load:", src);
         } catch {
-          console.warn("⚠️ [README] Image failed to load:", primarySrc);
+          console.warn("⚠️ [README] Image failed to load:", src);
         }
       }}
     />

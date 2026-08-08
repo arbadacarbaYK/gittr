@@ -17788,126 +17788,33 @@ export function RepoCodePage() {
                         ...readmeHeadingComponents,
                         ...markdownProseCodeSafeComponents,
                         img: ({ node, ...props }) => {
-                          // Transform relative image paths to absolute URLs
-                          let imageSrc = props.src || "";
-                          let imagePath = "";
                           const branch =
                             selectedBranch || repoData?.defaultBranch || "main";
-                          const sourceUrl = (
+                          const forgeSourceUrl =
                             effectiveSourceUrl ||
                             repoData?.sourceUrl ||
-                            (Array.isArray(
-                              (repoData as { clone?: string[] } | null)?.clone
-                            )
-                              ? (repoData as { clone?: string[] }).clone?.find(
-                                  (u) => /github\.com/i.test(u)
-                                )
-                              : "") ||
-                            ""
-                          ).replace(/\.git$/, "");
-
-                          // If src is already an absolute URL (http:// or https://) or data URL, use it as-is
-                          if (
-                            imageSrc.startsWith("http://") ||
-                            imageSrc.startsWith("https://") ||
-                            imageSrc.startsWith("data:")
-                          ) {
-                            return (
-                              <div className="my-4 overflow-x-auto">
-                                <ReadmeMarkdownImage
-                                  primarySrc={imageSrc}
-                                  alt={props.alt || ""}
-                                  sourceUrl={sourceUrl || undefined}
-                                  branch={branch}
-                                />
-                              </div>
-                            );
-                          }
-
-                          // For relative paths, resolve them using the repository's sourceUrl or API
-                          if (imageSrc && repoData) {
-                            try {
-                              imagePath = imageSrc;
-                              if (imagePath.startsWith("./")) {
-                                imagePath = imagePath.slice(2);
-                              } else if (imagePath.startsWith("/")) {
-                                imagePath = imagePath.slice(1);
-                              }
-
-                              const githubMatch = sourceUrl.match(
-                                /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                              );
-                              const gitlabMatch = sourceUrl.match(
-                                /gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                              );
-                              const codebergMatch = sourceUrl.match(
-                                /codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                              );
-
-                              if (githubMatch) {
-                                const [, owner, repo] = githubMatch;
-                                imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-                                  branch
-                                )}/${imagePath}`;
-                              } else if (gitlabMatch) {
-                                const [, owner, repo] = gitlabMatch;
-                                imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
-                                  branch
-                                )}/${imagePath}`;
-                              } else if (codebergMatch) {
-                                const [, owner, repo] = codebergMatch;
-                                imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
-                                  branch
-                                )}/${imagePath}`;
-                              } else if (!sourceUrl) {
-                                imageSrc = "";
-                              } else {
-                                try {
-                                  const url = new URL(sourceUrl);
-                                  const pathParts = url.pathname
-                                    .split("/")
-                                    .filter(Boolean);
-                                  if (pathParts.length >= 2) {
-                                    const owner = pathParts[0];
-                                    const repo = pathParts[1];
-                                    imageSrc = `${url.protocol}//${
-                                      url.host
-                                    }/${owner}/${repo}/raw/${encodeURIComponent(
-                                      branch
-                                    )}/${imagePath}`;
-                                  } else {
-                                    console.warn(
-                                      "⚠️ [README] Could not parse sourceUrl for image:",
-                                      sourceUrl
-                                    );
-                                  }
-                                } catch (e) {
-                                  console.warn(
-                                    "⚠️ [README] Failed to construct raw URL for image:",
-                                    imageSrc,
-                                    e
-                                  );
-                                }
-                              }
-                            } catch (e) {
-                              console.warn(
-                                "⚠️ [README] Failed to resolve image URL:",
-                                imageSrc,
-                                e
-                              );
-                            }
-                          }
-
-                          if (!imageSrc) return null;
-
+                            null;
+                          const cloneUrls = Array.isArray(
+                            (repoData as { clone?: string[] } | null)?.clone
+                          )
+                            ? (repoData as { clone: string[] }).clone
+                            : null;
+                          const ownerPk =
+                            repoOwnerPubkey ||
+                            entityPubkey ||
+                            (repoData as { ownerPubkey?: string } | null)
+                              ?.ownerPubkey ||
+                            null;
                           return (
                             <div className="my-4 overflow-x-auto">
                               <ReadmeMarkdownImage
-                                primarySrc={imageSrc}
-                                repoPath={imagePath || undefined}
-                                sourceUrl={sourceUrl || undefined}
-                                branch={branch}
+                                src={props.src || ""}
                                 alt={props.alt || ""}
+                                branch={branch}
+                                forgeSourceUrl={forgeSourceUrl}
+                                cloneUrls={cloneUrls}
+                                ownerPubkey={ownerPk}
+                                repoName={decodedRepo}
                               />
                             </div>
                           );
@@ -18420,111 +18327,35 @@ export function RepoCodePage() {
                             ...fileHeadingComponents,
                             ...markdownProseCodeSafeComponents,
                             img: ({ node, ...props }) => {
-                              let imageSrc = props.src || "";
-                              let imagePath = "";
                               const branch =
                                 selectedBranch ||
                                 repoData?.defaultBranch ||
                                 "main";
-                              const sourceUrl = (
+                              const forgeSourceUrl =
                                 effectiveSourceUrl ||
                                 repoData?.sourceUrl ||
-                                ""
-                              ).replace(/\.git$/, "");
-
-                              if (
-                                imageSrc.startsWith("http://") ||
-                                imageSrc.startsWith("https://") ||
-                                imageSrc.startsWith("data:")
-                              ) {
-                                return (
-                                  <div className="my-4 overflow-x-auto">
-                                    <ReadmeMarkdownImage
-                                      primarySrc={imageSrc}
-                                      alt={props.alt || ""}
-                                      sourceUrl={sourceUrl || undefined}
-                                      branch={branch}
-                                    />
-                                  </div>
-                                );
-                              }
-
-                              if (imageSrc && repoData) {
-                                try {
-                                  imagePath = imageSrc;
-                                  if (imagePath.startsWith("./")) {
-                                    imagePath = imagePath.slice(2);
-                                  } else if (imagePath.startsWith("/")) {
-                                    imagePath = imagePath.slice(1);
-                                  }
-
-                                  const githubMatch = sourceUrl.match(
-                                    /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                                  );
-                                  const gitlabMatch = sourceUrl.match(
-                                    /gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                                  );
-                                  const codebergMatch = sourceUrl.match(
-                                    /codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                                  );
-
-                                  if (githubMatch) {
-                                    const [, owner, repo] = githubMatch;
-                                    imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-                                      branch
-                                    )}/${imagePath}`;
-                                  } else if (gitlabMatch) {
-                                    const [, owner, repo] = gitlabMatch;
-                                    imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
-                                      branch
-                                    )}/${imagePath}`;
-                                  } else if (codebergMatch) {
-                                    const [, owner, repo] = codebergMatch;
-                                    imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
-                                      branch
-                                    )}/${imagePath}`;
-                                  } else if (sourceUrl) {
-                                    try {
-                                      const url = new URL(sourceUrl);
-                                      const pathParts = url.pathname
-                                        .split("/")
-                                        .filter(Boolean);
-                                      if (pathParts.length >= 2) {
-                                        const owner = pathParts[0];
-                                        const repo = pathParts[1];
-                                        imageSrc = `${url.protocol}//${
-                                          url.host
-                                        }/${owner}/${repo}/raw/${encodeURIComponent(
-                                          branch
-                                        )}/${imagePath}`;
-                                      }
-                                    } catch (e) {
-                                      console.warn(
-                                        "⚠️ [README] Failed to construct raw URL for image:",
-                                        imageSrc,
-                                        e
-                                      );
-                                    }
-                                  }
-                                } catch (e) {
-                                  console.warn(
-                                    "⚠️ [README] Failed to resolve image URL:",
-                                    imageSrc,
-                                    e
-                                  );
-                                }
-                              }
-
-                              if (!imageSrc) return null;
-
+                                null;
+                              const cloneUrls = Array.isArray(
+                                (repoData as { clone?: string[] } | null)?.clone
+                              )
+                                ? (repoData as { clone: string[] }).clone
+                                : null;
+                              const ownerPk =
+                                repoOwnerPubkey ||
+                                entityPubkey ||
+                                (repoData as { ownerPubkey?: string } | null)
+                                  ?.ownerPubkey ||
+                                null;
                               return (
                                 <div className="my-4 overflow-x-auto">
                                   <ReadmeMarkdownImage
-                                    primarySrc={imageSrc}
-                                    repoPath={imagePath || undefined}
-                                    sourceUrl={sourceUrl || undefined}
-                                    branch={branch}
+                                    src={props.src || ""}
                                     alt={props.alt || ""}
+                                    branch={branch}
+                                    forgeSourceUrl={forgeSourceUrl}
+                                    cloneUrls={cloneUrls}
+                                    ownerPubkey={ownerPk}
+                                    repoName={decodedRepo}
                                   />
                                 </div>
                               );

@@ -9,8 +9,7 @@
     "start": "next start",
     "prettier": "prettier src/**/*.{ts,tsx} --write",
     "eslint": "eslint --ext .ts,.tsx --fix .",
-    "test:unit": "npx vitest run src/lib/git/bare-repo-tree-last-commits.test.ts src/lib/utils/filter-display-clone-urls.test.ts src/lib/nostr/should-announce-upstream-tip.test.ts src/lib/repos/repo-file-tree-branch.test.ts src/lib/repos/forge-tree-shrink.test.ts src/lib/repos/select-display-file-tree.test.ts src/lib/security/markdown-rehype-plugins.test.ts src/lib/ui/list-pagination.test.ts",
-    "test:regressions": "npm run test:unit",
+    "test:unit": "npx vitest run src/lib/git/bare-repo-tree-last-commits.test.ts src/lib/utils/filter-display-clone-urls.test.ts src/lib/nostr/should-announce-upstream-tip.test.ts src/lib/repos/repo-file-tree-branch.test.ts src/lib/repos/forge-tree-shrink.test.ts src/lib/repos/select-display-file-tree.test.ts src/lib/security/markdown-rehype-plugins.test.ts src/lib/ui/list-pagination.test.ts src/lib/repos/resolve-readme-markdown-image.test.ts",    "test:regressions": "npm run test:unit",
     "delete:nostr-relaypool-ts": "rimraf ./node_modules/nostr-relaypool/*.ts",
     "generate-system-keypair": "node scripts/generate-system-keypair.js"
   },

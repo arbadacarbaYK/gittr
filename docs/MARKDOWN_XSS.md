@@ -30,3 +30,11 @@ Repo file preview for `.html` (and PDF fallback) in
 - **PDF fallback iframe**: restrictive empty `sandbox=""` (no scripts). Native
   browser PDF viewers do not need `allow-scripts`; prefer this over leaving the
   iframe unsandboxed.
+
+## README relative images (Nostr / GRASP)
+
+Relative image paths in READMEs (e.g. `![…](docs/assets/foo.png)`) must **display**
+on Nostr-native / GRASP repos via same-origin file APIs — see
+`ui/src/lib/repos/resolve-readme-markdown-image.ts` and
+`ReadmeMarkdownImage`. Do not invent forge `/raw/` URLs for `git.gittr.space`.
+Blossom is only for hosted media outside the git tree, not for in-repo README assets.
