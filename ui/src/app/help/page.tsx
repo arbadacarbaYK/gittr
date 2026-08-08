@@ -2258,6 +2258,14 @@ export default function HelpPage() {
                 are listed separately as unconfirmed and never trigger alarms.
               </p>
               <p className="mt-2">
+                <strong>How often does the check run?</strong> The audit runs
+                fresh every time the <strong>Dependencies</strong> tab of a
+                repo is opened — there is no fixed schedule. Advisory details
+                are cached on the server for about 6 hours, so a newly
+                published CVE shows up within hours, at the latest on the next
+                visit after the cache expires.
+              </p>
+              <p className="mt-2">
                 <strong>How alerts will reach you (Dependabot-style):</strong>{" "}
                 when a confirmed CVE affects your repo, the gittr platform bot
                 opens an issue on that repo — public, auditable, and delivered
@@ -2265,6 +2273,13 @@ export default function HelpPage() {
                 ever. Opt out any time via Settings → Notifications →
                 &quot;Security&quot;. The bot is rolling out carefully and is
                 not live yet; the on-page audit already is.
+              </p>
+              <p className="mt-2">
+                <strong>One alert per problem — not per scan:</strong> each
+                advisory triggers at most one issue per repo, ever. Repeated
+                scans that find the same known vulnerability stay silent. A new
+                issue is only opened for a <em>new</em> advisory (or the same
+                advisory reappearing after you fixed and closed it).
               </p>
               <p className="mt-3 font-semibold text-gray-300">
                 Get the most protection:

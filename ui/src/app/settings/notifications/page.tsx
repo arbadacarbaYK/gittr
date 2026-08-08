@@ -278,6 +278,12 @@ export default function NotificationsPage() {
               is not live yet — the on-page audit already is.
             </p>
             <p>
+              The audit runs each time a repo&apos;s Dependencies tab is opened
+              (advisory data cached ~6h). Alerts are deduplicated: one issue per
+              advisory per repo, ever — repeat scans finding the same known CVE
+              stay silent.
+            </p>
+            <p>
               <a
                 href="/help#security-alerts"
                 className="text-purple-400 hover:text-purple-300"
