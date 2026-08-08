@@ -15968,11 +15968,16 @@ export function RepoCodePage() {
       "gitnostr.com",
     ].filter(Boolean);
     const pickFrom = (urls: string[]) => {
-      const preferred = urls.find((url) => {
-        const h = hostOf(url);
-        return preferredHosts.includes(h) && !isIpHost(h);
-      });
-      return preferred || urls.find((url) => !isIpHost(hostOf(url))) || urls[0];
+      // Prefer preferredHosts *order* (git.gittr.space before relay.gittr.space),
+      // not clone-list order — announcements / inferred lists often put relay first.
+      for (const preferred of preferredHosts) {
+        const hit = urls.find((url) => {
+          const h = hostOf(url);
+          return h === preferred && !isIpHost(h);
+        });
+        if (hit) return hit;
+      }
+      return urls.find((url) => !isIpHost(hostOf(url))) || urls[0];
     };
     if (announcementClones.length > 0) {
       const pickAnnounced = pickFrom(announcementClones);
@@ -15985,10 +15990,16 @@ export function RepoCodePage() {
         };
       }
     }
-    const preferredClone = httpCloneUrls.find((url) => {
-      const h = hostOf(url);
-      return preferredHosts.includes(h) && !isIpHost(h);
-    });
+    const preferredClone = (() => {
+      for (const preferred of preferredHosts) {
+        const hit = httpCloneUrls.find((url) => {
+          const h = hostOf(url);
+          return h === preferred && !isIpHost(h);
+        });
+        if (hit) return hit;
+      }
+      return undefined;
+    })();
     const anyNonIp = httpCloneUrls.find((url) => !isIpHost(hostOf(url)));
     // Fall back to a non-forge sourceUrl only if it is not a bare IP
     const fromSourceAsClone =

@@ -6,7 +6,7 @@ import {
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
-  PLATFORM_STATS_RELAYS,
+  PROFILE_REPOS_RELAYS,
   withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
 import { preferRepoDisplayName } from "@/lib/repos/merge-profile-repos";
@@ -82,10 +82,10 @@ export default async function handler(
   try {
     const byKey = new Map<string, ProfileRepoRow>();
 
-    await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
+    await withRelayPoolSubscribe(PROFILE_REPOS_RELAYS, async (subscribe) => {
       await new Promise<void>((resolve) => {
         let eoseCount = 0;
-        const expectedEose = PLATFORM_STATS_RELAYS.length;
+        const expectedEose = PROFILE_REPOS_RELAYS.length;
         let done = false;
 
         const finish = () => {
@@ -206,7 +206,7 @@ export default async function handler(
               limit: 500,
             },
           ],
-          PLATFORM_STATS_RELAYS,
+          PROFILE_REPOS_RELAYS,
           (event) => upsert(event),
           undefined,
           () => {

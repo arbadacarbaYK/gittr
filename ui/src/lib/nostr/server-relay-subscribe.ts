@@ -2,14 +2,32 @@
  * Server-side Nostr subscribe adapter (RelayPool) matching the client subscribe signature
  * used by stats.ts count*FromNostr helpers.
  */
-import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 
-/** Small relay set for server-side stats/metadata — avoids opening 9+ GRASP websockets per request. */
+/** Small relay set for lightweight server-side stats — avoids opening many websockets. */
 export const PLATFORM_STATS_RELAYS = [
   "wss://relay.gittr.space",
   "wss://nos.lol",
   "wss://relay.damus.io",
 ];
+
+/**
+ * NIP-34 discovery relays for profile / repo lookup. Many NostrHub / ngit
+ * announcements never land on gittr's Pyramid relay — without these, profiles
+ * under-count vs Explore (SEO snapshot) and Explore live sync.
+ */
+export const NIP34_DISCOVERY_RELAYS = [
+  "wss://relay.gittr.space",
+  "wss://relay.ngit.dev",
+  "wss://git.shakespeare.diy",
+  "wss://git.nostrhub.io",
+  "wss://gitnostr.com",
+  "wss://nos.lol",
+];
+
+/** Union used by profile-repos (and similar author-scoped 30617 queries). */
+export const PROFILE_REPOS_RELAYS = Array.from(
+  new Set([...PLATFORM_STATS_RELAYS, ...NIP34_DISCOVERY_RELAYS])
+);
 
 export type NostrSubscribeFn = (
   filters: unknown[],

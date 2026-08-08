@@ -122,7 +122,7 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 
 Profile pages show a **repo count** from Nostr stats, but the grid used to rely on **localStorage** only (empty for anonymous visitors). Public profiles now load repos from the server:
 
-- **`GET /api/nostr/profile-repos?ownerPubkey=<64-char-hex>`** — fetches kind **30617/30618** for `authors: [pubkey]` on the platform stats relay set. Rows include `name` / `description` from 30617 tags when present; **30618** updates activity timestamps without wiping announcement text.
+- **`GET /api/nostr/profile-repos?ownerPubkey=<64-char-hex>`** — fetches kind **30617/30618** for `authors: [pubkey]` on **`PROFILE_REPOS_RELAYS`** (stats relays + NIP-34 discovery: `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, …). Slim `PLATFORM_STATS_RELAYS` alone misses NostrHub/ngit-only announcements. Rows include `name` / `description` from 30617 tags when present; **30618** updates activity timestamps without wiping announcement text.
 - The profile page passes the decoded hex pubkey (npub URLs are decoded client-side; do not pass npub to this API).
 - Response is **field-merged** with local repos (`mergeProfileRepoList`): sparse network rows must not erase About text, display names, or `userRole` (owner cards flipping to contributor green).
 - Below Repositories, the same profile also lists that person’s **Pages** (from **`GET /api/gittr-pages/status-sites`**, filtered by author pubkey / `npub…` site hostname) and **Apps** (from **`GET /api/nostr/software-catalog`**, filtered by publisher pubkey or NIP-82 `p` attribution). UI: `ProfilePagesAppsSections`.
