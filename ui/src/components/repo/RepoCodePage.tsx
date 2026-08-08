@@ -15961,7 +15961,7 @@ export function RepoCodePage() {
         }
       })(),
       "git.gittr.space",
-      "relay.gittr.space",
+      // Not relay.gittr.space — that is the Nostr relay; git is git.gittr.space.
       "relay.ngit.dev",
       "git.shakespeare.diy",
       "git.nostrhub.io",

@@ -12,7 +12,7 @@ describe("filterDisplayCloneUrlsForSidebar", () => {
     `https://gitnostr.com/${npub}/${repo}.git`,
     `https://relay.ngit.dev/${npub}/${repo}.git`,
     `https://ngit.danconwaydev.com/${npub}/${repo}.git`,
-    `https://relay.gittr.space/${npub}/${repo}.git`,
+    `https://relay.gittr.space/${npub}/${repo}.git`, // known GRASP hostname but not on push allowlist
     `https://github.com/org/${repo}.git`,
     `http://23.1.2.3:7334/${npub}/${repo}.git`,
     `https://uid.ovh/${npub}/${repo}.git`, // excluded / not on push allowlist
@@ -31,6 +31,8 @@ describe("filterDisplayCloneUrlsForSidebar", () => {
     expect(out).toContain(`nostr://${npub}/${repo}`);
     expect(out.some((u) => u.includes("23.1.2.3"))).toBe(false);
     expect(out.some((u) => u.includes("uid.ovh"))).toBe(false);
+    // relay.gittr.space is Nostr relay hostname — not on push allowlist
+    expect(out.some((u) => u.includes("relay.gittr.space"))).toBe(false);
   });
 
   it("keeps third-party GRASP when primary is absent from the announce", () => {

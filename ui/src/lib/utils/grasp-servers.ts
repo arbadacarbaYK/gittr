@@ -22,11 +22,10 @@
  * This list includes ALL known GRASP servers (for reading/fetching repos).
  */
 export const KNOWN_GRASP_DOMAINS = [
-  // gittr: git-nostr-bridge HTTPS/SSH (working clone host). Prefer over Pyramid
-  // relay hostname when both appear in clone[] / Git Server sidebar.
+  // gittr: git-nostr-bridge HTTPS/SSH (the real clone host for this deployment).
   "git.gittr.space",
-  // gittr: Pyramid adaptation — Nostr relay + GRASP git on the same host (ngit-style).
-  // May not have on-disk repos that only exist on the bridge (`git.gittr.space`).
+  // gittr Pyramid — Nostr relay (wss). May also speak GRASP-style HTTPS, but
+  // bare repos for UI Push live on git.gittr.space; treat relay as secondary/read.
   "relay.gittr.space",
   // Actual GRASP git servers (verified to serve git repos)
   "relay.ngit.dev",
@@ -60,8 +59,11 @@ export const GRASP_DOMAINS_EXCLUDED_FROM_PUSHING = [
  * KNOWN_GRASP_DOMAINS for fetching).
  */
 export const GRASP_SERVERS_FOR_PUSHING = [
+  // Bridge HTTPS/SSH only — do NOT list relay.gittr.space here.
+  // Pyramid's relay hostname is a Nostr relay; on-disk bare repos for gittr
+  // live under git.gittr.space. Advertising relay as a clone host makes the
+  // sidebar "Git Server" look like the relay and often 404s on git fetch.
   "git.gittr.space",
-  "relay.gittr.space",
   "relay.ngit.dev",
   "gitnostr.com",
   "ngit.danconwaydev.com",

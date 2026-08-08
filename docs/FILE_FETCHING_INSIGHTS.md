@@ -126,7 +126,7 @@ Troubleshooting pushes: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
 
 Keep forge `source` + primary (`git.gittr.space`) + every host on `GRASP_SERVERS_FOR_PUSHING`. Do **not** hide shakespeare / gitnostr / ngit just because primary is present. Helper-tools snippet must stay in sync (`snippets/filter-display-clone-urls`, synced 2026-08-07).
 
-**Git Server** sidebar picks a preferred clone host by **host priority** (`git.gittr.space` before `relay.gittr.space`, then ngit / shakespeare / …), not by announcement list order. `relay.gittr.space` is still a valid GRASP/git host (Pyramid), but bridge on-disk clones live under **`git.gittr.space`** — prefer that label when both appear.
+**Git Server** sidebar picks a preferred clone host by **host priority** (`git.gittr.space`, then ngit / shakespeare / …), not by announcement list order. On this deployment, **`git.gittr.space` is the bridge git host**; **`relay.gittr.space` is the Nostr relay** (Pyramid). It stays in `KNOWN_GRASP_DOMAINS` for *reading* other people’s clone tags, but is **not** on `GRASP_SERVERS_FOR_PUSHING` and is not preferred as “Git Server” — advertising it as the git host was our allowlist mistake, not something NostrHub publishers typically set.
 
 **Public profiles** (`GET /api/nostr/profile-repos`) query `PROFILE_REPOS_RELAYS` (stats pool + NIP-34 discovery: ngit, shakespeare, nostrhub, gitnostr, …). The slim `PLATFORM_STATS_RELAYS` set alone under-counts NostrHub publishers whose 30617s never land on `relay.gittr.space`.
 
