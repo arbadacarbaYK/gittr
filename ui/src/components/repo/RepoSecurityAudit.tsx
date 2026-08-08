@@ -29,6 +29,8 @@ type Advisory = {
   package: { ecosystem: string; name: string; version: string };
   direct: boolean;
   precision: "pinned" | "range-min";
+  /** No release ever fixes this advisory (see audit API) — with UNKNOWN severity it is informational, not an alarm. */
+  unfixable?: boolean;
 };
 
 type AuditState =
@@ -288,7 +290,18 @@ function AdvisoryList({
   advisories: Advisory[];
   scanned: number;
 }) {
-  const confirmed = advisories.filter((a) => a.precision === "pinned");
+  // Unfixable + UNKNOWN severity (e.g. "subpackage is deprecated" advisories
+  // that flag every version forever) cannot be cleared by any update — showing
+  // them as confirmed alarms would be permanent noise. Severe-but-unpatched
+  // advisories still count as confirmed.
+  const informational = advisories.filter(
+    (a) =>
+      a.precision === "pinned" && a.unfixable && a.severity === "UNKNOWN"
+  );
+  const confirmed = advisories.filter(
+    (a) =>
+      a.precision === "pinned" && !(a.unfixable && a.severity === "UNKNOWN")
+  );
   const possible = advisories.filter((a) => a.precision !== "pinned");
 
   const counts = confirmed.reduce<Record<string, number>>((acc, a) => {
@@ -333,6 +346,19 @@ function AdvisoryList({
       )}
 
       {confirmed.length > 0 && <AdvisoryItems advisories={confirmed} />}
+
+      {informational.length > 0 && (
+        <details className="rounded border border-[var(--color-border)] px-3 py-2">
+          <summary className="cursor-pointer text-xs text-[var(--color-text-secondary)]">
+            {informational.length} informational notice(s) — advisories without
+            any fixed release (e.g. deprecated subpackages). No version update
+            can clear these; not counted as alarms.
+          </summary>
+          <div className="mt-2">
+            <AdvisoryItems advisories={informational} />
+          </div>
+        </details>
+      )}
 
       {possible.length > 0 && (
         <details className="rounded border border-[var(--color-border)] px-3 py-2">

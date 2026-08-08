@@ -26,6 +26,13 @@ type Advisory = {
   package: { ecosystem: string; name: string; version: string };
   direct: boolean;
   precision: "pinned" | "range-min";
+  /**
+   * True when no OSV range has a "fixed" event — no release ever fixes it
+   * (e.g. GO-2026-5932 "x/crypto/openpgp is unmaintained" flags every version
+   * forever). Unfixable + UNKNOWN severity is treated as informational by the
+   * UI: no version bump can clear it, so it must not read as an alarm.
+   */
+  unfixable: boolean;
 };
 
 const OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch";
@@ -45,7 +52,28 @@ type NormalizedVuln = {
   summary: string;
   severity: Advisory["severity"];
   url: string;
+  unfixable: boolean;
 };
+
+function hasAnyFixEvent(vuln: any): boolean {
+  const affected = Array.isArray(vuln?.affected) ? vuln.affected : [];
+  for (const a of affected) {
+    const ranges = Array.isArray(a?.ranges) ? a.ranges : [];
+    for (const r of ranges) {
+      const events = Array.isArray(r?.events) ? r.events : [];
+      if (events.some((e: any) => typeof e?.fixed === "string")) return true;
+    }
+    // Some ecosystems publish fixes via versions list absence — treat an
+    // explicit last_affected as "bounded" (a fix exists beyond it).
+    const bounded = (Array.isArray(a?.ranges) ? a.ranges : []).some(
+      (r: any) =>
+        Array.isArray(r?.events) &&
+        r.events.some((e: any) => typeof e?.last_affected === "string")
+    );
+    if (bounded) return true;
+  }
+  return false;
+}
 
 const ALLOWED_ECOSYSTEMS = new Set([
   "npm",
@@ -113,6 +141,7 @@ async function fetchVulnDetail(id: string): Promise<NormalizedVuln | null> {
         "Known vulnerability",
       severity: normalizeSeverity(vuln),
       url: pickUrl(vuln, id),
+      unfixable: !hasAnyFixEvent(vuln),
     };
     detailCache.set(id, { at: Date.now(), value: normalized });
     return normalized;
@@ -220,6 +249,7 @@ export default async function handler(
           },
           direct: !!pkg.direct,
           precision: pkg.precision === "pinned" ? "pinned" : "range-min",
+          unfixable: detail.unfixable,
         });
       }
     });
