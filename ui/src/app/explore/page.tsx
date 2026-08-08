@@ -2821,7 +2821,7 @@ function ExplorePageContent() {
               <div className="text-xs text-gray-500 mt-2">
                 This count is everything stored under gittr_repos (discovery
                 cache), not only your repos. Trim with My Repositories → Flush
-                others&apos; browser cache. The syncing indicator hides when
+                others&apos; repos from browser cache. The syncing indicator hides when
                 enough relays respond or after 15 seconds; the subscription
                 keeps listening.
               </div>

@@ -768,7 +768,7 @@ export const loadDeletedRepos = (): Array<{
 
 /** Appended to quota / localStorage alerts so users know where to trim cached repos */
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
-  " Open My Repositories (/repositories) → Flush others' browser cache (or Flush my browser cache after you've pushed).";
+  " Open My Repositories (/repositories) → Flush others' repos from browser cache (or Flush my browser cache after you've pushed).";
 
 /**
  * Persist slimmed `gittr_repos`. Returns false if the write still fails after

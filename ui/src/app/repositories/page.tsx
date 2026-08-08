@@ -2568,11 +2568,11 @@ export default function RepositoriesPage() {
               className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-3 py-1 rounded transition-colors text-sm"
               title="Flush other people’s repos from this browser’s cache (Explore/import leftovers). Your own repos stay. Safe anytime — they can be re-fetched from Nostr. Frees storage after browsing."
             >
-              Flush others&apos; browser cache
+              Flush others&apos; repos from browser cache
             </button>
           )}
 
-          {/* Flush others' browser cache Confirmation Modal */}
+          {/* Flush others' repos from browser cache Confirmation Modal */}
           {showClearForeignConfirm && (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
@@ -2583,7 +2583,7 @@ export default function RepositoriesPage() {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <h2 className="text-xl font-bold mb-4 text-orange-400">
-                  Flush others&apos; browser cache?
+                  Flush others&apos; repos from browser cache?
                 </h2>
 
                 <div className="space-y-4 mb-6">
@@ -2675,18 +2675,18 @@ export default function RepositoriesPage() {
                         window.location.reload();
                       } catch (error) {
                         console.error(
-                          "Failed to flush others' browser cache:",
+                          "Failed to flush others' repos from browser cache:",
                           error
                         );
                         alert(
-                          `❌ Error flushing others' browser cache: ${error}`
+                          `❌ Error flushing others' repos from browser cache: ${error}`
                         );
                         setShowClearForeignConfirm(false);
                       }
                     }}
                     className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-4 py-2 rounded transition-colors font-semibold"
                   >
-                    Yes, flush others&apos; cache
+                    Yes, flush others&apos; repos
                   </button>
                 </div>
               </div>

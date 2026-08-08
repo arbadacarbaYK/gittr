@@ -20166,7 +20166,7 @@ export function RepoCodePage() {
                                         alert(
                                           `⚠️ Refetch got ${
                                             importData.files?.length || 0
-                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' browser cache, or use a private window with more free space.`
+                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' repos from browser cache, or use a private window with more free space.`
                                         );
                                       } else {
                                         // Reload page to show updated data
