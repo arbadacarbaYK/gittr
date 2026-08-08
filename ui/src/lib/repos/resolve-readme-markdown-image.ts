@@ -95,9 +95,11 @@ export function resolveReadmeMarkdownImage(
   for (const f of FORGE_RAW) {
     const m = forge.match(f.re);
     if (m) {
-      const [, owner, repo] = m;
+      const owner = m[1] || "";
+      const repo = (m[2] || "").replace(/\.git$/, "");
+      if (!owner || !repo) continue;
       return {
-        primarySrc: f.raw(owner, repo.replace(/\.git$/, ""), branch, repoPath),
+        primarySrc: f.raw(owner, repo, branch, repoPath),
         repoPath,
         sourceUrl: forge,
         preferApi: false,
