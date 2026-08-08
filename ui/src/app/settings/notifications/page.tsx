@@ -52,7 +52,9 @@ const DEFAULT_PREFS: NotificationPrefs = {
     mention: true,
     bounty_funded: true,
     bounty_released: true,
-    security_cve: true,
+    // Strict opt-in: the future security bot must never alert anyone who
+    // did not explicitly turn this on (no-spam requirement).
+    security_cve: false,
   },
 };
 
@@ -274,8 +276,10 @@ export default function NotificationsPage() {
             <p>
               Alerts will be delivered Dependabot-style: the gittr platform bot
               opens an issue on your affected repo, and you are notified through
-              your normal issue notifications above. No unsolicited DMs. The bot
-              is not live yet — the on-page audit already is.
+              your normal issue notifications above. No unsolicited DMs. This is
+              strictly <strong>opt-in</strong> (off by default) — the bot will
+              never alert repos whose owner has not turned this on. The bot is
+              not live yet — the on-page audit already is.
             </p>
             <p>
               The audit runs each time a repo&apos;s Dependencies tab is opened

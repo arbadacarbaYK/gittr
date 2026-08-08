@@ -2270,9 +2270,10 @@ export default function HelpPage() {
                 when a confirmed CVE affects your repo, the gittr platform bot
                 opens an issue on that repo — public, auditable, and delivered
                 through your normal issue notifications. No unsolicited DMs,
-                ever. Opt out any time via Settings → Notifications →
-                &quot;Security&quot;. The bot is rolling out carefully and is
-                not live yet; the on-page audit already is.
+                ever. Alerts are strictly <strong>opt-in</strong>: nothing is
+                sent unless you enable Settings → Notifications →
+                &quot;Security&quot; (off by default). The bot is rolling out
+                carefully and is not live yet; the on-page audit already is.
               </p>
               <p className="mt-2">
                 <strong>One alert per problem — not per scan:</strong> each
