@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import {
   detectGitForge,
   normalizeGitCloneUrl,
@@ -604,10 +605,24 @@ function NewRepoPageContent() {
         const nextRepos =
           duplicateIdx >= 0
             ? repos.map((r: StoredRepo, i: number) =>
-                i === duplicateIdx ? { ...r, ...rec } : r
+                i === duplicateIdx
+                  ? isFork
+                    ? { ...r, ...rec }
+                    : // Recreate under same name: do not keep stale forkedFrom /
+                      // sourceUrl / event ids from a previously deleted row.
+                      { ...rec }
+                  : r
               )
             : [rec, ...repos];
         localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
+
+        // Same as import: reopen must clear the local delete tombstone or My
+        // Repositories / Explore / Profile keep hiding the live repo.
+        clearDeletedRepoTombstones({
+          entity,
+          repo: repoSlug,
+          ownerPubkey: pubkey || undefined,
+        });
 
         // Dispatch event to update repositories page
         window.dispatchEvent(new CustomEvent("gittr:repo-created"));

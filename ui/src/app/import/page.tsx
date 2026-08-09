@@ -19,6 +19,7 @@ import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
   dedupeStoredReposByOwnerAndRepoLabel,
 } from "@/lib/repos/storage";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -1347,38 +1348,11 @@ export default function ImportPage() {
           });
 
           // Clear local "deleted" tombstones so Repositories doesn't hide/purge this re-import
-          try {
-            const deletedRepos = JSON.parse(
-              localStorage.getItem("gittr_deleted_repos") || "[]"
-            ) as Array<{
-              entity?: string;
-              repo?: string;
-              ownerPubkey?: string;
-            }>;
-            const nextDeleted = deletedRepos.filter((d) => {
-              const dRepo = (d.repo || "").trim().toLowerCase();
-              const targetRepo = repoSlug.trim().toLowerCase();
-              if (dRepo !== targetRepo) return true;
-              const dEntity = (d.entity || "").trim().toLowerCase();
-              if (dEntity && dEntity === entityNpub.toLowerCase()) return false;
-              if (
-                d.ownerPubkey &&
-                pubkey &&
-                d.ownerPubkey.toLowerCase() === pubkey.toLowerCase()
-              ) {
-                return false;
-              }
-              return true;
-            });
-            if (nextDeleted.length !== deletedRepos.length) {
-              localStorage.setItem(
-                "gittr_deleted_repos",
-                JSON.stringify(nextDeleted)
-              );
-            }
-          } catch {
-            // ignore tombstone cleanup failures
-          }
+          clearDeletedRepoTombstones({
+            entity: entityNpub,
+            repo: repoSlug,
+            ownerPubkey: pubkey || undefined,
+          });
 
           // Save issues, pulls, and commits to separate localStorage keys for the issues/pulls/commits pages
           if (

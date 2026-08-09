@@ -799,6 +799,7 @@ export const loadDeletedRepos = (): Array<{
   entity: string;
   repo: string;
   deletedAt: number;
+  ownerPubkey?: string;
 }> => {
   if (typeof window === "undefined") return [];
   return parseJsonArray(
@@ -809,6 +810,7 @@ export const loadDeletedRepos = (): Array<{
       entity: string;
       repo: string;
       deletedAt: number;
+      ownerPubkey?: string;
     } => {
       if (!isRecord(value)) return false;
       return (
@@ -819,6 +821,8 @@ export const loadDeletedRepos = (): Array<{
     }
   );
 };
+
+export { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
 
 /** Appended to quota / localStorage alerts so users know where to trim cached repos */
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =

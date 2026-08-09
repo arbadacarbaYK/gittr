@@ -31,6 +31,7 @@ import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -1799,14 +1800,10 @@ function ExplorePageContent() {
               repoData.repositoryName
             );
 
-            // Skip if repo was locally deleted OR owner soft-deleted on Nostr.
-            // Also purge any earlier copy that was already in the Explore list
-            // (tombstones are newer replaceable events and otherwise sort to the top).
-            if (
-              isDeleted ||
-              repoData.deleted === true ||
-              repoData.archived === true
-            ) {
+            // Soft-delete on Nostr → hide + purge Explore copies.
+            // Local tombstone alone means a prior Delete in this browser; a live
+            // non-deleted 30617 is a reopen under the same name — clear & show.
+            if (repoData.deleted === true || repoData.archived === true) {
               const purged = existingRepos.filter((r: any) => {
                 const rRepoNormalized = normalizeRepoName(
                   r.repo || r.slug || ""
@@ -1828,6 +1825,14 @@ function ExplorePageContent() {
                 commitExploreCatalog(purged, { immediate: true });
               }
               return;
+            }
+
+            if (isDeleted) {
+              clearDeletedRepoTombstones({
+                entity,
+                repo: repoData.repositoryName,
+                ownerPubkey: event.pubkey,
+              });
             }
 
             // Check if this repo already exists (match by ownerPubkey first, then entity)

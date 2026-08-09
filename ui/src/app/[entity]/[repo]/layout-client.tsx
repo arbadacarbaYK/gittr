@@ -621,23 +621,38 @@ export default function RepoLayoutClient({
       );
 
       // Check if current user is owner
-      if (foundRepo && pubkey) {
-        const repoOwnerPubkey = getRepoOwnerPubkey(
-          foundRepo,
-          resolvedParams.entity
-        );
-        const userIsOwner = isOwner(
-          pubkey,
-          foundRepo.contributors,
-          repoOwnerPubkey
-        );
-        const canManage = canManageSettings(
-          foundRepo.contributors?.find(
-            (c: StoredContributor) =>
-              c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
-          ) || null
-        );
-        setIsOwnerUser(userIsOwner || canManage);
+      if (pubkey) {
+        const entityMatchesCurrentUser = (() => {
+          const hex = pubkey.toLowerCase();
+          if (resolvedParams.entity?.toLowerCase() === hex) return true;
+          try {
+            return resolvedParams.entity === nip19.npubEncode(pubkey);
+          } catch {
+            return false;
+          }
+        })();
+
+        if (foundRepo) {
+          const repoOwnerPubkey = getRepoOwnerPubkey(
+            foundRepo,
+            resolvedParams.entity
+          );
+          const userIsOwner = isOwner(
+            pubkey,
+            foundRepo.contributors,
+            repoOwnerPubkey
+          );
+          const canManage = canManageSettings(
+            foundRepo.contributors?.find(
+              (c: StoredContributor) =>
+                c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
+            ) || null
+          );
+          setIsOwnerUser(userIsOwner || canManage || entityMatchesCurrentUser);
+        } else {
+          // Delete+recreate can leave no local row while URL is still the owner
+          setIsOwnerUser(entityMatchesCurrentUser);
+        }
       } else {
         setIsOwnerUser(false);
       }

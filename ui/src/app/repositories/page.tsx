@@ -49,6 +49,7 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -1383,10 +1384,17 @@ export default function RepositoriesPage() {
               return false;
             });
 
-            // Skip if repo was locally deleted
+            // Local tombstone from a prior Delete — but a live non-deleted 30617
+            // means the owner reopened under the same name. Clear and accept.
             if (isDeleted) {
-              console.log(`⏭️ Skipping locally-deleted repo: ${repoKey}`);
-              return;
+              const cleared = clearDeletedRepoTombstones({
+                entity,
+                repo: repoData.repositoryName,
+                ownerPubkey: event.pubkey,
+              });
+              console.log(
+                `♻️ [Sync] Live announcement for previously deleted ${repoKey} — cleared ${cleared} tombstone(s), accepting`
+              );
             }
 
             // Check if this repo already exists (same semantics as findRepoByEntityAndName)
@@ -1642,11 +1650,10 @@ export default function RepositoriesPage() {
                 finalSourceUrl ||
                 sourceUrlFromTag ||
                 repoData.sourceUrl ||
-                existingRepo?.sourceUrl,
-              forkedFrom:
-                forkedFromFromTag ||
-                repoData.forkedFrom ||
-                existingRepo?.forkedFrom,
+                undefined,
+              // Event tags are source of truth — do not keep a stale forkedFrom
+              // from a previous same-name row after delete+recreate.
+              forkedFrom: forkedFromFromTag || repoData.forkedFrom || undefined,
               readme:
                 repoData.readme !== undefined
                   ? repoData.readme

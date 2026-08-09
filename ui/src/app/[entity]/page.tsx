@@ -48,6 +48,7 @@ import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -1511,11 +1512,27 @@ export default function EntityPage({
 
             // Filter out deleted repos and local repos (if viewing someone else's profile)
             const filteredUpdatedRepos = validRepos.filter((r: any) => {
-              // Skip if locally deleted (using robust check)
-              if (isRepoDeleted(r)) return false;
-
               // Skip if marked as deleted/archived on Nostr
               if (r.deleted === true || r.archived === true) return false;
+
+              // Local tombstone: hide unless this is a live reopen (clear & show)
+              if (isRepoDeleted(r)) {
+                const looksLive = !!(
+                  r.syncedFromNostr ||
+                  r.fromNostr ||
+                  r.nostrEventId ||
+                  r.lastNostrEventId
+                );
+                if (looksLive) {
+                  clearDeletedRepoTombstones({
+                    entity: r.entity,
+                    repo: r.repo || r.slug || "",
+                    ownerPubkey: r.ownerPubkey,
+                  });
+                } else {
+                  return false;
+                }
+              }
 
               // CRITICAL: On public profile (not own), only show repos that are "live" on Nostr
               // Local repos and push_failed repos should be private and not visible to others
@@ -1636,11 +1653,29 @@ export default function EntityPage({
             return false; // Never show corrupted repos
           }
 
-          // Skip if locally deleted (using robust check)
-          if (isRepoDeleted(r)) return false;
-
           // Skip if marked as deleted/archived on Nostr
           if (r.deleted === true || r.archived === true) return false;
+
+          // Local tombstone: hide unless this is a live reopen (clear & show)
+          if (isRepoDeleted(r)) {
+            const looksLive = !!(
+              r.syncedFromNostr ||
+              r.fromNostr ||
+              r.nostrEventId ||
+              r.lastNostrEventId ||
+              r.stateEventId ||
+              r.lastStateEventId
+            );
+            if (looksLive) {
+              clearDeletedRepoTombstones({
+                entity: r.entity,
+                repo: r.repo || r.slug || "",
+                ownerPubkey: r.ownerPubkey,
+              });
+            } else {
+              return false;
+            }
+          }
 
           // CRITICAL: On public profile (not own), only show repos that are published to Nostr
           // Local repos should be private and not visible to others

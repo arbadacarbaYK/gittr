@@ -7,6 +7,7 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "../repos/storage";
+import { clearDeletedRepoTombstones } from "../repos/deleted-repo-tombstones";
 
 import { KIND_REPOSITORY, resolveNip34HeadBranchName } from "./events";
 
@@ -271,6 +272,14 @@ export function storeRepoEventId(
         // lastModifiedAt should only be updated by markRepoAsEdited() when files are actually modified
       };
       localStorage.setItem("gittr_repos", JSON.stringify(repos));
+      clearDeletedRepoTombstones({
+        entity: existingRepo.entity,
+        repo: repoValue,
+        ownerPubkey:
+          (typeof existingRepo.ownerPubkey === "string" &&
+            existingRepo.ownerPubkey) ||
+          undefined,
+      });
     }
   } catch (error) {
     console.error("Failed to store repo event ID:", error);

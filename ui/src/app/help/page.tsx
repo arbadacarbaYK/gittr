@@ -579,6 +579,11 @@ export default function HelpPage() {
                       folders, or use Choose files / Choose folder
                     </li>
                     <li>Or push via Git CLI if you prefer (see below)</li>
+                    <li>
+                      Reusing a name you deleted earlier is fine — gittr treats
+                      the new live announcement as current (My Repositories /
+                      Explore / profile catch up once the new Push is seen)
+                    </li>
                   </ul>
                 </HelpSubTopic>
 

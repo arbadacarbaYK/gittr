@@ -60,8 +60,8 @@ export function useRepoSubscription(options: RepoSubscriptionOptions = {}) {
               publicWrite: repoData.publicWrite,
               zapPolicy: repoData.zapPolicy,
               // Sync ALL extended metadata from Nostr
-              sourceUrl: repoData.sourceUrl || existingRepo?.sourceUrl,
-              forkedFrom: repoData.forkedFrom || existingRepo?.forkedFrom,
+              sourceUrl: repoData.sourceUrl || undefined,
+              forkedFrom: repoData.forkedFrom || undefined,
               readme: repoData.readme || existingRepo?.readme,
               files: repoData.files || existingRepo?.files,
               stars:

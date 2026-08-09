@@ -132,10 +132,26 @@ export default function RepoSettingsPage() {
   // CRITICAL: Settings page is owner-only - check access on mount
   useEffect(() => {
     try {
+      if (!pubkey) {
+        setIsOwnerUser(false);
+        return;
+      }
+
       const repos = loadStoredRepos();
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
 
-      if (repoData && pubkey) {
+      const entityMatchesCurrentUser = (() => {
+        const hex = pubkey.toLowerCase();
+        if (entity?.toLowerCase() === hex) return true;
+        try {
+          const npub = nip19.npubEncode(pubkey);
+          return entity === npub;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (repoData) {
         const repoOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
         const userIsOwner = isOwner(
           pubkey,
@@ -149,9 +165,12 @@ export default function RepoSettingsPage() {
           ) || null
         );
 
-        setIsOwnerUser(userIsOwner || canManage);
+        setIsOwnerUser(userIsOwner || canManage || entityMatchesCurrentUser);
       } else {
-        setIsOwnerUser(false);
+        // No local row yet (e.g. delete+recreate before My Repos sync) — still
+        // allow Settings when the URL entity is the signed-in user (same rule
+        // as the About gear on the Code tab).
+        setIsOwnerUser(entityMatchesCurrentUser);
       }
     } catch {
       setIsOwnerUser(false);

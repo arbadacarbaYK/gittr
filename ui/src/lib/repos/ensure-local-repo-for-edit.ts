@@ -17,6 +17,7 @@ import {
   saveRepoFiles,
   saveStoredRepos,
 } from "./storage";
+import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
 
 export type EnsureLocalRepoForEditResult = {
   ok: boolean;
@@ -122,6 +123,12 @@ export async function ensureLocalRepoForEdit(opts: {
     found = shell;
     createdShell = true;
   }
+
+  clearDeletedRepoTombstones({
+    entity,
+    repo,
+    ownerPubkey,
+  });
 
   const hasUnpushed = found.hasUnpushedEdits === true;
   let fileCount = countLocalFiles(entity, repo, found);
