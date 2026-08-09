@@ -48,13 +48,16 @@ describe("shouldDropFlatBasenameForNestedUpload", () => {
 });
 
 describe("selectDisplayRepoFileTree", () => {
-  it("with unpushed edits, keeps local README even when remote tree is shorter", () => {
+  it("with unpushed edits, shows local index only (not bridge union)", () => {
     const indexed: E[] = [
       { path: "a.ts" },
-      { path: "b.ts" },
       { path: "README.md", content: "# new" },
     ];
-    const bridge: E[] = [{ path: "a.ts" }, { path: "b.ts" }];
+    const bridge: E[] = [
+      { path: "a.ts" },
+      { path: "b.ts" },
+      { path: "old-only.ts" },
+    ];
     const out = selectDisplayRepoFileTree({
       indexed,
       bridgeFiles: bridge,
@@ -63,9 +66,7 @@ describe("selectDisplayRepoFileTree", () => {
       forgeUpstreamAuthoritative: false,
       mergeIndexes: mergeSimple,
     });
-    expect(out.map((f) => f.path).sort()).toEqual(
-      ["README.md", "a.ts", "b.ts"].sort()
-    );
+    expect(out.map((f) => f.path).sort()).toEqual(["README.md", "a.ts"].sort());
     expect(out.find((f) => f.path === "README.md")?.content).toBe("# new");
   });
 

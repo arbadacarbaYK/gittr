@@ -39,11 +39,11 @@ export function selectDisplayRepoFileTree<T extends { path: string }>(
   const bridge = scrub(nonEmpty(opts.bridgeFiles));
   const { mergeIndexes } = opts;
 
-  // Owner just uploaded / edited: union network + local, local index last so
-  // new paths (README) and override-backed rows win.
+  // Owner has local deletes/uploads: show the local index only until Push.
+  // Unioning bridge/network brought deleted paths and stale "5h ago" tip
+  // metadata back onto the Code tab.
   if (opts.hasUnpushedEdits && indexed.length > 0) {
-    const network = mergeIndexes(repoFiles, bridge);
-    return mergeIndexes(network, indexed);
+    return indexed;
   }
 
   // Declared forge SOURCE without local edits: first non-empty in upstream order.

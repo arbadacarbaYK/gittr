@@ -37,9 +37,20 @@ function looksLikeForeignForgeUrl(raw: string): boolean {
     ) {
       return false;
     }
-    // Home GRASP deployments: https://host/grasp/npub…/repo — not a forge upstream
     const parts = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    // GRASP / Nostr-git mirrors — never treat as forge SOURCE / forkedFrom
     if (parts[0]?.toLowerCase() === "grasp") {
+      return false;
+    }
+    if (parts.some((p) => /^npub1[a-z0-9]+$/i.test(p))) {
+      return false;
+    }
+    // Known GRASP hosts (shakespeare.diy, etc.) even without /grasp/ path
+    if (
+      host === "git.shakespeare.diy" ||
+      host.endsWith(".shakespeare.diy") ||
+      host.includes("shakespeare")
+    ) {
       return false;
     }
     // owner/repo path shape

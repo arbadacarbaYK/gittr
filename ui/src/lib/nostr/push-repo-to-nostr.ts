@@ -390,10 +390,23 @@ export async function pushRepoToNostr(
     // GitHub/GitLab on `source` only (not clone); if localStorage later drops
     // sourceUrl, a re-push must not wipe the previous announcement's source tags.
     {
+      const { sanitizeForkedFromField } = await import(
+        "@/lib/repos/fork-attribution"
+      );
+      const { urlLooksLikeSourceUpstream } = await import(
+        "@/lib/repos/forge-tree-shrink"
+      );
+      const asForge = (raw: string) =>
+        urlLooksLikeSourceUpstream(raw) ? raw.trim() : "";
+
       let upstream =
-        resolveRepoUpstreamSource(repo) ||
-        (typeof repo.sourceUrl === "string" ? repo.sourceUrl.trim() : "") ||
-        (typeof repo.forkedFrom === "string" ? repo.forkedFrom.trim() : "");
+        asForge(resolveRepoUpstreamSource(repo) || "") ||
+        asForge(
+          typeof repo.sourceUrl === "string" ? repo.sourceUrl : ""
+        ) ||
+        asForge(
+          typeof repo.forkedFrom === "string" ? repo.forkedFrom : ""
+        );
       if (
         !upstream &&
         subscribe &&
@@ -404,12 +417,13 @@ export async function pushRepoToNostr(
           onProgress?.(
             "Looking up previous forge source on Nostr (source/forkedFrom)..."
           );
-          upstream = await queryNostrForGithubSourceUrl(
+          const found = await queryNostrForGithubSourceUrl(
             entity,
             repoSlug,
             subscribe,
             defaultRelays
           );
+          upstream = asForge(found || "");
           if (upstream) {
             console.log(
               `✅ [Push Repo] Recovered forge URL from prior 30617: ${upstream}`
@@ -422,18 +436,23 @@ export async function pushRepoToNostr(
           );
         }
       }
+      // Clear bogus GRASP/mirror forkedFrom left in localStorage
+      if (repo.forkedFrom && !sanitizeForkedFromField(repo.forkedFrom)) {
+        delete (repo as { forkedFrom?: string }).forkedFrom;
+      }
       if (upstream) {
         const clean = upstream.replace(/\.git$/, "");
         if (!repo.sourceUrl) {
           (repo as { sourceUrl?: string }).sourceUrl = clean;
         }
-        if (!repo.forkedFrom) {
-          (repo as { forkedFrom?: string }).forkedFrom = clean;
+        const forkAttr = sanitizeForkedFromField(repo.forkedFrom || clean);
+        if (forkAttr) {
+          (repo as { forkedFrom?: string }).forkedFrom = forkAttr;
         }
         try {
           persistGithubSourceOnRepo(entity, repoSlug, clean);
         } catch {
-          /* quota */
+          /* ignore */
         }
       }
     }

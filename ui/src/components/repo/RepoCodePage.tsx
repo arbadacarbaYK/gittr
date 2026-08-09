@@ -144,6 +144,10 @@ import {
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
 import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
+import {
+  isDisplayableForkAttribution,
+  sanitizeForkedFromField,
+} from "@/lib/repos/fork-attribution";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
@@ -1159,6 +1163,22 @@ export function RepoCodePage() {
       if (!ownerOrLocalEdits && isPrivateRepoListing) return;
       const isNetworkTreePersist =
         context.includes("[File Fetch]") || context === "[Refetch]";
+      // While the owner has unpushed local deletes/uploads, never replace
+      // gittr_files with a bridge/network listing (except explicit Refresh).
+      if (
+        currentRepo?.hasUnpushedEdits === true &&
+        context !== "[Refetch]" &&
+        opts?.allowShrink !== true &&
+        (context === "[Bridge Fetch]" ||
+          context === "[Bridge Fetch merged partial]" ||
+          context === "[File Fetch]" ||
+          context.startsWith("[File Fetch]"))
+      ) {
+        console.warn(
+          `⏭️ ${context} Skipping persist: repo has unpushed local edits`
+        );
+        return;
+      }
       let filesToSave: RepoFileEntry[] = files;
       try {
         const storageRepo = resolveRepoStorageAlias(
@@ -3536,7 +3556,7 @@ export function RepoCodePage() {
         description: repo.description || "",
         files: resolvedFiles,
         sourceUrl: repo.sourceUrl,
-        forkedFrom: repo.forkedFrom || repo.sourceUrl,
+        forkedFrom: sanitizeForkedFromField(repo.forkedFrom),
         entityDisplayName: repo.entityDisplayName,
         name: repo.name,
         createdAt: repo.createdAt,
@@ -3563,6 +3583,22 @@ export function RepoCodePage() {
         publicRead: publicRead, // CRITICAL: Default to true for old repos
         publicWrite: publicWrite,
       } as any);
+      // Drop GRASP/mirror URLs wrongly stored as forkedFrom (e.g. shakespeare)
+      {
+        const cleanedFork = sanitizeForkedFromField(repo.forkedFrom);
+        if (repo.forkedFrom && cleanedFork !== repo.forkedFrom) {
+          const idx = repos.findIndex((r) => r === repo);
+          if (idx >= 0) {
+            const updated = [...repos];
+            if (cleanedFork) {
+              (updated[idx] as StoredRepo).forkedFrom = cleanedFork;
+            } else {
+              delete (updated[idx] as StoredRepo).forkedFrom;
+            }
+            saveStoredRepos(updated);
+          }
+        }
+      }
       // Drop stale invented github.io rows from older builds
       {
         const cleanedLinks = removeStaleAutoLinks(
@@ -15444,6 +15480,43 @@ export function RepoCodePage() {
           nextDeleted
         );
 
+        // Prune deleted paths from the local file index so upload/display
+        // cannot resurrect them via merge-with-stale-index.
+        try {
+          const storageRepo = resolveRepoStorageAlias(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          for (const slug of Array.from(
+            new Set([storageRepo, resolvedParams.repo])
+          )) {
+            const indexed = loadRepoFiles(resolvedParams.entity, slug);
+            if (!indexed.length) continue;
+            const pruned = indexed.filter(
+              (f) => !isRepoPathDeleted(f.path, nextDeleted)
+            );
+            if (pruned.length !== indexed.length) {
+              saveRepoFiles(resolvedParams.entity, slug, pruned);
+            }
+          }
+          setRepoData((prev: any) => {
+            if (!prev) return prev;
+            const prevFiles = Array.isArray(prev.files) ? prev.files : [];
+            const nextFiles = prevFiles.filter(
+              (f: { path?: string }) =>
+                !isRepoPathDeleted(String(f.path || ""), nextDeleted)
+            );
+            return {
+              ...prev,
+              files: nextFiles,
+              fileCount: nextFiles.length,
+              hasUnpushedEdits: true,
+            };
+          });
+        } catch (pruneErr) {
+          console.warn("[Delete] Failed to prune local file index:", pruneErr);
+        }
+
         // Drop local content overrides under this path
         try {
           const overrides = loadRepoOverrides(
@@ -20793,11 +20866,18 @@ export function RepoCodePage() {
                                           latestEvent.tags || []
                                         );
                                       if (forgeFromEvent) {
-                                        eventRepoData.sourceUrl =
-                                          forgeFromEvent.replace(/\.git$/, "");
-                                        eventRepoData.forkedFrom =
-                                          eventRepoData.forkedFrom ||
-                                          eventRepoData.sourceUrl;
+                                        const clean = forgeFromEvent.replace(
+                                          /\.git$/,
+                                          ""
+                                        );
+                                        eventRepoData.sourceUrl = clean;
+                                        // Never promote GRASP/own-mirror clones to forkedFrom
+                                        const forkAttr =
+                                          sanitizeForkedFromField(
+                                            eventRepoData.forkedFrom
+                                          ) ||
+                                          sanitizeForkedFromField(clean);
+                                        eventRepoData.forkedFrom = forkAttr;
                                         persistGithubSourceOnRepo(
                                           resolvedParams.entity,
                                           resolvedParams.repo,
@@ -22135,10 +22215,11 @@ export function RepoCodePage() {
               </li>
             </ul>
           ) : null}
-          {repoData?.forkedFrom &&
+          {isDisplayableForkAttribution(repoData?.forkedFrom) &&
             (() => {
-              // Determine if this is a GitHub URL or internal gittr fork
-              const forkedFrom = repoData.forkedFrom;
+              // Determine if this is a forge URL or internal gittr fork
+              const forkedFrom = String(repoData?.forkedFrom || "");
+              if (!forkedFrom) return null;
               const isGitHubUrl =
                 forkedFrom.startsWith("http://") ||
                 forkedFrom.startsWith("https://");
@@ -22159,7 +22240,7 @@ export function RepoCodePage() {
                   : `/${forkedFrom}`;
                 displayText = forkedFrom.replace(/^\//, ""); // Remove leading slash for display
               } else if (isGitHubUrl) {
-                // GitHub URL: show owner/repo
+                // External URL: show host/path without scheme
                 displayText = forkedFrom
                   .replace(/^https?:\/\//, "")
                   .replace(/\.git$/, "")
