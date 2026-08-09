@@ -616,6 +616,14 @@ export default function HelpPage() {
                     </code>{" "}
                     are kept. Then Push to Nostr when ready.
                   </p>
+                  <p className="mt-2 text-sm text-gray-400">
+                    If the Code tab already shows files from the network but
+                    Upload / Push complains about nothing local, use{" "}
+                    <strong className="text-gray-300">Refresh from gittr</strong>{" "}
+                    once (sidebar) so your browser stores a copy. Upload then
+                    merges your new files on top; Push publishes the combined
+                    tree.
+                  </p>
                   <p className="mt-2">
                     <strong>Git CLI:</strong> after creating an empty repo, you
                     can also push via Git:
@@ -1321,7 +1329,10 @@ export default function HelpPage() {
               <p className="mt-2 text-xs text-gray-400">
                 If you see &quot;Please repush on local edits&quot;, use Push to
                 Nostr so relays (and the mirror attempt) get those edits. Import
-                alone stays local until you Push.
+                alone stays local until you Push. For repos that already live on
+                the gittr bridge but not in this browser,{" "}
+                <strong className="text-gray-300">Refresh from gittr</strong>{" "}
+                (or just Upload — it will prepare a local copy) before Push.
               </p>
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-1">

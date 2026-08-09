@@ -169,6 +169,7 @@ import {
   type FetchStatus,
   addUpstreamSourceToCloneUrls,
   fetchFilesFromMultipleSources,
+  fetchBridgeFilesOnce,
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
@@ -20433,7 +20434,11 @@ export function RepoCodePage() {
                                       );
                                     }
 
-                                    // Query Nostr for the latest repository event
+                                    // Query Nostr for the latest repository event.
+                                    // Do NOT abort on the first empty EOSE — relay pools
+                                    // call onEose per relay; a fast empty relay used to
+                                    // reject with "Repository not found" while slower
+                                    // relays (and the bridge) still had the announce.
                                     const repoName =
                                       repo?.repo ||
                                       repo?.slug ||
@@ -20454,6 +20459,32 @@ export function RepoCodePage() {
                                           return;
                                         }
 
+                                        let finished = false;
+                                        let eoseCount = 0;
+                                        const expectedEose = Math.max(
+                                          defaultRelays.length,
+                                          1
+                                        );
+                                        const eoseQuorum = Math.min(
+                                          3,
+                                          expectedEose
+                                        );
+
+                                        const finish = (
+                                          unsubFn?: () => void,
+                                          err?: Error
+                                        ) => {
+                                          if (finished) return;
+                                          finished = true;
+                                          try {
+                                            unsubFn?.();
+                                          } catch {
+                                            /* ignore */
+                                          }
+                                          if (err) reject(err);
+                                          else resolve();
+                                        };
+
                                         const unsub = subscribe(
                                           [
                                             {
@@ -20466,8 +20497,7 @@ export function RepoCodePage() {
                                             },
                                           ],
                                           defaultRelays,
-                                          (event, isAfterEose) => {
-                                            // Collect all events and pick the latest
+                                          (event) => {
                                             if (
                                               event.created_at >
                                               latestEventCreatedAt
@@ -20479,25 +20509,30 @@ export function RepoCodePage() {
                                           },
                                           undefined,
                                           () => {
-                                            // EOSE - process the latest event
-                                            unsub();
-                                            if (!latestEvent) {
-                                              reject(
-                                                new Error(
-                                                  "Repository not found on Nostr"
-                                                )
-                                              );
-                                              return;
+                                            eoseCount += 1;
+                                            // First empty relay must not abort —
+                                            // wait for quorum / all EOSEs / timeout.
+                                            if (
+                                              eoseCount >= expectedEose ||
+                                              (latestEvent &&
+                                                eoseCount >= eoseQuorum)
+                                            ) {
+                                              if (!latestEvent) {
+                                                finish(
+                                                  unsub as () => void,
+                                                  new Error(
+                                                    "Repository not found on Nostr"
+                                                  )
+                                                );
+                                                return;
+                                              }
+                                              finish(unsub as () => void);
                                             }
-                                            resolve();
                                           }
                                         );
 
-                                        // Timeout after 10 seconds
                                         setTimeout(() => {
-                                          unsub();
                                           if (!latestEvent) {
-                                            // Check if repo might have a sourceUrl that we should use instead
                                             const hasCloneUrls =
                                               repo?.clone &&
                                               Array.isArray(repo.clone) &&
@@ -20505,20 +20540,22 @@ export function RepoCodePage() {
                                             const hasSourceUrl =
                                               repo?.sourceUrl;
                                             if (hasCloneUrls || hasSourceUrl) {
-                                              reject(
+                                              finish(
+                                                unsub as () => void,
                                                 new Error(
                                                   "Repository not found on Nostr. This repository may be from GitHub/GitLab - try checking if it has a source URL stored."
                                                 )
                                               );
                                             } else {
-                                              reject(
+                                              finish(
+                                                unsub as () => void,
                                                 new Error(
                                                   "Timeout waiting for repository event. The repository may not be available on Nostr relays."
                                                 )
                                               );
                                             }
                                           } else {
-                                            resolve();
+                                            finish(unsub as () => void);
                                           }
                                         }, 10000);
                                       }
@@ -20652,8 +20689,48 @@ export function RepoCodePage() {
                                     }
 
                                     // Kind 30617 content is empty per NIP-34 — recover files from
-                                    // GRASP/gittr clone URLs (same path as Code-tab auto load).
+                                    // gittr bridge (owner/repo) first, then GRASP/clone URLs.
                                     {
+                                      const branch =
+                                        eventRepoData.defaultBranch ||
+                                        repo?.defaultBranch ||
+                                        "main";
+                                      const hasFilesAlready =
+                                        Array.isArray(eventRepoData.files) &&
+                                        eventRepoData.files.length > 0;
+                                      if (!hasFilesAlready && ownerPubkey) {
+                                        try {
+                                          const bridge =
+                                            await fetchBridgeFilesOnce(
+                                              ownerPubkey,
+                                              repoName,
+                                              branch
+                                            );
+                                          if (
+                                            bridge?.files &&
+                                            Array.isArray(bridge.files) &&
+                                            bridge.files.length > 0
+                                          ) {
+                                            eventRepoData.files = bridge.files;
+                                            if (
+                                              typeof bridge.branch ===
+                                                "string" &&
+                                              bridge.branch.trim()
+                                            ) {
+                                              eventRepoData.defaultBranch =
+                                                bridge.branch.trim();
+                                            }
+                                            console.log(
+                                              `✅ [Refetch] Loaded ${bridge.files.length} files from gittr bridge`
+                                            );
+                                          }
+                                        } catch (bridgeErr) {
+                                          console.warn(
+                                            "⚠️ [Refetch] Bridge file fetch failed:",
+                                            bridgeErr
+                                          );
+                                        }
+                                      }
                                       const cloneList: string[] = [
                                         ...(Array.isArray(eventRepoData.clone)
                                           ? eventRepoData.clone
@@ -20669,21 +20746,17 @@ export function RepoCodePage() {
                                       const uniqueClones = Array.from(
                                         new Set(cloneList)
                                       );
-                                      const hasFilesAlready =
-                                        Array.isArray(eventRepoData.files) &&
-                                        eventRepoData.files.length > 0;
+                                      const stillNoFiles =
+                                        !Array.isArray(eventRepoData.files) ||
+                                        eventRepoData.files.length === 0;
                                       if (
-                                        !hasFilesAlready &&
+                                        stillNoFiles &&
                                         uniqueClones.length > 0
                                       ) {
                                         try {
                                           console.log(
-                                            `🔄 [Refetch] No files in 30617 content — fetching from ${uniqueClones.length} clone URL(s)`
+                                            `🔄 [Refetch] No files in bridge — fetching from ${uniqueClones.length} clone URL(s)`
                                           );
-                                          const branch =
-                                            eventRepoData.defaultBranch ||
-                                            repo?.defaultBranch ||
-                                            "main";
                                           const { files } =
                                             await fetchFilesFromMultipleSources(
                                               uniqueClones,
@@ -20818,13 +20891,31 @@ export function RepoCodePage() {
                                         };
 
                                         repos[repoIndex] = newRepo;
+                                        if (
+                                          Array.isArray(eventRepoData.files) &&
+                                          eventRepoData.files.length > 0
+                                        ) {
+                                          persistRepoFiles(
+                                            eventRepoData.files as RepoFileEntry[],
+                                            "[Refetch]",
+                                            { allowShrink: true }
+                                          );
+                                          newRepo.fileCount =
+                                            eventRepoData.files.length;
+                                          newRepo.files = undefined;
+                                          repos[repoIndex] = newRepo;
+                                        }
                                         saveStoredRepos(repos);
 
-                                        alert(
-                                          `✅ Refreshed from gittr!\n\nFound ${
-                                            eventRepoData.files?.length || 0
-                                          } files.\n\nRepository created in localStorage.`
-                                        );
+                                        {
+                                          const n =
+                                            eventRepoData.files?.length || 0;
+                                          alert(
+                                            n > 0
+                                              ? `✅ Refreshed from gittr!\n\nFound ${n} files.\n\nRepository created in localStorage.`
+                                              : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`
+                                          );
+                                        }
                                         window.location.reload();
                                         return;
                                       }
@@ -20904,6 +20995,21 @@ export function RepoCodePage() {
                                         logoUrl?: string;
                                       };
 
+                                      if (
+                                        Array.isArray(eventRepoData.files) &&
+                                        eventRepoData.files.length > 0
+                                      ) {
+                                        persistRepoFiles(
+                                          eventRepoData.files as RepoFileEntry[],
+                                          "[Refetch]",
+                                          { allowShrink: true }
+                                        );
+                                        (repos[repoIndex] as StoredRepo).fileCount =
+                                          eventRepoData.files.length;
+                                        (repos[repoIndex] as StoredRepo).files =
+                                          undefined;
+                                      }
+
                                       saveStoredRepos(repos);
 
                                       console.log(
@@ -20918,10 +21024,12 @@ export function RepoCodePage() {
                                         }
                                       );
 
+                                      const refreshedCount =
+                                        eventRepoData.files?.length || 0;
                                       alert(
-                                        `✅ Refreshed from gittr!\n\nFound ${
-                                          eventRepoData.files?.length || 0
-                                        } files.\n\nLocal edits have been replaced with the latest version from clone mirrors.`
+                                        refreshedCount > 0
+                                          ? `✅ Refreshed from gittr!\n\nFound ${refreshedCount} files.\n\nLocal edits have been replaced with the latest version from the bridge/clones.`
+                                          : `✅ Refreshed from gittr!\n\nAnnouncement updated, but no file tree was loaded yet (empty bridge or clone still syncing).\n\nYou can Upload files now — they'll merge on top when you Push to Nostr. Or wait a moment and Refresh again.`
                                       );
                                       window.location.reload();
                                     } else {
@@ -20991,25 +21099,41 @@ export function RepoCodePage() {
                                         logoUrl?: string;
                                       };
 
+                                      if (
+                                        Array.isArray(eventRepoData.files) &&
+                                        eventRepoData.files.length > 0
+                                      ) {
+                                        persistRepoFiles(
+                                          eventRepoData.files as RepoFileEntry[],
+                                          "[Refetch]",
+                                          { allowShrink: true }
+                                        );
+                                        newRepo.fileCount =
+                                          eventRepoData.files.length;
+                                        newRepo.files = undefined;
+                                      }
+
                                       repos.push(newRepo);
                                       saveStoredRepos(repos);
 
+                                      const createdCount =
+                                        eventRepoData.files?.length || 0;
                                       alert(
-                                        `✅ Refreshed from gittr!\n\nFound ${
-                                          eventRepoData.files?.length || 0
-                                        } files.\n\nRepository created in localStorage.`
+                                        createdCount > 0
+                                          ? `✅ Refreshed from gittr!\n\nFound ${createdCount} files.\n\nRepository created in localStorage.`
+                                          : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`
                                       );
                                       window.location.reload();
                                     }
                                   } catch (error: any) {
                                     console.error(
-                                      "Failed to refetch from Nostr:",
+                                      "Failed to refresh from gittr:",
                                       error
                                     );
                                     alert(
-                                      `❌ Failed to refetch from Nostr: ${
+                                      `❌ Failed to refresh from gittr: ${
                                         error.message || "Unknown error"
-                                      }`
+                                      }\n\nIf the Code tab already shows files, wait a few seconds and try again — relays can answer at different speeds.`
                                     );
                                   } finally {
                                     setIsRefetching(false);

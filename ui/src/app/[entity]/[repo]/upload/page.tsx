@@ -14,6 +14,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
+import { ensureLocalRepoForEdit } from "@/lib/repos/ensure-local-repo-for-edit";
 import {
   addFilesToRepo,
   loadStoredRepos,
@@ -25,7 +26,10 @@ import {
   mergeStagedUploads,
   pathFromUploadFile,
 } from "@/lib/repos/upload-paths";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import Link from "next/link";
@@ -302,6 +306,42 @@ export default function UploadPage({
       }
 
       if (isOwnerUser) {
+        setStatus("Preparing local copy...");
+        const existing = findRepoByEntityAndName(
+          loadStoredRepos(),
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const ownerPubkey =
+          getRepoOwnerPubkey(existing, resolvedParams.entity) ||
+          resolveEntityToPubkey(resolvedParams.entity) ||
+          pubkey;
+        const ensured = await ensureLocalRepoForEdit({
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+          ownerPubkey,
+          defaultBranch:
+            (existing as { defaultBranch?: string } | null)?.defaultBranch ||
+            "main",
+        });
+        if (!ensured.ok) {
+          setStatus(
+            `Error: ${
+              ensured.error ||
+              "Could not prepare a local copy of this repository"
+            }. Use Refresh from gittr on the Code tab, then upload again.`
+          );
+          setUploading(false);
+          return;
+        }
+        if (ensured.hydratedFromBridge || ensured.createdShell) {
+          setStatus(
+            ensured.hydratedFromBridge
+              ? `Loaded ${ensured.fileCount} existing file(s) from gittr, merging your upload...`
+              : "Created local repo copy, adding your files..."
+          );
+        }
+
         const success = addFilesToRepo(
           resolvedParams.entity,
           resolvedParams.repo,
@@ -317,7 +357,9 @@ export default function UploadPage({
             router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
-          setStatus("Error: Failed to add files to repository");
+          setStatus(
+            "Error: Failed to add files to repository. Try Refresh from gittr on the Code tab first, then upload again."
+          );
           setUploading(false);
         }
       } else {

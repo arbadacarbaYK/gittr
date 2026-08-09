@@ -6,12 +6,16 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
+import { ensureLocalRepoForEdit } from "@/lib/repos/ensure-local-repo-for-edit";
 import {
   addFilesToRepo,
   loadStoredRepos,
   normalizeFilePath,
 } from "@/lib/repos/storage";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import Link from "next/link";
@@ -75,7 +79,7 @@ export default function NewFilePage({
     }
   }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isLoggedIn || !pubkey) {
@@ -98,6 +102,33 @@ export default function NewFilePage({
     try {
       // If user is owner, add file directly to repo (immediate display)
       if (isOwnerUser) {
+        const existing = findRepoByEntityAndName(
+          loadStoredRepos(),
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const ownerPubkey =
+          getRepoOwnerPubkey(existing, resolvedParams.entity) ||
+          resolveEntityToPubkey(resolvedParams.entity) ||
+          pubkey;
+        const ensured = await ensureLocalRepoForEdit({
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+          ownerPubkey,
+          defaultBranch:
+            (existing as { defaultBranch?: string } | null)?.defaultBranch ||
+            "main",
+        });
+        if (!ensured.ok) {
+          setStatus(
+            `Error: ${
+              ensured.error ||
+              "Could not prepare a local copy of this repository"
+            }. Use Refresh from gittr on the Code tab, then try again.`
+          );
+          return;
+        }
+
         const success = addFilesToRepo(
           resolvedParams.entity,
           resolvedParams.repo,
@@ -111,7 +142,9 @@ export default function NewFilePage({
             router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
-          setStatus("Error: Failed to add file to repository");
+          setStatus(
+            "Error: Failed to add file to repository. Try Refresh from gittr on the Code tab first."
+          );
         }
       } else {
         // Non-owners: Add as pending upload (requires PR)
