@@ -2,8 +2,19 @@
 /**
  * Full NIP-46 login test suite — run before declaring auth "done".
  * Usage: cd ui && NODE_PATH=./node_modules npx tsx ../scripts/verify-nip46-all.ts
+ *
+ * Optional production check (no shell interpolation — argv only):
+ *   GITTR_DEPLOY_HOST=example.com
+ *   GITTR_DEPLOY_IDENTITY=~/.ssh/deploy_key
+ *   GITTR_DEPLOY_USER=root          # optional, default root
+ *   GITTR_DEPLOY_PATH=/opt/ngit/ui  # optional
+ *   GITTR_SITE_URL=https://gittr.space  # optional
+ *
+ * Legacy (parsed strictly, never passed through a shell):
+ *   GITTR_DEPLOY_SSH='ssh -i ~/.ssh/key root@host'
  */
-import { execSync } from "child_process";
+
+import { execFileSync } from "child_process";
 import { webcrypto } from "crypto";
 import {
   generatePrivateKey,
@@ -21,6 +32,12 @@ import {
   rememberNostrConnectClientKey,
   RemoteSignerManager,
 } from "../ui/src/lib/nostr/remoteSigner";
+import {
+  SAFE_ABS_PATH,
+  SAFE_HTTPS_ORIGIN,
+  resolveDeployTargetFromEnv,
+  type DeployTarget,
+} from "../ui/src/lib/security/deploy-target-env";
 
 (globalThis as any).window = {
   crypto: webcrypto,
@@ -341,31 +358,71 @@ async function testBunkerAfterFailedNostrConnect() {
   pass("bunker works after failed nostrconnect attempt");
 }
 
+
+function sshRemote(target: DeployTarget, remoteCommand: string): string {
+  // Local: execFile argv only (no /bin/sh). Remote command is a fixed string we build
+  // from validated path components only.
+  return execFileSync(
+    "ssh",
+    [
+      "-i",
+      target.identity,
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      `${target.user}@${target.host}`,
+      remoteCommand,
+    ],
+    { encoding: "utf8", timeout: 60_000 }
+  ).trim();
+}
+
 function testProductionDeploy() {
-  // Operator-only check. Set e.g.:
-  //   GITTR_DEPLOY_SSH="ssh -i ~/.ssh/<deploy-key> root@<server>"
-  //   GITTR_DEPLOY_PATH="/opt/ngit/ui"   GITTR_SITE_URL="https://gittr.space"
-  const sshCmd = process.env.GITTR_DEPLOY_SSH;
-  const deployPath = process.env.GITTR_DEPLOY_PATH || "/opt/ngit/ui";
-  const siteUrl = process.env.GITTR_SITE_URL || "https://gittr.space";
-  if (!sshCmd) {
-    pass("production deploy live", "skipped (GITTR_DEPLOY_SSH not set)");
+  let target: DeployTarget | null;
+  try {
+    target = resolveDeployTargetFromEnv();
+  } catch (e) {
+    fail(
+      "production deploy config",
+      e instanceof Error ? e.message : String(e)
+    );
+  }
+  if (!target) {
+    pass(
+      "production deploy live",
+      "skipped (set GITTR_DEPLOY_HOST + GITTR_DEPLOY_IDENTITY, or GITTR_DEPLOY_SSH)"
+    );
     return;
   }
+
   try {
-    const local = execSync(
-      `${sshCmd} "grep -c NIP46_SIGNER_DEFAULT_RELAYS ${deployPath}/src/lib/nostr/remoteSigner.ts && grep -c resolveTransportRelays ${deployPath}/src/lib/nostr/remoteSigner.ts"`,
-      { encoding: "utf8" }
-    ).trim();
-    const [signerDefaults, transport] = local.split("\n").map((x) => parseInt(x, 10));
+    const remoteSigner = `${target.deployPath}/src/lib/nostr/remoteSigner.ts`;
+    if (!SAFE_ABS_PATH.test(remoteSigner)) {
+      fail("production deploy", "remote path rejected");
+    }
+    const local = sshRemote(
+      target,
+      `grep -c NIP46_SIGNER_DEFAULT_RELAYS ${remoteSigner} && grep -c resolveTransportRelays ${remoteSigner}`
+    );
+    const [signerDefaults, transport] = local
+      .split("\n")
+      .map((x) => parseInt(x, 10));
     if (signerDefaults < 1 || transport < 1) {
       fail("production deploy", local);
     }
-    const buildId = execSync(`${sshCmd} cat ${deployPath}/.next/BUILD_ID`, {
+    const buildIdPath = `${target.deployPath}/.next/BUILD_ID`;
+    if (!SAFE_ABS_PATH.test(buildIdPath)) {
+      fail("production deploy", "BUILD_ID path rejected");
+    }
+    const buildId = sshRemote(target, `cat ${buildIdPath}`);
+    const loginUrl = `${target.siteUrl.replace(/\/$/, "")}/login`;
+    if (!SAFE_HTTPS_ORIGIN.test(loginUrl)) {
+      fail("production deploy", "login URL rejected");
+    }
+    const page = execFileSync("curl", ["-sf", loginUrl], {
       encoding: "utf8",
-    }).trim();
-    const page = execSync(`curl -sf ${siteUrl}/login`, {
-      encoding: "utf8",
+      timeout: 30_000,
     });
     if (!page.includes(buildId)) {
       fail("production live build", `page missing ${buildId}`);
