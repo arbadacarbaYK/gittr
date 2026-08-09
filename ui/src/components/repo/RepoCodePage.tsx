@@ -120,6 +120,8 @@ import {
   loadRepoOverrides,
   loadStoredRepos,
   mergeRepoFileIndexes,
+  appendRepoDeletedPath,
+  isRepoPathDeleted,
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveRepoFiles,
@@ -232,6 +234,7 @@ import {
   Settings,
   Star,
   Tag,
+  Trash2,
   Upload,
 } from "lucide-react";
 import Link from "next/link";
@@ -803,7 +806,7 @@ export function RepoCodePage() {
     const indexedLen =
       loadRepoFiles(resolvedParams.entity, storageRepo).length +
       loadRepoFiles(resolvedParams.entity, resolvedParams.repo).length;
-    const rdLen = Array.isArray(repoData?.files) ? repoData!.files!.length : 0;
+    const rdLen = Array.isArray(repoData?.files) ? repoData.files.length : 0;
     const brLen = Array.isArray(bridgeFiles) ? bridgeFiles.length : 0;
     return `${indexedLen}:${rdLen}:${brLen}:${filesTreeBump}`;
   }, [
@@ -1029,7 +1032,7 @@ export function RepoCodePage() {
           r.entity === resolvedParams.entity
       );
       if (idx < 0 || !repos[idx]) return;
-      const current = (repos[idx].links || []) as RepoLink[];
+      const current = (repos[idx].links || []);
       let next: RepoLink[];
       if (
         pagesSiteListedByGateway === true &&
@@ -1551,7 +1554,7 @@ export function RepoCodePage() {
         let filesToApply = data.files as RepoFileEntry[];
         if (existingCount > 0 && data.files.length < existingCount) {
           const existingFromRef = Array.isArray(repoDataRef.current?.files)
-            ? (repoDataRef.current!.files as RepoFileEntry[])
+            ? (repoDataRef.current.files )
             : [];
           const mergedFiles = mergeRepoFileIndexes(
             existingFromRef,
@@ -1577,7 +1580,7 @@ export function RepoCodePage() {
           resolvedParams.repo
         );
         const storedContributors = Array.isArray(storedRepoRow?.contributors)
-          ? storedRepoRow!.contributors
+          ? storedRepoRow.contributors
           : [];
         setRepoData((prev: any) => {
           const base =
@@ -1680,7 +1683,7 @@ export function RepoCodePage() {
       pagesSiteListedByGateway === true
         ? repoData?.links || []
         : removeAutoNostrPagesLinks(repoData?.links || [])
-    ) as RepoLink[];
+    );
     return enrichRepoLinks({
       existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
@@ -2586,6 +2589,18 @@ export function RepoCodePage() {
   }, [userName]);
   const isOwner = useMemo(() => {
     if (!resolvedParams?.entity || !currentUserPubkey) return false;
+    const normalizedUser = currentUserPubkey.toLowerCase();
+
+    // npub / hex profile route: logged-in user is the entity owner
+    if (entityPubkey && normalizedUser === entityPubkey.toLowerCase()) {
+      return true;
+    }
+    if (
+      repoOwnerPubkey &&
+      normalizedUser === repoOwnerPubkey.toLowerCase()
+    ) {
+      return true;
+    }
 
     try {
       const repos = loadStoredRepos();
@@ -2619,26 +2634,35 @@ export function RepoCodePage() {
 
       if (repo) {
         // Priority 1: Check resolvedOwnerPubkey (set by Nostr query if missing)
-        if (resolvedOwnerPubkey && resolvedOwnerPubkey === currentUserPubkey)
+        if (
+          resolvedOwnerPubkey &&
+          resolvedOwnerPubkey.toLowerCase() === normalizedUser
+        )
           return true;
 
         // Priority 2: Check ownerPubkey (most reliable - works for imported repos)
-        if (repo.ownerPubkey && repo.ownerPubkey === currentUserPubkey)
+        if (
+          repo.ownerPubkey &&
+          repo.ownerPubkey.toLowerCase() === normalizedUser
+        )
           return true;
 
         // Priority 3: Check if current user is owner contributor (100% weight)
         const ownerContributor = repo.contributors?.find(
-          (c) => c.pubkey === currentUserPubkey && c.weight === 100
+          (c) =>
+            typeof c.pubkey === "string" &&
+            c.pubkey.toLowerCase() === normalizedUser &&
+            c.weight === 100
         );
         if (ownerContributor) return true;
 
         // Priority 4: Check entity match (for native repos)
         if (
-          repo.entity === currentUserPubkey ||
-          (repo.entity.length === 8 &&
-            currentUserPubkey
-              .toLowerCase()
-              .startsWith(repo.entity.toLowerCase()))
+          (typeof repo.entity === "string" &&
+            repo.entity.toLowerCase() === normalizedUser) ||
+          (typeof repo.entity === "string" &&
+            repo.entity.length === 8 &&
+            normalizedUser.startsWith(repo.entity.toLowerCase()))
         ) {
           return true;
         }
@@ -2649,8 +2673,7 @@ export function RepoCodePage() {
     if (ownerSlug && ownerSlug === resolvedParams.entity) return true;
     if (
       resolvedParams.entity &&
-      currentUserPubkey &&
-      resolvedParams.entity === currentUserPubkey.slice(0, 8).toLowerCase()
+      resolvedParams.entity === normalizedUser.slice(0, 8)
     )
       return true;
 
@@ -2661,6 +2684,9 @@ export function RepoCodePage() {
     currentUserPubkey,
     resolvedParams.repo,
     resolvedOwnerPubkey,
+    entityPubkey,
+    repoOwnerPubkey,
+    decodedRepo,
   ]);
 
   // This must run BEFORE the main useEffect to ensure resolvedOwnerPubkey is set early
@@ -3786,7 +3812,7 @@ export function RepoCodePage() {
                 (c) =>
                   c.pubkey &&
                   c.pubkey.toLowerCase() ===
-                    ownerPubkeyForImportPath!.toLowerCase()
+                    ownerPubkeyForImportPath.toLowerCase()
               )
             ) {
               contributors.unshift({
@@ -3801,7 +3827,7 @@ export function RepoCodePage() {
                 (c) =>
                   c.pubkey &&
                   c.pubkey.toLowerCase() ===
-                    ownerPubkeyForImportPath!.toLowerCase()
+                    ownerPubkeyForImportPath.toLowerCase()
               );
               if (ownerIndex >= 0) {
                 // Move owner to first position and ensure correct weight/role
@@ -5879,7 +5905,7 @@ export function RepoCodePage() {
           );
           const branchFromFetch =
             (successfulStatuses.find((s: any) => s.resolvedBranch)
-              ?.resolvedBranch as string | undefined) || activeBranch;
+              ?.resolvedBranch ) || activeBranch;
           const sourceSuccess = successfulStatuses.find((s: any) =>
             isSourceUpstreamFetchStatus(
               s,
@@ -5937,7 +5963,7 @@ export function RepoCodePage() {
             }));
             const firstResolvedBranch = successfulStatuses.find(
               (s: any) => s.resolvedBranch
-            )?.resolvedBranch as string | undefined;
+            )?.resolvedBranch ;
 
             setRepoData((prev: any) =>
               prev
@@ -8859,7 +8885,7 @@ export function RepoCodePage() {
                     );
                     const branchFromFetchEose =
                       (successfulStatuses.find((s) => s.resolvedBranch)
-                        ?.resolvedBranch as string | undefined) ||
+                        ?.resolvedBranch ) ||
                       activeBranchEose;
                     const shouldReplaceEose = shouldApplyFetchedFileTree(
                       branchFromFetchEose,
@@ -8895,7 +8921,7 @@ export function RepoCodePage() {
                       );
                       const firstResolvedBranch = successfulStatuses.find(
                         (s) => s.resolvedBranch
-                      )?.resolvedBranch as string | undefined;
+                      )?.resolvedBranch ;
 
                       setRepoData((prev: any) =>
                         prev
@@ -11744,7 +11770,7 @@ export function RepoCodePage() {
                   }
                 } else {
                   const cloneLen = Array.isArray(repoDataRef.current?.clone)
-                    ? repoDataRef.current!.clone!.length
+                    ? repoDataRef.current.clone.length
                     : 0;
                   if (cloneLen > 0) {
                     console.log(
@@ -12920,7 +12946,7 @@ export function RepoCodePage() {
 
     // Process all files/dirs from safeFiles array
     for (const f of sourceFiles) {
-      if (deletedPaths.includes(f.path)) continue;
+      if (isRepoPathDeleted(f.path, deletedPaths)) continue;
       // Skip if this is not in the current directory
       if (currentPath) {
         if (!f.path.startsWith(prefix) && f.path !== currentPath) continue;
@@ -12936,6 +12962,7 @@ export function RepoCodePage() {
       if (relative === firstSegment) {
         // Direct child (file or directory at current level)
         // Use the type from the file entry, default to "file" if missing
+        if (isRepoPathDeleted(f.path, deletedPaths)) continue;
         direct.set(firstSegment, {
           type: f.type || "file",
           path: f.path,
@@ -12947,6 +12974,7 @@ export function RepoCodePage() {
           const dirPath = currentPath
             ? `${currentPath}/${firstSegment}`
             : firstSegment;
+          if (isRepoPathDeleted(dirPath, deletedPaths)) continue;
           direct.set(firstSegment, {
             type: "dir",
             path: dirPath,
@@ -15396,35 +15424,116 @@ export function RepoCodePage() {
     setProposedContent(fileContent || "");
   }, [selectedFile, fileContent, loadingFile]);
 
+  const deleteRepoPath = useCallback(
+    (path: string, kind: "file" | "folder" = "file") => {
+      const target = (path || "").trim().replace(/^\/+|\/+$/g, "");
+      if (!target) return;
+      const label = kind === "folder" ? "folder" : "file";
+      const detail =
+        kind === "folder"
+          ? `Delete folder "${target}" and everything inside it? This will apply locally until you push.`
+          : `Delete ${target}? This will apply locally.`;
+      if (!confirm(detail)) return;
+      try {
+        const nextDeleted = appendRepoDeletedPath(deletedPaths, target);
+        setDeletedPaths(nextDeleted);
+        saveRepoDeletedPaths(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          nextDeleted
+        );
+
+        // Drop local content overrides under this path
+        try {
+          const overrides = loadRepoOverrides(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          let changed = false;
+          for (const key of Object.keys(overrides)) {
+            if (
+              key === target ||
+              key.startsWith(`${target}/`) ||
+              isRepoPathDeleted(key, [target])
+            ) {
+              delete overrides[key];
+              changed = true;
+            }
+          }
+          if (changed) {
+            saveRepoOverrides(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              overrides
+            );
+          }
+        } catch (overrideErr) {
+          console.warn(
+            "[Delete] Failed to prune overrides for deleted path:",
+            overrideErr
+          );
+        }
+
+        // Drop cached shallow listings for this folder and descendants
+        setFolderListings((prev) => {
+          const next: typeof prev = {};
+          for (const [listingPath, children] of Object.entries(prev)) {
+            if (
+              listingPath === target ||
+              listingPath.startsWith(`${target}/`)
+            ) {
+              continue;
+            }
+            next[listingPath] = children.filter(
+              (child) => !isRepoPathDeleted(child.path, [target])
+            );
+          }
+          return next;
+        });
+
+        // If we deleted the open file or are browsing inside a deleted folder, leave
+        if (
+          selectedFile &&
+          (selectedFile === target || selectedFile.startsWith(`${target}/`))
+        ) {
+          setSelectedFile(null);
+          setFileContent("");
+          setProposeEdit(false);
+          setProposedContent("");
+        }
+        if (
+          currentPath === target ||
+          currentPath.startsWith(`${target}/`)
+        ) {
+          const parent = target.includes("/")
+            ? target.split("/").slice(0, -1).join("/")
+            : "";
+          setCurrentPath(parent);
+          updateURL({ path: parent, file: null });
+        }
+
+        markRepoAsEdited(resolvedParams.repo, resolvedParams.entity);
+        console.log(
+          `🗑️ [Delete ${label}] Marked repo as having unpushed edits after deleting: ${target}`
+        );
+      } catch (e) {
+        console.error(`Failed to delete ${label}:`, e);
+      }
+    },
+    [
+      deletedPaths,
+      resolvedParams.entity,
+      resolvedParams.repo,
+      selectedFile,
+      currentPath,
+      updateURL,
+    ]
+  );
+
   const deleteCurrentFile = useCallback(() => {
     if (!selectedFile) return;
-    if (!confirm(`Delete ${selectedFile}? This will apply locally.`)) return;
-    try {
-      const nextDeleted = deletedPaths.includes(selectedFile)
-        ? deletedPaths
-        : [...deletedPaths, selectedFile];
-      setDeletedPaths(nextDeleted);
-      saveRepoDeletedPaths(
-        resolvedParams.entity,
-        resolvedParams.repo,
-        nextDeleted
-      );
-
-      // CRITICAL: Mark repo as having unpushed edits so push button appears
-      // This ensures the "Push to Nostr" button is shown after deleting files
-      markRepoAsEdited(resolvedParams.repo, resolvedParams.entity);
-      console.log(
-        `🗑️ [Delete File] Marked repo as having unpushed edits after deleting: ${selectedFile}`
-      );
-
-      setSelectedFile(null);
-      setFileContent("");
-      setProposeEdit(false);
-      setProposedContent("");
-    } catch (e) {
-      console.error("Failed to delete file:", e);
-    }
-  }, [selectedFile, deletedPaths, resolvedParams.entity, resolvedParams.repo]);
+    deleteRepoPath(selectedFile, "file");
+  }, [selectedFile, deleteRepoPath]);
 
   // Memoize BranchTagSwitcher callbacks to prevent infinite loops
   const handleBranchSelect = useCallback(
@@ -17708,8 +17817,34 @@ export function RepoCodePage() {
                           ? formatRelativeShort(last.timestamp * 1000)
                           : "—"}
                       </div>
-                      <div className="text-right whitespace-nowrap sm:col-span-2">
-                        {it.size ? `${it.size} B` : "—"}
+                      <div className="text-right whitespace-nowrap sm:col-span-2 flex items-center justify-end gap-2">
+                        {isOwner && (
+                          <button
+                            type="button"
+                            className="text-gray-500 hover:text-red-400 p-1 rounded"
+                            title={
+                              it.type === "dir"
+                                ? `Delete folder ${it.path.split("/").pop()}`
+                                : `Delete ${it.path.split("/").pop()}`
+                            }
+                            aria-label={
+                              it.type === "dir"
+                                ? `Delete folder ${it.path}`
+                                : `Delete file ${it.path}`
+                            }
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              deleteRepoPath(
+                                it.path,
+                                it.type === "dir" ? "folder" : "file"
+                              );
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <span>{it.size ? `${it.size} B` : "—"}</span>
                       </div>
                     </li>
                     );
@@ -19643,7 +19778,7 @@ export function RepoCodePage() {
                                           importData.releases,
                                           (prev as { releases?: unknown[] })
                                             ?.releases
-                                        ) as unknown[],
+                                        ) ,
                                       }));
 
                                       // CRITICAL: Also save files to separate storage key (for optimized storage)
@@ -20166,7 +20301,7 @@ export function RepoCodePage() {
                                         alert(
                                           `⚠️ Refetch got ${
                                             importData.files?.length || 0
-                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' repos from browser cache, or use a private window with more free space.`
+                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' repos cache, or use a private window with more free space.`
                                         );
                                       } else {
                                         // Reload page to show updated data
@@ -21255,6 +21390,8 @@ export function RepoCodePage() {
 
                                       // Update state directly from push result
                                       setNostrEventId(result.eventId);
+                                      // Push applied file/folder deletes on the bridge
+                                      setDeletedPaths([]);
 
                                       const bridgeOwnerPubkey =
                                         repoOwnerPubkey ||
@@ -21632,10 +21769,8 @@ export function RepoCodePage() {
                                       : undefined;
                                   const cloneList =
                                     ((repoData as { clone?: string[] })
-                                      ?.clone as string[] | undefined) ||
-                                    ((repo as { clone?: string[] })?.clone as
-                                      | string[]
-                                      | undefined);
+                                      ?.clone ) ||
+                                    ((repo as { clone?: string[] })?.clone );
                                   const sourceUrl =
                                     cloneList?.find(
                                       (u) =>
@@ -22105,7 +22240,9 @@ export function RepoCodePage() {
         {/* Fuzzy File Finder Modal */}
         {safeFiles.length > 0 && (
           <FuzzyFileFinder
-            files={safeFiles.map((f) => ({
+            files={safeFiles
+              .filter((f) => f?.path && !isRepoPathDeleted(f.path, deletedPaths))
+              .map((f) => ({
               type: f?.type === "file" || f?.type === "dir" ? f.type : "file",
               path: f?.path || "",
               size: f?.size,

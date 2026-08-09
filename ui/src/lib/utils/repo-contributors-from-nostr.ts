@@ -204,5 +204,5 @@ export function mergeStoredContributorLists(
   }
   return sanitizeContributors(merged, {
     keepNameOnly: true,
-  }) as RepoContributor[];
+  }) ;
 }

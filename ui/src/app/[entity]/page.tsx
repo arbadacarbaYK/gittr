@@ -109,7 +109,7 @@ function decodeNpubToHex(entity: string): string | null {
   try {
     const decoded = nip19.decode(entity);
     if (decoded.type === "npub" && typeof decoded.data === "string") {
-      const hex = decoded.data as string;
+      const hex = decoded.data ;
       if (isHexPubkey(hex)) return hex.toLowerCase();
     }
   } catch {

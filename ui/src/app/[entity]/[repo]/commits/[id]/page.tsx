@@ -141,7 +141,7 @@ export default function CommitDetailPage({
             let before: string | undefined;
             let after: string | undefined;
 
-            if (commitData!.prId) {
+            if (commitData.prId) {
               try {
                 const prsKey = getRepoStorageKey(
                   "gittr_prs",
@@ -149,7 +149,7 @@ export default function CommitDetailPage({
                   resolvedParams.repo
                 );
                 const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-                const pr = prs.find((p: any) => p.id === commitData!.prId);
+                const pr = prs.find((p: any) => p.id === commitData.prId);
                 if (pr) {
                   if (pr.changedFiles && pr.changedFiles.length > 0) {
                     const fileChange = pr.changedFiles.find(
@@ -182,7 +182,7 @@ export default function CommitDetailPage({
               resolvedParams.repo
             );
             const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-            const pr = prs.find((p: any) => p.id === commitData!.prId);
+            const pr = prs.find((p: any) => p.id === commitData.prId);
             if (pr) {
               if (pr.changedFiles && pr.changedFiles.length > 0) {
                 diffs = pr.changedFiles.map((f: any) => ({

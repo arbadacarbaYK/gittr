@@ -45,6 +45,7 @@ import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
   clearForeignReposFromStorage,
+  clearOwnReposFromStorage,
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
@@ -137,10 +138,23 @@ export default function RepositoriesPage() {
   const [clickedRepo, setClickedRepo] = useState<string | null>(null); // Track which repo is being navigated to
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const syncedFromActivitiesRef = useRef<Set<string>>(new Set()); // Track which repos we've already synced
+  /** Session catalog so My Repositories stays usable when localStorage quota blocks writes. */
+  const reposCatalogRef = useRef<Repo[] | null>(null);
   const router = useRouter();
   const { name: userName, isLoggedIn } = useSession();
   const { subscribe, publish, defaultRelays, pubkey, remoteSigner } =
     useNostrContext();
+
+  const persistReposCatalog = useCallback(
+    (list: Repo[]) => {
+      reposCatalogRef.current = list;
+      return saveStoredRepos(list as StoredRepo[], {
+        quiet: true,
+        preferOwnerPubkey: pubkey || undefined,
+      });
+    },
+    [pubkey]
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -303,7 +317,7 @@ export default function RepositoriesPage() {
                   }
                 }
 
-                saveStoredRepos(allRepos);
+                persistReposCatalog(allRepos as Repo[]);
                 setRepos([...allRepos] as Repo[]);
                 resolvedCount++;
 
@@ -334,7 +348,7 @@ export default function RepositoriesPage() {
       clearTimeout(timeout);
       if (unsub) unsub();
     };
-  }, [repos, subscribe, defaultRelays]);
+  }, [repos, subscribe, defaultRelays, persistReposCatalog]);
 
   // Helper removed - use getRepoOwnerPubkey from entity-resolver instead
 
@@ -626,9 +640,9 @@ export default function RepositoriesPage() {
       return; // Don't access localStorage during SSR
     }
     try {
-      let list = JSON.parse(
-        localStorage.getItem("gittr_repos") || "[]"
-      ) as Repo[];
+      // Prefer session catalog (survives quota-full writes) then localStorage.
+      let list = (reposCatalogRef.current ??
+        (loadStoredRepos() as Repo[]));
 
       // CRITICAL: Clean up corrupted repos on page load using general corruption check
       const beforeCount = list.length;
@@ -661,7 +675,7 @@ export default function RepositoriesPage() {
         console.log(
           `🧹 [Repositories] Cleaned up ${removed} corrupted repo(s) on page load`
         );
-        localStorage.setItem("gittr_repos", JSON.stringify(list));
+        persistReposCatalog(list);
       }
 
       // Debug: Check for tides repo (case-insensitive)
@@ -809,12 +823,12 @@ export default function RepositoriesPage() {
         return r;
       });
 
-      // Save if anything changed
+      // Save if anything changed (never throw on quota — keep UI list)
       if (
         updated.length !== list.length ||
         updated.some((r, i) => JSON.stringify(r) !== JSON.stringify(list[i]))
       ) {
-        localStorage.setItem("gittr_repos", JSON.stringify(updated));
+        persistReposCatalog(updated);
         if (updated.length !== list.length) {
           console.log(
             `✅ Auto-deleted test_repo_icon_check_fork (removed ${
@@ -822,13 +836,26 @@ export default function RepositoriesPage() {
             } instance(s))`
           );
         }
+      } else {
+        reposCatalogRef.current = updated;
       }
       setRepos(updated);
     } catch (e) {
       console.error("Error loading repos:", e);
-      setRepos([]);
+      // Quota / parse failures must not blank My Repositories.
+      try {
+        const fallback =
+          reposCatalogRef.current ?? (loadStoredRepos() as Repo[]);
+        if (fallback.length > 0) {
+          setRepos(fallback);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      // Keep whatever is already on screen (do not setRepos([])).
     }
-  }, [pubkey]);
+  }, [pubkey, persistReposCatalog]);
 
   /** Same-tab LS writes never fire `storage` — debounce UI reload after Nostr merges. */
   const uiReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1865,8 +1892,8 @@ export default function RepositoriesPage() {
               );
             }
 
-            // Save to localStorage (with corrupted repos removed)
-            localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
+            // Persist without throwing on quota; session catalog keeps UI usable.
+            persistReposCatalog(cleanedRepos );
 
             // Debounced React refresh (same-tab storage events do not fire).
             scheduleUiReloadFromNostr();
@@ -1966,6 +1993,7 @@ export default function RepositoriesPage() {
     userName,
     loadRepos,
     scheduleUiReloadFromNostr,
+    persistReposCatalog,
   ]); // Note: pubkey optional - syncs ALL repos even when not logged in
 
   // After Clear Local / empty cache: refill *my* repos via server profile-repos API
@@ -2026,8 +2054,10 @@ export default function RepositoriesPage() {
           publicRead: row.publicRead !== false,
         }));
 
-        const merged = mergeProfileRepoList(loadStoredRepos() as any[], rows);
-        saveStoredRepos(merged as StoredRepo[]);
+        const base =
+          reposCatalogRef.current ?? (loadStoredRepos() as any[]);
+        const merged = mergeProfileRepoList(base, rows);
+        persistReposCatalog(merged as Repo[]);
         if (!cancelled) {
           loadRepos();
           console.log(
@@ -2042,7 +2072,7 @@ export default function RepositoriesPage() {
     return () => {
       cancelled = true;
     };
-  }, [mounted, pubkey, loadRepos]);
+  }, [mounted, pubkey, loadRepos, persistReposCatalog]);
 
   // Make findCorruptedRepos and deleteCorruptedTidesRepos available in console for debugging
   // Note: General corruption detection is handled by isRepoCorrupted() throughout the codebase
@@ -2527,7 +2557,7 @@ export default function RepositoriesPage() {
           console.log(
             `✅ [Repositories] Synced ${syncedRepos.length} repos from activities to localStorage`
           );
-          localStorage.setItem("gittr_repos", JSON.stringify(allRepos));
+          persistReposCatalog(allRepos as Repo[]);
 
           // CRITICAL: Don't call setRepos directly - let loadRepos() handle filtering
           // This ensures repos are properly filtered and displayed
@@ -2539,7 +2569,7 @@ export default function RepositoriesPage() {
     } catch (error) {
       console.error("Failed to sync repos from activities:", error);
     }
-  }, [pubkey]); // CRITICAL: Only run when pubkey changes, NOT when repos.length changes (prevents infinite loop)
+  }, [pubkey, persistReposCatalog, loadRepos]); // CRITICAL: Only run when pubkey changes, NOT when repos.length changes (prevents infinite loop)
 
   // Soft client nav remounts this page with mounted=false briefly. Do not swap the
   // whole page for a thin Loading shell (that reads as bare Header + Footer).
@@ -2548,31 +2578,41 @@ export default function RepositoriesPage() {
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Your repositories</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start mb-4">
+        <h1 className="text-2xl font-bold shrink-0">Your repositories</h1>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {syncing && (
-            <span className="text-xs text-gray-400">Syncing from Nostr...</span>
+            <span className="text-xs text-gray-400 w-full sm:w-auto">
+              Syncing from Nostr...
+            </span>
           )}
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-3 py-1 rounded transition-colors text-sm"
-            title="Flush your repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Also use after import when you want a fresh refetch. Unpushed local-only work is lost."
-          >
-            Flush my browser cache
-          </button>
+          {pubkey && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
+              title="Flush only your own repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Unpushed local-only work is lost. Other people’s cached repos stay."
+            >
+              <span className="sm:hidden">Flush my repos</span>
+              <span className="hidden sm:inline">
+                Flush my own repos cache
+              </span>
+            </button>
+          )}
 
           {pubkey && (
             <button
               onClick={() => setShowClearForeignConfirm(true)}
-              className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-3 py-1 rounded transition-colors text-sm"
-              title="Flush other people’s repos from this browser’s cache (Explore/import leftovers). Your own repos stay. Safe anytime — they can be re-fetched from Nostr. Frees storage after browsing."
+              className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
+              title="Flush other people’s repos from this browser’s cache (Explore/import leftovers). Your own repos stay. Safe anytime — they can be re-fetched from Nostr."
             >
-              Flush others&apos; repos from browser cache
+              <span className="sm:hidden">Flush others</span>
+              <span className="hidden sm:inline">
+                Flush others&apos; repos cache
+              </span>
             </button>
           )}
 
-          {/* Flush others' repos from browser cache Confirmation Modal */}
+          {/* Flush others' repos cache Confirmation Modal */}
           {showClearForeignConfirm && (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
@@ -2583,7 +2623,7 @@ export default function RepositoriesPage() {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <h2 className="text-xl font-bold mb-4 text-orange-400">
-                  Flush others&apos; repos from browser cache?
+                  Flush others&apos; repos cache?
                 </h2>
 
                 <div className="space-y-4 mb-6">
@@ -2618,7 +2658,7 @@ export default function RepositoriesPage() {
                       When to use this:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>After Explore/import filled the browser cache</li>
+                      <li>After Explore/import filled the cache with others&apos; repos</li>
                       <li>To free space so your own repos keep syncing</li>
                       <li>Anytime — other people&apos;s repos can be re-fetched</li>
                     </ul>
@@ -2629,8 +2669,9 @@ export default function RepositoriesPage() {
                       ⚠️ Note:
                     </p>
                     <p className="text-sm text-red-200/90">
-                      This only clears your browser. Opening those repos again
-                      will download a fresh copy from Nostr.
+                      This only clears other people&apos;s repos from your
+                      browser. Opening those repos again will download a fresh
+                      copy from Nostr. Your own repos stay.
                     </p>
                   </div>
                 </div>
@@ -2661,25 +2702,26 @@ export default function RepositoriesPage() {
                         });
 
                         console.log(
-                          "✅ Flushed others' repos from browser cache:",
+                          "✅ Flushed others' repos cache:",
                           result
                         );
 
                         setShowClearForeignConfirm(false);
 
                         alert(
-                          `✅ Browser cache flushed!\n\n• Removed ${result.clearedRepos} other people's repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} of your repos\n\nThey can be re-fetched from Nostr anytime.`
+                          `✅ Others' repos cache flushed!\n\n• Removed ${result.clearedRepos} other people's repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} of your repos\n\nThey can be re-fetched from Nostr anytime.`
                         );
 
-                        loadRepos();
-                        window.location.reload();
+                        reposCatalogRef.current = null;
+                        // Stay on My Repositories (reload can restore a prior repo tab via bfcache).
+                        window.location.assign("/repositories");
                       } catch (error) {
                         console.error(
-                          "Failed to flush others' repos from browser cache:",
+                          "Failed to flush others' repos cache:",
                           error
                         );
                         alert(
-                          `❌ Error flushing others' repos from browser cache: ${error}`
+                          `❌ Error flushing others' repos cache: ${error}`
                         );
                         setShowClearForeignConfirm(false);
                       }
@@ -2693,7 +2735,7 @@ export default function RepositoriesPage() {
             </div>
           )}
 
-          {/* Flush my browser cache Confirmation Modal */}
+          {/* Flush my own repos cache Confirmation Modal */}
           {showClearConfirm && (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
@@ -2704,7 +2746,7 @@ export default function RepositoriesPage() {
                 onClick={(e: MouseEvent) => e.stopPropagation()}
               >
                 <h2 className="text-xl font-bold mb-4 text-red-400">
-                  Flush my browser cache?
+                  Flush my own repos cache?
                 </h2>
 
                 <div className="space-y-4 mb-6">
@@ -2713,10 +2755,11 @@ export default function RepositoriesPage() {
                       What will be removed from this browser:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
-                      <li>Cached repo list and imported file trees</li>
-                      <li>Cached issues, PRs, and commits</li>
+                      <li>Your own cached repos and imported file trees</li>
+                      <li>Cached issues, PRs, and commits for your repos</li>
                       <li>
-                        Unpushed local-only work (not yet on Nostr)
+                        Unpushed local-only work on your repos (not yet on
+                        Nostr)
                       </li>
                     </ul>
                   </div>
@@ -2727,8 +2770,11 @@ export default function RepositoriesPage() {
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
                       <li>
-                        Anything already pushed to Nostr (re-fetches after
-                        reload)
+                        Other people&apos;s repos still cached in this browser
+                      </li>
+                      <li>
+                        Anything already pushed to Nostr (your own repos
+                        re-fetch after reload)
                       </li>
                       <li>Data on the Nostr network itself</li>
                     </ul>
@@ -2740,12 +2786,17 @@ export default function RepositoriesPage() {
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
                       <li>
-                        After push already happened — safe way to free space
+                        After push already happened — safe way to refresh your
+                        own list
                       </li>
                       <li>
                         After import when you want a clean refetch from relays
                       </li>
-                      <li>If browser storage is full or data looks stale</li>
+                      <li>
+                        If your own repos look stale (use &quot;Flush
+                        others&apos; repos cache&quot; to free space from
+                        Explore leftovers)
+                      </li>
                     </ul>
                   </div>
 
@@ -2770,48 +2821,47 @@ export default function RepositoriesPage() {
                   </button>
                   <button
                     onClick={() => {
-                      // Clear main repo storage
-                      localStorage.removeItem("gittr_repos");
-                      localStorage.removeItem("gittr_deleted_repos");
-                      localStorage.removeItem("gittr_activities");
-
-                      // Clear all separate storage keys (files, issues, PRs, commits)
-                      const keysToRemove: string[] = [];
-                      for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (
-                          key &&
-                          (key.startsWith("gittr_files__") ||
-                            key.startsWith("gittr_issues__") ||
-                            key.startsWith("gittr_prs__") ||
-                            key.startsWith("gittr_commits__"))
-                        ) {
-                          keysToRemove.push(key);
-                        }
+                      if (!pubkey) {
+                        alert(
+                          "Error: Not logged in. Cannot identify your own cached repos."
+                        );
+                        setShowClearConfirm(false);
+                        return;
                       }
 
-                      keysToRemove.forEach((key) =>
-                        localStorage.removeItem(key)
-                      );
+                      try {
+                        if (typeof window === "undefined") return;
 
-                      const totalCleared = keysToRemove.length;
-                      console.log(
-                        `✅ Flushed browser cache: repos + ${totalCleared} separate storage keys`
-                      );
+                        const result = clearOwnReposFromStorage(pubkey);
 
-                      setShowClearConfirm(false);
+                        console.log(
+                          "✅ Flushed my own repos cache:",
+                          result
+                        );
 
-                      // Show success feedback
-                      alert(
-                        `✅ Browser cache flushed!\n\n• Cleared cached repositories\n• Removed ${totalCleared} related cache keys\n\nAlready-pushed repos will re-fetch from Nostr.`
-                      );
+                        setShowClearConfirm(false);
 
-                      loadRepos();
-                      window.location.reload();
+                        alert(
+                          `✅ My own repos cache flushed!\n\n• Removed ${result.clearedRepos} of your repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} other people's repos in cache\n\nAlready-pushed repos will re-fetch from Nostr.`
+                        );
+
+                        reposCatalogRef.current = null;
+                        // Hard navigate to this page so we never land back on a repo tab from history/bfcache.
+                        window.location.assign("/repositories");
+                      } catch (error) {
+                        console.error(
+                          "Failed to flush my own repos cache:",
+                          error
+                        );
+                        alert(
+                          `❌ Error flushing my own repos cache: ${error}`
+                        );
+                        setShowClearConfirm(false);
+                      }
                     }}
                     className="border border-red-500/50 bg-red-900/20 hover:bg-red-900/30 text-red-300 px-4 py-2 rounded transition-colors font-semibold"
                   >
-                    Yes, flush my browser cache
+                    Yes, flush my own repos
                   </button>
                 </div>
               </div>

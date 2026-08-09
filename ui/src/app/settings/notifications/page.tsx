@@ -285,9 +285,10 @@ export default function NotificationsPage() {
             </p>
             <p>
               The audit runs each time a repo&apos;s Dependencies tab is opened
-              (advisory data cached ~6h). Alerts are deduplicated: one issue per
-              advisory per repo, ever — repeat scans finding the same known CVE
-              stay silent.
+              and reads lockfiles from the <strong>pushed gittr tip</strong>{" "}
+              (not unpushed local edits). Advisory data is cached ~6h. Alerts
+              are deduplicated: one issue per advisory per repo, ever — repeat
+              scans finding the same known CVE stay silent.
             </p>
             <p>
               <a

@@ -17,7 +17,9 @@ import {
   mergeRepoFileIndexes,
   normalizeFilePath,
   resolveRepoStorageAlias,
+  saveRepoDeletedPaths,
   saveStoredRepos,
+  isRepoPathDeleted,
 } from "../repos/storage";
 import { resolveRepoUpstreamSource } from "../repos/upstream-precedence";
 import {
@@ -2720,7 +2722,12 @@ export async function pushRepoToNostr(
                     .replace(/\\/g, "/")
                 )
               );
-              const missing = bridgePaths.filter((p) => !have.has(p));
+              // Do NOT pull back paths the user intentionally deleted (file or folder).
+              const missing = bridgePaths.filter(
+                (p) =>
+                  !have.has(p) &&
+                  !isRepoPathDeleted(p, normalizedDeletedPaths)
+              );
               if (
                 bridgePaths.length > 0 &&
                 missing.length > 0 &&
@@ -2809,6 +2816,7 @@ export async function pushRepoToNostr(
             authEvent: repoEvent,
             pubkey, // Pass user's pubkey for auth
             signer: getBridgeSigner()!,
+            deletedPaths: normalizedDeletedPaths,
           }).catch((error: any) => {
             console.error("❌ [Push Repo] Bridge push failed:", error);
             onProgress?.(
@@ -2958,6 +2966,7 @@ export async function pushRepoToNostr(
           authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
           signer: getBridgeSigner()!,
+          deletedPaths: normalizedDeletedPaths,
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
           onProgress?.(
@@ -3516,6 +3525,20 @@ export async function pushRepoToNostr(
             `✅ Saved ${persisted.branches.length} branch(es) locally (default: ${persisted.defaultBranch})`
           );
         }
+      }
+
+      // Tombstones are applied on the bridge during push — clear local markers
+      if (
+        typeof window !== "undefined" &&
+        normalizedDeletedPaths.length > 0
+      ) {
+        saveRepoDeletedPaths(entity, repoSlug, []);
+        if (storageRepo !== repoSlug) {
+          saveRepoDeletedPaths(entity, storageRepo, []);
+        }
+        console.log(
+          `🗑️ [Push Repo] Cleared ${normalizedDeletedPaths.length} local deleted path(s) after push`
+        );
       }
 
       return {

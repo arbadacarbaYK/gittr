@@ -88,7 +88,7 @@ export function normalizeRepositoryHttpsUrl(raw: string): string {
     const parsed = new URL(u);
     parsed.hash = "";
     parsed.search = "";
-    let path = parsed.pathname.replace(/\/+$/, "").replace(/\.git$/i, "");
+    const path = parsed.pathname.replace(/\/+$/, "").replace(/\.git$/i, "");
     return `${parsed.protocol}//${parsed.host}${path}`;
   } catch {
     return u.replace(/\.git$/i, "");

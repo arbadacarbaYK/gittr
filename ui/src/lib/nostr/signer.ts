@@ -130,13 +130,13 @@ export async function resolveNostrSigner(
   // Do NOT treat this as a browser NIP-07 extension — Amber must stay in charge.
   if (hasRemoteSession && typeof window !== "undefined" && window.nostr) {
     try {
-      const getPublicKey = () => window.nostr!.getPublicKey();
+      const getPublicKey = () => window.nostr.getPublicKey();
       const pubkey = await getPublicKey();
       if (pubkey) {
         return {
           source: "remote",
           getPublicKey,
-          signEvent: (event) => window.nostr!.signEvent(event),
+          signEvent: (event) => window.nostr.signEvent(event),
           usesWindowNostr: true,
         };
       }
@@ -150,12 +150,12 @@ export async function resolveNostrSigner(
 
   if (typeof window !== "undefined" && window.nostr && !hasRemoteSession) {
     try {
-      const getPublicKey = () => window.nostr!.getPublicKey();
+      const getPublicKey = () => window.nostr.getPublicKey();
       await getPublicKey();
       return {
         source: "nip07",
         getPublicKey,
-        signEvent: (event) => window.nostr!.signEvent(event),
+        signEvent: (event) => window.nostr.signEvent(event),
         usesWindowNostr: true,
       };
     } catch (error) {

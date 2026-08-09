@@ -8,6 +8,7 @@ import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { mergeStoredContributorLists } from "@/lib/utils/repo-contributors-from-nostr";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { markRepoAsEdited } from "@/lib/utils/repo-status";
+import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
 
 import { nip19 } from "nostr-tools";
 
@@ -239,6 +240,48 @@ export const clearForeignReposFromStorage = (
 
   return {
     clearedRepos: foreignRepos.length,
+    clearedKeys: keysToRemove.length,
+    keptRepos: keptRepos.length,
+  };
+};
+
+/**
+ * Remove only the signed-in user's own repos (and their file/issue/PR caches)
+ * from this browser. Other people's cached repos stay.
+ */
+export const clearOwnReposFromStorage = (
+  pubkey: string
+): {
+  clearedRepos: number;
+  clearedKeys: number;
+  keptRepos: number;
+} => {
+  if (typeof window === "undefined" || !pubkey) {
+    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
+  }
+
+  const allRepos = JSON.parse(
+    localStorage.getItem("gittr_repos") || "[]"
+  ) as StoredRepo[];
+
+  if (!Array.isArray(allRepos)) {
+    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
+  }
+
+  const ownRepos = allRepos.filter((repo) =>
+    isRepoOwnedByPubkey(repo, pubkey)
+  );
+  const keptRepos = allRepos.filter(
+    (repo) => !isRepoOwnedByPubkey(repo, pubkey)
+  );
+
+  localStorage.setItem("gittr_repos", JSON.stringify(keptRepos));
+
+  const ownPatterns = buildRepoKeyPatterns(ownRepos);
+  const keysToRemove = removeStorageKeysForPatterns(ownPatterns);
+
+  return {
+    clearedRepos: ownRepos.length,
     clearedKeys: keysToRemove.length,
     keptRepos: keptRepos.length,
   };
@@ -698,13 +741,24 @@ function slimReposForStorage(repos: StoredRepo[]): StoredRepo[] {
   return repos.map(slimRepoForStorage);
 }
 
-function rankReposForQuotaKeep(repos: StoredRepo[]): StoredRepo[] {
+function rankReposForQuotaKeep(
+  repos: StoredRepo[],
+  preferOwnerPubkey?: string
+): StoredRepo[] {
+  const prefer = preferOwnerPubkey?.toLowerCase();
   return [...repos].sort((a: any, b: any) => {
-    const score = (r: any) =>
-      (r.hasUnpushedEdits || r.status === "local" ? 1e15 : 0) +
-      (r.lastNostrEventCreatedAt
-        ? r.lastNostrEventCreatedAt * 1000
-        : r.updatedAt || r.createdAt || 0);
+    const score = (r: any) => {
+      const owner = String(r.ownerPubkey || "").toLowerCase();
+      const ownedBoost =
+        prefer && owner && owner === prefer ? 1e16 : 0;
+      return (
+        ownedBoost +
+        (r.hasUnpushedEdits || r.status === "local" ? 1e15 : 0) +
+        (r.lastNostrEventCreatedAt
+          ? r.lastNostrEventCreatedAt * 1000
+          : r.updatedAt || r.createdAt || 0)
+      );
+    };
     return score(b) - score(a);
   });
 }
@@ -768,18 +822,19 @@ export const loadDeletedRepos = (): Array<{
 
 /** Appended to quota / localStorage alerts so users know where to trim cached repos */
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
-  " Open My Repositories (/repositories) → Flush others' repos from browser cache (or Flush my browser cache after you've pushed).";
+  " Open My Repositories (/repositories) → Flush others' repos cache (or Flush my own repos cache after you've pushed).";
 
 /**
  * Persist slimmed `gittr_repos`. Returns false if the write still fails after
- * cleanup (caller may keep an in-memory list for Explore).
+ * cleanup (caller may keep an in-memory list for Explore / My Repositories).
  */
 export const saveStoredRepos = (
   repos: StoredRepo[],
-  opts?: { quiet?: boolean }
+  opts?: { quiet?: boolean; preferOwnerPubkey?: string }
 ): boolean => {
   if (typeof window === "undefined") return false;
   const quiet = opts?.quiet === true;
+  const preferOwnerPubkey = opts?.preferOwnerPubkey;
   const toSave = slimReposForStorage(
     dedupeStoredReposByOwnerAndRepoLabel(repos)
   );
@@ -884,7 +939,7 @@ export const saveStoredRepos = (
     return true;
   }
 
-  const ranked = rankReposForQuotaKeep(toSave);
+  const ranked = rankReposForQuotaKeep(toSave, preferOwnerPubkey);
   const capSizes = [2000, 1200, 800, 500, 350, 250, 150];
   for (const cap of capSizes) {
     if (cap >= ranked.length) continue;
@@ -905,7 +960,10 @@ export const saveStoredRepos = (
   }
 
   // Last resort: ultra-slim catalog rows (drop clone/relays/langs bulk).
-  const ultra = rankReposForQuotaKeep(toSave.map(ultraSlimRepoForCatalog));
+  const ultra = rankReposForQuotaKeep(
+    toSave.map(ultraSlimRepoForCatalog),
+    preferOwnerPubkey
+  );
   if (tryWrite(ultra)) {
     console.warn(
       `⚠️ [Storage] Saved ultra-slim gittr_repos (${ultra.length} rows) after quota reclaim`
@@ -1297,6 +1355,12 @@ export function normalizeFilePath(path: string): string {
   return normalized;
 }
 
+export {
+  appendRepoDeletedPath,
+  isRepoPathDeleted,
+  reconcileDeletedPathsAfterAdd,
+} from "./deleted-paths";
+
 /**
  * Detect if a file is binary based on extension
  */
@@ -1578,19 +1642,27 @@ export function addFilesToRepo(
     saveRepoOverrides(entity, repo, overrides);
 
     // CRITICAL: Remove files from deletedPaths when they're re-added
-    // This fixes the issue where uploading a file with the same name as a previously deleted file
-    // causes it to be filtered out
+    // Also clears folder tombstones that would hide re-uploaded children, while
+    // expanding known siblings so the rest of a deleted folder stays hidden.
     const deletedPaths = loadRepoDeletedPaths(entity, repo);
     if (deletedPaths.length > 0) {
-      const updatedDeletedPaths = deletedPaths.filter(
-        (path) => !validFiles.some((file) => file.path === path)
+      const knownPaths = [
+        ...Array.from(existingFileMap.keys()),
+        ...validFiles.map((f) => f.path),
+        ...Object.keys(overrides),
+      ];
+      const updatedDeletedPaths = reconcileDeletedPathsAfterAdd(
+        deletedPaths,
+        validFiles.map((f) => f.path),
+        knownPaths
       );
-      if (updatedDeletedPaths.length !== deletedPaths.length) {
+      if (
+        updatedDeletedPaths.length !== deletedPaths.length ||
+        updatedDeletedPaths.some((p, i) => p !== deletedPaths[i])
+      ) {
         saveRepoDeletedPaths(entity, repo, updatedDeletedPaths);
         console.log(
-          `✅ [addFilesToRepo] Removed ${
-            deletedPaths.length - updatedDeletedPaths.length
-          } file(s) from deletedPaths (re-added)`
+          `✅ [addFilesToRepo] Reconciled deletedPaths after re-add (${deletedPaths.length} → ${updatedDeletedPaths.length})`
         );
       }
     }

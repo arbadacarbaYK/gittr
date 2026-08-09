@@ -112,7 +112,7 @@ export function collectGittrIssuesStorageKeys(
     try {
       const d = nip19.decode(entity);
       if (d.type === "npub" && typeof d.data === "string") {
-        add(`gittr_issues__${(d.data as string).toLowerCase()}__${repo}`);
+        add(`gittr_issues__${(d.data ).toLowerCase()}__${repo}`);
       }
     } catch {
       /* ignore */
@@ -225,7 +225,7 @@ export function collectGittrPrsStorageKeys(
     try {
       const d = nip19.decode(entity);
       if (d.type === "npub" && typeof d.data === "string") {
-        add(`gittr_prs__${(d.data as string).toLowerCase()}__${repo}`);
+        add(`gittr_prs__${(d.data ).toLowerCase()}__${repo}`);
       }
     } catch {
       /* ignore */

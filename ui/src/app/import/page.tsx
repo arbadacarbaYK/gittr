@@ -1736,7 +1736,7 @@ export default function ImportPage() {
                 entity: item.entity,
                 publish: publish!,
                 subscribe: subscribe!,
-                defaultRelays: defaultRelays!,
+                defaultRelays: defaultRelays,
                 privateKey: signer.privateKey,
                 pubkey: pubkeyStr,
                 remoteSigner,

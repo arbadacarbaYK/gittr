@@ -217,10 +217,10 @@ export function mergeAnnouncementLinksWithLocal(
 ): EnrichableRepoLink[] {
   const cleanedExisting = stripNonDocumentationWebLinks(
     removeStaleAutoLinks(existing)
-  ) as EnrichableRepoLink[];
+  ) ;
   const cleanedParsed = stripNonDocumentationWebLinks(
     parsedFromNostr
-  ) as EnrichableRepoLink[];
+  ) ;
   if (cleanedParsed.length === 0) return cleanedExisting;
   return mergeRepoLinks(cleanedExisting, cleanedParsed);
 }
@@ -236,7 +236,7 @@ export function enrichRepoLinks(
       );
   const base = stripNonDocumentationWebLinks(
     afterStale
-  ) as EnrichableRepoLink[];
+  ) ;
 
   const additions: EnrichableRepoLink[] = [];
 

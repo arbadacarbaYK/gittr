@@ -99,8 +99,8 @@ function mergeKind0OntoExisting(
     : { ...incoming, ...existing };
 
   const identities =
-    Array.isArray(existing?.identities) && existing!.identities!.length > 0
-      ? existing!.identities
+    Array.isArray(existing?.identities) && existing.identities.length > 0
+      ? existing.identities
       : Array.isArray(incoming.identities) && incoming.identities.length > 0
         ? incoming.identities
         : undefined;

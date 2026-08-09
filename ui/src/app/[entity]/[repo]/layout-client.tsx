@@ -1589,7 +1589,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent as NostrEvent);
+        mergeNostrStarEvent(r.signedEvent );
         syncLocalStarsIndex(false);
         showToast("Unstarred on Nostr.", "success");
       } else {
@@ -1606,7 +1606,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent as NostrEvent);
+        mergeNostrStarEvent(r.signedEvent );
         syncLocalStarsIndex(true);
         showToast("Starred on Nostr (NIP-25).", "success");
       } else {

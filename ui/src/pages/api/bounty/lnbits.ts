@@ -103,7 +103,7 @@ export default async function handler(
     }
   }
 
-  let lnbitsUrl = resolveLnbitsUrl(req.body?.lnbitsUrl);
+  const lnbitsUrl = resolveLnbitsUrl(req.body?.lnbitsUrl);
   if (!lnbitsUrl) {
     return res.status(400).json({
       status: "missing_lnbits_url",

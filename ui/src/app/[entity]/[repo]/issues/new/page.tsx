@@ -327,7 +327,7 @@ export default function RepoIssueNewPage() {
           ownerPubkey: finalOwnerPubkey,
           earliestUniqueCommit: publishCtx.earliestUniqueCommit,
           defaultBranch: publishCtx.defaultBranch,
-        }) as Record<string, unknown>;
+        });
 
         // Get earliest unique commit (required for NIP-34 "r" tag)
         let earliestUniqueCommit =
@@ -348,8 +348,8 @@ export default function RepoIssueNewPage() {
               publishCtx.defaultBranch.trim().length > 0
                 ? publishCtx.defaultBranch.trim()
                 : typeof repoData.defaultBranch === "string" &&
-                  (repoData.defaultBranch as string).trim().length > 0
-                ? (repoData.defaultBranch as string).trim()
+                  (repoData.defaultBranch ).trim().length > 0
+                ? (repoData.defaultBranch ).trim()
                 : "main";
 
             const commitsRes = await fetchBridgeRead(

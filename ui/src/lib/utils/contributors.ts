@@ -127,7 +127,7 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
     typeof ownerPubkey !== "string" ||
     !HEX_64_REGEX.test(ownerPubkey.trim())
   ) {
-    return sanitizeContributors(base, { keepNameOnly: true }) as T[];
+    return sanitizeContributors(base, { keepNameOnly: true }) ;
   }
   const pk = ownerPubkey.trim().toLowerCase();
   const dn = typeof displayName === "string" ? displayName.trim() : "";
@@ -167,5 +167,5 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
       ...withoutShadowOwner,
     ];
   }
-  return sanitizeContributors(merged, { keepNameOnly: true }) as T[];
+  return sanitizeContributors(merged, { keepNameOnly: true }) ;
 }

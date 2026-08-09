@@ -685,7 +685,7 @@ export async function publishNamedSiteManifest(
   onProgress?.(
     `Signing one Blossom upload token (kind 24242) for ${staged.length} file(s)…`
   );
-  let auth = buildUnsignedBlossomUploadAuth({
+  const auth = buildUnsignedBlossomUploadAuth({
     pubkeyHex: signerPk,
     sha256Hex: allHashes,
     expiresInSeconds: blossomBatchAuthTtlSeconds(distinctHashCount),

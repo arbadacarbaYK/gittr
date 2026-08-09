@@ -851,9 +851,12 @@ export default function HelpPage() {
 
             <HelpTopic title={<>File Management</>}>
               <p>
-                View, edit, and delete files directly in the browser. Use the
-                fuzzy file finder (Cmd/Ctrl+P) to quickly navigate large
-                repositories.
+                View, edit, and delete files or folders directly in the browser
+                (owners: trash icon on each Code tree row, or Delete while a
+                file is open). Deleting a folder marks it and everything inside
+                for removal — the next Push to Nostr deletes it on the git host
+                (GRASP / bridge), not just in this browser. Use the fuzzy file
+                finder (Cmd/Ctrl+P) to quickly navigate large repositories.
               </p>
             </HelpTopic>
 
@@ -2268,10 +2271,13 @@ export default function HelpPage() {
               <p className="mt-2">
                 <strong>How often does the check run?</strong> The audit runs
                 fresh every time the <strong>Dependencies</strong> tab of a
-                repo is opened — there is no fixed schedule. Advisory details
-                are cached on the server for about 6 hours, so a newly
-                published CVE shows up within hours, at the latest on the next
-                visit after the cache expires.
+                repo is opened — there is no fixed schedule. It reads the
+                lockfiles from the <strong>pushed repo tip on gittr</strong>{" "}
+                (the bridge clone), not from files only on your laptop or only
+                on GitHub until those are synced here. Advisory details are
+                cached on the server for about 6 hours, so a newly published
+                CVE shows up within hours, at the latest on the next visit
+                after the cache expires.
               </p>
               <p className="mt-2">
                 <strong>How alerts will reach you (Dependabot-style):</strong>{" "}
@@ -2314,11 +2320,16 @@ export default function HelpPage() {
                 </li>
                 <li>
                   <strong>Check the Dependencies tab</strong> after importing a
-                  repo and after dependency updates.
+                  repo and after dependency updates are on gittr.
                 </li>
                 <li>
                   <strong>Update affected packages</strong> to a version outside
-                  the advisory&apos;s affected range, then re-check the tab.
+                  the advisory&apos;s affected range, then get that new
+                  lockfile onto gittr before re-checking the tab:{" "}
+                  <strong>Nostr/git push</strong> if you fixed it locally, or{" "}
+                  <strong>refetch / re-sync from the source forge</strong> if
+                  you fixed it there. Opening the tab alone does not see
+                  unpushed or unsynced changes.
                 </li>
               </ul>
             </HelpTopic>

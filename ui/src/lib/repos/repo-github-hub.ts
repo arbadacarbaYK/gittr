@@ -74,7 +74,7 @@ export function findStoredRepoForRoute(
   repoSlug: string
 ): StoredRepo | undefined {
   const repos = loadStoredRepos();
-  let r = findRepoByEntityAndName<StoredRepo>(repos, entity, repoSlug);
+  const r = findRepoByEntityAndName<StoredRepo>(repos, entity, repoSlug);
   if (r) return r;
   const pk = resolveEntityToPubkey(entity)?.toLowerCase();
   return repos.find((x) => {

@@ -128,7 +128,7 @@ export function filterListBySearchQuery<T extends ListSearchableItem>(
   }
 
   const parsed = parseListSearchQuery(q);
-  let out = items.filter((item) => {
+  const out = items.filter((item) => {
     if (parsed.author) {
       const meta =
         authorMetadata[item.author?.toLowerCase()] ||

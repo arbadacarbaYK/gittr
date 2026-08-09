@@ -258,8 +258,14 @@ export default async function handler(
     totalChunks,
     pushSessionId,
     allowTreeShrink: allowTreeShrinkRaw,
+    deletedPaths: deletedPathsRaw,
   } = req.body || {};
   const allowTreeShrink = allowTreeShrinkRaw === true;
+  const deletedPaths: string[] = Array.isArray(deletedPathsRaw)
+    ? deletedPathsRaw.filter(
+        (p: unknown): p is string => typeof p === "string" && p.trim().length > 0
+      )
+    : [];
 
   // CRITICAL: Support hex pubkey (64-char), npub format (NIP-19), and NIP-05
   // The bridge stores repos by hex pubkey in filesystem, so we resolve to hex
@@ -691,6 +697,33 @@ export default async function handler(
       writtenFiles++;
     }
 
+    // Intentional UI deletes (files or folders): remove from the seeded working
+    // tree so `git add -A` stages real deletions on the bridge tip.
+    // Client sends deletedPaths on the final commit chunk only.
+    let removedDeleted = 0;
+    if (deletedPaths.length > 0) {
+      for (const raw of deletedPaths) {
+        const safePath = sanitizePath(raw);
+        if (!safePath) continue;
+        const targetPath = join(tempDir, safePath);
+        try {
+          await rm(targetPath, { recursive: true, force: true });
+          removedDeleted++;
+          console.log(`🗑️ [Bridge Push] Removed deleted path: ${safePath}`);
+        } catch (rmErr: any) {
+          console.warn(
+            `⚠️ [Bridge Push] Failed to remove ${safePath}:`,
+            rmErr?.message || rmErr
+          );
+        }
+      }
+      if (removedDeleted > 0) {
+        console.log(
+          `🗑️ [Bridge Push] Applied ${removedDeleted}/${deletedPaths.length} deleted path(s) before commit`
+        );
+      }
+    }
+
     // Allow empty commits - we'll use --allow-empty to create a commit even if no files changed
     // This ensures every push creates a new commit with the current timestamp
     if (writtenFiles === 0 && files.length > 0) {
@@ -711,12 +744,23 @@ export default async function handler(
       // This can happen if files[] is empty and the "clone existing repo"
       // preservation step failed; with --allow-empty + force-push that would
       // otherwise publish an empty tree commit.
-      if (files.length === 0) {
-        const { stdout: trackedFilesOut } = await execAsync(
-          `git -C "${tempDir}" ls-files`,
-          { timeout: 5000 }
-        );
-        if (!trackedFilesOut.trim()) {
+      // Prefer on-disk files (seeded tree) over git ls-files — index may still
+      // be empty until `git add -A` below.
+      if (files.length === 0 && deletedPaths.length === 0) {
+        let diskFileCount = 0;
+        try {
+          const { stdout: diskOut } = await execAsync(
+            `find "${tempDir}" -type f ! -path '*/.git/*'`,
+            { timeout: 15000 }
+          );
+          diskFileCount = diskOut
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean).length;
+        } catch {
+          diskFileCount = 0;
+        }
+        if (diskFileCount === 0) {
           return res.status(409).json({
             error:
               "Refusing to push empty repository snapshot (no files available).",
@@ -729,6 +773,7 @@ export default async function handler(
       // Belt-and-suspenders: refuse accidental shrink if seeding failed and
       // the payload is a strict subset of the live bare tree (Settings→Push
       // with incomplete localStorage used to wipe scripts/ this way).
+      // Intentional UI deletes set allowTreeShrink=true.
       if (!allowTreeShrink && existsSync(repoPath)) {
         let existingCount = 0;
         try {
@@ -784,10 +829,13 @@ export default async function handler(
       // Without this, if files are identical, git won't create a commit and state event will point to old commit
       // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
       // This ensures the commit date matches when the repo was pushed, not when the commit is created
-      const commitDateISO = new Date(commitTimestamp * 1000).toISOString();
-      const commitDateRFC2822 = new Date(commitTimestamp * 1000).toUTCString();
+      // Message stamp: yy-mm-dd hh:mm UTC (keep GIT_* dates as RFC2822 for git itself)
+      const commitAt = new Date(commitTimestamp * 1000);
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+      const commitDateShort = `${String(commitAt.getUTCFullYear()).slice(-2)}-${pad2(commitAt.getUTCMonth() + 1)}-${pad2(commitAt.getUTCDate())} ${pad2(commitAt.getUTCHours())}:${pad2(commitAt.getUTCMinutes())}`;
+      const commitDateRFC2822 = commitAt.toUTCString();
       await execAsync(
-        `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateISO})"`,
+        `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateShort})"`,
         {
           env: {
             ...process.env,

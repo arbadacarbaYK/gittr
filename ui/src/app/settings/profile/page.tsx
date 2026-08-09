@@ -265,7 +265,7 @@ export default function ProfilePage() {
                 ...prev,
                 {
                   platform: "github",
-                  identity: githubUsername!,
+                  identity: githubUsername,
                   proof: undefined,
                   verified: false,
                 },

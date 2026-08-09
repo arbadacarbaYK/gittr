@@ -9,7 +9,7 @@ export function normalizeGithubSourceUrl(
   input: string | undefined | null
 ): string {
   if (input == null) return "";
-  let s = String(input).trim();
+  const s = String(input).trim();
   if (!s) return s;
 
   if (/^https?:\/\//i.test(s)) {

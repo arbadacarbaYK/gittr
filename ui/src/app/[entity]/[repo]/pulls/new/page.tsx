@@ -793,7 +793,7 @@ export default function NewPullRequestPage({
               : undefined,
             sourceRef: headBranch || baseBranch,
             pubkey: authorPubkey,
-            signer: (evt) => window.nostr!.signEvent(evt),
+            signer: (evt) => window.nostr.signEvent(evt),
           });
           if (!refResult.success) {
             showToast(

@@ -112,7 +112,7 @@ export default function HomePage({
   const [sourceOfflineNoticeVisible, setSourceOfflineNoticeVisible] =
     useState(false);
 
-  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v5";
+  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v6";
 
   // Prevent hydration mismatch by only showing personalized message after mount
   useEffect(() => {
@@ -1122,54 +1122,54 @@ export default function HomePage({
           role="status"
         >
           <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1 space-y-2 leading-relaxed">
-              <p>
-                Import your git from GitHub / Gitea / Codeberg or Gitlab so it
-                can still be discovered even if the source goes down. When that
-                already happened you can still{" "}
-                <Link
-                  href="/new"
-                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                >
-                  create a repo
-                </Link>{" "}
-                on nostr git with a local backup. Don&apos;t forget to{" "}
-                <strong className="text-[var(--color-text-primary)]">
-                  Push to Nostr
-                </strong>
-                !
-              </p>
-              {SECURITY_AUDIT_UI_ENABLED && (
+            <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
+              <div className="space-y-1">
                 <p>
-                  Every repo here also gets a free security audit — known CVEs
-                  in its dependencies show on the repo&apos;s{" "}
+                  Import your git from GitHub / Gitea / Codeberg or Gitlab so it
+                  can still be discovered even if the source goes down. When that
+                  already happened you can still create a repo on nostr git with
+                  a local backup. Don&apos;t forget to{" "}
                   <strong className="text-[var(--color-text-primary)]">
-                    Dependencies
-                  </strong>{" "}
-                  tab, exact-version matches only.{" "}
+                    Push to Nostr
+                  </strong>
+                  !
+                </p>
+                <p className="text-xs">
                   <Link
-                    href="/help#security-alerts"
+                    href="/help#when-source-goes-offline"
                     className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
                   >
-                    How to get alerted
+                    When the source is gone
+                  </Link>
+                  {" · "}
+                  <Link
+                    href="/new"
+                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                  >
+                    New repo
                   </Link>
                 </p>
+              </div>
+              {SECURITY_AUDIT_UI_ENABLED && (
+                <div className="space-y-1">
+                  <p>
+                    Every repo here also gets a free security audit — known CVEs
+                    in its dependencies show on the repo&apos;s{" "}
+                    <strong className="text-[var(--color-text-primary)]">
+                      Dependencies
+                    </strong>{" "}
+                    tab, exact-version matches only.
+                  </p>
+                  <p className="text-xs">
+                    <Link
+                      href="/help#security-alerts"
+                      className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                    >
+                      How to get alerted
+                    </Link>
+                  </p>
+                </div>
               )}
-              <p>
-                <Link
-                  href="/help#when-source-goes-offline"
-                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                >
-                  More on this
-                </Link>
-                {" · "}
-                <Link
-                  href="/new"
-                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                >
-                  New repo
-                </Link>
-              </p>
             </div>
             <button
               type="button"

@@ -13,6 +13,8 @@ interface PushBridgeParams {
   pubkey?: string; // User's pubkey for auth
   signer?: (event: any) => Promise<any>; // Nostr signer function
   authEvent?: any; // Reuse already signed repo event to avoid extra auth prompt
+  /** Paths (files or folders) intentionally removed in the UI — must be deleted on the bridge. */
+  deletedPaths?: string[];
 }
 
 // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
@@ -93,6 +95,7 @@ export async function pushFilesToBridge({
   pubkey,
   signer,
   authEvent,
+  deletedPaths = [],
 }: PushBridgeParams) {
   // CRITICAL: Allow empty files array - we'll still create a commit with --allow-empty
   // This ensures every push creates a new commit with the current timestamp
@@ -254,6 +257,13 @@ export async function pushFilesToBridge({
             createCommit: i === chunks.length - 1, // Only commit on last chunk
             chunkIndex: i,
             totalChunks: chunks.length,
+            // Intentional UI deletes (files/folders) — apply on final commit chunk
+            deletedPaths:
+              i === chunks.length - 1 && Array.isArray(deletedPaths)
+                ? deletedPaths
+                : [],
+            allowTreeShrink:
+              Array.isArray(deletedPaths) && deletedPaths.length > 0,
           }),
           signal: chunkController.signal,
         });

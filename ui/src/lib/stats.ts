@@ -9,7 +9,7 @@ import { nip19 } from "nostr-tools";
 
 import {
   type Activity,
-  ActivityType,
+  type ActivityType,
   getActivities,
 } from "./activity-tracking";
 import { isPublisherBlocklisted } from "./moderation/publisher-blocklist";

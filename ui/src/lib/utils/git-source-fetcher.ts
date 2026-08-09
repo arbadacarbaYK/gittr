@@ -1631,9 +1631,9 @@ async function fetchFromNostrGit(
         return {
           files,
           resolvedBranch: bridgeResolvedBranch,
-          truncated: !!(bridgeJson as BridgeFilesPayload).truncated,
-          listing: (bridgeJson as BridgeFilesPayload).listing,
-          totalFileCount: (bridgeJson as BridgeFilesPayload).totalFileCount,
+          truncated: !!(bridgeJson ).truncated,
+          listing: (bridgeJson ).listing,
+          totalFileCount: (bridgeJson ).totalFileCount,
         };
       }
 

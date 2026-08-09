@@ -44,7 +44,7 @@ function buildCloneAttemptUrls(cloneUrl: string): string[] {
 }
 
 function normalizeCloneUrl(sourceUrl: string): string {
-  let cloneUrl = sourceUrl.trim();
+  const cloneUrl = sourceUrl.trim();
   if (cloneUrl.startsWith("git@")) {
     return cloneUrl;
   }
