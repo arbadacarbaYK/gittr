@@ -13,6 +13,7 @@ import { nip44 as nip44v2 } from "nostr-tools-v2";
 
 import { isGraspServer } from "../utils/grasp-servers";
 
+import { setBunkerMainPoolBlockedHosts } from "./bunker-main-pool-guard";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 
 type PublishFn = (event: any, relays: string[]) => void;
@@ -617,6 +618,8 @@ export class RemoteSignerManager {
   private healthProbeInFlight: Promise<void> | null = null;
   private bunkerWarmInFlight: Promise<void> | null = null;
   private bunkerKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  /** Shared dial so background warm and Push cannot resetDirectPool mid-flight. */
+  private bunkerDialInFlight: Promise<string[]> | null = null;
 
   constructor(deps: RemoteSignerDeps) {
     this.deps = deps;
@@ -693,6 +696,14 @@ export class RemoteSignerManager {
       } else {
         // Hydrate-only left session in memory without bunker sockets. Warm
         // directPool + 24133 subscription before connect RPC (no page-load dial).
+        // Join any in-flight background warm so we do not resetDirectPool under it.
+        if (this.bunkerWarmInFlight) {
+          try {
+            await this.bunkerWarmInFlight;
+          } catch {
+            /* warm logs its own failure */
+          }
+        }
         await this.prepareTransportForSession(this.requireSession());
       }
       this.notifyState("connecting");
@@ -735,6 +746,8 @@ export class RemoteSignerManager {
       this.rpcHealthy = false;
       this.session = stored;
       persistRemoteSignerSession(stored);
+      // Claim bunker hosts for directPool before discovery re-dials them.
+      this.claimBunkerHostsForDirectPool(stored.relays);
       // Apply NIP-07 adapter so getPublicKey works; skip bunker relay dial + connect RPC.
       if (
         typeof window !== "undefined" &&
@@ -1246,7 +1259,7 @@ export class RemoteSignerManager {
     this.session = session;
     persistRemoteSignerSession(session);
     // Warm NIP-46 directPool only — never add bunker hosts into the app relaypool.
-    const open = await this.ensureDirectTransport(session);
+    const open = await this.ensureBunkerSocketsOpen(session);
     await this.startSubscription(
       session,
       open.length > 0 ? open : session.relays
@@ -1290,51 +1303,7 @@ export class RemoteSignerManager {
    * Used on first sign after hydrate-only bootstrap.
    */
   private async prepareTransportForSession(session: RemoteSignerSession) {
-    const expanded = this.expandBunkerRelays(session.relays);
-    if (expanded.length > (session.relays?.length || 0)) {
-      console.log("[RemoteSigner] Expanding bunker relays for transport", {
-        before: session.relays?.length || 0,
-        after: expanded.length,
-      });
-      session.relays = expanded;
-      this.session = session;
-      persistRemoteSignerSession(session);
-    }
-    // NIP-46 must use directPool only. Do NOT addRelay bunker URLs into the
-    // app relaypool — duplicate sockets to the same hosts starve Amber transport.
-
-    let open = await this.ensureDirectTransport(session);
-    if (open.length === 0) {
-      console.warn(
-        "[RemoteSigner] No bunker relays open after warm-up; freeing collisions and retrying"
-      );
-      this.freeMainPoolBunkerCollisions(session.relays);
-      await new Promise((r) => setTimeout(r, 400));
-      this.resetDirectPool();
-      open = await this.ensureDirectTransport(session);
-    }
-    if (open.length === 0) {
-      // Last resort: force Amber-friendly defaults (ignore thin/damus-only session
-      // lists) and give sockets a longer budget after a cold hydrate.
-      const forced = [
-        ...NIP46_SIGNER_DEFAULT_RELAYS,
-        ...NIP46_PAIRING_RELAY_FALLBACKS,
-      ].filter((u) => u.startsWith("wss://") && !isGraspServer(u));
-      console.warn(
-        "[RemoteSigner] Still no bunker sockets — forcing signer default relays",
-        forced
-      );
-      session.relays = [...new Set([...forced, ...(session.relays || [])])].slice(
-        0,
-        8
-      );
-      this.session = session;
-      persistRemoteSignerSession(session);
-      this.freeMainPoolBunkerCollisions(session.relays);
-      await new Promise((r) => setTimeout(r, 600));
-      this.resetDirectPool();
-      open = await this.ensureDirectTransport(session);
-    }
+    const open = await this.ensureBunkerSocketsOpen(session);
     if (open.length === 0) {
       const statuses = await this.snapshotDirectRelayStatuses(
         this.buildBunkerTransportTargets(session)
@@ -1364,10 +1333,99 @@ export class RemoteSignerManager {
     this.startBunkerKeepalive();
   }
 
+  /**
+   * Claim Amber bunker hosts for directPool and drop colliding main-pool sockets.
+   * Discovery can use the rest of the relay list; these hosts stay blocked while
+   * the session is paired (see bunker-main-pool-guard).
+   */
+  private claimBunkerHostsForDirectPool(relays: string[]) {
+    const hosts = this.expandBunkerRelays(relays);
+    setBunkerMainPoolBlockedHosts(hosts);
+    this.freeMainPoolBunkerCollisions(hosts);
+  }
+
+  private releaseBunkerHostsFromDirectPool() {
+    setBunkerMainPoolBlockedHosts(null);
+  }
+
+  /**
+   * Open at least one bunker WebSocket. Serializes warm + Push dials so they
+   * cannot resetDirectPool under each other. Frees main-pool collisions before
+   * the first dial (not only after failure).
+   */
+  private async ensureBunkerSocketsOpen(
+    session: RemoteSignerSession
+  ): Promise<string[]> {
+    if (this.bunkerDialInFlight) {
+      return this.bunkerDialInFlight;
+    }
+
+    this.bunkerDialInFlight = (async () => {
+      const expanded = this.expandBunkerRelays(session.relays);
+      if (expanded.length > (session.relays?.length || 0)) {
+        console.log("[RemoteSigner] Expanding bunker relays for transport", {
+          before: session.relays?.length || 0,
+          after: expanded.length,
+        });
+        session.relays = expanded;
+        this.session = session;
+        persistRemoteSignerSession(session);
+      }
+
+      this.claimBunkerHostsForDirectPool(session.relays);
+      // Let browser tear down freed main-pool sockets before we dial.
+      await new Promise((r) => setTimeout(r, 400));
+
+      let open = await this.listDirectOpenRelays(
+        this.buildBunkerTransportTargets(session)
+      );
+      if (open.length > 0) return open.slice(0, 2);
+
+      // NIP-46 must use directPool only. Do NOT addRelay bunker URLs into the
+      // app relaypool — duplicate sockets to the same hosts starve Amber transport.
+      open = await this.ensureDirectTransport(session);
+      if (open.length === 0) {
+        console.warn(
+          "[RemoteSigner] No bunker relays open after warm-up; resetting direct pool and retrying"
+        );
+        this.freeMainPoolBunkerCollisions(session.relays);
+        await new Promise((r) => setTimeout(r, 400));
+        this.resetDirectPool();
+        open = await this.ensureDirectTransport(session);
+      }
+      if (open.length === 0) {
+        const forced = [
+          ...NIP46_SIGNER_DEFAULT_RELAYS,
+          ...NIP46_PAIRING_RELAY_FALLBACKS,
+        ].filter((u) => u.startsWith("wss://") && !isGraspServer(u));
+        console.warn(
+          "[RemoteSigner] Still no bunker sockets — forcing signer default relays",
+          forced
+        );
+        session.relays = [
+          ...new Set([...forced, ...(session.relays || [])]),
+        ].slice(0, 8);
+        this.session = session;
+        persistRemoteSignerSession(session);
+        this.claimBunkerHostsForDirectPool(session.relays);
+        await new Promise((r) => setTimeout(r, 600));
+        this.resetDirectPool();
+        open = await this.ensureDirectTransport(session);
+      }
+      return open;
+    })().finally(() => {
+      this.bunkerDialInFlight = null;
+    });
+
+    return this.bunkerDialInFlight;
+  }
+
   private clearSession() {
     this.rpcHealthy = false;
     this.healthProbeInFlight = null;
     this.bunkerWarmInFlight = null;
+    this.bunkerDialInFlight = null;
+    this.releaseBunkerHostsFromDirectPool();
     this.stopBunkerKeepalive();
     this.nostrConnectSignerResolved = undefined;
     this.session = null;
@@ -1662,40 +1720,16 @@ export class RemoteSignerManager {
     if (this.bunkerWarmInFlight) return this.bunkerWarmInFlight;
     this.bunkerWarmInFlight = (async () => {
       try {
-        const expanded = this.expandBunkerRelays(session.relays);
-        if (expanded.length > (session.relays?.length || 0)) {
-          session.relays = expanded;
-          this.session = session;
-          persistRemoteSignerSession(session);
-        }
-        const already = await this.listDirectOpenRelays(
-          this.buildBunkerTransportTargets(session)
-        );
-        if (already.length > 0) return;
-        let open = await this.ensureDirectTransport(session);
-        if (open.length === 0) {
-          this.freeMainPoolBunkerCollisions(session.relays);
-          this.resetDirectPool();
-          open = await this.ensureDirectTransport(session);
-        }
-        if (open.length === 0) {
-          session.relays = [
-            ...new Set([
-              ...NIP46_SIGNER_DEFAULT_RELAYS,
-              ...NIP46_PAIRING_RELAY_FALLBACKS,
-              ...(session.relays || []),
-            ]),
-          ].slice(0, 8);
-          this.session = session;
-          persistRemoteSignerSession(session);
-          this.freeMainPoolBunkerCollisions(session.relays);
-          this.resetDirectPool();
-          open = await this.ensureDirectTransport(session);
-        }
+        const open = await this.ensureBunkerSocketsOpen(session);
         if (open.length > 0) {
           console.log("[RemoteSigner] Background bunker warm ready", {
             open: open.map((u) => normalizeRelayUrl(u)),
           });
+          try {
+            await this.startSubscription(session, open);
+          } catch {
+            /* subscription retry happens on sign */
+          }
         } else {
           console.warn(
             "[RemoteSigner] Background bunker warm: still no OPEN sockets",

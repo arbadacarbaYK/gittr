@@ -24,6 +24,7 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
+import { isBunkerMainPoolBlocked } from "./bunker-main-pool-guard";
 import { getDefaultRelayUrls } from "./relay-env";
 import {
   RemoteSignerManager,
@@ -90,6 +91,10 @@ export const useNostrContext = () => {
 const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const addRelay = useCallback((url: string) => {
     try {
+      if (isBunkerMainPoolBlocked(url)) {
+        // Amber/NIP-46 owns these hosts on directPool — do not steal browser slots.
+        return null;
+      }
       const relay: any = relayPool.addOrGetRelay(url);
       // Only dial when the socket is fully CLOSED (status 3). nostr-relaypool's
       // connect() replaces the WebSocket whenever readyState !== OPEN, so calling
