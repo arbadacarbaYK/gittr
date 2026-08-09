@@ -6,6 +6,7 @@ import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
+import { resolveBridgePushCommitMessage } from "@/lib/utils/push-commit-message";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
@@ -259,6 +260,7 @@ export default async function handler(
     pushSessionId,
     allowTreeShrink: allowTreeShrinkRaw,
     deletedPaths: deletedPathsRaw,
+    commitMessage: commitMessageRaw,
   } = req.body || {};
   const allowTreeShrink = allowTreeShrinkRaw === true;
   const deletedPaths: string[] = Array.isArray(deletedPathsRaw)
@@ -829,13 +831,16 @@ export default async function handler(
       // Without this, if files are identical, git won't create a commit and state event will point to old commit
       // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
       // This ensures the commit date matches when the repo was pushed, not when the commit is created
-      // Message stamp: yy-mm-dd hh:mm UTC (keep GIT_* dates as RFC2822 for git itself)
+      // Message: MCP/UI may pass commitMessage; otherwise yy-mm-dd hh:mm UTC stamp.
+      // (SSH git push keeps the author's own message — this path is HTTP bridge only.)
       const commitAt = new Date(commitTimestamp * 1000);
-      const pad2 = (n: number) => String(n).padStart(2, "0");
-      const commitDateShort = `${String(commitAt.getUTCFullYear()).slice(-2)}-${pad2(commitAt.getUTCMonth() + 1)}-${pad2(commitAt.getUTCDate())} ${pad2(commitAt.getUTCHours())}:${pad2(commitAt.getUTCMinutes())}`;
+      const commitSubject = resolveBridgePushCommitMessage(
+        commitMessageRaw,
+        commitTimestamp
+      );
       const commitDateRFC2822 = commitAt.toUTCString();
       await execAsync(
-        `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateShort})"`,
+        `git -C "${tempDir}" commit --allow-empty -m ${shellQuote(commitSubject)}`,
         {
           env: {
             ...process.env,
