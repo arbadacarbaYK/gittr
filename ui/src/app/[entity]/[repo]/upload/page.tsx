@@ -362,7 +362,7 @@ export default function UploadPage({
           }, 1000);
         } else {
           setStatus(
-            "Error: Failed to add files to repository. Try Refresh from gittr on the Code tab first, then upload again."
+            "Error: Could not save file contents in this browser (storage full?). Free space or Flush others' repos cache, then upload again. Large media (GIF/video) needs enough localStorage room until you Push."
           );
           setUploading(false);
         }

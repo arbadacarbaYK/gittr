@@ -89,6 +89,7 @@ import {
   preferOwnedDescription,
   sidebarAboutText,
 } from "@/lib/repos/repo-about-text";
+import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import {
   type RepoBranchRoute,
   branchesToTryForContent,
@@ -125,6 +126,7 @@ import {
   loadStoredRepos,
   mergeRepoFileIndexes,
   appendRepoDeletedPath,
+  isBinaryFile,
   isRepoPathDeleted,
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
@@ -15401,78 +15403,59 @@ export function RepoCodePage() {
       p.replace(/^\/+/, "").replace(/\/+/g, "/");
     const normalizedPath = normalizePath(path);
 
-    // Use override if present - check both localStorage directly and state
-    const keyBase = `${resolvedParams.entity}__${resolvedParams.repo}`;
-    // Check localStorage directly to ensure we have the latest
-    const savedOverrides = JSON.parse(
-      localStorage.getItem(`gittr_overrides__${keyBase}`) ||
-        localStorage.getItem(`gittr_repo_overrides__${keyBase}`) ||
-        "{}"
-    );
-    // Also check state as fallback
-    const currentOverrides =
-      Object.keys(savedOverrides).length > 0 ? savedOverrides : overrides;
+    // Use override if present — loadRepoOverrides (normalized key) + binary by extension.
+    // After upload, repo.files is stripped from gittr_repos; do not require isBinary there.
+    const localDisplay =
+      localOverrideDisplayUrl(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        path
+      ) ||
+      localOverrideDisplayUrl(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        normalizedPath
+      );
+    if (localDisplay) {
+      setFileContent(localDisplay);
+      setLoadingFile(false);
+      return;
+    }
+    // Legacy state fallback (same-session edits not yet flushed)
     if (
-      currentOverrides &&
-      currentOverrides[path] !== undefined &&
-      currentOverrides[path] !== null
+      overrides &&
+      (overrides[path] !== undefined || overrides[normalizedPath] !== undefined)
     ) {
-      const overrideContent = currentOverrides[path] || "";
-
-      // Check if this file is binary by checking the file entry
-      const repoData = repoDataRef.current;
-      if (repoData && repoData.files) {
-        const fileEntry = repoData.files.find((f: any) => {
-          const fPath = normalizePath(f.path || "");
-          return (
-            fPath === normalizedPath ||
-            fPath === path ||
-            fPath === `/${path}` ||
-            fPath.endsWith(`/${normalizedPath}`) ||
-            fPath.endsWith(`/${path}`) ||
-            normalizedPath === fPath ||
-            path === fPath
-          );
-        });
-
-        if (fileEntry) {
-          const isBinary =
-            (fileEntry as any).isBinary || (fileEntry as any).binary || false;
-
-          if (
-            isBinary &&
-            overrideContent &&
-            !overrideContent.startsWith("data:")
-          ) {
-            // Convert base64 to data URL for binary files
-            const ext = path.split(".").pop()?.toLowerCase() || "";
-            const mimeTypes: Record<string, string> = {
-              png: "image/png",
-              jpg: "image/jpeg",
-              jpeg: "image/jpeg",
-              gif: "image/gif",
-              webp: "image/webp",
-              svg: "image/svg+xml",
-              ico: "image/x-icon",
-              pdf: "application/pdf",
-              woff: "font/woff",
-              woff2: "font/woff2",
-              ttf: "font/ttf",
-              otf: "font/otf",
-              mp4: "video/mp4",
-              mp3: "audio/mpeg",
-              wav: "audio/wav",
-            };
-            const mimeType = mimeTypes[ext] || "application/octet-stream";
-            const dataUrl = `data:${mimeType};base64,${overrideContent}`;
-            setFileContent(dataUrl);
-            setLoadingFile(false);
-            return;
-          }
-        }
+      const overrideContent =
+        overrides[path] || overrides[normalizedPath] || "";
+      if (
+        overrideContent.startsWith("data:") ||
+        overrideContent.startsWith("blob:")
+      ) {
+        setFileContent(overrideContent);
+        setLoadingFile(false);
+        return;
       }
-
-      // For text files or if file entry not found, use content as-is
+      if (isBinaryFile(normalizedPath) && overrideContent) {
+        const ext = path.split(".").pop()?.toLowerCase() || "";
+        const mimeTypes: Record<string, string> = {
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          svg: "image/svg+xml",
+          ico: "image/x-icon",
+          pdf: "application/pdf",
+          mp4: "video/mp4",
+          mp3: "audio/mpeg",
+          wav: "audio/wav",
+        };
+        const mimeType = mimeTypes[ext] || "application/octet-stream";
+        setFileContent(`data:${mimeType};base64,${overrideContent}`);
+        setLoadingFile(false);
+        return;
+      }
       setFileContent(overrideContent);
       setLoadingFile(false);
       return;
@@ -18168,6 +18151,7 @@ export function RepoCodePage() {
                                 cloneUrls={cloneUrls}
                                 ownerPubkey={ownerPk}
                                 repoName={decodedRepo}
+                                entity={resolvedParams.entity}
                               />
                             </div>
                           );
@@ -18709,6 +18693,7 @@ export function RepoCodePage() {
                                     cloneUrls={cloneUrls}
                                     ownerPubkey={ownerPk}
                                     repoName={decodedRepo}
+                                    entity={resolvedParams.entity}
                                   />
                                 </div>
                               );

@@ -1297,13 +1297,15 @@ export const saveRepoOverrides = (
   entity: string,
   repo: string,
   overrides: Record<string, string>
-): void => {
-  if (typeof window === "undefined") return;
+): boolean => {
+  if (typeof window === "undefined") return false;
   try {
     const overrideKey = getRepoStorageKey("gittr_overrides", entity, repo);
     localStorage.setItem(overrideKey, JSON.stringify(overrides));
+    return true;
   } catch (error) {
     console.error("Failed to save repo overrides:", error);
+    return false;
   }
 };
 
@@ -1368,7 +1370,7 @@ export {
 /**
  * Detect if a file is binary based on extension
  */
-function isBinaryFile(path: string, mimeType?: string): boolean {
+export function isBinaryFile(path: string, mimeType?: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() || "";
   const textExts = [
     "txt",
@@ -1643,7 +1645,13 @@ export function addFilesToRepo(
         }
       }
     });
-    saveRepoOverrides(entity, repo, overrides);
+    const overridesSaved = saveRepoOverrides(entity, repo, overrides);
+    if (!overridesSaved) {
+      console.error(
+        "[addFilesToRepo] Failed to persist file contents (browser storage full?)"
+      );
+      return false;
+    }
 
     // CRITICAL: Remove files from deletedPaths when they're re-added
     // Also clears folder tombstones that would hide re-uploaded children, while
