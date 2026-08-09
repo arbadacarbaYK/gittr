@@ -44,6 +44,8 @@ export const CLONE_REPUBLISH_BADGE_LABEL = "Please republish";
 export const CLONE_REPUBLISH_BADGE_TITLE =
   "Clone URL is only a bare host, localhost, or other unusable address. Push to Nostr again so gitworkshop and others can load files.";
 
+export { formatCloneRepublishRepoNames } from "./format-clone-republish-repo-names";
+
 /**
  * Re-publish each repo so clone tags become full usable paths
  * (e.g. https://git…/<npub>/<repo>.git). One Push per repo — may need

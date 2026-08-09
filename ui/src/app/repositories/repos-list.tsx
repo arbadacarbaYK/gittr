@@ -8,6 +8,7 @@ import {
   CLONE_REPUBLISH_BADGE_LABEL,
   CLONE_REPUBLISH_BADGE_TITLE,
   cloneListNeedsRepublish,
+  formatCloneRepublishRepoNames,
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
 import {
@@ -673,8 +674,10 @@ export function ReposList({
       return;
     }
     if (hostOnlyBroken.length === 0) return;
+    const nameList = formatCloneRepublishRepoNames(hostOnlyBroken);
     const ok = window.confirm(
-      `${hostOnlyBroken.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
+      `${hostOnlyBroken.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses):\n\n` +
+        `${nameList}\n\n` +
         `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
         `Republish all ${hostOnlyBroken.length} now?`
     );
@@ -712,10 +715,14 @@ export function ReposList({
       {hostOnlyBroken.length > 0 && (
         <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
           <span>
-            {hostOnlyBroken.length} repo(s) need a republish — broken clone
-            URL (host only / localhost). Other clients can’t see files until
-            fixed. One Push + signatures per repo; this can take a while,
-            please leave the tab open until finished.
+            {hostOnlyBroken.length} repo(s) need a republish — broken clone URL
+            (host only / localhost):{" "}
+            <strong className="font-medium text-amber-50">
+              {formatCloneRepublishRepoNames(hostOnlyBroken)}
+            </strong>
+            . Other clients can’t see files until fixed. One Push + signatures
+            per repo; this can take a while, please leave the tab open until
+            finished.
           </span>
           <Button
             type="button"

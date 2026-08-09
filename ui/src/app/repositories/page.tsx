@@ -29,6 +29,7 @@ import {
   CLONE_REPUBLISH_BADGE_LABEL,
   CLONE_REPUBLISH_BADGE_TITLE,
   cloneListNeedsRepublish,
+  formatCloneRepublishRepoNames,
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
@@ -3320,8 +3321,12 @@ export default function RepositoriesPage() {
                 return;
               }
               if (needsCloneRepublish.length === 0) return;
+              const nameList = formatCloneRepublishRepoNames(
+                needsCloneRepublish
+              );
               const ok = window.confirm(
-                `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
+                `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses):\n\n` +
+                  `${nameList}\n\n` +
                   `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
                   `Republish all ${needsCloneRepublish.length} now?`
               );
@@ -3374,10 +3379,13 @@ export default function RepositoriesPage() {
                   <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
                     <span>
                       {needsCloneRepublish.length} repo(s) need a republish —
-                      clone URL is only a bare host, localhost, or similar.
-                      Hidden from explore until fixed. Each repo needs its own
-                      Push / signatures; this can take a while, please leave the
-                      tab open until finished.
+                      clone URL is only a bare host, localhost, or similar:{" "}
+                      <strong className="font-medium text-amber-50">
+                        {formatCloneRepublishRepoNames(needsCloneRepublish)}
+                      </strong>
+                      . Hidden from explore until fixed. Each repo needs its
+                      own Push / signatures; this can take a while, please leave
+                      the tab open until finished.
                     </span>
                     <Button
                       type="button"
