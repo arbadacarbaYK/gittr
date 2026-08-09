@@ -19,6 +19,7 @@ import {
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
@@ -249,8 +250,14 @@ export default function RepoLayoutClient({
   const publicReadRaw = repo?.publicRead;
   const isPrivateRepo =
     publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
+  const isDeletedRepo =
+    (repo as { deleted?: boolean; archived?: boolean } | null)?.deleted ===
+      true ||
+    (repo as { deleted?: boolean; archived?: boolean } | null)?.archived ===
+      true;
 
   const canViewPrivateContent = useMemo(() => {
+    if (isDeletedRepo) return false;
     if (!isPrivateRepo) return true;
     if (!pubkey || !repo) return false;
     const repoOwnerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
@@ -262,7 +269,7 @@ export default function RepoLayoutClient({
       repoOwnerPubkey,
       maintainers
     );
-  }, [isPrivateRepo, pubkey, repo, resolvedParams.entity]);
+  }, [isDeletedRepo, isPrivateRepo, pubkey, repo, resolvedParams.entity]);
 
   const ownerHexForZaps = useMemo(() => {
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return "";
@@ -554,16 +561,25 @@ export default function RepoLayoutClient({
       () => {
         if (cancelled || !latest) return;
         const publicRead = isPublicReadFromEvent(latest as any);
+        const deleted = isRepoAnnouncementDeleted(latest as any);
         setRepo((prev: any) => {
-          if (prev) {
-            if (prev.publicRead === publicRead) return prev;
-            return { ...prev, publicRead };
+          const nextPublicRead = deleted ? true : publicRead;
+          if (
+            prev &&
+            prev.publicRead === nextPublicRead &&
+            Boolean(prev.deleted) === deleted
+          ) {
+            return prev;
           }
           return {
-            entity: resolvedParams.entity,
-            repo: repoName,
-            ownerPubkey: ownerHex,
-            publicRead,
+            ...(prev || {
+              entity: resolvedParams.entity,
+              repo: repoName,
+              ownerPubkey: ownerHex,
+            }),
+            // Soft-delete announcements stay discoverable as "deleted", not private.
+            publicRead: nextPublicRead,
+            deleted,
           };
         });
       }
@@ -1832,7 +1848,11 @@ export default function RepoLayoutClient({
                   {decodeURIComponent(resolvedParams.repo)}
                 </Link>
                 <span className="border-[var(--color-border)] text-[var(--color-text-secondary)] ml-1 rounded-full border px-1.5 text-xs">
-                  {isPrivateRepo ? "Private" : "Public"}
+                  {isDeletedRepo
+                    ? "Deleted"
+                    : isPrivateRepo
+                    ? "Private"
+                    : "Public"}
                 </span>
               </div>
             </div>

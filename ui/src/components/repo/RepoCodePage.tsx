@@ -58,6 +58,10 @@ import { pickUserFacingCloneUrl } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
+  applyDeletionMarkersToRepoData,
+  isRepoAnnouncementDeleted,
+} from "@/lib/nostr/repo-deleted";
+import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
@@ -6358,6 +6362,8 @@ export function RepoCodePage() {
                   eventRepoData.relays = [];
                   eventRepoData.maintainers = [];
                   eventRepoData.description = "";
+                  delete eventRepoData.deleted;
+                  delete eventRepoData.archived;
                   eventRepoData.lastEventCreatedAt = event.created_at;
                   eventRepoData.lastEventId = event.id;
                   broadcastRepoAnnouncementEventId({
@@ -6373,6 +6379,46 @@ export function RepoCodePage() {
                     )}..., created_at=${event.created_at}`
                   );
                 }
+
+                // Soft-delete / archive on latest 30617: stop file chase, show deleted page.
+                // No extra status round-trip — same announcement we already subscribed for.
+                applyDeletionMarkersToRepoData(eventRepoData, event);
+                if (isRepoAnnouncementDeleted(event)) {
+                  console.log(
+                    "⏭️ [File Fetch] Latest NIP-34 announcement is deleted/archived:",
+                    {
+                      deleted: eventRepoData.deleted,
+                      archived: eventRepoData.archived,
+                      repoName: paramsRepo,
+                    }
+                  );
+                  setRepoData((prev: any) => ({
+                    ...(prev || {
+                      entity: resolvedParams.entity,
+                      repo: resolvedParams.repo,
+                      name: paramsRepo,
+                      readme: "",
+                      contributors: [],
+                      defaultBranch: "main",
+                      ownerPubkey: event.pubkey || ownerPubkey || "",
+                    }),
+                    deleted: true,
+                    ...(eventRepoData.archived ? { archived: true } : {}),
+                    description: "This repository was deleted.",
+                    files: [],
+                    publicRead: true,
+                    lastNostrEventId: event.id,
+                    lastNostrEventCreatedAt: event.created_at,
+                    syncedFromNostr: true,
+                  }));
+                  foundFiles = true;
+                  return;
+                }
+                // Recreate same name: clear a prior soft-delete flag from this session.
+                setRepoData((prev: any) => {
+                  if (!prev?.deleted && !prev?.archived) return prev;
+                  return { ...prev, deleted: false, archived: false };
+                });
               }
               const contributorTags: Array<{
                 pubkey: string;
@@ -6870,7 +6916,7 @@ export function RepoCodePage() {
                   }
 
                   // CRITICAL: Check if repo is marked as deleted/archived
-                  // On direct repo access, show deleted message (unlike explore page which hides them completely)
+                  // On direct repo access, show deleted page (unlike explore which hides them)
                   if (
                     eventRepoData.deleted === true ||
                     eventRepoData.archived === true
@@ -6883,17 +6929,22 @@ export function RepoCodePage() {
                         repoName: resolvedParams.repo,
                       }
                     );
-                    setRepoData((prev: any) =>
-                      prev
-                        ? {
-                            ...prev,
-                            deleted: true,
-                            description:
-                              prev.description ||
-                              "This repository has been deleted.",
-                          }
-                        : prev
-                    );
+                    setRepoData((prev: any) => ({
+                      ...(prev || {
+                        entity: resolvedParams.entity,
+                        repo: resolvedParams.repo,
+                        name: resolvedParams.repo,
+                        readme: "",
+                        contributors: [],
+                        defaultBranch: "main",
+                        ownerPubkey: event.pubkey || ownerPubkey || "",
+                      }),
+                      deleted: true,
+                      ...(eventRepoData.archived ? { archived: true } : {}),
+                      description: "This repository was deleted.",
+                      files: [],
+                      publicRead: true,
+                    }));
                     foundFiles = true; // Mark as found to prevent further processing
                     return;
                   }
@@ -8118,6 +8169,36 @@ export function RepoCodePage() {
                     )}..., created_at=${latestEvent.event.created_at}`
                   );
                 }
+
+                if (isRepoAnnouncementDeleted(latestEvent.event)) {
+                  applyDeletionMarkersToRepoData(
+                    eventRepoData || (eventRepoData = {}),
+                    latestEvent.event
+                  );
+                  setRepoData((prev: any) => ({
+                    ...(prev || {
+                      entity: resolvedParams.entity,
+                      repo: resolvedParams.repo,
+                      name: paramsRepo,
+                      readme: "",
+                      contributors: [],
+                      defaultBranch: "main",
+                      ownerPubkey:
+                        latestEvent.event.pubkey || ownerPubkey || "",
+                    }),
+                    deleted: true,
+                    ...(eventRepoData.archived ? { archived: true } : {}),
+                    description: "This repository was deleted.",
+                    files: [],
+                    publicRead: true,
+                    lastNostrEventId: latestEvent.event.id,
+                    lastNostrEventCreatedAt: latestEvent.event.created_at,
+                    syncedFromNostr: true,
+                  }));
+                  foundFiles = true;
+                  return;
+                }
+
                 // Safety net: clone URLs must come from the latest event only
                 if (eventRepoData) {
                   eventRepoData.clone = [];
@@ -16550,6 +16631,45 @@ export function RepoCodePage() {
         >
           Return to Homepage
         </Link>
+      </div>
+    );
+  }
+
+  // Soft-deleted / archived announcement: clear page (not private wall, not empty tree).
+  // Detection uses the same 30617 hydrate already in flight — no status preflight.
+  if (
+    mounted &&
+    repoData &&
+    ((repoData as any).deleted === true || (repoData as any).archived === true)
+  ) {
+    const wasArchived = (repoData as any).archived === true;
+    return (
+      <div className="mt-4 p-8 max-w-2xl mx-auto text-center">
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)] mb-4">
+          {wasArchived
+            ? "This repository was archived"
+            : "This repository was deleted"}
+        </h1>
+        <p className="text-[var(--color-text-secondary)] mb-6">
+          The owner removed it from gittr. It is no longer available to browse
+          or clone here.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <Link
+            href="/"
+            className="text-[var(--color-accent-primary)] hover:underline"
+          >
+            Return to homepage
+          </Link>
+          {resolvedParams.entity ? (
+            <Link
+              href={`/${encodeURIComponent(resolvedParams.entity)}`}
+              className="text-[var(--color-text-secondary)] hover:underline"
+            >
+              View owner profile
+            </Link>
+          ) : null}
+        </div>
       </div>
     );
   }

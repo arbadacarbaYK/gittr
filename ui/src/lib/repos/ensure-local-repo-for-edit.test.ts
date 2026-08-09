@@ -5,6 +5,8 @@ const mockLoadStored = vi.fn(() => [] as any[]);
 const mockSaveStored = vi.fn(() => true);
 const mockLoadFiles = vi.fn(() => [] as any[]);
 const mockSaveFiles = vi.fn(() => true);
+const mockSaveOverrides = vi.fn(() => true);
+const mockSaveDeleted = vi.fn(() => true);
 const mockFind = vi.fn(() => null as any);
 
 vi.mock("../utils/git-source-fetcher", () => ({
@@ -15,11 +17,17 @@ vi.mock("../utils/repo-finder", () => ({
   findRepoByEntityAndName: (...args: unknown[]) => mockFind(...args),
 }));
 
+vi.mock("./deleted-repo-tombstones", () => ({
+  clearDeletedRepoTombstones: () => 0,
+}));
+
 vi.mock("./storage", () => ({
   loadStoredRepos: () => mockLoadStored(),
   saveStoredRepos: (...args: unknown[]) => mockSaveStored(...args),
   loadRepoFiles: (...args: unknown[]) => mockLoadFiles(...args),
   saveRepoFiles: (...args: unknown[]) => mockSaveFiles(...args),
+  saveRepoOverrides: (...args: unknown[]) => mockSaveOverrides(...args),
+  saveRepoDeletedPaths: (...args: unknown[]) => mockSaveDeleted(...args),
 }));
 
 import { ensureLocalRepoForEdit } from "./ensure-local-repo-for-edit";
@@ -36,15 +44,20 @@ describe("ensureLocalRepoForEdit", () => {
     mockSaveStored.mockReset().mockReturnValue(true);
     mockLoadFiles.mockReset().mockReturnValue([]);
     mockSaveFiles.mockReset().mockReturnValue(true);
+    mockSaveOverrides.mockReset().mockReturnValue(true);
+    mockSaveDeleted.mockReset().mockReturnValue(true);
     mockFind.mockReset().mockReturnValue(null);
   });
 
   it("creates a local shell when the repo is missing", async () => {
     mockFetchBridge.mockResolvedValue({ files: [] });
-    // After create, find returns the shell on the second load for hydrate path
     mockFind
       .mockReturnValueOnce(null)
-      .mockReturnValue({ entity: ENTITY, repo: "local-agent", ownerPubkey: OWNER });
+      .mockReturnValue({
+        entity: ENTITY,
+        repo: "local-agent",
+        ownerPubkey: OWNER,
+      });
 
     const result = await ensureLocalRepoForEdit({
       entity: ENTITY,
@@ -56,17 +69,18 @@ describe("ensureLocalRepoForEdit", () => {
     expect(mockSaveStored).toHaveBeenCalled();
   });
 
-  it("hydrates file index from the bridge when local is empty", async () => {
+  it("refreshes from bridge tip even when a stale local index exists", async () => {
     const shell = {
       entity: ENTITY,
       repo: "local-agent",
       slug: "local-agent",
       ownerPubkey: OWNER,
       hasUnpushedEdits: false,
-      fileCount: 0,
+      fileCount: 1,
     };
     mockFind.mockReturnValue(shell);
     mockLoadStored.mockReturnValue([shell]);
+    mockLoadFiles.mockReturnValue([{ path: "old-only.md", type: "file" }]);
     mockFetchBridge.mockResolvedValue({
       files: [
         { type: "file", path: "README.md", size: 12 },
@@ -82,11 +96,14 @@ describe("ensureLocalRepoForEdit", () => {
     });
     expect(result.ok).toBe(true);
     expect(result.hydratedFromBridge).toBe(true);
+    expect(result.keptUnpushedLocal).toBe(false);
     expect(result.fileCount).toBe(2);
     expect(mockSaveFiles).toHaveBeenCalled();
+    expect(mockSaveOverrides).toHaveBeenCalledWith(ENTITY, "local-agent", {});
+    expect(mockSaveDeleted).toHaveBeenCalledWith(ENTITY, "local-agent", []);
   });
 
-  it("does not overwrite unpushed local edits with the bridge", async () => {
+  it("keeps unpushed local edits and does not overwrite with the bridge", async () => {
     mockFind.mockReturnValue({
       entity: ENTITY,
       repo: "local-agent",
@@ -100,7 +117,29 @@ describe("ensureLocalRepoForEdit", () => {
       repo: "local-agent",
       ownerPubkey: OWNER,
     });
+    expect(result.keptUnpushedLocal).toBe(true);
     expect(result.hydratedFromBridge).toBe(false);
+    expect(mockFetchBridge).not.toHaveBeenCalled();
+  });
+
+  it("keeps local when lastModifiedAt is newer than announce even if flag is false", async () => {
+    mockFind.mockReturnValue({
+      entity: ENTITY,
+      repo: "local-agent",
+      hasUnpushedEdits: false,
+      lastNostrEventId: "evt1",
+      lastNostrEventCreatedAt: 1_700_000_000,
+      lastModifiedAt: 1_700_000_050 * 1000,
+      fileCount: 1,
+    });
+    mockLoadFiles.mockReturnValue([{ path: "draft.txt", type: "file" }]);
+
+    const result = await ensureLocalRepoForEdit({
+      entity: ENTITY,
+      repo: "local-agent",
+      ownerPubkey: OWNER,
+    });
+    expect(result.keptUnpushedLocal).toBe(true);
     expect(mockFetchBridge).not.toHaveBeenCalled();
   });
 

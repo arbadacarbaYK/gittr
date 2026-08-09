@@ -1,20 +1,26 @@
 /**
  * Owner upload / new-file need a `gittr_repos` row. Browse-from-Nostr can show
  * the tree from the bridge without ever writing that row — then upload fails
- * with a useless "Failed to add files". This helper creates a shell and, when
- * the bridge already has objects, copies the file index so Push can fetch
- * bodies later and merge new uploads on top.
+ * with a useless "Failed to add files".
+ *
+ * When there are **no** unpushed local edits, we always refresh the file index
+ * from the bridge tip before edit so stale browser trees cannot regress Push.
+ * When there **are** unpushed edits, we keep the local working tree (upload
+ * merges on top of that intentional draft).
  */
 
 import { findRepoByEntityAndName } from "../utils/repo-finder";
 import { fetchBridgeFilesOnce } from "../utils/git-source-fetcher";
+import { repoHasUnpushedLocalEdits } from "./unpushed-local-edits";
 
 import {
   type RepoFileEntry,
   type StoredRepo,
   loadRepoFiles,
   loadStoredRepos,
+  saveRepoDeletedPaths,
   saveRepoFiles,
+  saveRepoOverrides,
   saveStoredRepos,
 } from "./storage";
 import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
@@ -23,11 +29,17 @@ export type EnsureLocalRepoForEditResult = {
   ok: boolean;
   createdShell: boolean;
   hydratedFromBridge: boolean;
+  /** True when we kept an existing unpushed local working tree. */
+  keptUnpushedLocal: boolean;
   fileCount: number;
   error?: string;
 };
 
-function countLocalFiles(entity: string, repo: string, found?: StoredRepo | null): number {
+function countLocalFiles(
+  entity: string,
+  repo: string,
+  found?: StoredRepo | null
+): number {
   const indexed = loadRepoFiles(entity, repo);
   if (indexed.length > 0) return indexed.length;
   if (found?.files && Array.isArray(found.files)) return found.files.length;
@@ -39,7 +51,8 @@ function toRepoFileEntries(
 ): RepoFileEntry[] {
   const out: RepoFileEntry[] = [];
   for (const f of files) {
-    const path = typeof f.path === "string" ? f.path.replace(/^\//, "").trim() : "";
+    const path =
+      typeof f.path === "string" ? f.path.replace(/^\//, "").trim() : "";
     if (!path) continue;
     const type = f.type === "dir" || f.type === "tree" ? "dir" : "file";
     out.push({
@@ -52,8 +65,8 @@ function toRepoFileEntries(
 }
 
 /**
- * Ensure localStorage has a repo row (and optionally a bridge file index)
- * before owner edits. Safe to call repeatedly; does not wipe unpushed edits.
+ * Ensure localStorage has a repo row, then align the file index with the
+ * published tip unless the owner already has unpushed local edits.
  */
 export async function ensureLocalRepoForEdit(opts: {
   entity: string;
@@ -71,6 +84,7 @@ export async function ensureLocalRepoForEdit(opts: {
       ok: false,
       createdShell: false,
       hydratedFromBridge: false,
+      keptUnpushedLocal: false,
       fileCount: 0,
       error: "Missing repository path",
     };
@@ -80,6 +94,7 @@ export async function ensureLocalRepoForEdit(opts: {
       ok: false,
       createdShell: false,
       hydratedFromBridge: false,
+      keptUnpushedLocal: false,
       fileCount: 0,
       error: "Could not determine repository owner",
     };
@@ -115,6 +130,7 @@ export async function ensureLocalRepoForEdit(opts: {
         ok: false,
         createdShell: false,
         hydratedFromBridge: false,
+        keptUnpushedLocal: false,
         fileCount: 0,
         error:
           "Could not save repository locally (browser storage full?). Free space or Flush others' repos cache, then try again.",
@@ -130,55 +146,71 @@ export async function ensureLocalRepoForEdit(opts: {
     ownerPubkey,
   });
 
-  const hasUnpushed = found.hasUnpushedEdits === true;
+  const hasUnpushed = repoHasUnpushedLocalEdits(found);
   let fileCount = countLocalFiles(entity, repo, found);
 
-  // Already editable locally — don't replace unpushed work with a bridge snapshot.
-  if (hasUnpushed || fileCount > 0) {
+  // Intentional local draft — upload/new-file merge onto this, do not wipe.
+  if (hasUnpushed) {
     return {
       ok: true,
       createdShell,
       hydratedFromBridge: false,
+      keptUnpushedLocal: true,
       fileCount,
     };
   }
 
+  // No unpushed edits: always refresh index from bridge tip (even if a stale
+  // local tree exists) so Push cannot regress a newer published state.
   try {
     const bridge = await fetchBridgeFilesOnce(ownerPubkey, repo, branch);
     const entries = bridge?.files ? toRepoFileEntries(bridge.files) : [];
-    if (entries.length > 0) {
-      saveRepoFiles(entity, repo, entries);
-      const next = loadStoredRepos();
-      const matched = findRepoByEntityAndName<StoredRepo>(next, entity, repo);
-      const idx = matched ? next.indexOf(matched) : -1;
-      if (idx >= 0 && next[idx]) {
-        const prev = next[idx];
-        next[idx] = {
-          ...prev,
-          entity: prev.entity || entity,
-          fileCount: entries.length,
-          files: undefined,
-          ownerPubkey: prev.ownerPubkey || ownerPubkey,
-          defaultBranch:
-            (typeof bridge?.branch === "string" && bridge.branch.trim()) ||
-            prev.defaultBranch ||
-            branch,
-          syncedFromNostr: true,
-        };
-        saveStoredRepos(next, { preferOwnerPubkey: ownerPubkey });
-      }
-      hydratedFromBridge = true;
-      fileCount = entries.length;
+    // Replace local index with tip (empty tip = empty index for brand-new repos)
+    saveRepoFiles(entity, repo, entries);
+    // Stale overrides / delete tombstones must not outlive a clean tip sync
+    try {
+      saveRepoOverrides(entity, repo, {});
+    } catch {
+      /* ignore */
     }
+    try {
+      saveRepoDeletedPaths(entity, repo, []);
+    } catch {
+      /* ignore */
+    }
+
+    const next = loadStoredRepos();
+    const matched = findRepoByEntityAndName<StoredRepo>(next, entity, repo);
+    const idx = matched ? next.indexOf(matched) : -1;
+    if (idx >= 0 && next[idx]) {
+      const prev = next[idx];
+      next[idx] = {
+        ...prev,
+        entity: prev.entity || entity,
+        fileCount: entries.length,
+        files: undefined,
+        ownerPubkey: prev.ownerPubkey || ownerPubkey,
+        defaultBranch:
+          (typeof bridge?.branch === "string" && bridge.branch.trim()) ||
+          prev.defaultBranch ||
+          branch,
+        syncedFromNostr: true,
+        hasUnpushedEdits: false,
+      };
+      saveStoredRepos(next, { preferOwnerPubkey: ownerPubkey });
+    }
+    hydratedFromBridge = true;
+    fileCount = entries.length;
   } catch (e) {
     console.warn("[ensureLocalRepoForEdit] Bridge hydrate failed:", e);
+    // Fall through with whatever local index exists — better than blocking upload
   }
 
-  // Empty bridge is fine for brand-new repos — shell is enough to upload into.
   return {
     ok: true,
     createdShell,
     hydratedFromBridge,
+    keptUnpushedLocal: false,
     fileCount,
   };
 }

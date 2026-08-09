@@ -622,6 +622,15 @@ export default function HelpPage() {
                     are kept. Then Push to Nostr when ready.
                   </p>
                   <p className="mt-2 text-sm text-gray-400">
+                    Upload first syncs your browser to the{" "}
+                    <strong className="text-gray-300">published tip</strong>{" "}
+                    (when you have no unpushed edits), then merges your new
+                    files on top — so an older local cache cannot overwrite a
+                    newer Nostr/bridge state. If you already have unpushed
+                    local edits, upload merges into those instead (use Refresh
+                    from gittr only if you want to discard them).
+                  </p>
+                  <p className="mt-2 text-sm text-gray-400">
                     If the Code tab already shows files from the network but
                     Upload / Push complains about nothing local, use{" "}
                     <strong className="text-gray-300">Refresh from gittr</strong>{" "}

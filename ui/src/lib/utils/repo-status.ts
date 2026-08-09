@@ -10,6 +10,7 @@
  * - live_with_edits: was live, has local changes not pushed yet
  */
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { repoHasUnpushedLocalEdits } from "@/lib/repos/unpushed-local-edits";
 
 export type RepoStatus =
   | "local"
@@ -118,12 +119,7 @@ export function getRepoStatus(repo: any): RepoStatus {
 
   const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
 
-  const hasUnpushedEdits =
-    repo.hasUnpushedEdits === true ||
-    (repo.lastNostrEventId &&
-      repo.lastModifiedAt &&
-      repo.lastNostrEventCreatedAt &&
-      repo.lastModifiedAt > repo.lastNostrEventCreatedAt * 1000);
+  const hasUnpushedEdits = repoHasUnpushedLocalEdits(repo);
 
   const isSyncedFromNostr = !!(repo.syncedFromNostr || repo.fromNostr);
   const eventCreatedAt =

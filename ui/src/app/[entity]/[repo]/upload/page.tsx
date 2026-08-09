@@ -337,8 +337,12 @@ export default function UploadPage({
         if (ensured.hydratedFromBridge || ensured.createdShell) {
           setStatus(
             ensured.hydratedFromBridge
-              ? `Loaded ${ensured.fileCount} existing file(s) from gittr, merging your upload...`
+              ? `Synced ${ensured.fileCount} file(s) from published tip, merging your upload...`
               : "Created local repo copy, adding your files..."
+          );
+        } else if (ensured.keptUnpushedLocal) {
+          setStatus(
+            "Merging into your unpushed local changes (not reloading published tip)..."
           );
         }
 
@@ -568,6 +572,11 @@ export default function UploadPage({
       </div>
 
       <h1 className="text-2xl font-bold mb-4">Upload files & folders</h1>
+      <p className="mb-4 text-sm text-[var(--color-text-secondary)] max-w-2xl">
+        Before adding files, gittr syncs to the published tip when you have no
+        unpushed local edits — then your upload overwrites same paths on top.
+        If you already have unpushed changes, upload merges into those instead.
+      </p>
 
       <div className="space-y-4">
         <div>
