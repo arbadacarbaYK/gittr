@@ -215,6 +215,52 @@ export default function NotificationsPage() {
     <div className="p-6">
       <SettingsHero title="Notifications" />
 
+      <div className="mt-4 space-y-2 rounded border border-[#383B42] bg-black/20 p-4 text-sm text-gray-400">
+        <p className="font-semibold text-gray-300">How delivery works</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong className="text-gray-300">Save now</strong> publishes your
+            toggles to Nostr (kind {KIND_NOTIFICATION_PREFS},{" "}
+            <code className="text-xs">d={NOTIFICATION_PREFS_D_TAG}</code>) so
+            they follow you across browsers — not just this device.
+          </li>
+          <li>
+            DMs go to <strong className="text-gray-300">you</strong> based on
+            these saved prefs (Nostr and/or Telegram). Someone else acting on
+            your repo cannot hijack your channels via their browser settings.
+          </li>
+          <li>
+            Telegram User ID stays on the gittr server for delivery and is{" "}
+            <strong className="text-gray-300">never</strong> put on public
+            relays. You can use Nostr DM, Telegram, or both.
+          </li>
+          <li>
+            Collaboration events (issues/PRs/mentions/bounties) can notify as
+            soon as they happen. Security (CVE) alerts are{" "}
+            <strong className="text-gray-300">opt-in</strong> and reviewed
+            before mass send — see Help → Security alerts.
+          </li>
+        </ul>
+        <p className="text-xs text-gray-500">
+          More detail:{" "}
+          <a href="/help#notifications" className="text-purple-400 hover:text-purple-300">
+            Help → Notifications
+          </a>
+          {SECURITY_AUDIT_UI_ENABLED ? (
+            <>
+              {" "}
+              ·{" "}
+              <a
+                href="/help#security-alerts"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Security alerts
+              </a>
+            </>
+          ) : null}
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
         <section className="space-y-3">
           <h3 className="font-semibold">Channels</h3>
@@ -380,11 +426,21 @@ export default function NotificationsPage() {
                 About security (CVE) alerts
               </p>
               <p>
-                Confirmed lockfile matches only (direct + CRITICAL/HIGH). The
-                Security toggle is part of the same kind{" "}
-                {KIND_NOTIFICATION_PREFS} prefs event (
-                <code>d={NOTIFICATION_PREFS_D_TAG}</code>) as everything else
-                above — Save publishes all toggles for multi-browser sync.
+                Only confirmed lockfile matches (direct dependency +
+                CRITICAL/HIGH). Opt in here and Save — that registers consent on
+                relays. Alerts are queued for a human check before issues/DMs go
+                out in bulk, so you do not get surprise spam while we tune the
+                pipeline. Same Save also syncs every toggle above across
+                browsers.
+              </p>
+              <p>
+                Details:{" "}
+                <a
+                  href="/help#security-alerts"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Help → Security alerts
+                </a>
               </p>
             </div>
           )}

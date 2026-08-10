@@ -2177,9 +2177,23 @@ export default function HelpPage() {
                     @gittrupdatebot
                   </a>
                   : send <code>/start</code>, paste the User ID into Settings →
-                  Notifications. No public channel post required.
+                  Notifications. No public channel post required. You can enable
+                  Nostr and Telegram together.
                 </li>
               </ul>
+              <p className="mt-2 text-sm text-gray-400">
+                <strong>Save now</strong> does two things: publishes your
+                toggles as a kind{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">30078</code>{" "}
+                event (
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  d=gittr/notifications
+                </code>
+                ) so prefs sync across browsers, and registers delivery on the
+                server (Telegram User ID stays off public relays). DMs always
+                use the <strong>recipient&apos;s</strong> saved prefs — not
+                whoever clicked in their own browser.
+              </p>
               <p className="mt-2 text-sm text-gray-400">
                 Bounty announcements are also posted to the public{" "}
                 <a
@@ -2308,7 +2322,7 @@ export default function HelpPage() {
                 <strong>How alerts reach you (Dependabot-style):</strong> when a
                 confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
                 <strong>direct</strong> pinned dependency, the gittr platform
-                bot opens a security issue and notifies you on the{" "}
+                bot can open a security issue and notify you on the{" "}
                 <strong>same channels</strong> you enabled (Nostr and/or
                 Telegram). All notification toggles (including Security) live in
                 one kind{" "}
@@ -2318,21 +2332,14 @@ export default function HelpPage() {
                   d=gittr/notifications
                 </code>
                 ) so they sync across browsers. Save also registers delivery on
-                this server (Telegram User ID stays off public relays). Ops
-                enable the live CVE bot with{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  CVE_BOT_ENABLED=1
-                </code>
-                ; ensure <code className="bg-gray-800 px-1 rounded text-xs">
-                  30078
-                </code>{" "}
-                is in Pyramid <code className="bg-gray-800 px-1 rounded text-xs">
-                  open_kinds_spec
-                </code>{" "}
-                on <code className="bg-gray-800 px-1 rounded text-xs">
-                  relay.gittr.space
-                </code>
-                .
+                this server (Telegram User ID stays off public relays).
+              </p>
+              <p className="mt-2">
+                <strong>Review before mass send:</strong> the daily scanner
+                queues candidates for a human check first (no surprise flood of
+                issues/DMs). After review, ops send the pending batch in one
+                deliberate step. Full auto-send stays off unless explicitly
+                enabled for an emergency.
               </p>
               <p className="mt-2">
                 <strong>One alert per problem — not per scan:</strong> each
