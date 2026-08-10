@@ -2319,6 +2319,12 @@ export default function HelpPage() {
                 are listed separately as unconfirmed and never trigger alarms.
               </p>
               <p className="mt-2">
+                <strong>How the message looks:</strong> Telegram / Nostr DMs
+                lead with the <strong>repo name</strong>, list at most a few
+                findings, and link to the full security issue — not a wall of
+                hex URLs or truncated advisory dumps.
+              </p>
+              <p className="mt-2">
                 <strong>How often does the check run?</strong> The audit runs
                 fresh every time the <strong>Dependencies</strong> tab of a
                 repo is opened — there is no fixed schedule. It reads the

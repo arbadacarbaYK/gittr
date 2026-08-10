@@ -43,33 +43,38 @@ export default async function handler(
   }
 
   try {
-    // Format the notification message with emojis and clickable link
-    // Telegram HTML: Use <a href="url">link text</a> for clickable links
-    // Escape HTML special characters in the URL
-    // Convert http:// to https:// for better Telegram link support (or keep http if needed)
-    const escapedUrl = url
-      ? url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      : "";
-    // Note: Telegram supports both http and https in HTML links, but https is preferred
+    const escapeHtml = (s: string) =>
+      String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 
-    // Add emoji based on event type (case-insensitive)
-    // Check in order: bounty first (before "issue" which might be in "bounty funded on issue")
+    const escapedUrl = url
+      ? String(url)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+      : "";
+
     const titleLower = title.toLowerCase();
     let emoji = "🔔";
-    if (titleLower.includes("bounty")) emoji = "💰";
+    if (titleLower.includes("security") || titleLower.includes("vulnerabilit"))
+      emoji = "🔒";
+    else if (titleLower.includes("bounty")) emoji = "💰";
     else if (titleLower.includes("pull request") || titleLower.includes("pr"))
       emoji = "🔀";
     else if (titleLower.includes("issue")) emoji = "📝";
     else if (titleLower.includes("merged")) emoji = "✅";
     else if (titleLower.includes("comment")) emoji = "💬";
 
-    // Format message with emoji, title, message, and clickable link
-    const linkText = url ? `<a href="${escapedUrl}">🔗 View Details</a>` : "";
-    const telegramMessage = `${emoji} <b>${title}</b>\n\n${message}${
-      url ? `\n\n${linkText}` : ""
-    }`;
+    // Plain text body (escape for HTML mode) — CVE DMs are already short + repo-first
+    const linkText = url
+      ? `<a href="${escapedUrl}">Open security issue</a>`
+      : "";
+    const telegramMessage = `${emoji} <b>${escapeHtml(title)}</b>\n\n${escapeHtml(
+      message
+    )}${url ? `\n\n${linkText}` : ""}`;
 
-    // Log the message being sent (for debugging)
     console.log("📤 [Telegram DM] Sending message:", {
       userId,
       emoji,
@@ -80,15 +85,14 @@ export default async function handler(
 
     const telegramUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
 
-    // Send DM to the user's Telegram user ID (not group ID)
     const telegramResponse = await fetch(telegramUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: userId, // User's Telegram user ID for DM
+        chat_id: userId,
         text: telegramMessage,
         parse_mode: "HTML",
-        disable_web_page_preview: false, // Allow link previews
+        disable_web_page_preview: true,
       }),
     });
 
