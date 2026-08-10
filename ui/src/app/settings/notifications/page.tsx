@@ -240,8 +240,10 @@ export default function NotificationsPage() {
             <strong className="text-gray-300">opt-in</strong>, only for repos
             with a usable gittr mirror (created / imported / pushed here — not
             every repo announced from another client), only when that mirror
-            matches the latest Nostr tip, and reviewed before mass send — see
-            Help → Security alerts.
+            matches your Push announcement (kind 30618) — if GitHub/forge moved,
+            sync from source then <strong className="text-gray-300">Push</strong>{" "}
+            (a browser-only refetch without Push does not fix a tip mismatch) —
+            and reviewed before mass send. See Help → Security alerts.
           </li>
         </ul>
         <p className="text-xs text-gray-500">
@@ -437,8 +439,9 @@ export default function NotificationsPage() {
                 disagree, we skip rather than warn from the wrong tree. After
                 GitHub (or another forge) moves on, sync that source onto gittr
                 and <strong className="text-gray-300">Push</strong> again so the
-                announcement catches up. Opt in + Save registers consent; mass
-                DMs are reviewed before send.
+                announcement catches up; a browser-only refetch without Push does
+                not fix the mismatch. Opt in + Save registers consent; mass DMs
+                are reviewed before send.
               </p>
               <p>
                 Details:{" "}
