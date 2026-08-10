@@ -236,10 +236,12 @@ export default function NotificationsPage() {
           </li>
           <li>
             Collaboration events (issues/PRs/mentions/bounties) can notify as
-            soon as they happen. Security (CVE) alerts are{" "}
-            <strong className="text-gray-300">opt-in</strong>, only for
-            repos that have code on gittr (created / imported / pushed here),
-            and are reviewed before mass send — see Help → Security alerts.
+            soon as they happen on Nostr. Security (CVE) alerts are{" "}
+            <strong className="text-gray-300">opt-in</strong>, only for repos
+            with a usable gittr mirror (created / imported / pushed here — not
+            every repo announced from another client), only when that mirror
+            matches the latest Nostr tip, and reviewed before mass send — see
+            Help → Security alerts.
           </li>
         </ul>
         <p className="text-xs text-gray-500">

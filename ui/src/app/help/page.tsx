@@ -2349,12 +2349,13 @@ export default function HelpPage() {
               </p>
               <p className="mt-2">
                 <strong>Fresh tip only:</strong> the scanner reads lockfiles from
-                the gittr bridge clone. If your latest Nostr repo state (kind{" "}
+                the gittr bridge clone, but only after it finds a Nostr repo
+                state tip (kind{" "}
                 <code className="bg-gray-800 px-1 rounded text-xs">30618</code>
-                ) points at a different commit than that clone, the alert is{" "}
-                <strong>skipped</strong> until they match — so we do not DM you
-                about an old tree after you pushed elsewhere. Sync / push to
-                gittr (or wait for the bridge) before expecting a CVE alert.
+                ) that <strong>exactly matches</strong> that clone. No tip on
+                relays, or tip ≠ bridge → <strong>skip</strong> (no DM about an
+                old or unmirrored tree). If you keep updating only in another
+                client, push/sync to gittr again when you want CVE coverage.
               </p>
               <p className="mt-2">
                 <strong>Review before mass send:</strong> the daily scanner
