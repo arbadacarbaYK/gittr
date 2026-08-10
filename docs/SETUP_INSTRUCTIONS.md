@@ -300,7 +300,7 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 
 **Security audit (Dependencies tab):** the user-facing audit UI is gated behind `NEXT_PUBLIC_SECURITY_AUDIT_UI=1`. `/api/security/audit` is always on. Confirmed = lockfile-pinned version in range (not range-min); bot alerts use `eligibleCveAdvisories` (confirmed + direct + CRITICAL/HIGH). Issue markdown: `cve-issue-format.ts`.
 
-**Notifications (kind 30078):** Settings → Notifications → Save publishes kind **30078** `d=gittr/notifications` with all channel + event toggles (multi-browser). Telegram User ID registers via `POST /api/notifications/consent` into **server-only** `data/notifications-consent.json` (not on relays). Recipient DMs go through `POST /api/notifications/deliver` (looks up the **recipient’s** consent — not the actor’s localStorage). Legacy `d=gittr/security-cve` is still hydrated. CVE bot: `npx tsx scripts/cve-bot.mts` (default = scan + queue to `data/cve-bot-pending.json`, **no DMs**); after review: `CVE_BOT_SEND_PENDING=1` to publish issues + deliver; full auto only with `CVE_BOT_ENABLED=1`. Opted-in = `events.security_cve` on 30078. **Freshness:** bot only alerts when gittr bridge tip **equals** Nostr kind **30618** HEAD tip; no tip or tip mismatch → skip. Users should **sync from source (if GitHub/forge moved) + Push** so the announcement matches the mirror — browser-only refetch without Push does not fix mismatch. Help: `/help#security-alerts`.
+**Notifications (kind 30078):** Settings → Notifications → Save publishes kind **30078** `d=gittr/notifications` with all channel + event toggles (multi-browser). Telegram User ID registers via `POST /api/notifications/consent` into **server-only** `data/notifications-consent.json` (not on relays). Recipient DMs go through `POST /api/notifications/deliver` (looks up the **recipient’s** consent — not the actor’s localStorage). Legacy `d=gittr/security-cve` is still hydrated. CVE bot: `npx tsx scripts/cve-bot.mts` (default = scan + queue to `data/cve-bot-pending.json`, **no DMs**); after review: set `CVE_BOT_SEND_PENDING=1` in `/etc/default/gittr-cve-bot` and `systemctl start` once (see below); full auto only with `CVE_BOT_ENABLED=1`. Opted-in = `events.security_cve` on 30078. **Freshness:** bot only alerts when gittr bridge tip **equals** Nostr kind **30618** HEAD tip; no tip or tip mismatch → skip. Users should **sync from source (if GitHub/forge moved) + Push** so the announcement matches the mirror — browser-only refetch without Push does not fix mismatch. **Dedup:** one alert per `owner|repo|advisory|package` forever after successful send (Refetch/Push does not re-spam). Help: `/help#security-alerts`.
 
 **Server-only runtime data (`/opt/ngit/data`):** these JSON files are written by the live server / CVE bot and must **never** be uploaded from a laptop (local is always older or empty). Deploy scripts may `mkdir -p` the directory only — never `rsync`/`scp`/`--delete` into it.
 
@@ -313,13 +313,17 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 
 Gitignore covers `data/` and those filenames. Back up this tree with bridge secrets; restore only intentionally.
 
-**CVE bot — review first, then mass-send:** daily timer runs `npx tsx scripts/cve-bot.mts` with **`CVE_BOT_ENABLED` unset/`0`**. Opt-ins come from relay kind 30078 **and** `data/notifications-consent.json` (`events.security_cve`). Scans only succeed when the repo has **bridge files on gittr**; if kind **30618** HEAD ≠ bridge tip, that repo is skipped (no stale-tree alerts). Candidates go to **`/opt/ngit/data/cve-bot-pending.json`** (no issues, no DMs). After review:
+**CVE bot — review first, then mass-send:** daily timer runs `npx tsx scripts/cve-bot.mts` with **`CVE_BOT_ENABLED` unset/`0`**. Opt-ins come from relay kind 30078 **and** `data/notifications-consent.json` (`events.security_cve`). Scans only succeed when the repo has **bridge files on gittr**; if kind **30618** HEAD ≠ bridge tip, that repo is skipped (no stale-tree alerts). Candidates go to **`/opt/ngit/data/cve-bot-pending.json`** (no issues, no DMs). After review, put `CVE_BOT_SEND_PENDING=1` in `/etc/default/gittr-cve-bot` (a bare `CVE_BOT_SEND_PENDING=1 systemctl start` does **not** reach the service), start once, then remove that line:
 
 ```bash
-CVE_BOT_SEND_PENDING=1 systemctl start gittr-cve-bot.service
+# on Hetzner — temporary flag, then clear it
+echo 'CVE_BOT_SEND_PENDING=1' >> /etc/default/gittr-cve-bot
+systemctl start gittr-cve-bot.service
+# wait for finish; journalctl -u gittr-cve-bot -n 80
+sed -i '/^CVE_BOT_SEND_PENDING=/d' /etc/default/gittr-cve-bot
 ```
 
-Full auto: `CVE_BOT_ENABLED=1` (leave off). Node needs `ws` WebSocket polyfill in the bot (already wired). Logs: `journalctl -u gittr-cve-bot -n 100`.
+**Re-alert / anti-spam:** each finding is keyed `owner|repo|advisoryId|packageName` in **`cve-bot-dedup.json`**. After a successful issue + DM, that key is **permanent** — Refetch/Push and the next daily run do **not** re-DM the same vulnerability. A **new** advisory or a **different** package gets one new alert. Tip mismatch → skip (no nagging on unsynced mirrors). Prefer leaving **`CVE_BOT_ENABLED=0`** (queue-only); full auto `CVE_BOT_ENABLED=1` is optional and noisy. Node needs `ws` WebSocket polyfill in the bot (already wired). Logs: `journalctl -u gittr-cve-bot -n 100`.
 
 **Pyramid / relay.gittr.space:** add **`30078`** to production `open_kinds_spec` (see pyramid `FORGE.md` / Settings UI), then `systemctl restart pyramid` — otherwise non-members cannot publish prefs to the forge relay. Help: `/help#security-alerts`.
 
