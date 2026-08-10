@@ -237,8 +237,9 @@ export default function NotificationsPage() {
           <li>
             Collaboration events (issues/PRs/mentions/bounties) can notify as
             soon as they happen. Security (CVE) alerts are{" "}
-            <strong className="text-gray-300">opt-in</strong> and reviewed
-            before mass send — see Help → Security alerts.
+            <strong className="text-gray-300">opt-in</strong>, only for
+            repos that have code on gittr (created / imported / pushed here),
+            and are reviewed before mass send — see Help → Security alerts.
           </li>
         </ul>
         <p className="text-xs text-gray-500">
@@ -398,7 +399,7 @@ export default function NotificationsPage() {
                 ["bounty_released", "Bounty released to me"],
                 [
                   "security_cve",
-                  "Security: a known CVE affects my repo's exact dependency versions",
+                  "Security: confirmed CRITICAL/HIGH CVE on a direct dependency in my gittr-hosted repo tip",
                 ],
               ] as [EventKey, string][]
             )
@@ -427,11 +428,13 @@ export default function NotificationsPage() {
               </p>
               <p>
                 Only confirmed lockfile matches (direct dependency +
-                CRITICAL/HIGH). Opt in here and Save — that registers consent on
-                relays. Alerts are queued for a human check before issues/DMs go
-                out in bulk, so you do not get surprise spam while we tune the
-                pipeline. Same Save also syncs every toggle above across
-                browsers.
+                CRITICAL/HIGH) on the tip that gittr can actually scan — repos
+                you created, imported, or pushed here. A 30617 announcement
+                alone (other clients, no gittr clone) is not enough. If your
+                latest Nostr state (kind 30618) and the gittr bridge tip
+                disagree, we skip the alert rather than warn from an outdated
+                tree. Opt in + Save registers consent; mass DMs are reviewed
+                before send.
               </p>
               <p>
                 Details:{" "}

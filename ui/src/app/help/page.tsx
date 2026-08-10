@@ -2332,8 +2332,10 @@ export default function HelpPage() {
               <p className="mt-2">
                 <strong>How alerts reach you (Dependabot-style):</strong> when a
                 confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
-                <strong>direct</strong> pinned dependency, the gittr platform
-                bot can open a security issue and notify you on the{" "}
+                <strong>direct</strong> pinned dependency on a repo that has
+                code on <strong>gittr</strong> (created / imported / pushed
+                here — not merely announced from another client), the platform
+                can open a security issue and notify you on the{" "}
                 <strong>same channels</strong> you enabled (Nostr and/or
                 Telegram). All notification toggles (including Security) live in
                 one kind{" "}
@@ -2344,6 +2346,15 @@ export default function HelpPage() {
                 </code>
                 ) so they sync across browsers. Save also registers delivery on
                 this server (Telegram User ID stays off public relays).
+              </p>
+              <p className="mt-2">
+                <strong>Fresh tip only:</strong> the scanner reads lockfiles from
+                the gittr bridge clone. If your latest Nostr repo state (kind{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">30618</code>
+                ) points at a different commit than that clone, the alert is{" "}
+                <strong>skipped</strong> until they match — so we do not DM you
+                about an old tree after you pushed elsewhere. Sync / push to
+                gittr (or wait for the bridge) before expecting a CVE alert.
               </p>
               <p className="mt-2">
                 <strong>Review before mass send:</strong> the daily scanner
