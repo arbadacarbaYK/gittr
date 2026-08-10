@@ -2247,16 +2247,27 @@ export default function HelpPage() {
                 </li>
               </ul>
               <p className="mt-3 text-sm text-gray-400">
-                <strong>Default Settings:</strong> Most notifications are
-                disabled by default to reduce noise. The recommended settings
-                (enabled by default) are: New issues, Issue comments, New PRs,
-                PR reviews, PR merges, Mentions, My Bounties, and Bounty
-                releases.
+                <strong>Defaults:</strong> collaboration (new issues, issue
+                comments, PRs, reviews, merges, mentions, bounties) is{" "}
+                <strong>on</strong>; stars / watches / zaps are off; security
+                (CVE) alerts stay off until you opt in.
               </p>
+              {SECURITY_AUDIT_UI_ENABLED && (
+                <p className="mt-2 text-sm text-gray-400">
+                  Security alerts are listed under{" "}
+                  <a
+                    href="#security-alerts"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    Security (CVE) Alerts
+                  </a>
+                  .
+                </p>
+              )}
               <p className="mt-2 text-sm text-gray-400">
                 <strong>Important:</strong> Changes to notification preferences
-                are not active until you click "SAVE NOW". Make sure to save
-                your preferences after making changes.
+                are not active until you click &quot;SAVE NOW&quot;. Make sure
+                to save your preferences after making changes.
               </p>
             </HelpTopic>
 
