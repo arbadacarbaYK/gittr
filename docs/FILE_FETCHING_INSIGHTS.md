@@ -37,6 +37,10 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 3. Upstream `GET /api/git/file-content?sourceUrl=…`  
 4. Binary → base64 / data URL in the browser  
 
+**Refetch content hydrate** (after `/api/import` returns metadata-only files)
+
+Import deliberately omits bodies (response size). Refetch then hydrates small text files into `gittr_overrides__*` via same-origin **`GET /api/git/file-content`** (batched ~15), matching Push. Do **not** `fetch(raw.githubusercontent.com/…)` from the browser — GitHub raw has no CORS for gittr (OPTIONS 403 / NetworkError), which left overrides empty and forced Push to re-fetch everything.
+
 **Folder README** (browsing a directory without opening a file)
 
 Same branch as the loaded tree: honor `?branch=` in the URL, then `repoData.filesBranch` (from multifetch `resolvedBranch`). Do **not** strip a non-default `?branch=` back to `main` — that forced README onto missing branches while the tree loaded `feat/*` via bridge HEAD.

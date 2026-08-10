@@ -20123,15 +20123,16 @@ export function RepoCodePage() {
                                         .slice(0, 100); // Limit to 100 files to avoid timeout
 
                                       // CRITICAL: Fetch file content for small text files and store in overrides
-                                      // This ensures files have content when pushing to Nostr
-                                      // Only fetch small files (< 50KB) to avoid quota issues
+                                      // This ensures files have content when pushing to Nostr.
+                                      // Use same-origin /api/git/file-content (server proxies upstream) —
+                                      // browser fetch to raw.githubusercontent.com fails CORS (OPTIONS 403).
                                       if (
                                         filesToFetch.length > 0 &&
                                         updatedSourceUrl &&
                                         shouldPersistRepoCache()
                                       ) {
                                         console.log(
-                                          `📥 [Refetch] Fetching content for ${filesToFetch.length} small text files from GitHub...`
+                                          `📥 [Refetch] Fetching content for ${filesToFetch.length} small text files via /api/git/file-content...`
                                         );
 
                                         const { saveRepoOverrides } =
@@ -20140,9 +20141,14 @@ export function RepoCodePage() {
                                           string,
                                           string
                                         > = {};
+                                        const contentBranch =
+                                          importData.defaultBranch ||
+                                          existingRepo.defaultBranch ||
+                                          "main";
+                                        let hydrateFailCount = 0;
 
-                                        // Fetch files in batches to avoid rate limits
-                                        const BATCH_SIZE = 10;
+                                        // Match Push batch size for upstream file-content
+                                        const BATCH_SIZE = 15;
                                         for (
                                           let i = 0;
                                           i < filesToFetch.length;
@@ -20155,85 +20161,73 @@ export function RepoCodePage() {
                                           await Promise.all(
                                             batch.map(async (file: any) => {
                                               try {
-                                                const githubMatch =
-                                                  updatedSourceUrl.match(
-                                                    /github\.com\/([^\/]+)\/([^\/]+)/
-                                                  );
-                                                if (githubMatch) {
-                                                  const [, owner, repoNameRaw] =
-                                                    githubMatch;
-                                                  // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-                                                  const repoName =
-                                                    repoNameRaw.replace(
-                                                      /\.git$/,
-                                                      ""
-                                                    );
-                                                  const branch =
-                                                    importData.defaultBranch ||
-                                                    existingRepo.defaultBranch ||
-                                                    "main";
-                                                  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                                                    branch
-                                                  )}/${encodeURIComponent(
-                                                    file.path
+                                                let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                                                  updatedSourceUrl
+                                                )}&path=${encodeURIComponent(
+                                                  file.path
+                                                )}&branch=${encodeURIComponent(
+                                                  contentBranch
+                                                )}`;
+                                                if (
+                                                  isGitHubSource &&
+                                                  githubToken
+                                                ) {
+                                                  apiUrl += `&githubToken=${encodeURIComponent(
+                                                    githubToken
                                                   )}`;
-
-                                                  // Use AbortController for timeout (AbortSignal.timeout not available in all environments)
-                                                  const controller =
-                                                    new AbortController();
-                                                  const timeoutId = setTimeout(
-                                                    () => controller.abort(),
-                                                    10000
-                                                  ); // 10 second timeout per file
-
-                                                  try {
-                                                    const response =
-                                                      await fetch(rawUrl, {
-                                                        headers: {
-                                                          "User-Agent":
-                                                            "gittr-space",
-                                                        },
-                                                        signal:
-                                                          controller.signal,
-                                                      });
-                                                    clearTimeout(timeoutId);
-
-                                                    if (response.ok) {
-                                                      const content =
-                                                        await response.text();
-                                                      if (
-                                                        content &&
-                                                        content.length > 0
-                                                      ) {
-                                                        overrides[file.path] =
-                                                          content;
-                                                        console.log(
-                                                          `✅ [Refetch] Fetched content for ${file.path} (${content.length} chars)`
-                                                        );
-                                                      }
-                                                    }
-                                                  } catch (fetchError: any) {
-                                                    clearTimeout(timeoutId);
-                                                    if (
-                                                      fetchError.name !==
-                                                      "AbortError"
-                                                    ) {
-                                                      throw fetchError;
-                                                    }
-                                                  }
                                                 }
-                                              } catch (e: any) {
-                                                console.warn(
-                                                  `⚠️ [Refetch] Failed to fetch content for ${file.path}:`,
-                                                  e?.message || e
+
+                                                const controller =
+                                                  new AbortController();
+                                                const timeoutId = setTimeout(
+                                                  () => controller.abort(),
+                                                  30000
                                                 );
+
+                                                try {
+                                                  const response = await fetch(
+                                                    apiUrl,
+                                                    {
+                                                      signal:
+                                                        controller.signal,
+                                                    }
+                                                  );
+                                                  clearTimeout(timeoutId);
+
+                                                  if (!response.ok) {
+                                                    hydrateFailCount++;
+                                                    return;
+                                                  }
+
+                                                  const data =
+                                                    await response.json();
+                                                  if (
+                                                    data?.content &&
+                                                    typeof data.content ===
+                                                      "string" &&
+                                                    data.content.length > 0 &&
+                                                    !data.isBinary
+                                                  ) {
+                                                    overrides[file.path] =
+                                                      data.content;
+                                                  } else {
+                                                    hydrateFailCount++;
+                                                  }
+                                                } catch {
+                                                  clearTimeout(timeoutId);
+                                                  hydrateFailCount++;
+                                                }
+                                              } catch {
+                                                hydrateFailCount++;
                                               }
                                             })
                                           );
                                         }
 
                                         // Save all overrides at once
-                                        if (Object.keys(overrides).length > 0) {
+                                        const hydratedCount =
+                                          Object.keys(overrides).length;
+                                        if (hydratedCount > 0) {
                                           const existingOverrides =
                                             loadRepoOverrides(
                                               resolvedParams.entity,
@@ -20248,9 +20242,15 @@ export function RepoCodePage() {
                                             }
                                           );
                                           console.log(
-                                            `✅ [Refetch] Saved ${
-                                              Object.keys(overrides).length
-                                            } file contents to localStorage overrides`
+                                            `✅ [Refetch] Saved ${hydratedCount} file contents to localStorage overrides${
+                                              hydrateFailCount > 0
+                                                ? ` (${hydrateFailCount} skipped)`
+                                                : ""
+                                            }`
+                                          );
+                                        } else if (hydrateFailCount > 0) {
+                                          console.warn(
+                                            `⚠️ [Refetch] Could not hydrate file contents (${hydrateFailCount} failed)`
                                           );
                                         }
                                       }
