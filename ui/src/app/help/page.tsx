@@ -2348,14 +2348,20 @@ export default function HelpPage() {
                 this server (Telegram User ID stays off public relays).
               </p>
               <p className="mt-2">
-                <strong>Fresh tip only:</strong> the scanner reads lockfiles from
-                the gittr bridge clone, but only after it finds a Nostr repo
-                state tip (kind{" "}
+                <strong>Fresh tip only — keep announcement in line with source:</strong>{" "}
+                the scanner reads lockfiles from the gittr bridge clone, but only
+                when Nostr repo state (kind{" "}
                 <code className="bg-gray-800 px-1 rounded text-xs">30618</code>
-                ) that <strong>exactly matches</strong> that clone. No tip on
-                relays, or tip ≠ bridge → <strong>skip</strong> (no DM about an
-                old or unmirrored tree). If you keep updating only in another
-                client, push/sync to gittr again when you want CVE coverage.
+                ) <strong>exactly matches</strong> that clone. No tip, or tip ≠
+                bridge → <strong>skip</strong> (no DM about the wrong tree).
+                That match is what a successful <strong>Push</strong> from the
+                gittr UI is supposed to publish. If you changed the repo on
+                GitHub (or another forge) and want CVE coverage of that tip:
+                bring it onto gittr (sync / refetch from source on the repo),
+                then <strong>Push</strong> so the announcement lines up with the
+                mirror. A browser-only file refresh without Push does not update
+                the announcement. Same idea if you only update in another Nostr
+                git client — Push/sync on gittr again when you want alerts here.
               </p>
               <p className="mt-2">
                 <strong>Review before mass send:</strong> the daily scanner
@@ -2393,6 +2399,13 @@ export default function HelpPage() {
                   the bot.
                 </li>
                 <li>
+                  <strong>Keep Push / announcement current.</strong> After
+                  dependency or tip changes on GitHub (or on gittr), sync from
+                  source if needed, then Push so kind{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">30618</code>{" "}
+                  matches the tip on gittr — otherwise CVE alerts stay skipped.
+                </li>
+                <li>
                   <strong>Check the Dependencies tab</strong> after importing a
                   repo and after dependency updates are on gittr.
                 </li>
@@ -2401,9 +2414,9 @@ export default function HelpPage() {
                   the advisory&apos;s affected range, then get that new
                   lockfile onto gittr before re-checking the tab:{" "}
                   <strong>Nostr/git push</strong> if you fixed it locally, or{" "}
-                  <strong>refetch / re-sync from the source forge</strong> if
-                  you fixed it there. Opening the tab alone does not see
-                  unpushed or unsynced changes.
+                  <strong>sync from the source forge + Push</strong> if you
+                  fixed it there. Opening the tab alone does not see unpushed
+                  or unsynced changes.
                 </li>
               </ul>
             </HelpTopic>

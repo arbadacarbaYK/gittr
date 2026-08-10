@@ -430,13 +430,15 @@ export default function NotificationsPage() {
               </p>
               <p>
                 Only confirmed lockfile matches (direct dependency +
-                CRITICAL/HIGH) on the tip that gittr can actually scan — repos
-                you created, imported, or pushed here. A 30617 announcement
-                alone (other clients, no gittr clone) is not enough. If your
-                latest Nostr state (kind 30618) and the gittr bridge tip
-                disagree, we skip the alert rather than warn from an outdated
-                tree. Opt in + Save registers consent; mass DMs are reviewed
-                before send.
+                CRITICAL/HIGH) on repos that have code on gittr (created /
+                imported / pushed here). Alerts need your{" "}
+                <strong className="text-gray-300">Nostr announcement</strong>{" "}
+                (kind 30618 from Push) to match the tip on gittr — if they
+                disagree, we skip rather than warn from the wrong tree. After
+                GitHub (or another forge) moves on, sync that source onto gittr
+                and <strong className="text-gray-300">Push</strong> again so the
+                announcement catches up. Opt in + Save registers consent; mass
+                DMs are reviewed before send.
               </p>
               <p>
                 Details:{" "}
