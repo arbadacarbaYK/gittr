@@ -7680,8 +7680,12 @@ export function RepoCodePage() {
                 const eventContentPreview = event.content
                   ? event.content.substring(0, 100)
                   : "no content";
+                // NIP-34 announcements never embed a files tree — expected, not a failure.
+                const expectedNoFiles =
+                  reason === "no files field in event" ||
+                  reason === "files array is empty";
                 console.log(
-                  `⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${
+                  `${expectedNoFiles ? "ℹ️" : "⚠️"} [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${
                     eventRepoData.repositoryName || "none"
                   }, expectedRepoName=${
                     resolvedParams.repo
@@ -7689,7 +7693,11 @@ export function RepoCodePage() {
                     eventRepoData.files && Array.isArray(eventRepoData.files)
                   )}, filesLength=${
                     eventRepoData.files?.length || 0
-                  }, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`
+                  }, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}${
+                    expectedNoFiles
+                      ? " (normal for NIP-34 — files come from git clone URLs)"
+                      : ""
+                  }`
                 );
 
                 // CRITICAL: Even if event doesn't have files, we should still extract sourceUrl

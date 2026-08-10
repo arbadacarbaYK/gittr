@@ -154,7 +154,7 @@ Not limited to github.com. **Nostr-only** repos (no `source`/`forkedFrom`) keep 
 
 **Code-tab display (`safeFiles`)** must match that policy via `selectDisplayRepoFileTree`: after a folder upload, **never** pick the *shortest* candidate (that hid root `README.md` when a thinner bridge listing arrived). With `hasUnpushedEdits`, union network + local index (local last). Upload must not delete a flat basename that is also in the **same** upload batch (`README.md` + `docs/README.md`).
 
-`no files field in event` and `forge-releases` 404 are **normal** (NIP-34 metadata only; no Zapstore APK).
+`no files field in event` is **normal** (NIP-34 metadata only). `forge-releases` with `no_releases`/`no_apk` returns **200** + `ok:false` (not a red Network 404) when the repo has no Zapstore APK release.
 
 ## Regression tests (run these — smoke alone is not enough)
 

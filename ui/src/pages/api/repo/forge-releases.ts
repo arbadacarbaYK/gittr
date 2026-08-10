@@ -7,7 +7,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
  * GET /api/repo/forge-releases?sourceUrl=…&hash=1
  *
  * Returns the latest non-draft forge Release with APK assets for Zapstore announce.
- * Hard errors when missing forge / no releases / no APK.
+ * Missing forge / bad request → 4xx. no_releases / no_apk → 200 with ok:false
+ * (expected for most repos; avoids red Network noise on owner page load).
  * Optional hash=1 streams each APK to compute sha256 (not stored).
  */
 export default async function handler(
@@ -55,13 +56,15 @@ export default async function handler(
   });
 
   if (!result.ok) {
+    // no_releases / no_apk are expected for most repos (Apps announce only).
+    // Return 200 so the Network tab isn't a red "error" on every owner page load.
     const status =
       result.code === "missing_source" || result.code === "invalid_request"
         ? 400
         : result.code === "unsupported_forge"
         ? 422
         : result.code === "no_releases" || result.code === "no_apk"
-        ? 404
+        ? 200
         : 502;
     return res.status(status).json(result);
   }
