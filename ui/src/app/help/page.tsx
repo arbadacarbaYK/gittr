@@ -2370,11 +2370,11 @@ export default function HelpPage() {
                 git client — Push/sync on gittr again when you want alerts here.
               </p>
               <p className="mt-2">
-                <strong>Review before mass send:</strong> the daily scanner
-                queues candidates for a human check first (no surprise flood of
-                issues/DMs). After review, ops send the pending batch in one
-                deliberate step. Full auto-send stays off unless explicitly
-                enabled for an emergency.
+                <strong>How alerts are sent:</strong> when you are opted in, the
+                platform bot opens a security issue on that repo and DMs you
+                (Nostr and/or Telegram per your prefs) for each new confirmed
+                CRITICAL/HIGH finding. The same advisory is not re-sent on later
+                scans.
               </p>
               <p className="mt-2">
                 <strong>One alert per problem — not per scan:</strong> each
