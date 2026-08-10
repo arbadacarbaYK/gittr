@@ -8,6 +8,7 @@ import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
 import { ensureLocalRepoForEdit } from "@/lib/repos/ensure-local-repo-for-edit";
 import {
+  ADD_FILES_STORAGE_FULL_HINT,
   addFilesToRepo,
   loadStoredRepos,
   normalizeFilePath,
@@ -129,7 +130,7 @@ export default function NewFilePage({
           return;
         }
 
-        const success = addFilesToRepo(
+        const success = await addFilesToRepo(
           resolvedParams.entity,
           resolvedParams.repo,
           [{ path: normalizedPath, content, type: "file" }],
@@ -142,9 +143,7 @@ export default function NewFilePage({
             router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
-          setStatus(
-            "Error: Failed to add file to repository. Try Refresh from gittr on the Code tab first."
-          );
+          setStatus(`Error: ${ADD_FILES_STORAGE_FULL_HINT}`);
         }
       } else {
         // Non-owners: Add as pending upload (requires PR)

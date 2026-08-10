@@ -1,80 +1,55 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import SettingsHero from "@/components/settings-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
+  type EventKey,
+  type NotificationPrefs,
+  DEFAULT_PREFS,
+  deepMergePrefs,
+} from "@/lib/notifications/prefs";
+import {
+  KIND_NOTIFICATION_PREFS,
+  LEGACY_CVE_OPT_IN_D_TAG,
+  NOTIFICATION_PREFS_D_TAG,
+  buildNotificationPrefsUnsignedEvent,
+  parseNotificationPrefsContent,
+  pickLatestNotificationPrefsEvent,
+} from "@/lib/notifications/notification-prefs-event";
 import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 
 import { nip19 } from "nostr-tools";
 
 type Channel = "nostr" | "telegram";
 
-type EventKey =
-  | "repo_watch"
-  | "repo_star"
-  | "repo_zap"
-  | "issue_opened"
-  | "issue_commented"
-  | "pr_opened"
-  | "pr_review"
-  | "pr_merged"
-  | "mention"
-  | "bounty_funded"
-  | "bounty_released"
-  | "security_cve";
-
-type NotificationPrefs = {
-  channels: {
-    nostr: { enabled: boolean; npub?: string };
-    telegram: { enabled: boolean; handle?: string; userId?: string };
-  };
-  events: Record<EventKey, boolean>;
-};
-
-const DEFAULT_PREFS: NotificationPrefs = {
-  channels: {
-    nostr: { enabled: true, npub: "" },
-    telegram: { enabled: false, handle: "" },
-  },
-  events: {
-    repo_watch: false,
-    repo_star: false,
-    repo_zap: false,
-    issue_opened: true,
-    issue_commented: true,
-    pr_opened: true,
-    pr_review: true,
-    pr_merged: true,
-    mention: true,
-    bounty_funded: true,
-    bounty_released: true,
-    // Strict opt-in: the future security bot must never alert anyone who
-    // did not explicitly turn this on (no-spam requirement).
-    security_cve: false,
-  },
-};
-
 export default function NotificationsPage() {
-  const { pubkey } = useNostrContext();
+  const { pubkey, publish, defaultRelays, subscribe, remoteSigner } =
+    useNostrContext();
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [status, setStatus] = useState("");
+  const [relayStatus, setRelayStatus] = useState<
+    "unknown" | "synced" | "missing"
+  >("unknown");
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("gittr_notifications");
       const loadedPrefs = stored
-        ? { ...DEFAULT_PREFS, ...JSON.parse(stored) }
-        : DEFAULT_PREFS;
+        ? deepMergePrefs(JSON.parse(stored))
+        : deepMergePrefs(null);
 
-      // Auto-populate npub from logged-in user if not set
       if (pubkey && !loadedPrefs.channels.nostr.npub) {
         try {
-          const npub = nip19.npubEncode(pubkey);
-          loadedPrefs.channels.nostr.npub = npub;
+          loadedPrefs.channels.nostr.npub = nip19.npubEncode(pubkey);
         } catch (error) {
           console.error("Failed to encode npub:", error);
         }
@@ -84,19 +59,146 @@ export default function NotificationsPage() {
     } catch {}
   }, [pubkey]);
 
-  const save = () => {
+  // Hydrate from latest kind 30078 on relays (multi-browser source of truth).
+  useEffect(() => {
+    if (!pubkey || !subscribe || !defaultRelays?.length) return;
+
+    const collected: any[] = [];
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      const latest = pickLatestNotificationPrefsEvent(collected);
+      if (!latest) {
+        setRelayStatus("missing");
+        return;
+      }
+      const parsed = parseNotificationPrefsContent(latest.content);
+      if (!parsed) {
+        setRelayStatus("missing");
+        return;
+      }
+      setRelayStatus("synced");
+      setPrefs((prev) =>
+        deepMergePrefs({
+          channels: {
+            nostr: {
+              enabled: parsed.channels.nostr.enabled,
+              npub: prev.channels.nostr.npub,
+            },
+            telegram: {
+              enabled: parsed.channels.telegram.enabled,
+              handle: prev.channels.telegram.handle,
+              userId: prev.channels.telegram.userId,
+            },
+          },
+          events: parsed.events,
+        })
+      );
+    };
+
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_NOTIFICATION_PREFS],
+          authors: [pubkey],
+          "#d": [NOTIFICATION_PREFS_D_TAG, LEGACY_CVE_OPT_IN_D_TAG],
+          limit: 10,
+        },
+      ],
+      defaultRelays,
+      (event: any) => {
+        if (event) collected.push(event);
+      },
+      undefined,
+      () => finish()
+    );
+
+    const timer = setTimeout(finish, 4000);
+    return () => {
+      clearTimeout(timer);
+      try {
+        unsub?.();
+      } catch {}
+    };
+  }, [pubkey, subscribe, defaultRelays]);
+
+  const save = async () => {
     try {
       localStorage.setItem("gittr_notifications", JSON.stringify(prefs));
-      setStatus("Saved");
-      setTimeout(() => setStatus(""), 1500);
     } catch {
-      setStatus("Failed to save");
+      setStatus("Failed to save locally");
       setTimeout(() => setStatus(""), 2000);
+      return;
+    }
+
+    if (!pubkey) {
+      setStatus("Saved locally — log in to sync prefs to relays");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+    if (!publish || !defaultRelays?.length) {
+      setStatus("Saved locally, but no relays to publish");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+
+    try {
+      setStatus(
+        remoteSigner?.getSession()
+          ? "Waiting for signer…"
+          : "Publishing notification prefs…"
+      );
+      const signingCreds = await resolveSigningCredentials({
+        remoteSigner,
+        maxWaitMs: 30_000,
+      });
+      if (!signingCreds) {
+        throw new Error(NO_SIGNING_METHOD_MESSAGE);
+      }
+      const { signer } = signingCreds;
+      const signerPubkey = await signer.getPublicKey();
+      const unsigned = buildNotificationPrefsUnsignedEvent(
+        signerPubkey,
+        prefs
+      );
+      const signed = await signer.signEvent(unsigned);
+      publish(signed, defaultRelays);
+
+      const consentRes = await fetch("/api/notifications/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: signed,
+          telegramUserId: prefs.channels.telegram.userId || "",
+        }),
+      });
+      if (!consentRes.ok) {
+        const err = await consentRes.json().catch(() => ({}));
+        console.warn("[Notifications] consent API failed:", err);
+        setRelayStatus("synced");
+        setStatus(
+          "Saved on relays — delivery sync failed (check Telegram User ID if Telegram is on)"
+        );
+        setTimeout(() => setStatus(""), 5000);
+        return;
+      }
+
+      setRelayStatus("synced");
+      setStatus("Saved — prefs published to relays + delivery registered");
+      setTimeout(() => setStatus(""), 3500);
+    } catch (error) {
+      console.warn("[Notifications] prefs publish failed:", error);
+      setStatus("Saved locally, but relay publish failed");
+      setTimeout(() => setStatus(""), 4000);
     }
   };
 
   const toggleEvent = (key: EventKey) => {
-    setPrefs((p) => ({ ...p, events: { ...p.events, [key]: !p.events[key] } }));
+    setPrefs((p) => ({
+      ...p,
+      events: { ...p.events, [key]: !p.events[key] },
+    }));
   };
 
   const toggleChannel = (ch: Channel) => {
@@ -116,6 +218,16 @@ export default function NotificationsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
         <section className="space-y-3">
           <h3 className="font-semibold">Channels</h3>
+          <p className="text-xs text-gray-500">
+            Relay sync:{" "}
+            <strong className="text-gray-300">
+              {relayStatus === "synced"
+                ? "synced"
+                : relayStatus === "missing"
+                ? "no prefs event yet — Save to publish"
+                : "checking…"}
+            </strong>
+          </p>
           <div className="space-y-2 p-3 border border-[#383B42] rounded">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -166,7 +278,6 @@ export default function NotificationsPage() {
                     placeholder="@username (optional, @ not required)"
                     value={prefs.channels.telegram.handle || ""}
                     onChange={(e) => {
-                      // Strip @ if user adds it, we'll handle it in display
                       let handle = e.target.value;
                       if (handle.startsWith("@")) {
                         handle = handle.substring(1);
@@ -213,8 +324,9 @@ export default function NotificationsPage() {
                       @gittrupdatebot
                     </a>
                     , send <code className="text-gray-300">/start</code>, and
-                    paste the User ID it replies with. Private DM only — nothing
-                    is posted to the public channel.
+                    paste the User ID. It is stored on this server for delivery —
+                    not published to public relays. You can enable Nostr and
+                    Telegram together.
                   </p>
                 </div>
               </div>
@@ -248,64 +360,40 @@ export default function NotificationsPage() {
                 ([key]) => key !== "security_cve" || SECURITY_AUDIT_UI_ENABLED
               )
               .map(([key, label]) => (
-              <label
-                key={key}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={!!prefs.events[key]}
-                  onChange={() => toggleEvent(key)}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
+                <label
+                  key={key}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!prefs.events[key]}
+                    onChange={() => toggleEvent(key)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
           </div>
 
           {SECURITY_AUDIT_UI_ENABLED && (
-          <div className="space-y-1.5 rounded border border-[#383B42] bg-black/20 p-3 text-xs text-gray-400">
-            <p className="font-semibold text-gray-300">
-              About security (CVE) alerts
-            </p>
-            <p>
-              Every repo already shows a live vulnerability audit on its{" "}
-              <strong>Dependencies</strong> tab (powered by OSV.dev). An alert
-              only counts as confirmed when the <strong>exact version</strong>{" "}
-              from your committed lockfile falls inside an advisory&apos;s
-              affected range — never from guessed version ranges, so no alarm
-              spam.
-            </p>
-            <p>
-              Alerts will be delivered Dependabot-style: the gittr platform bot
-              opens an issue on your affected repo, and you are notified through
-              your normal issue notifications above. No unsolicited DMs. This is
-              strictly <strong>opt-in</strong> (off by default) — the bot will
-              never alert repos whose owner has not turned this on. The bot is
-              not live yet — the on-page audit already is.
-            </p>
-            <p>
-              The audit runs each time a repo&apos;s Dependencies tab is opened
-              and reads lockfiles from the <strong>pushed gittr tip</strong>{" "}
-              (not unpushed local edits). Advisory data is cached ~6h. Alerts
-              are deduplicated: one issue per advisory per repo, ever — repeat
-              scans finding the same known CVE stay silent.
-            </p>
-            <p>
-              <a
-                href="/help#security-alerts"
-                className="text-purple-400 hover:text-purple-300"
-              >
-                How to get the most out of this (lockfiles, watching, opt-in) →
-              </a>
-            </p>
-          </div>
+            <div className="space-y-1.5 rounded border border-[#383B42] bg-black/20 p-3 text-xs text-gray-400">
+              <p className="font-semibold text-gray-300">
+                About security (CVE) alerts
+              </p>
+              <p>
+                Confirmed lockfile matches only (direct + CRITICAL/HIGH). The
+                Security toggle is part of the same kind{" "}
+                {KIND_NOTIFICATION_PREFS} prefs event (
+                <code>d={NOTIFICATION_PREFS_D_TAG}</code>) as everything else
+                above — Save publishes all toggles for multi-browser sync.
+              </p>
+            </div>
           )}
 
           <div className="flex items-center gap-3">
-            <Button onClick={save}>SAVE NOW</Button>
+            <Button onClick={() => void save()}>SAVE NOW</Button>
             {status && <span className="text-gray-400 text-sm">{status}</span>}
             <p className="text-xs text-gray-500">
-              Changes are not active until you click "SAVE NOW"
+              Changes are not active until you click &quot;SAVE NOW&quot;
             </p>
           </div>
         </section>

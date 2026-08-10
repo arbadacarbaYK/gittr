@@ -2305,21 +2305,40 @@ export default function HelpPage() {
                 after the cache expires.
               </p>
               <p className="mt-2">
-                <strong>How alerts will reach you (Dependabot-style):</strong>{" "}
-                when a confirmed CVE affects your repo, the gittr platform bot
-                opens an issue on that repo — public, auditable, and delivered
-                through your normal issue notifications. No unsolicited DMs,
-                ever. Alerts are strictly <strong>opt-in</strong>: nothing is
-                sent unless you enable Settings → Notifications →
-                &quot;Security&quot; (off by default). The bot is rolling out
-                carefully and is not live yet; the on-page audit already is.
+                <strong>How alerts reach you (Dependabot-style):</strong> when a
+                confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
+                <strong>direct</strong> pinned dependency, the gittr platform
+                bot opens a security issue and notifies you on the{" "}
+                <strong>same channels</strong> you enabled (Nostr and/or
+                Telegram). All notification toggles (including Security) live in
+                one kind{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">30078</code>{" "}
+                event (
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  d=gittr/notifications
+                </code>
+                ) so they sync across browsers. Save also registers delivery on
+                this server (Telegram User ID stays off public relays). Ops
+                enable the live CVE bot with{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  CVE_BOT_ENABLED=1
+                </code>
+                ; ensure <code className="bg-gray-800 px-1 rounded text-xs">
+                  30078
+                </code>{" "}
+                is in Pyramid <code className="bg-gray-800 px-1 rounded text-xs">
+                  open_kinds_spec
+                </code>{" "}
+                on <code className="bg-gray-800 px-1 rounded text-xs">
+                  relay.gittr.space
+                </code>
+                .
               </p>
               <p className="mt-2">
                 <strong>One alert per problem — not per scan:</strong> each
-                advisory triggers at most one issue per repo, ever. Repeated
-                scans that find the same known vulnerability stay silent. A new
-                issue is only opened for a <em>new</em> advisory (or the same
-                advisory reappearing after you fixed and closed it).
+                advisory triggers at most one issue per package per repo.
+                Repeated scans that find the same known vulnerability stay
+                silent.
               </p>
               <p className="mt-3 font-semibold text-gray-300">
                 Get the most protection:
@@ -2339,9 +2358,9 @@ export default function HelpPage() {
                   in requirements.txt).
                 </li>
                 <li>
-                  <strong>Keep issue notifications enabled</strong> in Settings
-                  → Notifications — that&apos;s the channel security issues will
-                  arrive on.
+                  <strong>Opt in and Save</strong> in Settings → Notifications
+                  so consent is on relays — localStorage alone is not enough for
+                  the bot.
                 </li>
                 <li>
                   <strong>Check the Dependencies tab</strong> after importing a

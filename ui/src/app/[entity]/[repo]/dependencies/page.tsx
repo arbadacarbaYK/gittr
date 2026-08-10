@@ -2,14 +2,14 @@
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { RepoSecurityAudit } from "@/components/repo/RepoSecurityAudit";
+import { Button } from "@/components/ui/button";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import {
   type RepoFileEntry,
   type StoredRepo,
   loadRepoFiles,
-  loadRepoOverrides,
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import {
@@ -2457,13 +2457,14 @@ export default function DependenciesPage({
     branch: string,
     sourceUrl?: string
   ): Promise<string | null> {
-    // Check localStorage overrides first
-    const overrides = loadRepoOverrides(
+    // Check local unpushed overrides first (may live in IndexedDB)
+    const localOverride = await resolveLocalOverrideBody(
       resolvedParams.entity,
-      resolvedParams.repo
+      resolvedParams.repo,
+      filePath
     );
-    if (overrides[filePath]) {
-      return overrides[filePath];
+    if (localOverride) {
+      return localOverride;
     }
 
     // Try GitHub API if sourceUrl is available

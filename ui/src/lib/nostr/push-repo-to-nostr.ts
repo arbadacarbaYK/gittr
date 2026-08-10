@@ -12,7 +12,7 @@ import {
   type StoredRepo,
   loadRepoDeletedPaths,
   loadRepoFiles,
-  loadRepoOverrides,
+  loadRepoOverridesResolved,
   loadStoredRepos,
   mergeRepoFileIndexes,
   normalizeFilePath,
@@ -796,8 +796,8 @@ export async function pushRepoToNostr(
     const savedOverrides =
       typeof window !== "undefined"
         ? {
-            ...loadRepoOverrides(entity, repoSlug),
-            ...loadRepoOverrides(entity, storageRepo),
+            ...(await loadRepoOverridesResolved(entity, repoSlug)),
+            ...(await loadRepoOverridesResolved(entity, storageRepo)),
           }
         : {};
 

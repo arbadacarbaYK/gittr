@@ -58,13 +58,13 @@ import { pickUserFacingCloneUrl } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
-  applyDeletionMarkersToRepoData,
-  isRepoAnnouncementDeleted,
-} from "@/lib/nostr/repo-deleted";
-import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  applyDeletionMarkersToRepoData,
+  isRepoAnnouncementDeleted,
+} from "@/lib/nostr/repo-deleted";
 import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -85,21 +85,29 @@ import {
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
 import {
+  isDisplayableForkAttribution,
+  sanitizeForkedFromField,
+} from "@/lib/repos/fork-attribution";
+import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
+import {
+  hydrateRepoOverrideBlobs,
+  idbDeleteOverride,
+} from "@/lib/repos/overrides-idb";
+import {
   isPlaceholderRepositoryDescription,
   preferOwnedDescription,
   sidebarAboutText,
 } from "@/lib/repos/repo-about-text";
-import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import {
   type RepoBranchRoute,
   branchesToTryForContent,
   isBotFeatureBranch,
+  nestedFilePathCount,
   repoDefaultBranch,
   resolveActiveRepoBranch,
   resolveContentBranch,
   shouldApplyFetchedFileTree,
   shouldMergeFetchedFileTree,
-  nestedFilePathCount,
   shouldSyncBranchFromFetch,
   writeUserPickedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
@@ -111,23 +119,25 @@ import {
   queryNostrForGithubSourceUrl,
   resolveRepoActivityDisplayMs,
 } from "@/lib/repos/repo-github-hub";
+import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
+import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
 import {
   type RepoFileEntry,
   type RepoLink,
   type StoredContributor,
   type StoredRepo,
+  appendRepoDeletedPath,
   clearForeignReposFromStorage,
   clearNonLocalReposFromStorage,
   estimateLocalStorageSize,
+  isBinaryFile,
   isGitHostContributor,
+  isRepoPathDeleted,
   loadRepoDeletedPaths,
   loadRepoFiles,
   loadRepoOverrides,
   loadStoredRepos,
   mergeRepoFileIndexes,
-  appendRepoDeletedPath,
-  isBinaryFile,
-  isRepoPathDeleted,
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveRepoFiles,
@@ -149,12 +159,8 @@ import {
   shouldSkipLegacyKind51EmbeddedFiles,
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
-import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
-import {
-  isDisplayableForkAttribution,
-  sanitizeForkedFromField,
-} from "@/lib/repos/fork-attribution";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
@@ -162,7 +168,11 @@ import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
-import { formatDate24h, formatDateTime24h, formatRelativeShort } from "@/lib/utils/date-format";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatRelativeShort,
+} from "@/lib/utils/date-format";
 import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { detectGitForge } from "@/lib/utils/detect-git-forge";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -178,8 +188,8 @@ import {
 import {
   type FetchStatus,
   addUpstreamSourceToCloneUrls,
-  fetchFilesFromMultipleSources,
   fetchBridgeFilesOnce,
+  fetchFilesFromMultipleSources,
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
@@ -256,7 +266,6 @@ import {
   useSearchParams,
 } from "next/navigation";
 import { nip19 } from "nostr-tools";
-import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -458,7 +467,11 @@ function mergeDiscoverableCloneUrls(
 }
 
 function normalizeCloneUrlKey(url: string): string {
-  return url.trim().replace(/\/+$/, "").replace(/\.git$/i, "").toLowerCase();
+  return url
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
 }
 
 /**
@@ -1043,7 +1056,7 @@ export function RepoCodePage() {
           r.entity === resolvedParams.entity
       );
       if (idx < 0 || !repos[idx]) return;
-      const current = (repos[idx].links || []);
+      const current = repos[idx].links || [];
       let next: RepoLink[];
       if (
         pagesSiteListedByGateway === true &&
@@ -1581,7 +1594,7 @@ export function RepoCodePage() {
         let filesToApply = data.files as RepoFileEntry[];
         if (existingCount > 0 && data.files.length < existingCount) {
           const existingFromRef = Array.isArray(repoDataRef.current?.files)
-            ? (repoDataRef.current.files )
+            ? repoDataRef.current.files
             : [];
           const mergedFiles = mergeRepoFileIndexes(
             existingFromRef,
@@ -1706,11 +1719,10 @@ export function RepoCodePage() {
         : null;
     // Drop auto Nostr Pages rows unless gateway confirmed (old false-positives /
     // stale 30617 tags must not keep showing).
-    const existing = (
+    const existing =
       pagesSiteListedByGateway === true
         ? repoData?.links || []
-        : removeAutoNostrPagesLinks(repoData?.links || [])
-    );
+        : removeAutoNostrPagesLinks(repoData?.links || []);
     return enrichRepoLinks({
       existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
@@ -2065,6 +2077,29 @@ export function RepoCodePage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Large/binary Upload drafts live in IndexedDB; warm memory so README/openFile work after reload.
+  useEffect(() => {
+    if (!mounted || !resolvedParams.entity || !resolvedParams.repo) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const n = await hydrateRepoOverrideBlobs(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        if (!cancelled && n > 0) {
+          // Nudge file/README views that may have missed the cache on first paint.
+          setOverrides((prev) => ({ ...prev }));
+        }
+      } catch {
+        /* ignore — display falls through to forge/bridge */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, resolvedParams.entity, resolvedParams.repo]);
 
   // Resolve actual owner pubkey for profile links (handles imported repos and Nostr-synced repos)
   const ownerPubkeyForLink = useMemo(() => {
@@ -2622,10 +2657,7 @@ export function RepoCodePage() {
     if (entityPubkey && normalizedUser === entityPubkey.toLowerCase()) {
       return true;
     }
-    if (
-      repoOwnerPubkey &&
-      normalizedUser === repoOwnerPubkey.toLowerCase()
-    ) {
+    if (repoOwnerPubkey && normalizedUser === repoOwnerPubkey.toLowerCase()) {
       return true;
     }
 
@@ -5947,8 +5979,8 @@ export function RepoCodePage() {
             selectedBranchRef.current
           );
           const branchFromFetch =
-            (successfulStatuses.find((s: any) => s.resolvedBranch)
-              ?.resolvedBranch ) || activeBranch;
+            successfulStatuses.find((s: any) => s.resolvedBranch)
+              ?.resolvedBranch || activeBranch;
           const sourceSuccess = successfulStatuses.find((s: any) =>
             isSourceUpstreamFetchStatus(
               s,
@@ -5963,8 +5995,7 @@ export function RepoCodePage() {
           const allowShrink =
             filesFromSource &&
             allowShrinkToSourceUpstreamTree({
-              hasUnpushedEdits:
-                repoDataRef.current?.hasUnpushedEdits === true,
+              hasUnpushedEdits: repoDataRef.current?.hasUnpushedEdits === true,
               sourceType: sourceSuccess?.source?.type,
               sourceUrl: repoDataRef.current?.sourceUrl,
               forkedFrom: repoDataRef.current?.forkedFrom,
@@ -6006,7 +6037,7 @@ export function RepoCodePage() {
             }));
             const firstResolvedBranch = successfulStatuses.find(
               (s: any) => s.resolvedBranch
-            )?.resolvedBranch ;
+            )?.resolvedBranch;
 
             setRepoData((prev: any) =>
               prev
@@ -7960,7 +7991,7 @@ export function RepoCodePage() {
                           base.links,
                           eventRepoData.links
                         ),
-                        ...( (() => {
+                        ...(() => {
                           const nextDesc = preferOwnedDescription(
                             base.description,
                             eventRepoData.description,
@@ -7980,7 +8011,7 @@ export function RepoCodePage() {
                           return nextDesc && nextDesc !== base.description
                             ? { description: nextDesc }
                             : {};
-                        })() ),
+                        })(),
                         ...(eventRepoData.publicRead !== undefined
                           ? { publicRead: eventRepoData.publicRead }
                           : {}),
@@ -9004,9 +9035,8 @@ export function RepoCodePage() {
                       selectedBranchRef.current
                     );
                     const branchFromFetchEose =
-                      (successfulStatuses.find((s) => s.resolvedBranch)
-                        ?.resolvedBranch ) ||
-                      activeBranchEose;
+                      successfulStatuses.find((s) => s.resolvedBranch)
+                        ?.resolvedBranch || activeBranchEose;
                     const shouldReplaceEose = shouldApplyFetchedFileTree(
                       branchFromFetchEose,
                       existingCountEose,
@@ -9041,7 +9071,7 @@ export function RepoCodePage() {
                       );
                       const firstResolvedBranch = successfulStatuses.find(
                         (s) => s.resolvedBranch
-                      )?.resolvedBranch ;
+                      )?.resolvedBranch;
 
                       setRepoData((prev: any) =>
                         prev
@@ -12153,8 +12183,26 @@ export function RepoCodePage() {
           ) &&
           typeof mergedOverrides[readmePathKey] === "string"
         ) {
-          finish(mergedOverrides[readmePathKey]);
-          return;
+          // Large text may be an IndexedDB pointer — never render the marker as markdown.
+          const body = await resolveLocalOverrideBody(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            readmePathKey
+          );
+          if (body != null) {
+            finish(body);
+            return;
+          }
+          // Alias key (storageRepo vs URL repo)
+          const bodyAlt = await resolveLocalOverrideBody(
+            resolvedParams.entity,
+            storageRepoForReadme,
+            readmePathKey
+          );
+          if (bodyAlt != null) {
+            finish(bodyAlt);
+            return;
+          }
         }
 
         const normPath = (p: string) =>
@@ -13132,10 +13180,7 @@ export function RepoCodePage() {
       repoOwnerPubkey ||
       ((repoData as any)?.ownerPubkey as string | undefined) ||
       "";
-    if (
-      !ownerPubkey &&
-      resolvedParams.entity?.startsWith("npub")
-    ) {
+    if (!ownerPubkey && resolvedParams.entity?.startsWith("npub")) {
       try {
         const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
@@ -14534,8 +14579,7 @@ export function RepoCodePage() {
           // Bare mirror missing/empty while the UI tree may already exist from a
           // temp GRASP listing. Try every HTTPS remote via /api/git/file-content,
           // then mirror the first that works onto this owner's bare repo.
-          const live =
-            (repoDataRef.current as any) || (repoData as any) || {};
+          const live = (repoDataRef.current as any) || (repoData as any) || {};
           const {
             isGraspServer: isGraspServerFn,
           } = require("@/lib/utils/grasp-servers");
@@ -14833,11 +14877,12 @@ export function RepoCodePage() {
         console.log(
           `✅ [fetchGithubRaw] Added ${
             sourcesToTry.length - before
-          } HTTPS clone/source URL(s) to sourcesToTry (total ${sourcesToTry.length})`
+          } HTTPS clone/source URL(s) to sourcesToTry (total ${
+            sourcesToTry.length
+          })`
         );
       }
     }
-
 
     // Try each source in order until one succeeds
     for (const sourceInfo of sourcesToTry) {
@@ -15405,6 +15450,45 @@ export function RepoCodePage() {
 
     // Use override if present — loadRepoOverrides (normalized key) + binary by extension.
     // After upload, repo.files is stripped from gittr_repos; do not require isBinary there.
+    // Large bodies may be IDB pointers — resolve to real UTF-8 / base64 before display.
+    try {
+      await hydrateRepoOverrideBlobs(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+    } catch {
+      /* ignore */
+    }
+    const overrideBody = await resolveLocalOverrideBody(
+      resolvedParams.entity,
+      resolvedParams.repo,
+      path
+    );
+    if (overrideBody != null && overrideBody.length > 0) {
+      if (isBinaryFile(normalizedPath)) {
+        const media =
+          localOverrideDisplayUrl(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            path
+          ) ||
+          localOverrideDisplayUrl(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            normalizedPath
+          );
+        if (media) {
+          setFileContent(media);
+          setLoadingFile(false);
+          return;
+        }
+      } else {
+        // Plain text / markdown — never wrap as data: base64 (blame-style garbage).
+        setFileContent(overrideBody);
+        setLoadingFile(false);
+        return;
+      }
+    }
     const localDisplay =
       localOverrideDisplayUrl(
         resolvedParams.entity,
@@ -15428,15 +15512,20 @@ export function RepoCodePage() {
     ) {
       const overrideContent =
         overrides[path] || overrides[normalizedPath] || "";
+      // Pointer-only values live in IndexedDB; don't treat the marker as file text.
       if (
+        typeof overrideContent === "string" &&
+        overrideContent.startsWith("__gittr_idb__:")
+      ) {
+        // Fall through to network after hydrate miss
+      } else if (
         overrideContent.startsWith("data:") ||
         overrideContent.startsWith("blob:")
       ) {
         setFileContent(overrideContent);
         setLoadingFile(false);
         return;
-      }
-      if (isBinaryFile(normalizedPath) && overrideContent) {
+      } else if (isBinaryFile(normalizedPath) && overrideContent) {
         const ext = path.split(".").pop()?.toLowerCase() || "";
         const mimeTypes: Record<string, string> = {
           png: "image/png",
@@ -15455,10 +15544,11 @@ export function RepoCodePage() {
         setFileContent(`data:${mimeType};base64,${overrideContent}`);
         setLoadingFile(false);
         return;
+      } else {
+        setFileContent(overrideContent);
+        setLoadingFile(false);
+        return;
       }
-      setFileContent(overrideContent);
-      setLoadingFile(false);
-      return;
     }
     const result = await fetchGithubRaw(path);
     if (result.isBinary && result.url) {
@@ -15595,6 +15685,11 @@ export function RepoCodePage() {
               isRepoPathDeleted(key, [target])
             ) {
               delete overrides[key];
+              void idbDeleteOverride(
+                resolvedParams.entity,
+                resolvedParams.repo,
+                key
+              ).catch(() => undefined);
               changed = true;
             }
           }
@@ -15639,10 +15734,7 @@ export function RepoCodePage() {
           setProposeEdit(false);
           setProposedContent("");
         }
-        if (
-          currentPath === target ||
-          currentPath.startsWith(`${target}/`)
-        ) {
+        if (currentPath === target || currentPath.startsWith(`${target}/`)) {
           const parent = target.includes("/")
             ? target.split("/").slice(0, -1).join("/")
             : "";
@@ -16220,7 +16312,9 @@ export function RepoCodePage() {
     );
     const eventCloneKeys = new Set(
       (Array.isArray(repoData?.clone) ? repoData.clone : [])
-        .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+        .filter(
+          (u): u is string => typeof u === "string" && u.trim().length > 0
+        )
         .map(normalizeCloneUrlKey)
     );
     const announcementClones = httpCloneUrls.filter((url) => {
@@ -17822,208 +17916,217 @@ export function RepoCodePage() {
                   {items.map((it) => {
                     const last = treeLastCommits[it.path];
                     return (
-                    <li
-                      key={it.path}
-                      className="text-gray-400 grid grid-cols-2 gap-x-2 p-2 text-sm sm:grid-cols-12 hover:bg-[#171B21]"
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1 sm:col-span-4">
-                        {it.type === "dir" ? (
-                          <>
-                            <Folder className="text-gray-400 ml-2 h-4 w-4 shrink-0" />{" "}
-                            <button
-                              className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setCurrentPath(it.path);
-                                updateURL({ path: it.path });
-                              }}
-                            >
-                              <span className="truncate block">
-                                {it.path.split("/").pop()}
-                              </span>
+                      <li
+                        key={it.path}
+                        className="text-gray-400 grid grid-cols-2 gap-x-2 p-2 text-sm sm:grid-cols-12 hover:bg-[#171B21]"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1 sm:col-span-4">
+                          {it.type === "dir" ? (
+                            <>
+                              <Folder className="text-gray-400 ml-2 h-4 w-4 shrink-0" />{" "}
+                              <button
+                                className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setCurrentPath(it.path);
+                                  updateURL({ path: it.path });
+                                }}
+                              >
+                                <span className="truncate block">
+                                  {it.path.split("/").pop()}
+                                </span>
+                                {(() => {
+                                  const name =
+                                    it.path.split("/").pop() || it.path;
+                                  const lower = name.toLowerCase();
+                                  const pill = (
+                                    label: string,
+                                    color: string
+                                  ) => (
+                                    <span
+                                      className={`ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] ${color} bg-white/10 border border-white/10`}
+                                    >
+                                      {label}
+                                    </span>
+                                  );
+                                  if (
+                                    lower === "readme.md" ||
+                                    lower === "readme"
+                                  )
+                                    return pill("readme", "text-purple-300");
+                                  if (
+                                    lower === "license" ||
+                                    lower === "license.md"
+                                  )
+                                    return pill("license", "text-green-300");
+                                  if (lower === "manifest.json")
+                                    return pill("manifest", "text-cyan-300");
+                                  if (lower === "package.json")
+                                    return pill("npm", "text-red-300");
+                                  if (lower === "yarn.lock")
+                                    return pill("yarn", "text-blue-300");
+                                  if (lower === "pnpm-lock.yaml")
+                                    return pill("pnpm", "text-yellow-300");
+                                  if (lower === "tsconfig.json")
+                                    return pill("tsconfig", "text-sky-300");
+                                  if (lower === "dockerfile")
+                                    return pill("docker", "text-cyan-300");
+                                  if (
+                                    lower === "docker-compose.yml" ||
+                                    lower === "docker-compose.yaml"
+                                  )
+                                    return pill("compose", "text-cyan-300");
+                                  if (lower === "makefile")
+                                    return pill("make", "text-amber-300");
+                                  if (
+                                    lower === ".env" ||
+                                    lower.startsWith(".env")
+                                  )
+                                    return pill("env", "text-lime-300");
+                                  if (lower === "go.mod")
+                                    return pill("go.mod", "text-cyan-300");
+                                  if (lower === "cargo.toml")
+                                    return pill("cargo", "text-orange-300");
+                                  if (
+                                    lower.endsWith(".workflow") ||
+                                    it.path.includes(".github/workflows/")
+                                  )
+                                    return pill("ci", "text-green-300");
+                                  return null;
+                                })()}
+                              </button>
+                            </>
+                          ) : (
+                            <>
                               {(() => {
                                 const name =
                                   it.path.split("/").pop() || it.path;
                                 const lower = name.toLowerCase();
-                                const pill = (label: string, color: string) => (
-                                  <span
-                                    className={`ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] ${color} bg-white/10 border border-white/10`}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                                if (lower === "readme.md" || lower === "readme")
-                                  return pill("readme", "text-purple-300");
-                                if (
-                                  lower === "license" ||
-                                  lower === "license.md"
+                                // Theme-aware colors: Use colors that contrast with text-gray-400 (default icon color)
+                                // For dark theme: text-gray-400 is light gray, so use vibrant but distinct colors
+                                // Ensure highlight colors are different from text color
+                                let cls = "text-gray-400"; // Default: matches text color for normal files
+                                if (["readme.md", "readme"].includes(lower))
+                                  cls = "text-purple-500";
+                                // Purple (distinct from gray)
+                                else if (
+                                  ["license", "license.md"].includes(lower)
                                 )
-                                  return pill("license", "text-green-300");
-                                if (lower === "manifest.json")
-                                  return pill("manifest", "text-cyan-300");
-                                if (lower === "package.json")
-                                  return pill("npm", "text-red-300");
-                                if (lower === "yarn.lock")
-                                  return pill("yarn", "text-blue-300");
-                                if (lower === "pnpm-lock.yaml")
-                                  return pill("pnpm", "text-yellow-300");
-                                if (lower === "tsconfig.json")
-                                  return pill("tsconfig", "text-sky-300");
-                                if (lower === "dockerfile")
-                                  return pill("docker", "text-cyan-300");
-                                if (
-                                  lower === "docker-compose.yml" ||
-                                  lower === "docker-compose.yaml"
+                                  cls = "text-emerald-500";
+                                // Green (distinct from gray)
+                                else if (lower === "manifest.json")
+                                  cls = "text-cyan-500";
+                                // Cyan (distinct from gray)
+                                else if (lower === "package.json")
+                                  cls = "text-rose-500";
+                                // Rose/Red (distinct from gray)
+                                else if (lower === "yarn.lock")
+                                  cls = "text-blue-500";
+                                // Blue (distinct from gray)
+                                else if (lower === "pnpm-lock.yaml")
+                                  cls = "text-yellow-500";
+                                // Yellow (distinct from gray)
+                                else if (lower === "tsconfig.json")
+                                  cls = "text-sky-500";
+                                // Sky blue (distinct from gray)
+                                else if (
+                                  lower === "dockerfile" ||
+                                  lower.startsWith("docker-")
                                 )
-                                  return pill("compose", "text-cyan-300");
-                                if (lower === "makefile")
-                                  return pill("make", "text-amber-300");
-                                if (
+                                  cls = "text-cyan-500";
+                                // Cyan (distinct from gray)
+                                else if (lower === "makefile")
+                                  cls = "text-amber-500";
+                                // Amber (distinct from gray)
+                                else if (
                                   lower === ".env" ||
                                   lower.startsWith(".env")
                                 )
-                                  return pill("env", "text-lime-300");
-                                if (lower === "go.mod")
-                                  return pill("go.mod", "text-cyan-300");
-                                if (lower === "cargo.toml")
-                                  return pill("cargo", "text-orange-300");
-                                if (
+                                  cls = "text-lime-500";
+                                // Lime (distinct from gray)
+                                else if (lower === "go.mod")
+                                  cls = "text-cyan-500";
+                                // Cyan (distinct from gray)
+                                else if (lower === "cargo.toml")
+                                  cls = "text-orange-500";
+                                // Orange (distinct from gray)
+                                else if (
                                   lower.endsWith(".workflow") ||
                                   it.path.includes(".github/workflows/")
                                 )
-                                  return pill("ci", "text-green-300");
-                                return null;
-                              })()}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {(() => {
-                              const name = it.path.split("/").pop() || it.path;
-                              const lower = name.toLowerCase();
-                              // Theme-aware colors: Use colors that contrast with text-gray-400 (default icon color)
-                              // For dark theme: text-gray-400 is light gray, so use vibrant but distinct colors
-                              // Ensure highlight colors are different from text color
-                              let cls = "text-gray-400"; // Default: matches text color for normal files
-                              if (["readme.md", "readme"].includes(lower))
-                                cls = "text-purple-500";
-                              // Purple (distinct from gray)
-                              else if (
-                                ["license", "license.md"].includes(lower)
-                              )
-                                cls = "text-emerald-500";
-                              // Green (distinct from gray)
-                              else if (lower === "manifest.json")
-                                cls = "text-cyan-500";
-                              // Cyan (distinct from gray)
-                              else if (lower === "package.json")
-                                cls = "text-rose-500";
-                              // Rose/Red (distinct from gray)
-                              else if (lower === "yarn.lock")
-                                cls = "text-blue-500";
-                              // Blue (distinct from gray)
-                              else if (lower === "pnpm-lock.yaml")
-                                cls = "text-yellow-500";
-                              // Yellow (distinct from gray)
-                              else if (lower === "tsconfig.json")
-                                cls = "text-sky-500";
-                              // Sky blue (distinct from gray)
-                              else if (
-                                lower === "dockerfile" ||
-                                lower.startsWith("docker-")
-                              )
-                                cls = "text-cyan-500";
-                              // Cyan (distinct from gray)
-                              else if (lower === "makefile")
-                                cls = "text-amber-500";
-                              // Amber (distinct from gray)
-                              else if (
-                                lower === ".env" ||
-                                lower.startsWith(".env")
-                              )
-                                cls = "text-lime-500";
-                              // Lime (distinct from gray)
-                              else if (lower === "go.mod")
-                                cls = "text-cyan-500";
-                              // Cyan (distinct from gray)
-                              else if (lower === "cargo.toml")
-                                cls = "text-orange-500";
-                              // Orange (distinct from gray)
-                              else if (
-                                lower.endsWith(".workflow") ||
-                                it.path.includes(".github/workflows/")
-                              )
-                                cls = "text-emerald-500"; // Green (distinct from gray)
-                              return <File className={`${cls} ml-2 h-4 w-4`} />;
-                            })()}{" "}
+                                  cls = "text-emerald-500"; // Green (distinct from gray)
+                                return (
+                                  <File className={`${cls} ml-2 h-4 w-4`} />
+                                );
+                              })()}{" "}
+                              <button
+                                className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  openFile(it.path);
+                                }}
+                              >
+                                <span className="truncate block">
+                                  {it.path.split("/").pop()}
+                                </span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        <div className="hidden sm:block sm:col-span-4 pl-2 min-w-0">
+                          {last?.message ? (
+                            <span
+                              className="text-gray-500 truncate block"
+                              title={`${last.message} — ${last.author}`}
+                            >
+                              {last.message}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 italic">—</span>
+                          )}
+                        </div>
+                        <div
+                          className="text-right whitespace-nowrap sm:col-span-2 text-xs sm:text-sm text-gray-500"
+                          title={
+                            last?.timestamp
+                              ? formatDateTime24h(last.timestamp * 1000)
+                              : undefined
+                          }
+                        >
+                          {last?.timestamp
+                            ? formatRelativeShort(last.timestamp * 1000)
+                            : "—"}
+                        </div>
+                        <div className="text-right whitespace-nowrap sm:col-span-2 flex items-center justify-end gap-2">
+                          {isOwner && (
                             <button
-                              className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
+                              type="button"
+                              className="text-gray-500 hover:text-red-400 p-1 rounded"
+                              title={
+                                it.type === "dir"
+                                  ? `Delete folder ${it.path.split("/").pop()}`
+                                  : `Delete ${it.path.split("/").pop()}`
+                              }
+                              aria-label={
+                                it.type === "dir"
+                                  ? `Delete folder ${it.path}`
+                                  : `Delete file ${it.path}`
+                              }
                               onClick={(e) => {
                                 e.preventDefault();
-                                openFile(it.path);
+                                e.stopPropagation();
+                                deleteRepoPath(
+                                  it.path,
+                                  it.type === "dir" ? "folder" : "file"
+                                );
                               }}
                             >
-                              <span className="truncate block">
-                                {it.path.split("/").pop()}
-                              </span>
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
-                          </>
-                        )}
-                      </div>
-                      <div className="hidden sm:block sm:col-span-4 pl-2 min-w-0">
-                        {last?.message ? (
-                          <span
-                            className="text-gray-500 truncate block"
-                            title={`${last.message} — ${last.author}`}
-                          >
-                            {last.message}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600 italic">—</span>
-                        )}
-                      </div>
-                      <div
-                        className="text-right whitespace-nowrap sm:col-span-2 text-xs sm:text-sm text-gray-500"
-                        title={
-                          last?.timestamp
-                            ? formatDateTime24h(last.timestamp * 1000)
-                            : undefined
-                        }
-                      >
-                        {last?.timestamp
-                          ? formatRelativeShort(last.timestamp * 1000)
-                          : "—"}
-                      </div>
-                      <div className="text-right whitespace-nowrap sm:col-span-2 flex items-center justify-end gap-2">
-                        {isOwner && (
-                          <button
-                            type="button"
-                            className="text-gray-500 hover:text-red-400 p-1 rounded"
-                            title={
-                              it.type === "dir"
-                                ? `Delete folder ${it.path.split("/").pop()}`
-                                : `Delete ${it.path.split("/").pop()}`
-                            }
-                            aria-label={
-                              it.type === "dir"
-                                ? `Delete folder ${it.path}`
-                                : `Delete file ${it.path}`
-                            }
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              deleteRepoPath(
-                                it.path,
-                                it.type === "dir" ? "folder" : "file"
-                              );
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <span>{it.size ? `${it.size} B` : "—"}</span>
-                      </div>
-                    </li>
+                          )}
+                          <span>{it.size ? `${it.size} B` : "—"}</span>
+                        </div>
+                      </li>
                     );
                   })}
                 </ul>
@@ -18127,9 +18230,7 @@ export function RepoCodePage() {
                           const branch =
                             selectedBranch || repoData?.defaultBranch || "main";
                           const forgeSourceUrl =
-                            effectiveSourceUrl ||
-                            repoData?.sourceUrl ||
-                            null;
+                            effectiveSourceUrl || repoData?.sourceUrl || null;
                           const cloneUrls = Array.isArray(
                             (repoData as { clone?: string[] } | null)?.clone
                           )
@@ -19957,7 +20058,7 @@ export function RepoCodePage() {
                                           importData.releases,
                                           (prev as { releases?: unknown[] })
                                             ?.releases
-                                        ) ,
+                                        ),
                                       }));
 
                                       // CRITICAL: Also save files to separate storage key (for optimized storage)
@@ -20980,8 +21081,7 @@ export function RepoCodePage() {
                                         const forkAttr =
                                           sanitizeForkedFromField(
                                             eventRepoData.forkedFrom
-                                          ) ||
-                                          sanitizeForkedFromField(clean);
+                                          ) || sanitizeForkedFromField(clean);
                                         eventRepoData.forkedFrom = forkAttr;
                                         persistGithubSourceOnRepo(
                                           resolvedParams.entity,
@@ -21189,7 +21289,9 @@ export function RepoCodePage() {
                                           "[Refetch]",
                                           { allowShrink: true }
                                         );
-                                        (repos[repoIndex] as StoredRepo).fileCount =
+                                        (
+                                          repos[repoIndex] as StoredRepo
+                                        ).fileCount =
                                           eventRepoData.files.length;
                                         (repos[repoIndex] as StoredRepo).files =
                                           undefined;
@@ -22077,9 +22179,8 @@ export function RepoCodePage() {
                                       ? descRaw
                                       : undefined;
                                   const cloneList =
-                                    ((repoData as { clone?: string[] })
-                                      ?.clone ) ||
-                                    ((repo as { clone?: string[] })?.clone );
+                                    (repoData as { clone?: string[] })?.clone ||
+                                    (repo as { clone?: string[] })?.clone;
                                   const sourceUrl =
                                     cloneList?.find(
                                       (u) =>
@@ -22551,12 +22652,14 @@ export function RepoCodePage() {
         {safeFiles.length > 0 && (
           <FuzzyFileFinder
             files={safeFiles
-              .filter((f) => f?.path && !isRepoPathDeleted(f.path, deletedPaths))
+              .filter(
+                (f) => f?.path && !isRepoPathDeleted(f.path, deletedPaths)
+              )
               .map((f) => ({
-              type: f?.type === "file" || f?.type === "dir" ? f.type : "file",
-              path: f?.path || "",
-              size: f?.size,
-            }))}
+                type: f?.type === "file" || f?.type === "dir" ? f.type : "file",
+                path: f?.path || "",
+                size: f?.size,
+              }))}
             isOpen={showFuzzyFinder}
             onClose={() => setShowFuzzyFinder(false)}
             onSelectFile={(path) => {

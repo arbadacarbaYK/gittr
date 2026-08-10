@@ -1,13 +1,12 @@
 /**
- * Dry-run of the (not yet live) CVE-alert bot against real repos on
+ * Dry-run of the CVE-alert eligibility filter against real repos on
  * gittr.space. Uses the real manifest parser + the production audit API and
  * prints the issue each repo owner WOULD have received. Sends nothing.
  *
- * Bot eligibility rules (per docs/SETUP_INSTRUCTIONS.md): confirmed only
- * (lockfile-pinned version inside affected range), direct dependencies only,
- * CRITICAL/HIGH only, deduped per advisory+repo.
+ * Bot eligibility: shared eligibleCveAdvisories() — confirmed (pinned, not
+ * unfixable+UNKNOWN) + direct + CRITICAL/HIGH. Live publish is scripts/cve-bot.mts.
  *
- * Usage: npx tsx scripts/bot-dryrun.ts
+ * Usage: npx tsx scripts/bot-dryrun.mts
  */
 
 import {
@@ -16,6 +15,11 @@ import {
   mergeManifestPackages,
   parseManifest,
 } from "../ui/src/lib/security/dependency-manifest-parser";
+import {
+  eligibleCveAdvisories,
+  isConfirmedAdvisory,
+} from "../ui/src/lib/security/cve-eligibility";
+import { formatCveIssueBody } from "../ui/src/lib/security/cve-issue-format";
 
 const BASE = process.env.GITTR_BASE || "https://gittr.space";
 
@@ -56,24 +60,12 @@ async function getJson(url: string): Promise<any | null> {
 }
 
 function botIssueMessage(repoLabel: string, eligible: Advisory[]): string {
-  const lines: string[] = [];
-  lines.push(`Title: [security] ${eligible.length} known ${eligible.length === 1 ? "vulnerability" : "vulnerabilities"} in pinned dependencies`);
-  lines.push("");
-  lines.push(
-    "Automated dependency audit (OSV.dev). Exact versions from this repo's committed lockfiles fall inside the affected range of published advisories:"
+  const { title, description } = formatCveIssueBody(
+    repoLabel,
+    "dry-run",
+    eligible
   );
-  lines.push("");
-  for (const a of eligible) {
-    const cve = a.aliases.find((x) => x.startsWith("CVE-")) || a.id;
-    lines.push(
-      `- ${a.severity}: ${a.package.name}@${a.package.version} — ${a.summary} (${cve}, ${a.url})`
-    );
-  }
-  lines.push("");
-  lines.push(
-    "Fix: update the listed packages to a version outside the affected range and re-run the audit on your Dependencies tab. This issue was opened by the gittr platform bot; disable these alerts in Settings → Notifications → Security."
-  );
-  return lines.join("\n");
+  return `Title: ${title}\n\n${description}`;
 }
 
 for (const target of REPOS) {
@@ -131,7 +123,16 @@ for (const target of REPOS) {
   }
   const { advisories = [] } = (await res.json()) as { advisories: Advisory[] };
 
-  const confirmed = advisories.filter((a) => a.precision === "pinned");
+  const confirmed = advisories.filter((a) =>
+    isConfirmedAdvisory({
+      id: a.id,
+      severity: a.severity,
+      precision: a.precision,
+      direct: a.direct,
+      unfixable: (a as { unfixable?: boolean }).unfixable,
+      package: a.package,
+    })
+  );
   const unconfirmed = advisories.length - confirmed.length;
   const counts: Record<string, number> = {};
   for (const a of confirmed) counts[a.severity] = (counts[a.severity] || 0) + 1;
@@ -139,16 +140,13 @@ for (const target of REPOS) {
     `  badge: confirmed=${confirmed.length} ${JSON.stringify(counts)} | unconfirmed(range-min, collapsed)=${unconfirmed}`
   );
 
-  // Bot rules: confirmed + direct + CRITICAL/HIGH, dedupe per advisory+package
-  const seen = new Set<string>();
-  const eligible = confirmed.filter((a) => {
-    if (!a.direct) return false;
-    if (a.severity !== "CRITICAL" && a.severity !== "HIGH") return false;
-    const key = `${a.id}|${a.package.name}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Bot rules: shared eligibleCveAdvisories (confirmed + direct + CRITICAL/HIGH)
+  const eligible = eligibleCveAdvisories(
+    advisories.map((a) => ({
+      ...a,
+      unfixable: (a as { unfixable?: boolean }).unfixable,
+    }))
+  );
 
   if (eligible.length === 0) {
     console.log("  bot would NOT alert (no direct+pinned critical/high)");

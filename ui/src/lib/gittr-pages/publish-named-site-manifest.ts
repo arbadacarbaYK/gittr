@@ -12,7 +12,7 @@ import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   loadRepoFiles,
-  loadRepoOverrides,
+  loadRepoOverridesResolved,
   normalizeFilePath,
   resolveRepoStorageAlias,
 } from "@/lib/repos/storage";
@@ -269,12 +269,12 @@ type MergedManifestFile = {
   remoteUrl?: string;
 };
 
-function mergeRepoFilesForManifest(
+async function mergeRepoFilesForManifest(
   entity: string,
   repo: string
-): MergedManifestFile[] {
+): Promise<MergedManifestFile[]> {
   const files = loadRepoFiles(entity, repo);
-  const overrides = loadRepoOverrides(entity, repo);
+  const overrides = await loadRepoOverridesResolved(entity, repo);
   const out: MergedManifestFile[] = [];
   for (const f of files) {
     const path = normalizeFilePath(f.path || "");
@@ -571,7 +571,7 @@ export async function publishNamedSiteManifest(
     );
   }
 
-  const merged = mergeRepoFilesForManifest(entity, storageRepo);
+  const merged = await mergeRepoFilesForManifest(entity, storageRepo);
   const resolveCtx = {
     gitSourceUrl: gitSourceUrl?.trim() || undefined,
     defaultBranch,

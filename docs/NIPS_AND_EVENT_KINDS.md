@@ -335,6 +335,16 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `a[]`: Repository addresses (`30617:<owner-pubkey>:<repo-id>`)
 - **Content**: Empty
 
+### Kind 30078: Notification prefs (NIP-78 app data)
+
+- **Purpose**: Bot- and server-readable notification preferences (multi-browser sync). Telegram User ID is **not** stored here — only on the instance via `/api/notifications/consent`.
+- **Usage**: Settings → Notifications → Save publishes this replaceable event. `sendNotification` delivers via `/api/notifications/deliver` using the **recipient’s** consent, not the actor’s localStorage. CVE bot treats `events.security_cve === true` as opt-in.
+- **Tags**:
+  - `d`: `gittr/notifications` (canonical). Legacy: `gittr/security-cve` (still hydrated).
+- **Content** (JSON): `{ "v": 1, "channels": { "nostr": bool, "telegram": bool }, "events": { "pr_opened": bool, "security_cve": bool, ... } }`
+- **Code**: `ui/src/lib/notifications/notification-prefs-event.ts`
+- **Relay**: include `30078` in Pyramid `open_kinds_spec` (see pyramid `FORGE.md`) so anyone can publish prefs to `wss://relay.gittr.space`.
+
 ### Kind 1985: Label Overlay (NIP-32)
 
 - **Purpose**: Attach labels and mutable metadata overlays to existing events
@@ -388,7 +398,7 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30023, 30617, 30618, 9735, 9806]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30023, 30078, 30617, 30618, 9735, 9806]
 ```
 
 ```yaml
@@ -450,6 +460,7 @@ relay:
 | 1985  | NIP-32       | Label Overlay          | Post-hoc labels and metadata overlays         |
 | 10018 | NIP-51       | Git Repositories List  | Followed repositories list                    |
 | 10317 | NIP-34       | User GRASP List        | Preferred GRASP servers for NIP-34 activity   |
+| 30078 | NIP-78       | Notification prefs     | `d=gittr/notifications` channels+events       |
 | 30617 | NIP-34       | Repository Metadata    | Repository announcements (primary)            |
 | 30618 | NIP-34       | Repository State       | Repository state (required for ngit clients)  |
 | 9735  | NIP-57       | Zaps                   | Lightning payments                            |

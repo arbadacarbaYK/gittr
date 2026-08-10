@@ -157,7 +157,7 @@ Corrections welcome.
 
 ## Features include
 
-Repos: create, import (incl. bulk), fork, browse/edit files, blame, diffs, releases, tags. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram). Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
+Repos: create, import (incl. bulk), fork, browse/edit files, blame, diffs, releases, tags. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram — prefs on kind 30078 `gittr/notifications`, recipient-scoped delivery). **Security (opt-in):** Dependencies tab OSV audit; optional CVE alerts via Settings → Notifications → Security (`CVE_BOT_ENABLED`). Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
 
 Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md), [NIPS_AND_EVENT_KINDS.md](docs/NIPS_AND_EVENT_KINDS.md)).
 

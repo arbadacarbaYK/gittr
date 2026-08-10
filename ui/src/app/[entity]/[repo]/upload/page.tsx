@@ -15,12 +15,13 @@ import useSession from "@/lib/nostr/useSession";
 import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
 import { ensureLocalRepoForEdit } from "@/lib/repos/ensure-local-repo-for-edit";
+import { splitStagedUploadsByGitignore } from "@/lib/repos/gitignore-upload-filter";
 import {
+  ADD_FILES_STORAGE_FULL_HINT,
   addFilesToRepo,
   loadStoredRepos,
   normalizeFilePath,
 } from "@/lib/repos/storage";
-import { splitStagedUploadsByGitignore } from "@/lib/repos/gitignore-upload-filter";
 import {
   type StagedUploadFile,
   mergeStagedUploads,
@@ -178,7 +179,10 @@ export default function UploadPage({
   // Merge, then re-filter the whole set against the .gitignore files it
   // contains (works no matter which order files/folders were added in).
   const stageWithGitignore = useCallback(
-    async (prev: StagedFile[], incoming: StagedFile[]): Promise<StagedFile[]> => {
+    async (
+      prev: StagedFile[],
+      incoming: StagedFile[]
+    ): Promise<StagedFile[]> => {
       const merged = mergeStagedUploads(prev, incoming);
       try {
         const { kept, skipped } = await splitStagedUploadsByGitignore(merged);
@@ -346,7 +350,7 @@ export default function UploadPage({
           );
         }
 
-        const success = addFilesToRepo(
+        const success = await addFilesToRepo(
           resolvedParams.entity,
           resolvedParams.repo,
           fileData,
@@ -361,9 +365,7 @@ export default function UploadPage({
             router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
-          setStatus(
-            "Error: Could not save file contents in this browser (storage full?). Free space or Flush others' repos cache, then upload again. Large media (GIF/video) needs enough localStorage room until you Push."
-          );
+          setStatus(`Error: ${ADD_FILES_STORAGE_FULL_HINT}`);
           setUploading(false);
         }
       } else {
@@ -574,8 +576,8 @@ export default function UploadPage({
       <h1 className="text-2xl font-bold mb-4">Upload files & folders</h1>
       <p className="mb-4 text-sm text-[var(--color-text-secondary)] max-w-2xl">
         Before adding files, gittr syncs to the published tip when you have no
-        unpushed local edits — then your upload overwrites same paths on top.
-        If you already have unpushed changes, upload merges into those instead.
+        unpushed local edits — then your upload overwrites same paths on top. If
+        you already have unpushed changes, upload merges into those instead.
       </p>
 
       <div className="space-y-4">

@@ -46,8 +46,9 @@ import {
   type RepoFileEntry,
   type StoredContributor,
   type StoredRepo,
-  loadRepoOverrides,
   loadRepoFiles,
+  loadRepoOverrides,
+  loadRepoOverridesResolved,
   loadStoredRepos,
   saveRepoFiles,
   saveRepoOverrides,
@@ -57,6 +58,7 @@ import {
   getNostrPrivateKey,
   getSecureItem,
 } from "@/lib/security/encryptedStorage";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import {
   getRepoStorageKey,
@@ -86,7 +88,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 import { getEventHash } from "nostr-tools";
-import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -680,6 +681,10 @@ export default function PRDetailPage({
         resolvedParams.entity,
         resolvedParams.repo
       );
+      const resolvedOverrides = await loadRepoOverridesResolved(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
 
       const changedFiles: ChangedFile[] =
         pr.changedFiles ||
@@ -694,11 +699,11 @@ export default function PRDetailPage({
             ]
           : []);
 
-      // Get current file state from overrides
+      // Get current file state from overrides (expand IndexedDB pointers)
       const baseFiles: Record<string, string> = {};
 
       for (const file of changedFiles) {
-        const overrideValue = overrides[file.path];
+        const overrideValue = resolvedOverrides[file.path];
         if (
           overrideValue !== undefined &&
           overrideValue !== null &&
@@ -797,8 +802,8 @@ export default function PRDetailPage({
             indexedFiles.length > 0
               ? [...indexedFiles]
               : Array.isArray(repoRecord.files)
-                ? [...repoRecord.files]
-                : [];
+              ? [...repoRecord.files]
+              : [];
           const fileMap = new Map<string, RepoFileEntry>();
           existingFiles.forEach((fileEntry) =>
             fileMap.set(fileEntry.path, fileEntry)

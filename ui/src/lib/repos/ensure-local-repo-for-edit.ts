@@ -24,6 +24,7 @@ import {
   saveStoredRepos,
 } from "./storage";
 import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
+import { forgetOverrideBlob, idbDeleteRepoOverrides } from "./overrides-idb";
 
 export type EnsureLocalRepoForEditResult = {
   ok: boolean;
@@ -173,6 +174,8 @@ export async function ensureLocalRepoForEdit(opts: {
     } catch {
       /* ignore */
     }
+    forgetOverrideBlob(entity, repo);
+    void idbDeleteRepoOverrides(entity, repo).catch(() => undefined);
     try {
       saveRepoDeletedPaths(entity, repo, []);
     } catch {

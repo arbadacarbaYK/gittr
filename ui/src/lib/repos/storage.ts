@@ -8,9 +8,20 @@ import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { mergeStoredContributorLists } from "@/lib/utils/repo-contributors-from-nostr";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { markRepoAsEdited } from "@/lib/utils/repo-status";
-import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
 
 import { nip19 } from "nostr-tools";
+
+import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
+import {
+  forgetOverrideBlob,
+  idbDeleteRepoOverrides,
+  idbPutOverride,
+  isOverrideIdbMarker,
+  mimeForOverrideStorage,
+  overrideIdbMarker,
+  rememberOverrideBlob,
+  resolveOverridesMap,
+} from "./overrides-idb";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -238,6 +249,15 @@ export const clearForeignReposFromStorage = (
   metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
   const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
+  // Drop IndexedDB override blobs for flushed foreign repos (async, best-effort)
+  for (const repo of foreignRepos) {
+    const entity = repo.entity || "";
+    const name = repo.repo || repo.slug || repo.name || "";
+    if (entity && name) {
+      void idbDeleteRepoOverrides(entity, name).catch(() => undefined);
+    }
+  }
+
   return {
     clearedRepos: foreignRepos.length,
     clearedKeys: keysToRemove.length,
@@ -268,9 +288,7 @@ export const clearOwnReposFromStorage = (
     return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
   }
 
-  const ownRepos = allRepos.filter((repo) =>
-    isRepoOwnedByPubkey(repo, pubkey)
-  );
+  const ownRepos = allRepos.filter((repo) => isRepoOwnedByPubkey(repo, pubkey));
   const keptRepos = allRepos.filter(
     (repo) => !isRepoOwnedByPubkey(repo, pubkey)
   );
@@ -279,6 +297,14 @@ export const clearOwnReposFromStorage = (
 
   const ownPatterns = buildRepoKeyPatterns(ownRepos);
   const keysToRemove = removeStorageKeysForPatterns(ownPatterns);
+
+  for (const repo of ownRepos) {
+    const entity = repo.entity || "";
+    const name = repo.repo || repo.slug || repo.name || "";
+    if (entity && name) {
+      void idbDeleteRepoOverrides(entity, name).catch(() => undefined);
+    }
+  }
 
   return {
     clearedRepos: ownRepos.length,
@@ -749,8 +775,7 @@ function rankReposForQuotaKeep(
   return [...repos].sort((a: any, b: any) => {
     const score = (r: any) => {
       const owner = String(r.ownerPubkey || "").toLowerCase();
-      const ownedBoost =
-        prefer && owner && owner === prefer ? 1e16 : 0;
+      const ownedBoost = prefer && owner && owner === prefer ? 1e16 : 0;
       return (
         ownedBoost +
         (r.hasUnpushedEdits || r.status === "local" ? 1e15 : 0) +
@@ -829,6 +854,13 @@ export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
   " Open My Repositories (/repositories) → Flush others' repos cache (or Flush my own repos cache after you've pushed).";
 
 /**
+ * Shown when Upload / New file cannot persist drafts (localStorage or IndexedDB full).
+ * Flush frees space; the failed batch is not kept — user must upload again.
+ */
+export const ADD_FILES_STORAGE_FULL_HINT =
+  "Browser storage is full. Open My Repositories → Flush others' repos cache (and/or Flush my own repos cache after you've pushed), then come back and upload/add the files again. If it still fails, try fewer or smaller files.";
+
+/**
  * Persist slimmed `gittr_repos`. Returns false if the write still fails after
  * cleanup (caller may keep an in-memory list for Explore / My Repositories).
  */
@@ -880,14 +912,14 @@ export const saveStoredRepos = (
 
   const cleaned30 = toSave.filter((r: any) => {
     const lastActivity =
-      (r.lastNostrEventCreatedAt
-        ? r.lastNostrEventCreatedAt * 1000
-        : 0) ||
+      (r.lastNostrEventCreatedAt ? r.lastNostrEventCreatedAt * 1000 : 0) ||
       r.updatedAt ||
       r.lastModifiedAt ||
       r.createdAt ||
       0;
-    return lastActivity > thirtyDaysAgo || r.hasUnpushedEdits || r.status === "local";
+    return (
+      lastActivity > thirtyDaysAgo || r.hasUnpushedEdits || r.status === "local"
+    );
   });
   if (cleaned30.length < toSave.length) {
     console.log(
@@ -909,14 +941,16 @@ export const saveStoredRepos = (
 
     const cleaned7 = cleaned30.filter((r: any) => {
       const lastActivity =
-        (r.lastNostrEventCreatedAt
-          ? r.lastNostrEventCreatedAt * 1000
-          : 0) ||
+        (r.lastNostrEventCreatedAt ? r.lastNostrEventCreatedAt * 1000 : 0) ||
         r.updatedAt ||
         r.lastModifiedAt ||
         r.createdAt ||
         0;
-      return lastActivity > sevenDaysAgo || r.hasUnpushedEdits || r.status === "local";
+      return (
+        lastActivity > sevenDaysAgo ||
+        r.hasUnpushedEdits ||
+        r.status === "local"
+      );
     });
     if (cleaned7.length < cleaned30.length) {
       const aggDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned7);
@@ -1299,13 +1333,77 @@ export const saveRepoOverrides = (
   overrides: Record<string, string>
 ): boolean => {
   if (typeof window === "undefined") return false;
+  const overrideKey = getRepoStorageKey("gittr_overrides", entity, repo);
   try {
-    const overrideKey = getRepoStorageKey("gittr_overrides", entity, repo);
+    // Empty map → drop key (free quota) instead of storing "{}"
+    if (!overrides || Object.keys(overrides).length === 0) {
+      localStorage.removeItem(overrideKey);
+      try {
+        localStorage.removeItem(`gittr_repo_overrides__${entity}__${repo}`);
+      } catch {
+        /* ignore */
+      }
+      return true;
+    }
     localStorage.setItem(overrideKey, JSON.stringify(overrides));
     return true;
-  } catch (error) {
-    console.error("Failed to save repo overrides:", error);
-    return false;
+  } catch (error: any) {
+    const isQuota =
+      error?.name === "QuotaExceededError" ||
+      String(error?.message || "").includes("quota");
+    if (!isQuota) {
+      console.error("Failed to save repo overrides:", error);
+      return false;
+    }
+    console.error(
+      `[Storage] Quota exceeded saving overrides for ${entity}/${repo}. Evicting other override caches…`
+    );
+    try {
+      // Drop orphan / other-repo override blobs (largest first)
+      const entries: Array<{ key: string; len: number }> = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (
+          !key ||
+          !(
+            key.startsWith("gittr_overrides__") ||
+            key.startsWith("gittr_repo_overrides__")
+          )
+        ) {
+          continue;
+        }
+        if (key === overrideKey) continue;
+        const raw = localStorage.getItem(key) || "";
+        entries.push({ key, len: raw.length });
+      }
+      entries.sort((a, b) => b.len - a.len);
+      let evicted = 0;
+      for (const { key } of entries) {
+        if (evicted >= 40) break;
+        try {
+          localStorage.removeItem(key);
+          evicted += 1;
+        } catch {
+          /* ignore */
+        }
+      }
+      // Also free old file trees if still needed
+      if (evicted < 8) {
+        evictLargestOtherRepoFileKeys("", 24);
+      }
+      if (Object.keys(overrides).length === 0) {
+        localStorage.removeItem(overrideKey);
+        return true;
+      }
+      localStorage.setItem(overrideKey, JSON.stringify(overrides));
+      console.log(
+        `✅ [Storage] Saved overrides after evicting ${evicted} other override key(s)`
+      );
+      return true;
+    } catch (retryErr) {
+      console.error("Failed to save repo overrides after eviction:", retryErr);
+      return false;
+    }
   }
 };
 
@@ -1476,15 +1574,18 @@ export function isBinaryFile(path: string, mimeType?: string): boolean {
     "bin",
   ];
 
-  // Check MIME type first (more reliable)
+  // Check MIME type first (more reliable) — but generic octet-stream must
+  // not override a known text extension (folder uploads often omit File.type).
   if (mimeType) {
+    const isGenericBinary =
+      mimeType === "application/octet-stream" || mimeType === "file";
     if (
-      mimeType.startsWith("image/") ||
-      mimeType.startsWith("video/") ||
-      mimeType.startsWith("audio/") ||
-      mimeType === "application/pdf" ||
-      mimeType.startsWith("font/") ||
-      mimeType === "application/octet-stream"
+      !isGenericBinary &&
+      (mimeType.startsWith("image/") ||
+        mimeType.startsWith("video/") ||
+        mimeType.startsWith("audio/") ||
+        mimeType === "application/pdf" ||
+        mimeType.startsWith("font/"))
     ) {
       return true;
     }
@@ -1506,11 +1607,21 @@ export function isBinaryFile(path: string, mimeType?: string): boolean {
 }
 
 /**
- * Add files directly to repository (for owners, local repos, or immediate display)
- * This adds files to both repo.files array and separate files storage
- * Also creates a commit with auto-generated commit message
+ * Load overrides and expand IndexedDB markers to real content (for Push / async UI).
  */
-export function addFilesToRepo(
+export async function loadRepoOverridesResolved(
+  entity: string,
+  repo: string
+): Promise<Record<string, string>> {
+  const raw = loadRepoOverrides(entity, repo);
+  return resolveOverridesMap(entity, repo, raw);
+}
+
+/**
+ * Add files directly to repository (for owners, local repos, or immediate display)
+ * Binary / large bodies go to IndexedDB; localStorage only keeps pointers + small text.
+ */
+export async function addFilesToRepo(
   entity: string,
   repo: string,
   files: Array<{
@@ -1520,7 +1631,7 @@ export function addFilesToRepo(
     isBinary?: boolean;
   }>,
   authorPubkey?: string
-): boolean {
+): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
   try {
@@ -1624,31 +1735,63 @@ export function addFilesToRepo(
     repos[repoIndex] = repoData;
     saveStoredRepos(repos);
 
-    // Store file content in overrides (so it can be displayed)
+    // Store file content: small text in localStorage; binaries/large → IndexedDB
+    const TEXT_INLINE_MAX = 8_000;
     const overrides = loadRepoOverrides(entity, repo);
-    validFiles.forEach((file) => {
-      if (file.content !== undefined) {
+    for (const file of validFiles) {
+      if (file.content === undefined) continue;
+      const isBinary =
+        file.isBinary !== undefined
+          ? file.isBinary
+          : isBinaryFile(file.path, file.type);
+      const useIdb =
+        isBinary ||
+        file.content.length > TEXT_INLINE_MAX ||
+        isOverrideIdbMarker(overrides[file.path]);
+
+      if (useIdb) {
+        const mime = mimeForOverrideStorage(file.path, file.type, isBinary);
+        try {
+          await idbPutOverride({
+            entity,
+            repo,
+            path: file.path,
+            content: file.content,
+            mime,
+          });
+          overrides[file.path] = overrideIdbMarker(mime);
+        } catch (idbErr) {
+          console.error(
+            `[addFilesToRepo] IndexedDB put failed for ${file.path}:`,
+            idbErr
+          );
+          return false;
+        }
+      } else {
+        rememberOverrideBlob(entity, repo, file.path, file.content);
         overrides[file.path] = file.content;
-        if (file.path.includes("/")) {
-          const base = file.path.split("/").pop() || "";
-          if (
-            base &&
-            shouldDropFlatBasenameForNestedUpload(
-              file.path,
-              base,
-              pathsInThisUpload
-            ) &&
-            overrides[base] !== undefined
-          ) {
-            delete overrides[base];
-          }
+      }
+
+      if (file.path.includes("/")) {
+        const base = file.path.split("/").pop() || "";
+        if (
+          base &&
+          shouldDropFlatBasenameForNestedUpload(
+            file.path,
+            base,
+            pathsInThisUpload
+          ) &&
+          overrides[base] !== undefined
+        ) {
+          delete overrides[base];
+          forgetOverrideBlob(entity, repo, base);
         }
       }
-    });
+    }
     const overridesSaved = saveRepoOverrides(entity, repo, overrides);
     if (!overridesSaved) {
       console.error(
-        "[addFilesToRepo] Failed to persist file contents (browser storage full?)"
+        "[addFilesToRepo] Failed to persist override pointers (browser storage full?)"
       );
       return false;
     }

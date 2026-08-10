@@ -47,6 +47,10 @@ Fallback order: local overrides → (forge upstream if any) → bridge `file-con
 
 **README / in-repo media:** relative images (gif/png/…) must prefer `gittr_overrides` via `localOverrideDisplayUrl` before forge raw or bridge tip — otherwise an Upload overwrite looks “stuck” on the old asset until Push (and forge mirrors never show the draft). Same for Code-tab `openFile` (binary by extension; do not require `repo.files.isBinary` after upload strips that array).
 
+**Large / binary Upload drafts:** bodies that would blow the ~5 MB `localStorage` quota (GIFs, folder packs) are stored in IndexedDB (`gittr-overrides-v1`); `gittr_overrides__*` only keeps a small `__gittr_idb__:mime` pointer. Flush own/others also drops matching IDB blobs. Push / Pages publish expand pointers via `loadRepoOverridesResolved`. “Flush emptied the catalog but upload still QuotaExceeded” was this path — not a failed flush.
+
+**Mental model:** `gittr_overrides__*` may hold either inline UTF-8 or a tiny `__gittr_idb__:mime` pointer. Real large/binary bodies live in IndexedDB (`gittr-overrides-v1`). Any code that **reads file contents** for display/merge/publish must use `loadRepoOverridesResolved` / `resolveLocalOverrideBody` (Push, Pages/nsite publish, README, openFile, blame, dependencies, PR merge base). Presence-only checks and key deletion can keep using raw `loadRepoOverrides`.
+
 Multifetch prefers reachable remotes before GRASP, but sorts bare `http://IP:port` home clones **after** HTTPS GRASP mirrors so a dead LAN host does not race ahead of working mirrors.
 
 ## Classification (`parseGitSource`)

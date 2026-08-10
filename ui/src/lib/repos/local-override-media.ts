@@ -1,14 +1,18 @@
 /**
  * Prefer unpushed local overrides for in-repo media (gif/png/…) so Upload
- * overwrites show before Push. README and file viewers historically always hit
- * forge/bridge tip and looked like media "wasn't stored locally".
+ * overwrites show before Push. Large/binary bodies may live in IndexedDB
+ * (pointer in localStorage); memory cache is filled on upload + hydrate.
  */
-
-import { isBinaryFile, loadRepoOverrides } from "./storage";
+import {
+  isOverrideIdbMarker,
+  mimeFromOverrideIdbMarker,
+  peekOverrideBlob,
+} from "./overrides-idb";
 import {
   mimeForRepoImagePath,
   normalizeRepoRelPath,
 } from "./resolve-readme-markdown-image";
+import { isBinaryFile, loadRepoOverrides } from "./storage";
 
 function pickOverrideContent(
   overrides: Record<string, string>,
@@ -37,6 +41,34 @@ function pickOverrideContent(
   return null;
 }
 
+function toDisplayUrl(
+  path: string,
+  content: string,
+  mimeHint?: string
+): string {
+  if (content.startsWith("data:") || content.startsWith("blob:")) {
+    return content;
+  }
+  const normalized = normalizeRepoRelPath(path) || path;
+  // Text paths must stay UTF-8 — never base64-wrap from a stale octet-stream marker.
+  if (!isBinaryFile(normalized)) {
+    return content;
+  }
+  const mime =
+    (mimeHint && mimeHint !== "application/octet-stream" && mimeHint !== "file"
+      ? mimeHint
+      : null) ||
+    mimeForRepoImagePath(normalized) ||
+    "application/octet-stream";
+  if (
+    mime === "image/svg+xml" &&
+    !/^[A-Za-z0-9+/=\s]+$/.test(content.slice(0, 80))
+  ) {
+    return `data:${mime};charset=utf-8,${encodeURIComponent(content)}`;
+  }
+  return `data:${mime};base64,${content.replace(/\s/g, "")}`;
+}
+
 /**
  * If the browser has an unpushed override for this path, return a displayable
  * URL (data: for binaries, raw text for svg text, etc.). Null = fall through
@@ -50,24 +82,25 @@ export function localOverrideDisplayUrl(
   if (!entity || !repo || !path) return null;
   try {
     const overrides = loadRepoOverrides(entity, repo);
-    const content = pickOverrideContent(overrides, path);
-    if (!content) return null;
-    if (content.startsWith("data:") || content.startsWith("blob:")) {
-      return content;
+    const raw = pickOverrideContent(overrides, path);
+    if (!raw) {
+      // IDB-only memory (pointer not yet written / wiped)
+      const mem = peekOverrideBlob(
+        entity,
+        repo,
+        normalizeRepoRelPath(path) || path
+      );
+      if (mem) return toDisplayUrl(path, mem);
+      return null;
     }
-    const normalized = normalizeRepoRelPath(path) || path;
-    if (isBinaryFile(normalized)) {
-      const mime = mimeForRepoImagePath(normalized);
-      if (
-        mime === "image/svg+xml" &&
-        !/^[A-Za-z0-9+/=\s]+$/.test(content.slice(0, 80))
-      ) {
-        // SVG stored as text
-        return `data:${mime};charset=utf-8,${encodeURIComponent(content)}`;
-      }
-      return `data:${mime};base64,${content.replace(/\s/g, "")}`;
+    if (isOverrideIdbMarker(raw)) {
+      const mem =
+        peekOverrideBlob(entity, repo, normalizeRepoRelPath(path) || path) ||
+        peekOverrideBlob(entity, repo, path);
+      if (!mem) return null;
+      return toDisplayUrl(path, mem, mimeFromOverrideIdbMarker(raw));
     }
-    return content;
+    return toDisplayUrl(path, raw);
   } catch {
     return null;
   }

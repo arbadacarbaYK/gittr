@@ -4,11 +4,9 @@ import React from "react";
 import { use, useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { formatDate24h } from "@/lib/utils/date-format";
-import {
-  getRepoStorageKey,
-  normalizeEntityForStorage,
-} from "@/lib/utils/entity-normalizer";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { File as FileIcon, GitCommit } from "lucide-react";
@@ -46,15 +44,6 @@ export default function BlamePage({
 
     const loadFileContent = async () => {
       try {
-        // Load file content - same logic as main page
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const overrides: Record<string, string> = JSON.parse(
-          localStorage.getItem(
-            `gittr_overrides__${normalizeEntityForStorage(
-              resolvedParams.entity
-            )}__${resolvedParams.repo}`
-          ) || "{}"
-        );
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
         const repos: any[] = JSON.parse(
           localStorage.getItem("gittr_repos") || "[]"
@@ -66,7 +55,12 @@ export default function BlamePage({
           resolvedParams.repo
         );
 
-        let content: string = overrides[filePath] || "";
+        let content =
+          (await resolveLocalOverrideBody(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            filePath
+          )) || "";
 
         // If not in overrides, try to fetch from GitHub API
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access

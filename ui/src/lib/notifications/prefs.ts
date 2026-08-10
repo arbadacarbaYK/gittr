@@ -13,7 +13,8 @@ export type EventKey =
   | "mention"
   | "bounty_funded"
   | "bounty_released"
-  | "bounty_cancelled";
+  | "bounty_cancelled"
+  | "security_cve";
 
 export type NotificationPrefs = {
   channels: {
@@ -29,9 +30,10 @@ const DEFAULT_PREFS: NotificationPrefs = {
     telegram: { enabled: false, handle: "" },
   },
   events: {
-    repo_watch: true,
-    repo_star: true,
-    repo_zap: true,
+    // Match Settings defaults: social noise off; collaboration on; CVE strict opt-in.
+    repo_watch: false,
+    repo_star: false,
+    repo_zap: false,
     issue_opened: true,
     issue_commented: true,
     pr_opened: true,
@@ -41,25 +43,56 @@ const DEFAULT_PREFS: NotificationPrefs = {
     bounty_funded: true,
     bounty_released: true,
     bounty_cancelled: true,
+    // Strict opt-in: bot must also verify kind 30078 on relays — localStorage alone is not consent.
+    security_cve: false,
   },
 };
 
+/** Partial prefs for merge/hydrate (events may be sparse, e.g. legacy CVE-only). */
+export type PartialNotificationPrefs = {
+  channels?: {
+    nostr?: Partial<NotificationPrefs["channels"]["nostr"]>;
+    telegram?: Partial<NotificationPrefs["channels"]["telegram"]>;
+  };
+  events?: Partial<Record<EventKey, boolean>>;
+};
+
+function deepMergePrefs(
+  stored: PartialNotificationPrefs | null | undefined
+): NotificationPrefs {
+  const channels = {
+    nostr: {
+      ...DEFAULT_PREFS.channels.nostr,
+      ...(stored?.channels?.nostr || {}),
+    },
+    telegram: {
+      ...DEFAULT_PREFS.channels.telegram,
+      ...(stored?.channels?.telegram || {}),
+    },
+  };
+  const events = {
+    ...DEFAULT_PREFS.events,
+    ...(stored?.events || {}),
+  } as Record<EventKey, boolean>;
+  return { channels, events };
+}
+
 /**
  * Load notification preferences for a user
- * @param pubkey - User's pubkey (full 64-char hex or npub)
+ * @param pubkey - Reserved for future recipient-scoped prefs (ignored today — browser localStorage only)
  * @returns Notification preferences or defaults
  */
-export function loadNotificationPrefs(pubkey?: string): NotificationPrefs {
+export function loadNotificationPrefs(_pubkey?: string): NotificationPrefs {
   try {
     const stored = localStorage.getItem("gittr_notifications");
     if (stored) {
-      const parsed = JSON.parse(stored);
-      return { ...DEFAULT_PREFS, ...parsed };
+      const parsed = JSON.parse(stored) as Partial<NotificationPrefs>;
+      return deepMergePrefs(parsed);
     }
   } catch (error) {
     console.error("Failed to load notification preferences:", error);
   }
-  return DEFAULT_PREFS;
+  return deepMergePrefs(null);
 }
 
 /**
@@ -71,3 +104,5 @@ export function shouldNotify(
 ): boolean {
   return prefs.events[eventType] === true;
 }
+
+export { DEFAULT_PREFS, deepMergePrefs };

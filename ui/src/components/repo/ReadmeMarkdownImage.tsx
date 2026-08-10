@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
+import { hydrateRepoOverrideBlobs } from "@/lib/repos/overrides-idb";
 import {
   mimeForRepoImagePath,
   resolveReadmeMarkdownImage,
 } from "@/lib/repos/resolve-readme-markdown-image";
-import { useEffect, useState } from "react";
 
 type Props = {
   alt?: string;
@@ -94,8 +96,8 @@ async function fetchViaNostrBridge(
  * Nostr-native / GRASP repos via same-origin file APIs — not invent /raw/ URLs
  * and not require Blossom for in-repo assets.
  *
- * Unpushed Upload overwrites (gif/png/…) live in gittr_overrides and must win
- * over forge/bridge tip until Push publishes the new blob.
+ * Unpushed Upload overwrites (gif/png/…) live in gittr_overrides (large/binary
+ * bodies in IndexedDB) and must win over forge/bridge tip until Push.
  */
 export function ReadmeMarkdownImage({
   alt = "",
@@ -132,27 +134,34 @@ export function ReadmeMarkdownImage({
     });
     setMeta(next);
 
-    // Prefer local unpushed override before any forge hotlink / tip fetch.
-    if (entity && repoName && next?.repoPath) {
-      const local = localOverrideDisplayUrl(entity, repoName, next.repoPath);
-      if (local) {
-        setDisplaySrc(local);
-        setApiTried(true);
-        return;
+    let cancelled = false;
+    (async () => {
+      // Prefer local unpushed override before any forge hotlink / tip fetch.
+      // Binary drafts may live in IndexedDB — hydrate then re-check.
+      if (entity && repoName && next?.repoPath) {
+        try {
+          await hydrateRepoOverrideBlobs(entity, repoName);
+        } catch {
+          /* ignore */
+        }
+        if (cancelled) return;
+        const local = localOverrideDisplayUrl(entity, repoName, next.repoPath);
+        if (local) {
+          setDisplaySrc(local);
+          setApiTried(true);
+          return;
+        }
       }
-    }
 
-    setDisplaySrc(next?.primarySrc || "");
-    setApiTried(false);
-  }, [
-    src,
-    branch,
-    forgeSourceUrl,
-    cloneUrls,
-    ownerPubkey,
-    repoName,
-    entity,
-  ]);
+      if (cancelled) return;
+      setDisplaySrc(next?.primarySrc || "");
+      setApiTried(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [src, branch, forgeSourceUrl, cloneUrls, ownerPubkey, repoName, entity]);
 
   useEffect(() => {
     if (!meta?.repoPath || apiTried) return;

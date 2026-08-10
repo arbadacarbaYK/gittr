@@ -1,8 +1,7 @@
-// Main notification service - dispatches notifications to enabled channels
-import { type NotificationData, sendNostrDM } from "./nostr-dm";
-import { type EventKey, loadNotificationPrefs, shouldNotify } from "./prefs";
+// Main notification service - dispatches via server deliver (recipient consent)
+import { type EventKey } from "./prefs";
 import { sendTelegramChannelAnnouncement } from "./telegram-channel";
-import { sendTelegramDM } from "./telegram-dm";
+import type { NotificationData } from "./nostr-dm";
 
 export interface NotificationEventData {
   eventType: EventKey;
@@ -15,54 +14,55 @@ export interface NotificationEventData {
 }
 
 /**
- * Send notifications to a user based on their preferences
- * @param data - Notification event data
+ * Send notifications to a user based on THEIR registered preferences
+ * (kind 30078 + server consent), not the actor's localStorage.
  */
 export async function sendNotification(
   data: NotificationEventData
 ): Promise<void> {
   try {
-    // Load user's notification preferences
-    const prefs = loadNotificationPrefs(data.recipientPubkey);
+    const response = await fetch("/api/notifications/deliver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientPubkey: data.recipientPubkey,
+        eventType: data.eventType,
+        title: data.title,
+        message: data.message,
+        url: data.url,
+      }),
+    });
 
-    // Check if this event type should trigger notifications
-    if (!shouldNotify(data.eventType, prefs)) {
-      console.log(`Notification skipped: ${data.eventType} disabled for user`);
-      return;
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      console.warn("Notification deliver failed:", err);
+    } else {
+      const result = await response.json().catch(() => ({}));
+      if (result.status === "skipped") {
+        console.log(
+          `Notification skipped for ${data.eventType}:`,
+          result.reason
+        );
+      }
     }
 
-    const notificationData: NotificationData = {
-      eventType: data.eventType,
-      title: data.title,
-      message: data.message,
-      url: data.url,
-      repoEntity: data.repoEntity,
-      repoName: data.repoName,
-    };
-
-    // Send Nostr DM if enabled
-    if (prefs.channels.nostr.enabled) {
-      // Use npub from prefs if set, otherwise use recipientPubkey
-      const recipient = prefs.channels.nostr.npub || data.recipientPubkey;
-      await sendNostrDM(recipient, notificationData);
-    }
-
-    // Send Telegram DM if enabled (for private notifications like PRs/issues)
-    if (prefs.channels.telegram.enabled && prefs.channels.telegram.userId) {
-      await sendTelegramDM(prefs.channels.telegram.userId, notificationData);
-    }
-
-    // Send public channel announcement for bounties (in addition to DM if enabled)
-    // Bounties are public events that should be announced to the community
+    // Public channel announcements for bounties (community feed — not opt-in DMs)
     if (
       data.eventType === "bounty_funded" ||
       data.eventType === "bounty_released"
     ) {
+      const notificationData: NotificationData = {
+        eventType: data.eventType,
+        title: data.title,
+        message: data.message,
+        url: data.url,
+        repoEntity: data.repoEntity,
+        repoName: data.repoName,
+      };
       await sendTelegramChannelAnnouncement(notificationData);
     }
   } catch (error) {
     console.error("Failed to send notification:", error);
-    // Don't throw - notifications should be best-effort and not block user actions
   }
 }
 
@@ -158,6 +158,15 @@ export function formatNotificationMessage(
             ? `PR #${context.prId}`
             : "a post"
         }`,
+        url: context.url,
+      };
+
+    case "security_cve":
+      return {
+        title: `Security alert for ${repo}`,
+        message:
+          context.issueTitle ||
+          "A confirmed CRITICAL/HIGH vulnerability affects a pinned direct dependency",
         url: context.url,
       };
 
