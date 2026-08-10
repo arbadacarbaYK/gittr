@@ -39,7 +39,9 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 **Refetch content hydrate** (after `/api/import` returns metadata-only files)
 
-Import deliberately omits bodies (response size). Refetch then hydrates small text files into `gittr_overrides__*` via same-origin **`GET /api/git/file-content`** (batched ~15), matching Push. Do **not** `fetch(raw.githubusercontent.com/…)` from the browser — GitHub raw has no CORS for gittr (OPTIONS 403 / NetworkError), which left overrides empty and forced Push to re-fetch everything.
+Import deliberately omits bodies (response size). For **small** trees (&lt; 50 files), Refetch may hydrate a few small text files into `gittr_overrides__*` via same-origin **`GET /api/git/file-content`** (batched ~15). For **large** forge trees (≥ 50 files), Refetch **skips** that flood (it was causing GitHub/proxy HTTP 429) and leaves Push to announce the forge tip via **`POST /api/nostr/repo/sync-from-source`** (one server `git fetch`). Do **not** `fetch(raw.githubusercontent.com/…)` from the browser — GitHub raw has no CORS for gittr (OPTIONS 403 / NetworkError).
+
+Forge Refetch must **not** set `hasUnpushedEdits` — catching up to GitHub is tip sync, not a local rewrite. Owner **Push to Nostr** still works; the post-refetch banner reminds you to announce.
 
 **Folder README** (browsing a directory without opening a file)
 
@@ -129,7 +131,7 @@ Troubleshooting pushes: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
 ## Push tip fidelity (SSH / UI / MCP)
 
 - **SSH `git push`** and **HTTPS smart-HTTP** write objects into the bridge bare repo; tips are real git SHAs.
-- **UI Push to Nostr** with a forge `source` and **no** local edits (`hasUnpushedEdits` false) must **sync the bare tip from the forge** (`POST /api/nostr/repo/sync-from-source`) and announce those SHAs in kind **30618** — not invent a `Push from gittr` empty commit. Refetch filling local overrides is a **cache**, not dirty.
+- **UI Push to Nostr** with a forge `source` and **no** local edits (`hasUnpushedEdits` false) must **sync the bare tip from the forge** (`POST /api/nostr/repo/sync-from-source`) and announce those SHAs in kind **30618** — not invent a `Push from gittr` empty commit. Refetch filling local overrides is a **cache**, not dirty. After forge Refetch (especially large trees), Push prefers the same bridge sync even if a stale dirty flag / post-refetch hint is present — never N× `/api/git/file-content` for hundreds of paths.
 - **MCP** `createRepo` / `mirrorRepo` must advertise the full GRASP push clone set (`buildFullGraspCloneUrls`) — never derive `clone[]` from a capped relay publish list. Forge URLs stay in `source` / `forkedFrom` only.
 
 ## Sidebar “Clone URL (event)”

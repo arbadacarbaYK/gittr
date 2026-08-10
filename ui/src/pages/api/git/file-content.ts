@@ -127,12 +127,12 @@ export default async function handler(
 
       try {
         // CRITICAL: raw.githubusercontent.com doesn't support Authorization headers
-        // For authenticated requests, we need to use the GitHub API instead
-        // Priority: user token (for private repos) > platform token (for public repos)
-        const tokenToUse =
-          userToken || process.env.GITHUB_PLATFORM_TOKEN || null;
+        // User token → GitHub Contents API (private repos).
+        // Platform token alone must NOT force the REST API: burst Refetch/Push hydrate
+        // was burning secondary rate limits (HTTP 429) on public monorepos. Prefer raw.
+        const tokenToUse = userToken || null;
 
-        // If we have a token, use GitHub API instead of raw URL for better rate limits and private repo access
+        // If we have a *user* token, use GitHub API for private repo access
         if (tokenToUse) {
           // CRITICAL: Use JSON API endpoint first to detect binary files properly
           // The JSON endpoint returns base64-encoded content which we can use for both text and binary
@@ -140,7 +140,7 @@ export default async function handler(
             filePathStr
           )}?ref=${encodeURIComponent(branchStr)}`;
           console.log(
-            `🔍 [Git API] Using GitHub API (authenticated) instead of raw URL: ${apiUrl}`
+            `🔍 [Git API] Using GitHub API (user token) instead of raw URL: ${apiUrl}`
           );
 
           try {

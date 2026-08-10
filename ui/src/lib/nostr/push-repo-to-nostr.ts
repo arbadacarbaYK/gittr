@@ -10,6 +10,7 @@ import {
 } from "../repos/repo-github-hub";
 import {
   type StoredRepo,
+  isRepoPathDeleted,
   loadRepoDeletedPaths,
   loadRepoFiles,
   loadRepoOverridesResolved,
@@ -19,7 +20,6 @@ import {
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveStoredRepos,
-  isRepoPathDeleted,
 } from "../repos/storage";
 import { resolveRepoUpstreamSource } from "../repos/upstream-precedence";
 import {
@@ -43,7 +43,10 @@ import {
   storeRepoEventId,
 } from "./publish-with-confirmation";
 import type { RemoteSignerManager } from "./remoteSigner";
-import { shouldAnnounceUpstreamTip } from "./should-announce-upstream-tip";
+import {
+  shouldAnnounceUpstreamTip,
+  shouldPreferBridgeSyncFromSource,
+} from "./should-announce-upstream-tip";
 import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
 import { syncBridgeFromSource } from "./sync-bridge-from-source";
 
@@ -401,12 +404,8 @@ export async function pushRepoToNostr(
 
       let upstream =
         asForge(resolveRepoUpstreamSource(repo) || "") ||
-        asForge(
-          typeof repo.sourceUrl === "string" ? repo.sourceUrl : ""
-        ) ||
-        asForge(
-          typeof repo.forkedFrom === "string" ? repo.forkedFrom : ""
-        );
+        asForge(typeof repo.sourceUrl === "string" ? repo.sourceUrl : "") ||
+        asForge(typeof repo.forkedFrom === "string" ? repo.forkedFrom : "");
       if (
         !upstream &&
         subscribe &&
@@ -883,10 +882,49 @@ export async function pushRepoToNostr(
       repo.sourceUrl ||
       "";
     // Refetch fills overrides as a cache — that must NOT force a rewritten bridge tip.
-    // Only real local edits (hasUnpushedEdits) should invent "Push from gittr" commits.
-    const deferToBridgeSourceClone = shouldAnnounceUpstreamTip({
+    // Prefer one server sync-from-source for large/post-refetch forge trees.
+    const postSourceRefetchPending =
+      typeof window !== "undefined"
+        ? (() => {
+            try {
+              return (
+                sessionStorage.getItem(
+                  `gittr_post_source_refetch_hint_v1__${entity}__${repoSlug}`
+                ) === "1" ||
+                (storageRepo !== repoSlug &&
+                  sessionStorage.getItem(
+                    `gittr_post_source_refetch_hint_v1__${entity}__${storageRepo}`
+                  ) === "1")
+              );
+            } catch {
+              return false;
+            }
+          })()
+        : false;
+
+    const pushFileEntries = baseFiles.filter((file: any) => {
+      const filePath = normalizeFilePath(file.path || "");
+      if (!filePath || filePath.endsWith("/")) return false;
+      if (file?.type === "dir" || file?.type === "tree") return false;
+      return true;
+    });
+    const filesWithLocalContentCount = pushFileEntries.filter((file: any) => {
+      const filePath = normalizeFilePath(file.path || "");
+      if (file.content && String(file.content).length > 0) return true;
+      const fromOverride =
+        savedOverrides[filePath] ||
+        savedOverrides[file.path || ""] ||
+        savedOverrides[normalizeFilePath(file.path || "")];
+      return typeof fromOverride === "string" && fromOverride.length > 0;
+    }).length;
+
+    const deferToBridgeSourceClone = shouldPreferBridgeSyncFromSource({
       sourceUrl: upstreamSourceUrl,
       hasUnpushedEdits: repo.hasUnpushedEdits === true,
+      postSourceRefetchPending,
+      deletedPathCount: normalizedDeletedPaths.length,
+      fileCount: pushFileEntries.length,
+      filesWithLocalContent: filesWithLocalContentCount,
     });
 
     if (deferToBridgeSourceClone) {
@@ -894,7 +932,17 @@ export async function pushRepoToNostr(
         "⚡ Upstream tip — syncing bridge to forge SHAs (no local-edit rewrite)"
       );
       console.log(
-        `⚡ [Push Repo] Syncing bridge from upstream tip ${upstreamSourceUrl} (hasUnpushedEdits=false)`
+        `⚡ [Push Repo] Syncing bridge from upstream tip ${upstreamSourceUrl}`,
+        {
+          hasUnpushedEdits: repo.hasUnpushedEdits === true,
+          postSourceRefetchPending,
+          fileCount: pushFileEntries.length,
+          filesWithLocalContent: filesWithLocalContentCount,
+          cleanTip: shouldAnnounceUpstreamTip({
+            sourceUrl: upstreamSourceUrl,
+            hasUnpushedEdits: repo.hasUnpushedEdits === true,
+          }),
+        }
       );
     }
 
@@ -2633,11 +2681,18 @@ export async function pushRepoToNostr(
             signer: getBridgeSigner()!,
             authEvent: repoEvent,
           });
-          if (syncResult.success && Array.isArray(syncResult.refs) && syncResult.refs.length > 0) {
+          if (
+            syncResult.success &&
+            Array.isArray(syncResult.refs) &&
+            syncResult.refs.length > 0
+          ) {
             refs = syncResult.refs;
-            const tip = syncResult.headCommit || refs.find((r) => r.commit)?.commit;
+            const tip =
+              syncResult.headCommit || refs.find((r) => r.commit)?.commit;
             onProgress?.(
-              `✅ Bridge matches forge tip${tip ? ` (${String(tip).slice(0, 12)}…)` : ""}`
+              `✅ Bridge matches forge tip${
+                tip ? ` (${String(tip).slice(0, 12)}…)` : ""
+              }`
             );
             console.log(`✅ [Push Repo] sync-from-source ok tip=${tip}`, {
               refs: refs.length,
@@ -2645,15 +2700,18 @@ export async function pushRepoToNostr(
             });
           } else {
             onProgress?.(
-              `⚠️ Forge sync incomplete (${syncResult.error || "no refs"}) — polling bridge…`
+              `⚠️ Forge sync incomplete (${
+                syncResult.error || "no refs"
+              }) — polling bridge…`
             );
-            console.warn(`⚠️ [Push Repo] sync-from-source soft-fail`, syncResult);
+            console.warn(
+              `⚠️ [Push Repo] sync-from-source soft-fail`,
+              syncResult
+            );
           }
         } catch (syncErr: any) {
           console.warn(`⚠️ [Push Repo] sync-from-source error`, syncErr);
-          onProgress?.(
-            "⚠️ Forge sync error — polling existing bridge refs…"
-          );
+          onProgress?.("⚠️ Forge sync error — polling existing bridge refs…");
         }
         if (refs.length === 0) {
           const clonedRefs = await pollBridgeRepoRefs(
@@ -2744,8 +2802,7 @@ export async function pushRepoToNostr(
               // Do NOT pull back paths the user intentionally deleted (file or folder).
               const missing = bridgePaths.filter(
                 (p) =>
-                  !have.has(p) &&
-                  !isRepoPathDeleted(p, normalizedDeletedPaths)
+                  !have.has(p) && !isRepoPathDeleted(p, normalizedDeletedPaths)
               );
               if (
                 bridgePaths.length > 0 &&
@@ -2765,7 +2822,9 @@ export async function pushRepoToNostr(
                         pubkey
                       )}&repo=${encodeURIComponent(
                         actualRepositoryName
-                      )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+                      )}&path=${encodeURIComponent(
+                        path
+                      )}&branch=${encodeURIComponent(
                         repo.defaultBranch || "main"
                       )}`,
                       { cache: "no-store" }
@@ -3547,10 +3606,7 @@ export async function pushRepoToNostr(
       }
 
       // Tombstones are applied on the bridge during push — clear local markers
-      if (
-        typeof window !== "undefined" &&
-        normalizedDeletedPaths.length > 0
-      ) {
+      if (typeof window !== "undefined" && normalizedDeletedPaths.length > 0) {
         saveRepoDeletedPaths(entity, repoSlug, []);
         if (storageRepo !== repoSlug) {
           saveRepoDeletedPaths(entity, storageRepo, []);

@@ -43,7 +43,8 @@ Code browser rows show **last commit message + relative time** for the currently
 **Fix**:
 - Clean forge mirrors (`source` set, `hasUnpushedEdits` false) call `POST /api/nostr/repo/sync-from-source` and announce those exact SHAs
 - Overrides after refetch are cache, not “dirty”
-- Local-edit rewrite (`--allow-empty` / file overlay) only when `hasUnpushedEdits` is true (or no forge source)
+- Forge Refetch must **not** set `hasUnpushedEdits` (that forced N× `/api/git/file-content` → 429 on large repos). Large trees (≥50 files) skip client hydrate; Push uses `shouldPreferBridgeSyncFromSource` (post-refetch hint / metadata-only recovery)
+- Local-edit rewrite (`--allow-empty` / file overlay) only when `hasUnpushedEdits` is true (or no forge source) **and** the bridge-sync preference above does not apply
 - Bridge `handleRepositoryEvent` also `git fetch`es upstream when the bare repo already exists
 
 **Regression (required):** `cd ui && npm run test:regressions` covers tip gate + clone sidebar + tree timestamps. MCP smoke/`test:mcp-stdio` alone does **not**. See [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md#regression-tests-run-these--smoke-alone-is-not-enough).

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldAnnounceUpstreamTip } from "./should-announce-upstream-tip";
+import {
+  LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD,
+  shouldAnnounceUpstreamTip,
+  shouldPreferBridgeSyncFromSource,
+} from "./should-announce-upstream-tip";
 
 /**
  * Push tip fidelity: refetch fills local overrides as a *cache*, not as dirty.
@@ -40,6 +44,69 @@ describe("shouldAnnounceUpstreamTip (push tip fidelity)", () => {
       shouldAnnounceUpstreamTip({
         sourceUrl: "https://git.gittr.space/npub1abc/repo.git",
         hasUnpushedEdits: false,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("shouldPreferBridgeSyncFromSource (large forge / post-refetch)", () => {
+  const github = "https://github.com/arbadacarbaYK/gittr";
+
+  it("matches clean tip announce", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: false,
+      })
+    ).toBe(true);
+  });
+
+  it("prefers bridge after forge Refetch even if dirty flag stuck", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: true,
+        postSourceRefetchPending: true,
+        deletedPathCount: 0,
+        fileCount: 825,
+        filesWithLocalContent: 100,
+      })
+    ).toBe(true);
+  });
+
+  it("does not prefer bridge after Refetch when user deleted paths", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: true,
+        postSourceRefetchPending: true,
+        deletedPathCount: 2,
+        fileCount: 825,
+        filesWithLocalContent: 10,
+      })
+    ).toBe(false);
+  });
+
+  it("recovers metadata-only false-dirty large trees", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: true,
+        deletedPathCount: 0,
+        fileCount: LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD,
+        filesWithLocalContent: 0,
+      })
+    ).toBe(true);
+  });
+
+  it("keeps local tip when dirty with real local bodies (uploads)", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: true,
+        deletedPathCount: 0,
+        fileCount: 825,
+        filesWithLocalContent: 5,
       })
     ).toBe(false);
   });

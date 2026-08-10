@@ -9,8 +9,8 @@
  * - live: fully live (“Live on Nostr”)
  * - live_with_edits: was live, has local changes not pushed yet
  */
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { repoHasUnpushedLocalEdits } from "@/lib/repos/unpushed-local-edits";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 export type RepoStatus =
   | "local"
@@ -355,6 +355,18 @@ export function markRepoAsEdited(repoSlug: string, entity: string): void {
       ...(wasLive ? {} : { status: "local" }),
     };
     localStorage.setItem("gittr_repos", JSON.stringify(repos));
+
+    // Real local edits supersede post-Refetch "announce forge tip" — clear hint
+    // so Push does not discard uploads via sync-from-source.
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        sessionStorage.removeItem(
+          `gittr_post_source_refetch_hint_v1__${entity}__${repoSlug}`
+        );
+      } catch {
+        // ignore
+      }
+    }
   } catch (error) {
     console.error("Failed to mark repo as edited:", error);
   }

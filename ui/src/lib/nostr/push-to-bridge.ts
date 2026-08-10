@@ -336,34 +336,34 @@ export async function pushFilesToBridge({
         if (data.refs && Array.isArray(data.refs) && data.refs.length > 0) {
           allRefs = data.refs; // Update with current chunk's refs
         } else {
-          // CRITICAL: Warn for ANY chunk missing refs, not just the last one
-          // Missing refs from intermediate chunks causes stale commit SHAs in state events
+          // Intermediate chunks intentionally skip commit (`createCommit: false`)
+          // and return `refs: []` by design — only warn on the last chunk.
           const isLastChunk = i === chunks.length - 1;
-          if (data.refs && Array.isArray(data.refs) && data.refs.length === 0) {
-            console.warn(
-              `⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${
-                isLastChunk ? "last" : "intermediate"
-              }) returned empty refs array. ${
-                isLastChunk
-                  ? "Using refs from previous chunk."
-                  : "This may cause stale commit SHAs in state events - chunk may not have committed properly."
-              }`
-            );
+          if (isLastChunk) {
+            if (
+              data.refs &&
+              Array.isArray(data.refs) &&
+              data.refs.length === 0
+            ) {
+              console.warn(
+                `⚠️ [Bridge Push] Last chunk ${i + 1}/${
+                  chunks.length
+                } returned empty refs array. Using refs from previous chunk if any.`
+              );
+            } else {
+              console.warn(
+                `⚠️ [Bridge Push] Last chunk ${i + 1}/${
+                  chunks.length
+                } did not return refs. Using refs from previous chunk if any.`
+              );
+            }
           } else {
-            console.warn(
-              `⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${
-                isLastChunk ? "last" : "intermediate"
-              }) did not return refs. ${
-                isLastChunk
-                  ? "Using refs from previous chunk."
-                  : "This may cause stale commit SHAs in state events - chunk may not have committed properly."
-              }`
+            console.debug(
+              `[Bridge Push] Chunk ${i + 1}/${
+                chunks.length
+              }: empty refs expected (intermediate, createCommit=false)`
             );
           }
-
-          // For intermediate chunks, this is more critical - we need accurate refs
-          // But we don't fail here because the last chunk might still return valid refs
-          // The final refs logic will handle the fallback
         }
 
         clearInterval(heartbeatInterval);

@@ -242,7 +242,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d your.domain -d git.your.domain
 ```
 
-Optional rate-limit exemptions in `ui/.env.local`: `GITTR_RATE_LIMIT_EXEMPT_PUBKEYS`, `GITTR_RATE_LIMIT_EXEMPT_IPS` (restart frontend after change).
+Optional rate-limit exemptions in `ui/.env.local`: `GITTR_RATE_LIMIT_EXEMPT_PUBKEYS`, `GITTR_RATE_LIMIT_EXEMPT_IPS` (restart frontend after change). These skip **Next.js** push limits only — they do **not** gate `/api/git/file-content` (that route has no Next IP bucket). Large forge **Refetch → Push** must use bridge `sync-from-source` instead of hundreds of file-content GETs (see [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md)). Public `file-content` prefers GitHub **raw** unless the browser sent a user `githubToken` (platform token alone must not force REST and secondary 429s).
 
 **Typical env (also in `.env.example`):**
 

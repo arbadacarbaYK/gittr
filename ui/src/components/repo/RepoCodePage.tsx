@@ -61,6 +61,7 @@ import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
+import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
 import {
   applyDeletionMarkersToRepoData,
   isRepoAnnouncementDeleted,
@@ -19996,7 +19997,23 @@ export function RepoCodePage() {
                                                 [],
                                             }
                                           : {}),
-                                        ...({ lastModifiedAt: Date.now() } as {
+                                        ...({
+                                          // Do not leave lastModifiedAt ahead of last Nostr event —
+                                          // that date heuristic falsely looks like unpushed edits.
+                                          lastModifiedAt: (() => {
+                                            const eventAt =
+                                              existingRepo.lastNostrEventCreatedAt ||
+                                              (
+                                                existingRepo as StoredRepo & {
+                                                  nostrEventCreatedAt?: number;
+                                                }
+                                              ).nostrEventCreatedAt ||
+                                              0;
+                                            return eventAt > 0
+                                              ? eventAt * 1000
+                                              : Date.now();
+                                          })(),
+                                        } as {
                                           lastModifiedAt: number;
                                         }),
                                       } as StoredRepo & {
@@ -20019,6 +20036,7 @@ export function RepoCodePage() {
                                         ...prev,
                                         sourceUrl: updatedSourceUrl,
                                         files: newFiles,
+                                        hasUnpushedEdits: false,
                                         readme:
                                           importData.readme || prev?.readme,
                                         description:
@@ -20068,6 +20086,20 @@ export function RepoCodePage() {
                                         "[Refetch]"
                                       );
 
+                                      // Large forge trees: skip client hydrate flood (N× /api/git/file-content → 429).
+                                      // Push announces the forge tip via sync-from-source instead.
+                                      const refetchFileCount = newFiles.filter(
+                                        (f: any) =>
+                                          f?.type === "file" ||
+                                          (f?.path &&
+                                            !String(f.path).endsWith("/") &&
+                                            f?.type !== "dir" &&
+                                            f?.type !== "tree")
+                                      ).length;
+                                      const skipClientContentHydrate =
+                                        refetchFileCount >=
+                                        LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD;
+
                                       // CRITICAL: Fetch file content for small text files and store in overrides
                                       // This ensures files have content when pushing to Nostr
                                       // Only fetch small files (< 50KB) to avoid quota issues
@@ -20102,25 +20134,34 @@ export function RepoCodePage() {
                                         "bat",
                                         "cmd",
                                       ];
-                                      const filesToFetch = newFiles
-                                        .filter(
-                                          (f: any) =>
-                                            f.type === "file" &&
-                                            f.size &&
-                                            f.size < MAX_FILE_SIZE_FOR_CONTENT
-                                        )
-                                        .filter((f: any) => {
-                                          const ext =
-                                            f.path
-                                              .split(".")
-                                              .pop()
-                                              ?.toLowerCase() || "";
-                                          return (
-                                            textFileExtensions.includes(ext) ||
-                                            !f.path.includes(".")
-                                          );
-                                        })
-                                        .slice(0, 100); // Limit to 100 files to avoid timeout
+                                      const filesToFetch = skipClientContentHydrate
+                                        ? []
+                                        : newFiles
+                                            .filter(
+                                              (f: any) =>
+                                                f.type === "file" &&
+                                                f.size &&
+                                                f.size < MAX_FILE_SIZE_FOR_CONTENT
+                                            )
+                                            .filter((f: any) => {
+                                              const ext =
+                                                f.path
+                                                  .split(".")
+                                                  .pop()
+                                                  ?.toLowerCase() || "";
+                                              return (
+                                                textFileExtensions.includes(
+                                                  ext
+                                                ) || !f.path.includes(".")
+                                              );
+                                            })
+                                            .slice(0, 100); // Limit to 100 files to avoid timeout
+
+                                      if (skipClientContentHydrate) {
+                                        console.log(
+                                          `⚡ [Refetch] Skipping client file-content hydrate (${refetchFileCount} files ≥ ${LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD}). Push will sync bridge from forge tip.`
+                                        );
+                                      }
 
                                       // CRITICAL: Fetch file content for small text files and store in overrides
                                       // This ensures files have content when pushing to Nostr.
@@ -20481,36 +20522,27 @@ export function RepoCodePage() {
                                         }
                                       }
 
-                                      // CRITICAL: Only mark as having unpushed edits if:
-                                      // 1. Repo was previously live on Nostr (has event ID)
-                                      // 2. AND there's an actual diff (files/metadata changed)
-                                      // This ensures the "Push to Nostr" button appears after refetch if there are changes
+                                      // Forge Refetch replaces the tree with upstream — that is NOT a
+                                      // local edit. Marking dirty forced Push into N× file-content (429s)
+                                      // instead of sync-from-source. Owner Push still works; post-refetch
+                                      // hint nudges announce of the forge tip.
                                       if (repoIndex >= 0 && repos[repoIndex]) {
                                         const repoToUpdate = repos[repoIndex];
                                         const wasLive =
                                           existingRepo.lastNostrEventId ||
                                           existingRepo.nostrEventId ||
                                           existingRepo.syncedFromNostr;
+                                        repoToUpdate.hasUnpushedEdits = false;
                                         if (wasLive && hasDiff) {
-                                          repoToUpdate.hasUnpushedEdits = true;
-                                          markRepoAsEdited(
-                                            resolvedParams.repo,
-                                            resolvedParams.entity
-                                          );
                                           console.log(
-                                            `📝 [Refetch] Marked repo as having unpushed edits after refetch (diff detected)`
+                                            `✅ [Refetch] Forge tip moved (diff vs prior local cache) — keeping clean tip for Push (sync-from-source), not hasUnpushedEdits`
                                           );
                                         } else if (wasLive && !hasDiff) {
-                                          // No diff - clear unpushed edits flag if it was set
-                                          repoToUpdate.hasUnpushedEdits = false;
                                           console.log(
                                             `✅ [Refetch] No diff detected - repo is in sync with GitHub`
                                           );
                                         } else if (!wasLive && hasDiff) {
-                                          // Repo wasn't live, but now has changes from GitHub - mark as local with changes
-                                          // This will show "Push to Nostr" button for local repos
-                                          repoToUpdate.hasUnpushedEdits = false; // Local repos don't use this flag
-                                          repoToUpdate.status = "local"; // Ensure it's marked as local
+                                          repoToUpdate.status = "local";
                                           console.log(
                                             `📝 [Refetch] Local repo updated from GitHub (not yet pushed to Nostr)`
                                           );
@@ -20598,7 +20630,7 @@ export function RepoCodePage() {
                                         alert(
                                           `✅ Refetched from GitHub (${savedFileCount} files).\n\n` +
                                             `Your local file tree now matches the source. Nostr-only PRs/issues still exist on relays and may still appear in gittr—their saved diffs are not automatically checked against these new files.\n\n` +
-                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr so everyone gets the same repo state.`
+                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr (bridge syncs the GitHub tip — no per-file upload for large repos).`
                                         );
                                         window.location.reload();
                                       }
