@@ -177,6 +177,7 @@ Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](d
 
 - **Big files** sit on git servers (bridge, GitHub, GitLab, …); Nostr events hold `clone` / `source` URLs and small embedded bits (e.g. README).
 - **Browser** keeps keys, settings, and repo metadata in `localStorage` (encrypted where applicable). The hosted API processes payments and git proxies; it does not store your Nostr/Lightning secrets.
+- **Server-only** (production `/opt/ngit/data/`): notification consent + CVE bot pending/dedup JSON — never deploy these from a laptop; see [SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md).
 - **Fetch order**: embedded → published `clone[]`/`source` (non-GRASP before GRASP) → bridge / `GET /api/git/repo-files` → forge APIs; well-known GRASP mirrors inferred only after Nostr EOSE if still no clones. Full flow: [docs/FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md). Home Freebox/NAS clones must be reachable from the **gittr server**, not only your browser.
 
 Deploy: hosted ([SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)) or local UI + `NEXT_PUBLIC_API_URL` ([LOCAL_SETUP.md](docs/LOCAL_SETUP.md), [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)).

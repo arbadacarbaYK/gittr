@@ -300,7 +300,18 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 
 **Security audit (Dependencies tab):** the user-facing audit UI is gated behind `NEXT_PUBLIC_SECURITY_AUDIT_UI=1`. `/api/security/audit` is always on. Confirmed = lockfile-pinned version in range (not range-min); bot alerts use `eligibleCveAdvisories` (confirmed + direct + CRITICAL/HIGH). Issue markdown: `cve-issue-format.ts`.
 
-**Notifications (kind 30078):** Settings → Notifications → Save publishes kind **30078** `d=gittr/notifications` with all channel + event toggles (multi-browser). Telegram User ID registers via `POST /api/notifications/consent` into `data/notifications-consent.json` (not on relays). Recipient DMs go through `POST /api/notifications/deliver` (looks up the **recipient’s** consent — not the actor’s localStorage). Legacy `d=gittr/security-cve` is still hydrated. CVE bot: `npx tsx scripts/cve-bot.mts` (default = scan + queue to `data/cve-bot-pending.json`, **no DMs**); after review: `CVE_BOT_SEND_PENDING=1` to publish issues + deliver; full auto only with `CVE_BOT_ENABLED=1`. Opted-in = `events.security_cve` on 30078. **Freshness:** bot only alerts when gittr bridge tip **equals** Nostr kind **30618** HEAD tip; no tip or tip mismatch → skip. Users should **sync from source (if GitHub/forge moved) + Push** so the announcement matches the mirror — browser-only refetch without Push does not fix mismatch. Help: `/help#security-alerts`.
+**Notifications (kind 30078):** Settings → Notifications → Save publishes kind **30078** `d=gittr/notifications` with all channel + event toggles (multi-browser). Telegram User ID registers via `POST /api/notifications/consent` into **server-only** `data/notifications-consent.json` (not on relays). Recipient DMs go through `POST /api/notifications/deliver` (looks up the **recipient’s** consent — not the actor’s localStorage). Legacy `d=gittr/security-cve` is still hydrated. CVE bot: `npx tsx scripts/cve-bot.mts` (default = scan + queue to `data/cve-bot-pending.json`, **no DMs**); after review: `CVE_BOT_SEND_PENDING=1` to publish issues + deliver; full auto only with `CVE_BOT_ENABLED=1`. Opted-in = `events.security_cve` on 30078. **Freshness:** bot only alerts when gittr bridge tip **equals** Nostr kind **30618** HEAD tip; no tip or tip mismatch → skip. Users should **sync from source (if GitHub/forge moved) + Push** so the announcement matches the mirror — browser-only refetch without Push does not fix mismatch. Help: `/help#security-alerts`.
+
+**Server-only runtime data (`/opt/ngit/data`):** these JSON files are written by the live server / CVE bot and must **never** be uploaded from a laptop (local is always older or empty). Deploy scripts may `mkdir -p` the directory only — never `rsync`/`scp`/`--delete` into it.
+
+| File | Purpose |
+|------|---------|
+| `/opt/ngit/data/notifications-consent.json` | Telegram IDs + delivery opt-ins (`NOTIFICATIONS_CONSENT_PATH`) |
+| `/opt/ngit/data/cve-bot-pending.json` | CVE review queue (`CVE_BOT_PENDING_PATH`) |
+| `/opt/ngit/data/cve-bot-dedup.json` | Already-alerted keys (`CVE_BOT_DEDUP_PATH`) |
+| `/opt/ngit/data/cve-consent.json` | Legacy name — prefer notifications-consent |
+
+Gitignore covers `data/` and those filenames. Back up this tree with bridge secrets; restore only intentionally.
 
 **CVE bot — review first, then mass-send:** daily timer runs `npx tsx scripts/cve-bot.mts` with **`CVE_BOT_ENABLED` unset/`0`**. Opt-ins come from relay kind 30078 **and** `data/notifications-consent.json` (`events.security_cve`). Scans only succeed when the repo has **bridge files on gittr**; if kind **30618** HEAD ≠ bridge tip, that repo is skipped (no stale-tree alerts). Candidates go to **`/opt/ngit/data/cve-bot-pending.json`** (no issues, no DMs). After review:
 
@@ -345,4 +356,4 @@ sudo systemctl restart gittr-frontend
 # bridge: as git-nostr — pull, make, restart git-nostr-bridge
 ```
 
-Backups: `git-nostr-bridge.json`, `git-nostr-db.sqlite`, `git-nostr-repositories/`, `ui/.env.local`.
+Backups: `git-nostr-bridge.json`, `git-nostr-db.sqlite`, `git-nostr-repositories/`, `ui/.env.local`, and **`/opt/ngit/data/`** (notification consent + CVE bot pending/dedup — server-owned, never overwrite from laptop deploy).

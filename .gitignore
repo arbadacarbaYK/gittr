@@ -10,8 +10,13 @@ build
 # editors
 .DS_Store
 
-# runtime
+# runtime — server-owned on Hetzner (/opt/ngit/data). Never commit or deploy from laptop:
+# notifications-consent.json, cve-bot-pending.json, cve-bot-dedup.json, cve-consent.json
 data
+**/notifications-consent.json
+**/cve-consent.json
+**/cve-bot-pending.json
+**/cve-bot-dedup.json
 
 # env
 .env.local

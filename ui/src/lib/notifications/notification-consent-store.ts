@@ -1,8 +1,17 @@
 /**
  * Server-side notification delivery prefs.
  * Telegram userId stays here — never on public relays.
+ *
+ * Runtime file (production: /opt/ngit/data/notifications-consent.json) is
+ * server-owned. Deploy must never upload/overwrite it from a laptop.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 import { type EventKey, DEFAULT_PREFS } from "./prefs";
@@ -19,6 +28,18 @@ export type NotificationConsentStore = {
   updatedAt?: string;
   byPubkey: Record<string, NotificationConsentRecord>;
 };
+
+export class ConsentStoreUnreadableError extends Error {
+  constructor(file: string, cause?: unknown) {
+    super(
+      `notification consent store unreadable at ${file} — refusing to treat as empty (would risk wiping opt-ins)`
+    );
+    this.name = "ConsentStoreUnreadableError";
+    if (cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = cause;
+    }
+  }
+}
 
 export function resolveNotificationConsentPath(explicit?: string): string {
   if (explicit) return explicit;
@@ -71,30 +92,76 @@ function migrateLegacyRecord(raw: any): NotificationConsentRecord | null {
   return null;
 }
 
+function parseConsentStoreFromDisk(file: string): NotificationConsentStore {
+  const raw = JSON.parse(readFileSync(file, "utf8")) as {
+    updatedAt?: string;
+    byPubkey?: Record<string, unknown>;
+  };
+  const byPubkey: Record<string, NotificationConsentRecord> = {};
+  for (const [pk, val] of Object.entries(raw.byPubkey || {})) {
+    const migrated = migrateLegacyRecord(val);
+    if (migrated) byPubkey[pk.toLowerCase()] = migrated;
+  }
+  return { updatedAt: raw.updatedAt, byPubkey };
+}
+
+/**
+ * Load consent store. Missing file → empty (create path).
+ * Corrupt / unreadable existing file → throws (do not silently empty).
+ */
 export function loadNotificationConsentStore(
   path?: string
 ): NotificationConsentStore {
   const file = resolveNotificationConsentPath(path);
+  if (!existsSync(file)) return { byPubkey: {} };
   try {
-    if (!existsSync(file)) return { byPubkey: {} };
-    const raw = JSON.parse(readFileSync(file, "utf8")) as {
-      updatedAt?: string;
-      byPubkey?: Record<string, unknown>;
-    };
-    const byPubkey: Record<string, NotificationConsentRecord> = {};
-    for (const [pk, val] of Object.entries(raw.byPubkey || {})) {
-      const migrated = migrateLegacyRecord(val);
-      if (migrated) byPubkey[pk.toLowerCase()] = migrated;
+    return parseConsentStoreFromDisk(file);
+  } catch (e) {
+    if (e instanceof ConsentStoreUnreadableError) throw e;
+    throw new ConsentStoreUnreadableError(file, e);
+  }
+}
+
+/** Soft load for delivery lookups — never invent empty over a corrupt file. */
+export function getNotificationConsent(
+  pubkey: string,
+  path?: string
+): NotificationConsentRecord | null {
+  try {
+    const store = loadNotificationConsentStore(path);
+    return store.byPubkey[pubkey.toLowerCase()] || null;
+  } catch (e) {
+    if (e instanceof ConsentStoreUnreadableError) {
+      console.error("[notification-consent]", e.message);
+      return null;
     }
-    return { updatedAt: raw.updatedAt, byPubkey };
+    throw e;
+  }
+}
+
+export type SaveConsentOptions = {
+  /**
+   * Allow writing `{ byPubkey: {} }` over an existing non-empty file.
+   * Default false — protects against load-error / empty-deploy wipes.
+   * Per-user opt-out still uses upsert (keeps the pubkey row).
+   */
+  allowEmptyOverwrite?: boolean;
+};
+
+function onDiskPubkeyCount(file: string): number {
+  if (!existsSync(file)) return 0;
+  try {
+    return Object.keys(parseConsentStoreFromDisk(file).byPubkey).length;
   } catch {
-    return { byPubkey: {} };
+    // Unreadable existing file: treat as non-empty so we refuse empty wipe
+    return Number.POSITIVE_INFINITY;
   }
 }
 
 export function saveNotificationConsentStore(
   store: NotificationConsentStore,
-  path?: string
+  path?: string,
+  options?: SaveConsentOptions
 ): string {
   const file = resolveNotificationConsentPath(path);
   mkdirSync(dirname(file), { recursive: true });
@@ -102,11 +169,24 @@ export function saveNotificationConsentStore(
   const canonical = file.includes("cve-consent.json")
     ? file.replace(/cve-consent\.json$/, "notifications-consent.json")
     : file;
+  const incomingCount = Object.keys(store.byPubkey || {}).length;
+  const existingCount = onDiskPubkeyCount(canonical);
+  if (
+    incomingCount === 0 &&
+    existingCount > 0 &&
+    !options?.allowEmptyOverwrite
+  ) {
+    throw new Error(
+      `refusing to overwrite non-empty notification consent store (${existingCount} pubkey(s)) with empty store at ${canonical}; set allowEmptyOverwrite if intentional`
+    );
+  }
   const body: NotificationConsentStore = {
     updatedAt: new Date().toISOString(),
     byPubkey: store.byPubkey,
   };
-  writeFileSync(canonical, JSON.stringify(body, null, 2) + "\n");
+  const tmp = `${canonical}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmp, JSON.stringify(body, null, 2) + "\n");
+  renameSync(tmp, canonical);
   return canonical;
 }
 
@@ -130,14 +210,6 @@ export function upsertNotificationConsent(
   store.byPubkey[pk] = next;
   saveNotificationConsentStore(store, path);
   return next;
-}
-
-export function getNotificationConsent(
-  pubkey: string,
-  path?: string
-): NotificationConsentRecord | null {
-  const store = loadNotificationConsentStore(path);
-  return store.byPubkey[pubkey.toLowerCase()] || null;
 }
 
 /** Effective event toggle: consent store → default prefs. */
