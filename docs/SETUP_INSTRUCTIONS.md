@@ -264,7 +264,7 @@ NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 
 **Repo About (Settings → Description):** Owner text is authoritative. Saving Settings writes localStorage, publishes kind **30617** `description`, and notifies the Code page (`gittr:repos-updated`). GitHub mirror hydrate must not replace a non-placeholder About (stars/forks/activity still sync). See [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md).
 
-**Folder uploads respect .gitignore:** the repo Upload page filters staged files against every `.gitignore` in the uploaded tree (root + nested, incl. `!` negation, `**`, dir patterns) and always drops `.git/` internals — so drag & dropping a working copy cannot leak `node_modules`, build output, or `.env` secrets. `.gitignore` files themselves are kept. Logic + tests: `ui/src/lib/repos/gitignore-upload-filter.ts`.
+**Folder uploads respect .gitignore:** the repo Upload page filters staged files against (1) every existing `.gitignore` already in the browser for that repo (local overrides / IndexedDB drafts) and (2) every `.gitignore` in the uploaded tree (root + nested). Same path: the **uploaded** `.gitignore` wins. Supports `!` negation, `**`, dir patterns; always drops `.git/` internals. Filtering runs before FileReader / IndexedDB so ignored junk never lands in either storage. `.gitignore` files themselves are kept. Logic + tests: `ui/src/lib/repos/gitignore-upload-filter.ts`, `load-existing-gitignores.ts`.
 
 **gittr-mcp:** filter/CORS/`uploadpack` fixes on the git vhost apply to MCP users automatically when they clone that host. MCP **code** updates need `git pull` or a new `.mcpb` — see [gittr-mcp README](https://github.com/arbadacarbaYK/gittr-mcp#do-mcp-users-get-gittrs-filter--cors-server-fixes).
 

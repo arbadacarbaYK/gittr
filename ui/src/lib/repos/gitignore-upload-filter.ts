@@ -1,10 +1,12 @@
-import type { StagedUploadFile } from "@/lib/repos/upload-paths";
-
 /**
- * Respect .gitignore on folder uploads: files matched by .gitignore rules in
- * the uploaded tree are skipped before staging (node_modules, .env, dist, …),
- * and .git/ internals are always skipped. This mirrors what `git add` would
- * do, so a drag & dropped working copy never leaks ignored files or secrets.
+ * Respect .gitignore on folder uploads: files matched by .gitignore rules are
+ * skipped before staging (node_modules, .env, dist, …), and .git/ internals are
+ * always skipped. This mirrors what `git add` would do, so a drag & dropped
+ * working copy never leaks ignored files or secrets.
+ *
+ * Rule sources (later path wins when the same `.gitignore` path appears twice):
+ * 1. Existing repo `.gitignore` bodies (local overrides / IndexedDB / index)
+ * 2. `.gitignore` files in the staged upload batch — preferred / overwrite
  *
  * Supported gitignore syntax (the practical subset):
  * comments/blank lines, `!` negation (last match wins), trailing `/` for
@@ -12,11 +14,18 @@ import type { StagedUploadFile } from "@/lib/repos/upload-paths";
  * scoped to their directory. Re-including inside an ignored directory is not
  * supported (matches git's own limitation).
  */
+import type { StagedUploadFile } from "@/lib/repos/upload-paths";
 
 type IgnoreRule = {
   regex: RegExp;
   negated: boolean;
   dirOnly: boolean;
+};
+
+export type ExistingGitignoreBody = {
+  /** Repo-relative path, e.g. `.gitignore` or `packages/app/.gitignore` */
+  path: string;
+  content: string;
 };
 
 function globToRegExpSource(glob: string): string {
@@ -111,7 +120,9 @@ export function isPathGitignored(path: string, rules: IgnoreRule[]): boolean {
 
 export function isGitInternalPath(path: string): boolean {
   const clean = path.replace(/^\/+/, "");
-  return clean === ".git" || clean.startsWith(".git/") || clean.includes("/.git/");
+  return (
+    clean === ".git" || clean.startsWith(".git/") || clean.includes("/.git/")
+  );
 }
 
 export type GitignoreSplitResult = {
@@ -119,31 +130,75 @@ export type GitignoreSplitResult = {
   skipped: StagedUploadFile[];
 };
 
+function isGitignorePath(path: string): boolean {
+  const base = path.split("/").pop();
+  return base === ".gitignore" && !isGitInternalPath(path);
+}
+
+function baseDirForGitignorePath(path: string): string {
+  return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+}
+
 /**
- * Split staged uploads into kept / skipped using the .gitignore files present
- * in the staged set itself. `.gitignore` files are always kept (git tracks
- * them); `.git/` internals are always skipped.
+ * Merge existing-repo and staged `.gitignore` bodies. Same path: staged wins
+ * (the upload's newer ignore file is preferred before files are read/stored).
+ */
+export function mergeGitignoreBodies(
+  existing: ExistingGitignoreBody[],
+  stagedBodies: ExistingGitignoreBody[]
+): ExistingGitignoreBody[] {
+  const byPath = new Map<string, string>();
+  for (const row of existing) {
+    if (!row?.path || typeof row.content !== "string") continue;
+    if (!isGitignorePath(row.path)) continue;
+    byPath.set(row.path.replace(/^\/+/, ""), row.content);
+  }
+  for (const row of stagedBodies) {
+    if (!row?.path || typeof row.content !== "string") continue;
+    if (!isGitignorePath(row.path)) continue;
+    byPath.set(row.path.replace(/^\/+/, ""), row.content);
+  }
+  return [...byPath.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, content]) => ({ path, content }));
+}
+
+function rulesFromBodies(bodies: ExistingGitignoreBody[]): IgnoreRule[] {
+  const rules: IgnoreRule[] = [];
+  for (const { path, content } of bodies) {
+    rules.push(...parseGitignoreRules(content, baseDirForGitignorePath(path)));
+  }
+  return rules;
+}
+
+/**
+ * Split staged uploads into kept / skipped.
+ *
+ * - Always skip `.git/` internals
+ * - Always keep `.gitignore` files themselves
+ * - Apply rules from `existingGitignores` plus any `.gitignore` in `staged`
+ *   (staged content for the same path replaces existing)
  */
 export async function splitStagedUploadsByGitignore(
-  staged: StagedUploadFile[]
+  staged: StagedUploadFile[],
+  existingGitignores: ExistingGitignoreBody[] = []
 ): Promise<GitignoreSplitResult> {
-  const gitignoreEntries = staged.filter(({ path }) => {
-    const base = path.split("/").pop();
-    return base === ".gitignore" && !isGitInternalPath(path);
-  });
-
-  const rules: IgnoreRule[] = [];
-  for (const entry of gitignoreEntries) {
+  const stagedBodies: ExistingGitignoreBody[] = [];
+  for (const entry of staged) {
+    if (!isGitignorePath(entry.path)) continue;
     try {
-      const content = await entry.file.text();
-      const dir = entry.path.includes("/")
-        ? entry.path.slice(0, entry.path.lastIndexOf("/"))
-        : "";
-      rules.push(...parseGitignoreRules(content, dir));
+      stagedBodies.push({
+        path: entry.path.replace(/^\/+/, ""),
+        content: await entry.file.text(),
+      });
     } catch {
       /* unreadable .gitignore — ignore it */
     }
   }
+
+  const rules = rulesFromBodies(
+    mergeGitignoreBodies(existingGitignores, stagedBodies)
+  );
 
   const kept: StagedUploadFile[] = [];
   const skipped: StagedUploadFile[] = [];
@@ -152,8 +207,7 @@ export async function splitStagedUploadsByGitignore(
       skipped.push(item);
       continue;
     }
-    const base = item.path.split("/").pop();
-    if (base === ".gitignore") {
+    if (isGitignorePath(item.path)) {
       kept.push(item);
       continue;
     }

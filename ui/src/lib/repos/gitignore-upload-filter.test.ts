@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isGitInternalPath,
   isPathGitignored,
+  mergeGitignoreBodies,
   parseGitignoreRules,
   splitStagedUploadsByGitignore,
 } from "./gitignore-upload-filter";
@@ -85,7 +86,7 @@ describe("isGitInternalPath", () => {
 
 describe("splitStagedUploadsByGitignore", () => {
   const fakeFile = (content: string): File =>
-    ({ text: async () => content }) as unknown as File;
+    ({ text: async () => content } as unknown as File);
 
   it("skips ignored files, keeps .gitignore itself, drops .git internals", async () => {
     const staged = [
@@ -112,5 +113,44 @@ describe("splitStagedUploadsByGitignore", () => {
     const { kept, skipped } = await splitStagedUploadsByGitignore(staged);
     expect(kept.map((s) => s.path)).toEqual(["README.md"]);
     expect(skipped.map((s) => s.path)).toEqual([".git/HEAD"]);
+  });
+
+  it("applies existing repo .gitignore when the batch has none", async () => {
+    const staged = [
+      { path: ".env", file: fakeFile("SECRET=1") },
+      { path: "src/index.ts", file: fakeFile("code") },
+    ];
+    const { kept, skipped } = await splitStagedUploadsByGitignore(staged, [
+      { path: ".gitignore", content: ".env\n" },
+    ]);
+    expect(kept.map((s) => s.path)).toEqual(["src/index.ts"]);
+    expect(skipped.map((s) => s.path)).toEqual([".env"]);
+  });
+
+  it("prefers staged .gitignore over existing for the same path", async () => {
+    const staged = [
+      { path: ".gitignore", file: fakeFile("# empty — allow .env\n") },
+      { path: ".env", file: fakeFile("SECRET=1") },
+      { path: "src/index.ts", file: fakeFile("code") },
+    ];
+    const { kept, skipped } = await splitStagedUploadsByGitignore(staged, [
+      { path: ".gitignore", content: ".env\n" },
+    ]);
+    expect(kept.map((s) => s.path).sort()).toEqual([
+      ".env",
+      ".gitignore",
+      "src/index.ts",
+    ]);
+    expect(skipped).toEqual([]);
+  });
+});
+
+describe("mergeGitignoreBodies", () => {
+  it("lets staged overwrite existing at the same path", () => {
+    const merged = mergeGitignoreBodies(
+      [{ path: ".gitignore", content: ".env\n" }],
+      [{ path: ".gitignore", content: "*.log\n" }]
+    );
+    expect(merged).toEqual([{ path: ".gitignore", content: "*.log\n" }]);
   });
 });

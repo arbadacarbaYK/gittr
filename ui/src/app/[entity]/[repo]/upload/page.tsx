@@ -16,6 +16,7 @@ import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
 import { ensureLocalRepoForEdit } from "@/lib/repos/ensure-local-repo-for-edit";
 import { splitStagedUploadsByGitignore } from "@/lib/repos/gitignore-upload-filter";
+import { loadExistingGitignoreBodies } from "@/lib/repos/load-existing-gitignores";
 import {
   ADD_FILES_STORAGE_FULL_HINT,
   addFilesToRepo,
@@ -176,8 +177,8 @@ export default function UploadPage({
     }
   }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
-  // Merge, then re-filter the whole set against the .gitignore files it
-  // contains (works no matter which order files/folders were added in).
+  // Merge, then re-filter against existing repo .gitignore(s) plus any in the
+  // staged set (upload's .gitignore for the same path wins).
   const stageWithGitignore = useCallback(
     async (
       prev: StagedFile[],
@@ -185,7 +186,14 @@ export default function UploadPage({
     ): Promise<StagedFile[]> => {
       const merged = mergeStagedUploads(prev, incoming);
       try {
-        const { kept, skipped } = await splitStagedUploadsByGitignore(merged);
+        const existing = await loadExistingGitignoreBodies(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const { kept, skipped } = await splitStagedUploadsByGitignore(
+          merged,
+          existing
+        );
         if (skipped.length > 0) {
           setStatus(
             `Skipped ${skipped.length} ignored file(s) (.gitignore / .git internals)`
@@ -196,7 +204,7 @@ export default function UploadPage({
         return merged;
       }
     },
-    []
+    [resolvedParams.entity, resolvedParams.repo]
   );
 
   const addFromFileList = useCallback(
@@ -578,6 +586,10 @@ export default function UploadPage({
         Before adding files, gittr syncs to the published tip when you have no
         unpushed local edits — then your upload overwrites same paths on top. If
         you already have unpushed changes, upload merges into those instead.
+        Files matching this repo&apos;s{" "}
+        <code className="text-xs">.gitignore</code> (and any{" "}
+        <code className="text-xs">.gitignore</code> in the upload — that one
+        wins for the same path) are skipped before they are stored.
       </p>
 
       <div className="space-y-4">
