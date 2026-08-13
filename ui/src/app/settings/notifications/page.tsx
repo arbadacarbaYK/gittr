@@ -365,20 +365,23 @@ export default function NotificationsPage() {
                       }))
                     }
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Open{" "}
+                  <p className="text-xs text-gray-300 mt-1">
+                    <strong className="text-white">Do this first:</strong> open{" "}
                     <a
                       href="https://t.me/gittrupdatebot"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-purple-400 hover:text-purple-300"
+                      className="font-semibold text-[#5eead4] underline underline-offset-2 hover:text-[#99f6e4]"
                     >
-                      @gittrupdatebot
+                      t.me/gittrupdatebot
                     </a>
-                    , send <code className="text-gray-300">/start</code>, and
-                    paste the User ID. It is stored on this server for delivery
-                    — not published to public relays. You can enable Nostr and
-                    Telegram together.
+                    , tap <strong className="text-white">Start</strong> (or send{" "}
+                    <code className="rounded bg-black/40 px-1 text-gray-200">
+                      /start
+                    </code>
+                    ), then paste the User ID here. Needed for dependency notices
+                    and other Telegram DMs. Stored on this server only — not on
+                    public relays. You can enable Nostr and Telegram together.
                   </p>
                 </div>
               </div>
@@ -402,34 +405,77 @@ export default function NotificationsPage() {
                 ["mention", "I am @mentioned"],
                 ["bounty_funded", "My Bounties"],
                 ["bounty_released", "Bounty released to me"],
-                [
-                  "security_cve",
-                  "Security: published CRITICAL/HIGH advisory matches a direct dependency on my gittr-hosted repo tip (version match — please verify; also early pre-CVE tips by DM)",
-                ],
               ] as [EventKey, string][]
-            )
-              .filter(
-                ([key]) => key !== "security_cve" || SECURITY_AUDIT_UI_ENABLED
-              )
-              .map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex items-center gap-2 cursor-pointer"
-                >
+            ).map(([key, label]) => (
+              <label
+                key={key}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!prefs.events[key]}
+                  onChange={() => toggleEvent(key)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+
+            {SECURITY_AUDIT_UI_ENABLED && (
+              <div className="space-y-2 border-t border-[#383B42] pt-3 mt-1">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={!!prefs.events[key]}
-                    onChange={() => toggleEvent(key)}
+                    className="mt-1"
+                    checked={!!prefs.events.security_cve}
+                    onChange={() => toggleEvent("security_cve")}
                   />
-                  <span>{label}</span>
+                  <span>
+                    Security: published CRITICAL/HIGH advisory matches a direct
+                    dependency on my gittr-hosted repo tip (version match —
+                    please verify; also early pre-CVE tips by DM)
+                  </span>
                 </label>
-              ))}
+                <p className="ml-6 text-xs text-gray-300">
+                  <strong className="text-white">For Telegram DMs:</strong> first
+                  open{" "}
+                  <a
+                    href="https://t.me/gittrupdatebot"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#5eead4] underline underline-offset-2 hover:text-[#99f6e4]"
+                  >
+                    t.me/gittrupdatebot
+                  </a>
+                  , tap <strong className="text-white">Start</strong> / send{" "}
+                  <code className="rounded bg-black/40 px-1 text-gray-200">
+                    /start
+                  </code>
+                  , paste the User ID under{" "}
+                  <strong className="text-white">Telegram</strong> above, turn
+                  Telegram on, then Save. Without that chat, CVE notices cannot
+                  reach Telegram (Nostr DMs still can if Nostr is enabled).
+                </p>
+              </div>
+            )}
           </div>
 
           {SECURITY_AUDIT_UI_ENABLED && (
             <div className="space-y-1.5 rounded border border-[#383B42] bg-black/20 p-3 text-xs text-gray-400">
               <p className="font-semibold text-gray-300">
-                About security (CVE) alerts
+                About dependency notices (CVE)
+              </p>
+              <p className="text-gray-300">
+                <strong className="text-white">Telegram setup (required for TG):</strong>{" "}
+                <a
+                  href="https://t.me/gittrupdatebot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[#5eead4] underline underline-offset-2 hover:text-[#99f6e4]"
+                >
+                  Open @gittrupdatebot
+                </a>{" "}
+                → Start → copy User ID → paste in the Telegram section → enable
+                Telegram → Save.
               </p>
               <p>
                 Only published lockfile matches (direct dependency +
@@ -466,7 +512,7 @@ export default function NotificationsPage() {
                   href="/help#security-alerts"
                   className="text-purple-400 hover:text-purple-300"
                 >
-                  Help → Security alerts
+                  Help → Dependency notices
                 </a>
               </p>
             </div>
