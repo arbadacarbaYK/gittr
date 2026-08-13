@@ -76,8 +76,14 @@ export async function telegramSendMessage(opts: {
 
 export function emojiForNotificationTitle(title: string): string {
   const titleLower = title.toLowerCase();
-  if (titleLower.includes("security") || titleLower.includes("vulnerabilit"))
-    return "🔒";
+  if (
+    titleLower.includes("security") ||
+    titleLower.includes("vulnerabilit") ||
+    titleLower.includes("advisory") ||
+    titleLower.includes("dependency notice") ||
+    titleLower.includes("[deps]")
+  )
+    return "📋";
   if (titleLower.includes("bounty")) return "💰";
   if (titleLower.includes("pull request") || titleLower.includes("pr"))
     return "🔀";

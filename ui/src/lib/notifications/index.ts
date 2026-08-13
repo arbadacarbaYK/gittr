@@ -163,10 +163,10 @@ export function formatNotificationMessage(
 
     case "security_cve":
       return {
-        title: `Security alert for ${repo}`,
+        title: `Dependency notice for ${repo}`,
         message:
           context.issueTitle ||
-          "A confirmed CRITICAL/HIGH vulnerability affects a pinned direct dependency",
+          "A published CRITICAL/HIGH advisory matches a pinned direct dependency (version match — please verify whether your code is affected)",
         url: context.url,
       };
 

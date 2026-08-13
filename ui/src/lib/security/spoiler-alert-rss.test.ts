@@ -120,8 +120,9 @@ describe("spoilerDedupKey / formatSpoilerNotificationDm", () => {
       repoName: "tides",
       matches,
     });
-    expect(dm.title).toMatch(/^Early security warning: tides/);
+    expect(dm.title).toMatch(/^Early dependency notice: tides/);
     expect(dm.message).toContain("not an OSV/CVE confirmation");
     expect(dm.message).toContain("Not shown on the Dependencies tab");
+    expect(dm.message).toContain("please verify");
   });
 });

@@ -404,7 +404,7 @@ export default function NotificationsPage() {
                 ["bounty_released", "Bounty released to me"],
                 [
                   "security_cve",
-                  "Security: confirmed CRITICAL/HIGH CVE on a direct dependency in my gittr-hosted repo tip (also includes early pre-CVE warnings by DM)",
+                  "Security: published CRITICAL/HIGH advisory matches a direct dependency on my gittr-hosted repo tip (version match — please verify; also early pre-CVE tips by DM)",
                 ],
               ] as [EventKey, string][]
             )
@@ -432,19 +432,25 @@ export default function NotificationsPage() {
                 About security (CVE) alerts
               </p>
               <p>
-                Only confirmed lockfile matches (direct dependency +
-                CRITICAL/HIGH) on <strong className="text-gray-300">repos you own</strong>{" "}
-                that have code on gittr (created / imported / pushed here) — not
+                Only published lockfile matches (direct dependency +
+                CRITICAL/HIGH) on{" "}
+                <strong className="text-gray-300">repos you own</strong> that
+                have code on gittr (created / imported / pushed here) — not
                 watched or starred projects. Want coverage of someone else&apos;s
-                stack? Fork or import it under your account. Alerts need your{" "}
+                stack? Fork or import it under your account. A match means the
+                pinned version is in an advisory&apos;s range —{" "}
+                <strong className="text-gray-300">not</strong> automatic proof
+                that your app is exploitable; please verify. When we notify, we
+                open a normal Issues entry titled like a dependency notice (not
+                an “incident”), plus your Nostr/Telegram channels. Alerts need
+                your{" "}
                 <strong className="text-gray-300">Nostr announcement</strong>{" "}
                 (kind 30618 from Push) to match the tip on gittr — if they
                 disagree, we skip rather than warn from the wrong tree. After
                 GitHub (or another forge) moves on, sync that source onto gittr
                 and <strong className="text-gray-300">Push</strong> again so the
                 announcement catches up; a browser-only refetch without Push
-                does not fix the mismatch. Opt in + Save registers consent; mass
-                DMs are reviewed before send.
+                does not fix the mismatch. Opt in + Save registers consent.
               </p>
               <p>
                 The same Security toggle also enables private{" "}

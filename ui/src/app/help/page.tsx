@@ -2404,12 +2404,12 @@ export default function HelpPage() {
               </p>
               {SECURITY_AUDIT_UI_ENABLED && (
                 <p className="mt-2 text-sm text-gray-400">
-                  Security alerts are listed under{" "}
+                  Dependency notices are listed under{" "}
                   <a
                     href="#security-alerts"
                     className="text-purple-400 hover:text-purple-300"
                   >
-                    Security (CVE) Alerts
+                    Dependency notices (CVE)
                   </a>
                   .
                 </p>
@@ -2424,7 +2424,9 @@ export default function HelpPage() {
             {SECURITY_AUDIT_UI_ENABLED && (
               <HelpTopic
                 id="security-alerts"
-                title={<>Security (CVE) Alerts — no alarm spam, by design</>}
+                title={
+                  <>Dependency notices (CVE) — calm by design, verify before panic</>
+                }
               >
                 <p>
                   Supply-chain attacks on git forges are a hot topic. gittr
@@ -2473,8 +2475,11 @@ export default function HelpPage() {
                 <p className="mt-2">
                   <strong>How the message looks:</strong> Telegram / Nostr DMs
                   lead with the <strong>repo name</strong>, list at most a few
-                  findings, and link to the full security issue — not a wall of
-                  hex URLs or truncated advisory dumps.
+                  findings, and link to a tracking Issues entry on that repo —
+                  not a wall of hex URLs or truncated advisory dumps. Wording is
+                  deliberately calm: this is a{" "}
+                  <strong>dependency advisory notice</strong>, not a claim that
+                  the project is compromised.
                 </p>
                 <p className="mt-2">
                   <strong>How often does the check run?</strong> The audit runs
@@ -2489,14 +2494,19 @@ export default function HelpPage() {
                 </p>
                 <p className="mt-2">
                   <strong>How alerts reach you (Dependabot-style):</strong> when
-                  a confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
-                  <strong>direct</strong> pinned dependency on a repo that has
+                  a published <strong>CRITICAL or HIGH</strong> advisory matches
+                  a <strong>direct</strong> pinned dependency on a repo that has
                   code on <strong>gittr</strong> (created / imported / pushed
                   here — not merely announced from another client), the platform
-                  can open a security issue and notify you on the{" "}
+                  can open a normal <strong>Issues</strong> entry on that repo
+                  (for tracking) and notify you on the{" "}
                   <strong>same channels</strong> you enabled (Nostr and/or
-                  Telegram). All notification toggles (including Security) live
-                  in one kind{" "}
+                  Telegram). That entry is visible on the repo&apos;s Issues
+                  tab like any other issue — we avoid frightening “security
+                  incident” branding. A lockfile match still needs{" "}
+                  <strong>your</strong> check: whether your code actually uses
+                  the affected APIs. All notification toggles (including
+                  Security) live in one kind{" "}
                   <code className="bg-gray-800 px-1 rounded text-xs">
                     30078
                   </code>{" "}
@@ -2543,11 +2553,11 @@ export default function HelpPage() {
                   want alerts here.
                 </p>
                 <p className="mt-2">
-                  <strong>How alerts are sent:</strong> when you are opted in,
-                  the platform bot opens a security issue on that repo and DMs
-                  you (Nostr and/or Telegram per your prefs) for each new
-                  confirmed CRITICAL/HIGH finding. The same advisory is not
-                  re-sent on later scans.
+                  <strong>How notices are sent:</strong> when you are opted in,
+                  the platform bot opens a calm dependency-tracking Issues entry
+                  on that repo and DMs you (Nostr and/or Telegram per your
+                  prefs) for each new CRITICAL/HIGH lockfile match. The same
+                  advisory is not re-sent on later scans.
                 </p>
                 <p className="mt-2">
                   <strong>Early (pre-CVE) warnings — same opt-in:</strong> with
@@ -2564,9 +2574,9 @@ export default function HelpPage() {
                   <strong>direct</strong> dependency in that repo (often before
                   a CVE exists). There is no extra checkbox. These tips are{" "}
                   <strong>not</strong> shown on the Dependencies tab (that tab
-                  stays OSV/confirmed only), and we do not open a gittr issue for
-                  them. If the Spoiler feed is unreachable, Dependencies + normal
-                  CVE alerts keep working unchanged.
+                  stays OSV/confirmed only), and we do not open a gittr Issues
+                  entry for them. If the Spoiler feed is unreachable, Dependencies +
+                  normal dependency notices keep working unchanged.
                 </p>
                 <p className="mt-2">
                   <strong>One alert per problem — not per scan:</strong> each

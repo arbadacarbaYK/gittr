@@ -232,13 +232,13 @@ export function formatSpoilerNotificationDm(opts: {
   const n = opts.matches.length;
   const title =
     n === 1
-      ? `Early security warning: ${repo} — possible pre-CVE patch (${opts.matches[0]?.item.severity || "HIGH"})`
-      : `Early security warning: ${repo} — ${n} possible pre-CVE patches`;
+      ? `Early dependency notice: ${repo} — possible pre-CVE patch (${opts.matches[0]?.item.severity || "HIGH"})`
+      : `Early dependency notice: ${repo} — ${n} possible pre-CVE patches`;
 
   const lines: string[] = [];
   lines.push(`Repo: ${repo}`);
   lines.push(
-    "Early warning from public Vulnerability Spoiler Alert (not an OSV/CVE confirmation). Not shown on the Dependencies tab."
+    "Early tip from the public Vulnerability Spoiler Alert feed (not an OSV/CVE confirmation). Not shown on the Dependencies tab — please verify before acting."
   );
   lines.push("");
 
