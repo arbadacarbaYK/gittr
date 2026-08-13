@@ -31,7 +31,9 @@ function assertSafeIdentityPath(identity: string): void {
     throw new Error("deploy identity path rejected");
   }
   if (!identity.startsWith("/")) {
-    throw new Error("deploy identity path must be absolute (after ~ expansion)");
+    throw new Error(
+      "deploy identity path must be absolute (after ~ expansion)"
+    );
   }
 }
 

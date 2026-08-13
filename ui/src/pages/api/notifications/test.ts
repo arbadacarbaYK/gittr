@@ -1,4 +1,8 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  formatTelegramNotificationHtml,
+  telegramSendMessage,
+} from "@/lib/notifications/telegram-api";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -236,83 +240,55 @@ export default async function handler(
             error: "TELEGRAM_BOT_TOKEN not configured",
           };
         } else {
-          // Format the notification message with emojis and clickable link (same as send-telegram.ts)
-          // Telegram HTML: Use <a href="url">link text</a> for clickable links
-          // Escape HTML special characters in the URL
-          const escapedUrl = url
-            ? url
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-            : "";
-
-          // Add emoji based on event type (case-insensitive)
-          // Check in order: bounty first (before "issue" which might be in "bounty funded on issue")
-          const titleLower = title.toLowerCase();
-          let emoji = "🔔";
-          if (titleLower.includes("bounty")) emoji = "💰";
-          else if (
-            titleLower.includes("pull request") ||
-            titleLower.includes("pr")
-          )
-            emoji = "🔀";
-          else if (titleLower.includes("issue")) emoji = "📝";
-          else if (titleLower.includes("merged")) emoji = "✅";
-          else if (titleLower.includes("comment")) emoji = "💬";
-
-          // Format message with emoji, title, message, and clickable link
-          const linkText = url
-            ? `<a href="${escapedUrl}">🔗 View Details</a>`
-            : "";
-          const telegramMessage = `${emoji} <b>${title}</b>\n\n${message}${
-            url ? `\n\n${linkText}` : ""
-          }`;
-          const telegramUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
-
-          // Send DM to the user's Telegram user ID
-          try {
-            const telegramResponse = await fetch(telegramUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: userId,
-                text: telegramMessage,
-                parse_mode: "HTML",
-                disable_web_page_preview: false, // Allow link previews
-              }),
+          const { emoji, html: telegramMessage } =
+            formatTelegramNotificationHtml({
+              title: String(title),
+              message: String(message),
+              url: url ? String(url) : undefined,
+              linkLabel: "🔗 View Details",
             });
 
-            const telegramResult = await telegramResponse.json();
+          try {
+            const telegramResult = await telegramSendMessage({
+              botToken: telegramBotToken,
+              chatId: userId,
+              text: telegramMessage,
+              parseMode: "HTML",
+              disableWebPagePreview: false,
+            });
 
-            if (telegramResponse.ok) {
+            if (telegramResult.ok) {
               results.tests.telegram = {
                 success: true,
-                result: { status: "ok", message: "Telegram DM sent" },
+                result: {
+                  status: "ok",
+                  message: "Telegram DM sent",
+                  messageId: telegramResult.messageId,
+                },
                 constructed: {
                   userId,
                   title,
                   message,
                   url,
+                  emoji,
                   fullMessage: telegramMessage,
                   messageLength: telegramMessage.length,
-                  apiUrl: telegramUrl.replace(telegramBotToken, "***"),
-                  telegramResponse: telegramResult,
+                  telegramResponse: telegramResult.raw,
                 },
               };
             } else {
               results.tests.telegram = {
                 success: false,
-                error:
-                  telegramResult.description || "Failed to send Telegram DM",
+                error: telegramResult.error,
                 constructed: {
                   userId,
                   title,
                   message,
                   url,
+                  emoji,
                   fullMessage: telegramMessage,
                   messageLength: telegramMessage.length,
-                  apiUrl: telegramUrl.replace(telegramBotToken, "***"),
-                  telegramError: telegramResult,
+                  telegramError: telegramResult.raw,
                 },
               };
             }

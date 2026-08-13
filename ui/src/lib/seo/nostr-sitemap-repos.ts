@@ -219,7 +219,9 @@ export async function fetchSitemapRepoPathsFromNostr(
 }
 
 /** Daily / manual SEO index: longer timeout + force past SITEMAP_SKIP_NOSTR. */
-export async function fetchAndBuildSeoRepoIndex(): Promise<Map<string, number>> {
+export async function fetchAndBuildSeoRepoIndex(): Promise<
+  Map<string, number>
+> {
   return fetchSitemapRepoPathsFromNostr({
     timeoutMs: SEO_INDEX_RELAY_TIMEOUT_MS,
     force: true,

@@ -1,5 +1,8 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
-import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
+import {
+  handlePaymentOptionsRequest,
+  setPaymentCorsHeaders,
+} from "@/lib/api/cors";
 import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   validatePaymentAmount,

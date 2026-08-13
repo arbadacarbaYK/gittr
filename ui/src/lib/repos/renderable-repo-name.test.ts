@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
+
 import { isRenderableRepoName } from "./renderable-repo-name";
 
 describe("isRenderableRepoName", () => {

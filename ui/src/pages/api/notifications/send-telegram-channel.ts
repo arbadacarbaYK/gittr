@@ -1,4 +1,8 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  escapeTelegramHtml,
+  telegramSendMessage,
+} from "@/lib/notifications/telegram-api";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -10,13 +14,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res, req);
     return;
   }
 
-  // Set CORS headers
   setCorsHeaders(res, req);
 
   if (req.method !== "POST") {
@@ -31,7 +33,6 @@ export default async function handler(
       .json({ error: "missing_params", message: "Missing title or message" });
   }
 
-  // Get Telegram bot token and channel ID from env
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
   const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -52,53 +53,48 @@ export default async function handler(
   }
 
   try {
-    // Format the notification message with emojis for channel announcements
-    // Telegram HTML: Use <a href="url">link text</a> for clickable links
-    // Escape HTML special characters in the URL
-    const escapedUrl = url
-      ? url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      : "";
-
-    // Bounty announcements get special formatting (case-insensitive)
-    // Check in order: bounty first (before "issue" which might be in "bounty funded on issue")
-    const titleLower = title.toLowerCase();
+    const titleLower = String(title).toLowerCase();
     let emoji = "💰";
     if (titleLower.includes("bounty")) emoji = "💰";
     else if (titleLower.includes("released")) emoji = "🎉";
 
-    // Format message with emoji, title, message, and clickable link
-    const linkText = url ? `<a href="${escapedUrl}">🔗 View Details</a>` : "";
-    const telegramMessage = `${emoji} <b>${title}</b>\n\n${message}${
+    const escapedUrl = url ? escapeTelegramHtml(String(url)) : "";
+    const linkText = url
+      ? `<a href="${escapedUrl}">🔗 View Details</a>`
+      : "";
+    const telegramMessage = `${emoji} <b>${escapeTelegramHtml(
+      String(title)
+    )}</b>\n\n${escapeTelegramHtml(String(message))}${
       url ? `\n\n${linkText}` : ""
     }`;
-    const telegramUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
 
-    // Send to the public channel
-    const telegramResponse = await fetch(telegramUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: telegramChatId, // Channel ID
-        text: telegramMessage,
-        parse_mode: "HTML",
-        disable_web_page_preview: false, // Allow link previews
-      }),
+    const result = await telegramSendMessage({
+      botToken: telegramBotToken,
+      chatId: telegramChatId,
+      text: telegramMessage,
+      parseMode: "HTML",
+      disableWebPagePreview: false,
     });
 
-    if (!telegramResponse.ok) {
-      const errorData = await telegramResponse.json();
-      console.warn("Telegram channel message failed:", errorData);
+    if (!result.ok) {
+      console.warn("Telegram channel message failed:", {
+        error: result.error,
+        httpStatus: result.httpStatus,
+        raw: result.raw,
+      });
       return res.status(500).json({
         error: "send_failed",
-        message:
-          errorData.description || "Failed to send Telegram channel message",
+        message: result.error,
       });
     }
 
-    console.log("Telegram channel announcement sent to", telegramChatId);
+    console.log("Telegram channel announcement sent to", telegramChatId, {
+      messageId: result.messageId,
+    });
     return res.status(200).json({
       status: "ok",
       message: "Telegram channel announcement sent",
+      messageId: result.messageId,
     });
   } catch (error: any) {
     console.error("Failed to send Telegram channel announcement:", error);

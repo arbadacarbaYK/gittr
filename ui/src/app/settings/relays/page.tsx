@@ -13,14 +13,14 @@ import {
   createGraspListEvent,
 } from "@/lib/nostr/events";
 import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
-import {
   type Nip65RelayEntry,
   buildRelayListTags,
   getUserNip65Relays,
 } from "@/lib/nostr/nip65-relay-list";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { getUserGraspServers } from "@/lib/utils/grasp-list";
 import { getGraspServers, isGraspServer } from "@/lib/utils/grasp-servers";
 
@@ -163,8 +163,8 @@ export default function RelaysPage() {
                 item.status !== undefined
                   ? item.status
                   : item.staus !== undefined
-                    ? item.staus
-                    : undefined;
+                  ? item.staus
+                  : undefined;
               if (
                 url &&
                 typeof status === "number" &&
@@ -297,7 +297,7 @@ export default function RelaysPage() {
     void loadGraspList();
   }, [pubkey, subscribe, defaultRelays]);
 
-    // Save NIP-65 kind 10002 to Nostr (Amber / NIP-07 / nsec)
+  // Save NIP-65 kind 10002 to Nostr (Amber / NIP-07 / nsec)
   const saveNip65List = async () => {
     if (!pubkey || !publish || !defaultRelays) {
       setNip65Status("Error: Not logged in");
@@ -307,9 +307,7 @@ export default function RelaysPage() {
 
     setNip65Saving(true);
     setNip65Status(
-      remoteSigner?.getSession()
-        ? "Waiting for signer…"
-        : "Saving…"
+      remoteSigner?.getSession() ? "Waiting for signer…" : "Saving…"
     );
 
     try {
@@ -372,9 +370,7 @@ export default function RelaysPage() {
 
   const removeNip65Relay = (url: string) => {
     const key = normalizeRelayUrl(url);
-    setNip65Relays(
-      nip65Relays.filter((r) => normalizeRelayUrl(r.url) !== key)
-    );
+    setNip65Relays(nip65Relays.filter((r) => normalizeRelayUrl(r.url) !== key));
   };
 
   // Save GRASP list to Nostr (add/remove servers, then publish kind 10317)
@@ -621,8 +617,8 @@ export default function RelaysPage() {
                               connected
                                 ? "bg-green-500"
                                 : status === WS_CONNECTING
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
+                                ? "bg-yellow-500"
+                                : "bg-red-500"
                             }`}
                             title={getStatusLabel(entry.url)}
                           />

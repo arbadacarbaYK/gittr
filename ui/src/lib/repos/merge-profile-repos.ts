@@ -77,8 +77,8 @@ export function mergeProfileRepoFields(base: any, other: any): any {
     Array.isArray(base.contributors) && base.contributors.length > 0
       ? base.contributors
       : Array.isArray(other.contributors)
-        ? other.contributors
-        : base.contributors;
+      ? other.contributors
+      : base.contributors;
 
   return {
     ...other,
@@ -94,10 +94,10 @@ export function mergeProfileRepoFields(base: any, other: any): any {
     forkedFrom: base.forkedFrom || other.forkedFrom,
     publicRead,
     // Keep the newer activity clock when present
-    updatedAt: Math.max(
-      Number(base.updatedAt) || 0,
-      Number(other.updatedAt) || 0
-    ) || base.updatedAt || other.updatedAt,
+    updatedAt:
+      Math.max(Number(base.updatedAt) || 0, Number(other.updatedAt) || 0) ||
+      base.updatedAt ||
+      other.updatedAt,
     lastNostrEventCreatedAt:
       base.lastNostrEventCreatedAt ?? other.lastNostrEventCreatedAt,
     lastNostrEventId: base.lastNostrEventId || other.lastNostrEventId,

@@ -15,8 +15,7 @@ export default function RepoNextRedirectPage() {
     const entity = decodeURIComponent(String(params?.entity || ""));
     const repo = decodeURIComponent(String(params?.repo || ""));
     if (!entity || !repo) return;
-    const q =
-      typeof window !== "undefined" ? window.location.search || "" : "";
+    const q = typeof window !== "undefined" ? window.location.search || "" : "";
     window.location.replace(`/${entity}/${repo}${q}`);
   }, [params?.entity, params?.repo]);
 

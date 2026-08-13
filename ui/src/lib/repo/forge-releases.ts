@@ -95,9 +95,7 @@ export function normalizeRepositoryHttpsUrl(raw: string): string {
   }
 }
 
-export function resolveForgeFromSourceUrl(
-  sourceUrl: string
-):
+export function resolveForgeFromSourceUrl(sourceUrl: string):
   | {
       ok: true;
       forge: ForgeHost;
@@ -238,13 +236,32 @@ async function maybeHashApks(
   return out;
 }
 
-async function fetchGitHubRelease(
+/**
+ * Pick a release for Zapstore/NIP-82 announce.
+ * With `tag`: exact match, then case-insensitive. Without: first non-draft, else first.
+ */
+export function pickForgeReleaseForAnnounce(
+  list: ForgeRelease[],
+  tag?: string | null
+): ForgeRelease | null {
+  if (!list.length) return null;
+  const wanted = (tag || "").trim();
+  if (wanted) {
+    const exact = list.find((r) => r.tag === wanted);
+    if (exact) return exact;
+    const lower = wanted.toLowerCase();
+    return list.find((r) => r.tag.toLowerCase() === lower) || null;
+  }
+  return list.find((r) => !r.draft) || list[0] || null;
+}
+
+async function listGitHubReleases(
   owner: string,
   repo: string
-): Promise<ForgeRelease | null> {
+): Promise<ForgeRelease[]> {
   const url = `https://api.github.com/repos/${encodeURIComponent(
     owner
-  )}/${encodeURIComponent(repo)}/releases?per_page=20`;
+  )}/${encodeURIComponent(repo)}/releases?per_page=50`;
   const res = await fetch(url, { headers: githubHeaders() });
   if (!res.ok) {
     throw new Error(`GitHub releases API returned ${res.status}`);
@@ -264,37 +281,42 @@ async function fetchGitHubRelease(
       browser_download_url?: string;
     }>;
   }>;
-  const pick = list.find((r) => !r.draft) || list[0];
-  if (!pick?.tag_name) return null;
-  const assets: ForgeReleaseAsset[] = (pick.assets || [])
-    .filter((a) => a.name && a.browser_download_url)
-    .map((a) => ({
-      name: String(a.name),
-      size: typeof a.size === "number" ? a.size : 0,
-      contentType: a.content_type || "application/octet-stream",
-      downloadUrl: String(a.browser_download_url),
-    }));
-  const apkAssets = assets.filter((a) => isApkAssetName(a.name, a.contentType));
-  return {
-    tag: pick.tag_name,
-    name: pick.name || pick.tag_name,
-    body: typeof pick.body === "string" ? pick.body : "",
-    publishedAt: pick.published_at,
-    htmlUrl: pick.html_url,
-    draft: Boolean(pick.draft),
-    prerelease: Boolean(pick.prerelease),
-    assets,
-    apkAssets,
-  };
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((r) => r?.tag_name && !r.draft)
+    .map((pick) => {
+      const assets: ForgeReleaseAsset[] = (pick.assets || [])
+        .filter((a) => a.name && a.browser_download_url)
+        .map((a) => ({
+          name: String(a.name),
+          size: typeof a.size === "number" ? a.size : 0,
+          contentType: a.content_type || "application/octet-stream",
+          downloadUrl: String(a.browser_download_url),
+        }));
+      const apkAssets = assets.filter((a) =>
+        isApkAssetName(a.name, a.contentType)
+      );
+      return {
+        tag: String(pick.tag_name),
+        name: pick.name || String(pick.tag_name),
+        body: typeof pick.body === "string" ? pick.body : "",
+        publishedAt: pick.published_at,
+        htmlUrl: pick.html_url,
+        draft: Boolean(pick.draft),
+        prerelease: Boolean(pick.prerelease),
+        assets,
+        apkAssets,
+      };
+    });
 }
 
-async function fetchCodebergRelease(
+async function listCodebergReleases(
   owner: string,
   repo: string
-): Promise<ForgeRelease | null> {
+): Promise<ForgeRelease[]> {
   const url = `https://codeberg.org/api/v1/repos/${encodeURIComponent(
     owner
-  )}/${encodeURIComponent(repo)}/releases?limit=20`;
+  )}/${encodeURIComponent(repo)}/releases?limit=50`;
   const res = await fetch(url, {
     headers: {
       Accept: "application/json",
@@ -319,35 +341,39 @@ async function fetchCodebergRelease(
       browser_download_url?: string;
     }>;
   }>;
-  const pick =
-    (Array.isArray(list) ? list : []).find((r) => !r.draft) || list[0];
-  if (!pick?.tag_name) return null;
-  const assets: ForgeReleaseAsset[] = (pick.assets || [])
-    .filter((a) => a.name && a.browser_download_url)
-    .map((a) => ({
-      name: String(a.name),
-      size: typeof a.size === "number" ? a.size : 0,
-      contentType: a.content_type || "application/octet-stream",
-      downloadUrl: String(a.browser_download_url),
-    }));
-  const apkAssets = assets.filter((a) => isApkAssetName(a.name, a.contentType));
-  return {
-    tag: pick.tag_name,
-    name: pick.name || pick.tag_name,
-    body: typeof pick.body === "string" ? pick.body : "",
-    publishedAt: pick.published_at,
-    htmlUrl: pick.html_url,
-    draft: Boolean(pick.draft),
-    prerelease: Boolean(pick.prerelease),
-    assets,
-    apkAssets,
-  };
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((r) => r?.tag_name && !r.draft)
+    .map((pick) => {
+      const assets: ForgeReleaseAsset[] = (pick.assets || [])
+        .filter((a) => a.name && a.browser_download_url)
+        .map((a) => ({
+          name: String(a.name),
+          size: typeof a.size === "number" ? a.size : 0,
+          contentType: a.content_type || "application/octet-stream",
+          downloadUrl: String(a.browser_download_url),
+        }));
+      const apkAssets = assets.filter((a) =>
+        isApkAssetName(a.name, a.contentType)
+      );
+      return {
+        tag: String(pick.tag_name),
+        name: pick.name || String(pick.tag_name),
+        body: typeof pick.body === "string" ? pick.body : "",
+        publishedAt: pick.published_at,
+        htmlUrl: pick.html_url,
+        draft: Boolean(pick.draft),
+        prerelease: Boolean(pick.prerelease),
+        assets,
+        apkAssets,
+      };
+    });
 }
 
-async function fetchGitLabRelease(
+async function listGitLabReleases(
   owner: string,
   repo: string
-): Promise<ForgeRelease | null> {
+): Promise<ForgeRelease[]> {
   const project = encodeURIComponent(`${owner}/${repo}`);
   const url = `https://gitlab.com/api/v4/projects/${project}/releases`;
   const res = await fetch(url, {
@@ -374,45 +400,59 @@ async function fetchGitLabRelease(
       }>;
     };
   }>;
-  const pick = Array.isArray(list) ? list[0] : null;
-  if (!pick?.tag_name) return null;
-
-  const assets: ForgeReleaseAsset[] = (pick.assets?.links || [])
-    .filter((a) => a.name && (a.direct_asset_url || a.url))
-    .map((a) => {
-      const downloadUrl = String(a.direct_asset_url || a.url);
-      const name = String(a.name);
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((r) => r?.tag_name)
+    .slice(0, 50)
+    .map((pick) => {
+      const assets: ForgeReleaseAsset[] = (pick.assets?.links || [])
+        .filter((a) => a.name && (a.direct_asset_url || a.url))
+        .map((a) => {
+          const downloadUrl = String(a.direct_asset_url || a.url);
+          const name = String(a.name);
+          return {
+            name,
+            size: 0,
+            contentType: isApkAssetName(name)
+              ? "application/vnd.android.package-archive"
+              : "application/octet-stream",
+            downloadUrl,
+          };
+        });
+      const apkAssets = assets.filter((a) =>
+        isApkAssetName(a.name, a.contentType)
+      );
       return {
-        name,
-        size: 0,
-        contentType: isApkAssetName(name)
-          ? "application/vnd.android.package-archive"
-          : "application/octet-stream",
-        downloadUrl,
+        tag: String(pick.tag_name),
+        name: pick.name || String(pick.tag_name),
+        body: typeof pick.description === "string" ? pick.description : "",
+        publishedAt: pick.released_at,
+        htmlUrl: pick._links?.self,
+        draft: false,
+        prerelease: false,
+        assets,
+        apkAssets,
       };
     });
-  const apkAssets = assets.filter((a) => isApkAssetName(a.name, a.contentType));
-  return {
-    tag: pick.tag_name,
-    name: pick.name || pick.tag_name,
-    body: typeof pick.description === "string" ? pick.description : "",
-    publishedAt: pick.released_at,
-    htmlUrl: pick._links?.self,
-    draft: false,
-    prerelease: false,
-    assets,
-    apkAssets,
-  };
 }
 
 /**
- * Resolve latest usable forge release with APK assets.
- * Throws structured ForgeReleasesErr via return value (never throws for expected empty cases).
+ * List forge releases for the repo Releases tab (all assets, no APK gate).
+ * Does not change App announce — that still uses fetchForgeReleasesForAnnounce.
  */
-export async function fetchForgeReleasesForAnnounce(options: {
+export async function listForgeReleasesForDisplay(options: {
   sourceUrl: string;
-  includeHash?: boolean;
-}): Promise<ForgeReleasesResult> {
+}): Promise<
+  | {
+      ok: true;
+      forge: ForgeHost;
+      owner: string;
+      repo: string;
+      repositoryUrl: string;
+      releases: ForgeRelease[];
+    }
+  | ForgeReleasesErr
+> {
   const resolved = resolveForgeFromSourceUrl(options.sourceUrl);
   if (!resolved.ok) {
     return {
@@ -423,16 +463,75 @@ export async function fetchForgeReleasesForAnnounce(options: {
   }
 
   try {
-    let release: ForgeRelease | null = null;
+    let releases: ForgeRelease[] = [];
     if (resolved.forge === "github") {
-      release = await fetchGitHubRelease(resolved.owner, resolved.repo);
+      releases = await listGitHubReleases(resolved.owner, resolved.repo);
     } else if (resolved.forge === "codeberg") {
-      release = await fetchCodebergRelease(resolved.owner, resolved.repo);
+      releases = await listCodebergReleases(resolved.owner, resolved.repo);
     } else {
-      release = await fetchGitLabRelease(resolved.owner, resolved.repo);
+      releases = await listGitLabReleases(resolved.owner, resolved.repo);
     }
 
+    return {
+      ok: true,
+      forge: resolved.forge,
+      owner: resolved.owner,
+      repo: resolved.repo,
+      repositoryUrl: resolved.repositoryUrl,
+      releases,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Forge API request failed";
+    return {
+      ok: false,
+      code: "forge_error",
+      message: msg,
+    };
+  }
+}
+
+/**
+ * Resolve a forge release with APK assets for Zapstore/NIP-82 announce.
+ * Optional `tag` selects that Release; omit for latest non-draft (sidebar default).
+ * Returns structured ForgeReleasesErr for expected empty cases (never throws those).
+ */
+export async function fetchForgeReleasesForAnnounce(options: {
+  sourceUrl: string;
+  includeHash?: boolean;
+  /** Forge release tag (e.g. v1.2.3). Empty/omit = latest. */
+  tag?: string | null;
+}): Promise<ForgeReleasesResult> {
+  const resolved = resolveForgeFromSourceUrl(options.sourceUrl);
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      code: resolved.code,
+      message: resolved.message,
+    };
+  }
+
+  const wantedTag = (options.tag || "").trim();
+
+  try {
+    let list: ForgeRelease[] = [];
+    if (resolved.forge === "github") {
+      list = await listGitHubReleases(resolved.owner, resolved.repo);
+    } else if (resolved.forge === "codeberg") {
+      list = await listCodebergReleases(resolved.owner, resolved.repo);
+    } else {
+      list = await listGitLabReleases(resolved.owner, resolved.repo);
+    }
+
+    const release = pickForgeReleaseForAnnounce(list, wantedTag || null);
+
     if (!release) {
+      if (wantedTag) {
+        return {
+          ok: false,
+          code: "no_releases",
+          message: `No forge Release found for tag “${wantedTag}”. Check the tag on GitHub/Codeberg/GitLab, or pick another release.`,
+        };
+      }
       return {
         ok: false,
         code: "no_releases",
@@ -445,7 +544,9 @@ export async function fetchForgeReleasesForAnnounce(options: {
       return {
         ok: false,
         code: "no_apk",
-        message: `Your repo or latest release has no .apk assets.`,
+        message: wantedTag
+          ? `Release “${release.tag}” has no .apk assets (Zapstore needs an APK on that tag).`
+          : `Your repo or latest release has no .apk assets.`,
       };
     }
 
@@ -453,12 +554,17 @@ export async function fetchForgeReleasesForAnnounce(options: {
       release.apkAssets,
       Boolean(options.includeHash)
     );
-    const assets = release.assets.map((a) => {
+    let assets = release.assets.map((a) => {
       const hashed = apkAssets.find(
         (h) => h.downloadUrl === a.downloadUrl && h.sha256
       );
       return hashed ? { ...a, sha256: hashed.sha256 } : a;
     });
+
+    // Optional: hash other NIP-82-publishable binaries for multi-asset announce.
+    if (options.includeHash) {
+      assets = await maybeHashPublishableAssets(assets);
+    }
 
     return {
       ok: true,
@@ -469,7 +575,7 @@ export async function fetchForgeReleasesForAnnounce(options: {
       release: {
         ...release,
         assets,
-        apkAssets,
+        apkAssets: assets.filter((a) => isApkAssetName(a.name, a.contentType)),
       },
     };
   } catch (e) {
@@ -480,4 +586,67 @@ export async function fetchForgeReleasesForAnnounce(options: {
       message: msg,
     };
   }
+}
+
+/** Hash non-APK assets that are eligible for NIP-82 multi-asset announce. */
+async function maybeHashPublishableAssets(
+  assets: ForgeReleaseAsset[]
+): Promise<ForgeReleaseAsset[]> {
+  const out: ForgeReleaseAsset[] = [];
+  for (const a of assets) {
+    if (a.sha256) {
+      out.push(a);
+      continue;
+    }
+    if (isApkAssetName(a.name, a.contentType)) {
+      out.push(a);
+      continue;
+    }
+    const nip = nip82MimeForAssetName(a.name);
+    if (!nip) {
+      out.push(a);
+      continue;
+    }
+    const sha256 = await sha256OfUrl(a.downloadUrl);
+    out.push(sha256 ? { ...a, sha256 } : a);
+  }
+  return out;
+}
+
+/**
+ * NIP-82 MIME (+ optional f) for announceable binaries.
+ * Returns null for files we only show on Releases (zips, checksums, deb, …).
+ */
+export function nip82MimeForAssetName(
+  name: string
+): { mime: string; f?: string } | null {
+  const n = (name || "").toLowerCase();
+  if (n.endsWith(".apk")) {
+    return {
+      mime: "application/vnd.android.package-archive",
+      f: /arm64|aarch64/i.test(n) ? "android-arm64-v8a" : undefined,
+    };
+  }
+  if (n.endsWith(".ipa")) {
+    return { mime: "application/vnd.apple.ipa", f: "ios-arm64" };
+  }
+  if (n.endsWith(".dmg")) {
+    return {
+      mime: "application/x-apple-diskimage",
+      f: /arm64|aarch64/i.test(n) ? "darwin-arm64" : "darwin-amd64",
+    };
+  }
+  if (n.endsWith(".appimage")) {
+    return {
+      mime: "application/vnd.appimage",
+      f: /arm64|aarch64/i.test(n) ? "linux-arm64" : "linux-amd64",
+    };
+  }
+  if (n.endsWith(".msi") || n.endsWith(".exe")) {
+    return {
+      mime: "application/vnd.microsoft.portable-executable",
+      f: "windows-amd64",
+    };
+  }
+  return null;
 }

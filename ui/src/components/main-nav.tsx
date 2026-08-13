@@ -4,7 +4,6 @@ import * as React from "react";
 
 import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
-
 import { appNavigate } from "@/lib/utils/app-navigate";
 
 import { Menu, X } from "lucide-react";

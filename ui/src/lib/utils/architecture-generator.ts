@@ -281,9 +281,9 @@ export function generateC4Overview(
     const nodeId = `C_${key}`;
     mermaid += `    ${nodeId}["${escapeLabel(b.title)}<br/><small>${escapeLabel(
       b.description
-    )}</small><br/><small>${escapeLabel(countLine)}</small><br/><small>${escapeLabel(
-      truncate(modLine, 48)
-    )}</small>"]\n`;
+    )}</small><br/><small>${escapeLabel(
+      countLine
+    )}</small><br/><small>${escapeLabel(truncate(modLine, 48))}</small>"]\n`;
   }
 
   mermaid += "  end\n";
@@ -312,7 +312,10 @@ export function generateC4Overview(
 
   if (buckets.backend.paths.length > 0 && buckets.database.paths.length > 0) {
     mermaid += "  C_backend -->|reads / writes| C_database\n";
-  } else if (buckets.api.paths.length > 0 && buckets.database.paths.length > 0) {
+  } else if (
+    buckets.api.paths.length > 0 &&
+    buckets.database.paths.length > 0
+  ) {
     mermaid += "  C_api -->|reads / writes| C_database\n";
   }
 

@@ -440,12 +440,9 @@ export default async function handler(
     console.log(`✅ Found ${filePaths.length} files in '${resolvedBranch}'`);
 
     if (filePaths.length > REPO_FILE_TREE_SHALLOW_THRESHOLD) {
-      const entries = await listBareRepoShallow(
-        repoPath,
-        resolvedBranch,
-        "",
-        { includeSizes }
-      );
+      const entries = await listBareRepoShallow(repoPath, resolvedBranch, "", {
+        includeSizes,
+      });
       console.log(
         `ℹ️ Large tree (${filePaths.length} files) — returning shallow root (${entries.length} entries)`
       );

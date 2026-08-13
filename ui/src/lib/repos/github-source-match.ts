@@ -145,7 +145,13 @@ export function forgeKeysFrom30617Tags(tags: string[][]): Set<string> {
   const keys = new Set<string>();
   if (!Array.isArray(tags)) return keys;
 
-  for (const name of ["source", "forkedFrom", "clone", "web", "link"] as const) {
+  for (const name of [
+    "source",
+    "forkedFrom",
+    "clone",
+    "web",
+    "link",
+  ] as const) {
     for (const tag of tags) {
       if (!Array.isArray(tag) || tag[0] !== name) continue;
       const values =
@@ -166,10 +172,7 @@ export function githubKeysFrom30617Tags(tags: string[][]): Set<string> {
   return forgeKeysFrom30617Tags(tags);
 }
 
-export function matchedViaTags(
-  tags: string[][],
-  wantKey: string
-): string[] {
+export function matchedViaTags(tags: string[][], wantKey: string): string[] {
   const via: string[] = [];
   if (!wantKey || !Array.isArray(tags)) return via;
   for (const name of ["source", "forkedFrom", "clone", "web", "link"]) {

@@ -15,7 +15,11 @@ export function isRepoPathDeleted(
   deletedPaths: string[]
 ): boolean {
   const normalized = normalizeDeletedPath(path);
-  if (!normalized || !Array.isArray(deletedPaths) || deletedPaths.length === 0) {
+  if (
+    !normalized ||
+    !Array.isArray(deletedPaths) ||
+    deletedPaths.length === 0
+  ) {
     return false;
   }
   return deletedPaths.some((raw) => {
@@ -75,8 +79,7 @@ export function reconcileDeletedPathsAfterAdd(
 
   for (const addedPath of added) {
     const covering = next.filter(
-      (deleted) =>
-        addedPath === deleted || addedPath.startsWith(`${deleted}/`)
+      (deleted) => addedPath === deleted || addedPath.startsWith(`${deleted}/`)
     );
     if (covering.length === 0) continue;
 

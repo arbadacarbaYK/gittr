@@ -86,9 +86,7 @@ const ALLOWED_ECOSYSTEMS = new Set([
 ]);
 
 function normalizeSeverity(vuln: any): Advisory["severity"] {
-  const dbSev = String(
-    vuln?.database_specific?.severity || ""
-  ).toUpperCase();
+  const dbSev = String(vuln?.database_specific?.severity || "").toUpperCase();
   if (dbSev.includes("CRIT")) return "CRITICAL";
   if (dbSev === "HIGH") return "HIGH";
   if (dbSev === "MODERATE" || dbSev === "MEDIUM") return "MODERATE";
@@ -192,7 +190,10 @@ export default async function handler(
   try {
     const batchRes = await fetch(OSV_BATCH_URL, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
       body: JSON.stringify({
         queries: packages.map((p) => ({
           package: { ecosystem: p.ecosystem, name: p.name },

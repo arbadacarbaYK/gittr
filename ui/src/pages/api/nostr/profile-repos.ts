@@ -179,8 +179,8 @@ export default async function handler(
                 event.kind === KIND_REPOSITORY_NIP34
                   ? publicRead
                   : existing?.publicRead !== undefined
-                    ? existing.publicRead
-                    : true,
+                  ? existing.publicRead
+                  : true,
             });
           } else if (event.kind === KIND_REPOSITORY_NIP34 && existing) {
             // Older announcement still fills gaps (name/description/privacy)

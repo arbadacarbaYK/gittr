@@ -10,7 +10,11 @@ export function formatPushFromGittrStamp(
     (unixSeconds > 0 ? unixSeconds : Math.floor(Date.now() / 1000)) * 1000
   );
   const pad2 = (n: number) => String(n).padStart(2, "0");
-  const short = `${String(d.getUTCFullYear()).slice(-2)}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  const short = `${String(d.getUTCFullYear()).slice(-2)}-${pad2(
+    d.getUTCMonth() + 1
+  )}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(
+    d.getUTCMinutes()
+  )}`;
   return `Push from gittr (${short})`;
 }
 
@@ -20,7 +24,10 @@ export function resolveBridgePushCommitMessage(
   unixSeconds?: number
 ): string {
   if (typeof commitMessage === "string") {
-    const trimmed = commitMessage.trim().replace(/[\r\n]+/g, " ").slice(0, 200);
+    const trimmed = commitMessage
+      .trim()
+      .replace(/[\r\n]+/g, " ")
+      .slice(0, 200);
     if (trimmed) return trimmed;
   }
   return formatPushFromGittrStamp(unixSeconds);

@@ -14,7 +14,6 @@
  * `removeStaleAutoLinks` is a one-shot cleanup for older builds that wrongly
  * invented "GitHub Pages" / "Nostr Pages" rows — not part of the happy path.
  */
-
 import { stripNonDocumentationWebLinks } from "../nostr/parse-nip34-repo-links";
 
 export type EnrichableRepoLink = {
@@ -45,9 +44,7 @@ function urlKey(url: string): string {
 function isGittrPagesHost(url: string): boolean {
   try {
     const host = new URL(url.trim()).hostname.toLowerCase();
-    return (
-      host === "pages.gittr.space" || host.endsWith(".pages.gittr.space")
-    );
+    return host === "pages.gittr.space" || host.endsWith(".pages.gittr.space");
   } catch {
     return /pages\.gittr\.space/i.test(url);
   }
@@ -217,10 +214,8 @@ export function mergeAnnouncementLinksWithLocal(
 ): EnrichableRepoLink[] {
   const cleanedExisting = stripNonDocumentationWebLinks(
     removeStaleAutoLinks(existing)
-  ) ;
-  const cleanedParsed = stripNonDocumentationWebLinks(
-    parsedFromNostr
-  ) ;
+  );
+  const cleanedParsed = stripNonDocumentationWebLinks(parsedFromNostr);
   if (cleanedParsed.length === 0) return cleanedExisting;
   return mergeRepoLinks(cleanedExisting, cleanedParsed);
 }
@@ -234,9 +229,7 @@ export function enrichRepoLinks(
     : (Array.isArray(input.existing) ? input.existing : []).filter(
         (l) => l?.url
       );
-  const base = stripNonDocumentationWebLinks(
-    afterStale
-  ) ;
+  const base = stripNonDocumentationWebLinks(afterStale);
 
   const additions: EnrichableRepoLink[] = [];
 

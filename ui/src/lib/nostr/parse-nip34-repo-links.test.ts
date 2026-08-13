@@ -42,18 +42,13 @@ describe("parseRepoLinksFromNip34Tags", () => {
     const links = parseRepoLinksFromNip34Tags([
       ["web", "https://yuki.example.org/"],
     ]);
-    expect(links).toEqual([
-      { type: "docs", url: "https://yuki.example.org/" },
-    ]);
+    expect(links).toEqual([{ type: "docs", url: "https://yuki.example.org/" }]);
   });
 
   it("parses explicit link tags (Settings / gittr)", () => {
     const links = parseRepoLinksFromNip34Tags([
       ["link", "docs", "https://docs.example.com/guide", "Guide"],
-      [
-        "web",
-        "https://gitworkshop.dev/npub1abc/relay.ngit.dev/repo",
-      ],
+      ["web", "https://gitworkshop.dev/npub1abc/relay.ngit.dev/repo"],
     ]);
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({

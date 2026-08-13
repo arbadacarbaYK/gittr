@@ -24,7 +24,9 @@ function prune(): void {
 
 export function issuePushChallenge(): string {
   prune();
-  const challenge = `gittr:push:${Date.now()}:${randomBytes(16).toString("hex")}`;
+  const challenge = `gittr:push:${Date.now()}:${randomBytes(16).toString(
+    "hex"
+  )}`;
   issued.set(challenge, Date.now() + CHALLENGE_TTL_MS);
   return challenge;
 }

@@ -43,7 +43,7 @@ export default async function handler(
     challenge,
     expires_in: pushChallengeTtlSeconds(),
     instructions: [
-      "Sign a kind-24242 event with tags: [[\"challenge\", \"<challenge>\"]]",
+      'Sign a kind-24242 event with tags: [["challenge", "<challenge>"]]',
       "Send header X-Nostr-Auth-Event: base64(JSON.stringify(signedEvent))",
       "Challenge is multi-use until expiry (chunked pushes / Amber cache).",
     ],

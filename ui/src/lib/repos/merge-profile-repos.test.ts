@@ -48,7 +48,8 @@ describe("mergeProfileRepoList", () => {
         name: "Nostr",
         description: "Nice about text",
         userRole: "owner",
-        ownerPubkey: "68d81165918100b7da43fc28f7d1fc12554466e1115886b9e7bb326f65ec4272",
+        ownerPubkey:
+          "68d81165918100b7da43fc28f7d1fc12554466e1115886b9e7bb326f65ec4272",
         lastNostrEventCreatedAt: 1784808479,
       },
     ];
@@ -57,7 +58,8 @@ describe("mergeProfileRepoList", () => {
         repo: "nostr",
         slug: "nostr",
         name: "nostr",
-        ownerPubkey: "68d81165918100b7da43fc28f7d1fc12554466e1115886b9e7bb326f65ec4272",
+        ownerPubkey:
+          "68d81165918100b7da43fc28f7d1fc12554466e1115886b9e7bb326f65ec4272",
         lastNostrEventCreatedAt: 1784808479,
         syncedFromNostr: true,
         publicRead: true,
@@ -89,7 +91,10 @@ describe("mergeProfileRepoList", () => {
         },
       ]
     );
-    expect(merged.map((r) => r.repo).sort()).toEqual(["api-only", "local-only"]);
+    expect(merged.map((r) => r.repo).sort()).toEqual([
+      "api-only",
+      "local-only",
+    ]);
     expect(merged.find((r) => r.repo === "local-only")?.description).toBe(
       "keep me"
     );

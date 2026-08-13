@@ -19,9 +19,9 @@ import {
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
-import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   REPO_ANNOUNCEMENT_ID_EVENT,
   type RelaySubscribeFn,
@@ -40,6 +40,7 @@ import {
   hasPrivateRepoAccess,
   isOwner,
 } from "@/lib/repo-permissions";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import {
   repoNavHref,
   resolveSharedRepoBranch,
@@ -48,14 +49,13 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
-import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
-import { startWarmRepoIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import {
   type StoredContributor,
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { startWarmRepoIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { isRepoUiNextPath } from "@/lib/ui/repo-ui-mode";
 import {
   getRepoStorageKey,
@@ -550,10 +550,7 @@ export default function RepoLayoutClient({
       ],
       getAllRelays(defaultRelays),
       (event) => {
-        if (
-          !latest ||
-          (event.created_at || 0) >= (latest.created_at || 0)
-        ) {
+        if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
           latest = event;
         }
       },
@@ -1283,10 +1280,7 @@ export default function RepoLayoutClient({
             !cancelled &&
             (!issuesOk || !pullsOk)
           ) {
-            retryTimer = window.setTimeout(
-              () => runHydrate(attempt + 1),
-              2000
-            );
+            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2000);
             return;
           }
           if (sourceUrl) {
@@ -1296,10 +1290,7 @@ export default function RepoLayoutClient({
           }
         } catch {
           if (attempt < 3 && !cancelled) {
-            retryTimer = window.setTimeout(
-              () => runHydrate(attempt + 1),
-              2000
-            );
+            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2000);
           }
         } finally {
           hydrateInFlight = false;
@@ -1620,7 +1611,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent );
+        mergeNostrStarEvent(r.signedEvent);
         syncLocalStarsIndex(false);
         showToast("Unstarred on Nostr.", "success");
       } else {
@@ -1637,7 +1628,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent );
+        mergeNostrStarEvent(r.signedEvent);
         syncLocalStarsIndex(true);
         showToast("Starred on Nostr (NIP-25).", "success");
       } else {

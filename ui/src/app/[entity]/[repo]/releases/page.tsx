@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RepoAppAnnouncePanel } from "@/components/ui/repo-app-announce-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
@@ -104,6 +105,23 @@ export default function RepoReleasesPage({
 
   // Check if user has write access (owner or maintainer) - required for creating releases
   const [hasWrite, setHasWrite] = useState(false);
+  const [isOwnerSession, setIsOwnerSession] = useState(false);
+  const [ownerPubkeyHex, setOwnerPubkeyHex] = useState("");
+  const [repoSummary, setRepoSummary] = useState("");
+  const [announceTag, setAnnounceTag] = useState<string | null>(null);
+
+  const forgeSourceLinked = Boolean(
+    sourceUrl &&
+      (sourceUrl.includes("github.com") ||
+        sourceUrl.includes("codeberg.org") ||
+        sourceUrl.includes("gitlab.com"))
+  );
+
+  const nip34Address = useMemo(() => {
+    const owner = ownerPubkeyHex.toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(owner)) return null;
+    return `30617:${owner}:${resolvedParams.repo}`;
+  }, [ownerPubkeyHex, resolvedParams.repo]);
 
   useEffect(() => {
     try {
@@ -115,17 +133,33 @@ export default function RepoReleasesPage({
       );
       if (rec && currentUserPubkey) {
         const repoOwnerPubkey = getRepoOwnerPubkey(rec, resolvedParams.entity);
+        const ownerHex = (repoOwnerPubkey || "").toLowerCase();
+        setOwnerPubkeyHex(ownerHex);
+        setRepoSummary(String(rec.description || "").slice(0, 280));
         const userHasWrite = hasWriteAccess(
           currentUserPubkey,
           rec.contributors,
           repoOwnerPubkey
         );
         setHasWrite(userHasWrite);
+        setIsOwnerSession(
+          Boolean(
+            ownerHex &&
+              /^[0-9a-f]{64}$/.test(ownerHex) &&
+              currentUserPubkey.toLowerCase() === ownerHex
+          )
+        );
       } else {
         setHasWrite(false);
+        setIsOwnerSession(false);
+        setOwnerPubkeyHex("");
+        setRepoSummary("");
       }
     } catch {
       setHasWrite(false);
+      setIsOwnerSession(false);
+      setOwnerPubkeyHex("");
+      setRepoSummary("");
     }
   }, [resolvedParams.entity, resolvedParams.repo, currentUserPubkey]);
 
@@ -246,7 +280,12 @@ export default function RepoReleasesPage({
           }
         );
         const url = resolved || rec?.sourceUrl || "";
-        if (url && url.includes("github.com") && !cancelled) {
+        const forgeOk =
+          url &&
+          (url.includes("github.com") ||
+            url.includes("codeberg.org") ||
+            url.includes("gitlab.com"));
+        if (forgeOk && !cancelled) {
           const merged = await syncGithubReleasesForRepo(
             resolvedParams.entity,
             resolvedParams.repo,
@@ -460,13 +499,23 @@ export default function RepoReleasesPage({
     if (!sourceUrl) return undefined;
     try {
       const u = new URL(sourceUrl);
+      const host = u.hostname.toLowerCase();
       const [owner, repo] = u.pathname
         .replace(/\.git$/, "")
         .split("/")
         .filter(Boolean);
-      return `https://github.com/${owner}/${repo}/archive/refs/tags/${encodeURIComponent(
-        tag
-      )}.zip`;
+      if (!owner || !repo) return undefined;
+      const encTag = encodeURIComponent(tag);
+      if (host.includes("github.com")) {
+        return `https://github.com/${owner}/${repo}/archive/refs/tags/${encTag}.zip`;
+      }
+      if (host.includes("codeberg.org")) {
+        return `https://codeberg.org/${owner}/${repo}/archive/${encTag}.zip`;
+      }
+      if (host.includes("gitlab.com")) {
+        return `https://gitlab.com/${owner}/${repo}/-/archive/${encTag}/${repo}-${encTag}.zip`;
+      }
+      return undefined;
     } catch {
       return undefined;
     }
@@ -478,7 +527,7 @@ export default function RepoReleasesPage({
         <div>
           <h2 className="text-xl font-semibold">Releases</h2>
           {syncingReleases && (
-            <p className="text-xs text-gray-400">Refreshing from GitHub…</p>
+            <p className="text-xs text-gray-400">Refreshing from forge…</p>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -498,7 +547,30 @@ export default function RepoReleasesPage({
       </div>
       {hasWrite && showForm && (
         <div className="mt-4 border border-[#383B42] rounded p-6 bg-[#171B21]">
-          <h3 className="text-lg font-semibold mb-4">Create a new release</h3>
+          <h3 className="text-lg font-semibold mb-1">
+            gittr listing (this browser)
+          </h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Saves tag/notes in this browser only. It does{" "}
+            <strong className="font-medium text-gray-300">not</strong> upload
+            installers, create a GitHub / Codeberg / GitLab Release, or list an
+            app on{" "}
+            <Link href="/apps" className="text-purple-400 hover:underline">
+              /apps
+            </Link>
+            . Put real binaries on the forge Release first, then use{" "}
+            <strong className="font-medium text-gray-300">
+              Announce on Nostr
+            </strong>{" "}
+            on that tag. See{" "}
+            <Link
+              href="/help#releases"
+              className="text-purple-400 hover:underline"
+            >
+              Help → Releases
+            </Link>
+            .
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -559,8 +631,8 @@ export default function RepoReleasesPage({
               <h4 className="font-semibold">Release Assets</h4>
             </div>
             <p className="text-sm text-gray-400 mb-4">
-              Add binaries, installers, or archives for different platforms.
-              Users will be able to download these with the release.
+              Name/platform labels only for this local listing. Upload real
+              files on the forge Release (or wait for Blossom upload later).
             </p>
 
             <div className="space-y-2 mb-3">
@@ -618,12 +690,8 @@ export default function RepoReleasesPage({
               </Button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              💡 TODO: Implement Blossom (NIP-96) upload for release assets.
-              Currently stores asset metadata only. Plan: Upload binaries/APKs
-              to self-hosted Blossom server, store Blossom URLs in release
-              metadata, optionally add payment-gated downloads (secondary
-              feature). See RELEASE_ASSETS_BLOSSOM_PLAN.md in project root for
-              implementation details.
+              Binary upload to Blossom is not available yet — metadata only for
+              now.
             </p>
           </div>
 
@@ -632,7 +700,7 @@ export default function RepoReleasesPage({
               onClick={submitRelease}
               disabled={creating || !tagInput.trim()}
             >
-              {creating ? "Creating…" : "Create release"}
+              {creating ? "Creating…" : "Save listing"}
             </Button>
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
@@ -640,6 +708,47 @@ export default function RepoReleasesPage({
           </div>
         </div>
       )}
+
+      {isOwnerSession && forgeSourceLinked && announceTag ? (
+        <div className="mt-4 mb-2" id="announce-forge-tag">
+          <RepoAppAnnouncePanel
+            key={announceTag}
+            isOwnerSession
+            variant="inline"
+            defaultOpen
+            preferredTag={announceTag}
+            sourceUrl={sourceUrl}
+            repoName={resolvedParams.repo}
+            repoSummary={repoSummary}
+            ownerPubkeyHex={ownerPubkeyHex}
+            nip34Address={nip34Address}
+            onAnnounced={(announcedAppId) => {
+              try {
+                const repos = loadStoredRepos();
+                const updated = repos.map((r) => {
+                  const matches =
+                    (r.repo === resolvedParams.repo ||
+                      r.slug === resolvedParams.repo) &&
+                    r.entity === resolvedParams.entity;
+                  if (!matches) return r;
+                  return { ...r, announcedAppId };
+                });
+                saveStoredRepos(updated);
+              } catch {
+                /* ignore */
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="mt-2 text-xs text-gray-500 hover:text-gray-300"
+            onClick={() => setAnnounceTag(null)}
+          >
+            Close announce panel
+          </button>
+        </div>
+      ) : null}
+
       {releases.length === 0 ? (
         <p className="text-gray-400 mt-4">No releases yet.</p>
       ) : (
@@ -743,6 +852,17 @@ export default function RepoReleasesPage({
                             <div className="text-sm truncate">{asset.name}</div>
                             <div className="text-xs text-gray-400">
                               {asset.platform}
+                              {typeof asset.size === "number" && asset.size > 0
+                                ? ` · ${
+                                    asset.size < 1024
+                                      ? `${asset.size} B`
+                                      : asset.size < 1024 * 1024
+                                      ? `${(asset.size / 1024).toFixed(1)} KB`
+                                      : `${(asset.size / (1024 * 1024)).toFixed(
+                                          1
+                                        )} MB`
+                                  }`
+                                : ""}
                             </div>
                           </div>
                           {asset.url && (
@@ -761,7 +881,7 @@ export default function RepoReleasesPage({
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 mt-4">
+                <div className="flex flex-wrap items-center gap-3 mt-4">
                   {downloadZipUrl(r.tag_name) && (
                     <a
                       href={downloadZipUrl(r.tag_name)}
@@ -769,7 +889,7 @@ export default function RepoReleasesPage({
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      Download .zip
+                      Source code (.zip)
                     </a>
                   )}
                   {/* Only show "View on GitHub" if html_url is explicitly set (not auto-generated) */}
@@ -783,6 +903,28 @@ export default function RepoReleasesPage({
                       View on GitHub
                     </a>
                   )}
+                  {isOwnerSession &&
+                  forgeSourceLinked &&
+                  (Boolean(r.html_url) ||
+                    Boolean(r.assets?.some((a) => a.url))) ? (
+                    <button
+                      type="button"
+                      className="text-purple-500 hover:underline text-sm"
+                      onClick={() => {
+                        setAnnounceTag(r.tag_name);
+                        window.setTimeout(() => {
+                          document
+                            .getElementById("announce-forge-tag")
+                            ?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "nearest",
+                            });
+                        }, 50);
+                      }}
+                    >
+                      Announce on Nostr
+                    </button>
+                  ) : null}
                 </div>
               </li>
             );

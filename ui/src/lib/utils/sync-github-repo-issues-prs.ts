@@ -41,7 +41,9 @@ async function fetchGithubListPages(
   const all: unknown[] = [];
   const hasQuery = endpointPathAndQuery.includes("?");
   for (let page = 1; page <= maxPages; page++) {
-    const endpoint = `${endpointPathAndQuery}${hasQuery ? "&" : "?"}per_page=100&page=${page}`;
+    const endpoint = `${endpointPathAndQuery}${
+      hasQuery ? "&" : "?"
+    }per_page=100&page=${page}`;
     const res = await fetch(
       `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
     );

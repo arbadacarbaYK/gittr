@@ -45,10 +45,7 @@ export function getActivityDeepPath(activity: {
   }
 }
 
-export function getActivityLabel(
-  type: string,
-  repoLabel: string
-): string {
+export function getActivityLabel(type: string, repoLabel: string): string {
   switch (type) {
     case "pr_merged":
       return `Merged PR in ${repoLabel}`;

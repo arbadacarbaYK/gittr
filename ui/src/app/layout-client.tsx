@@ -298,8 +298,8 @@ export default function ClientLayout({
         typeof reason === "string"
           ? reason
           : reason instanceof Error
-            ? reason.message
-            : String(reason ?? "");
+          ? reason.message
+          : String(reason ?? "");
       maybeReload(msg);
     };
     window.addEventListener("error", onChunkError);

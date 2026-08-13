@@ -15,11 +15,11 @@ import {
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
   dedupeStoredReposByOwnerAndRepoLabel,
 } from "@/lib/repos/storage";
-import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -1666,9 +1666,7 @@ export default function ImportPage() {
 
       // Optional batch Push — only newly imported rows (not skips / URL auto-import).
       if (pushAfter && newlyImported.length > 0) {
-        setStatus(
-          `${statusLine}. Pushing ${newlyImported.length} to Nostr…`
-        );
+        setStatus(`${statusLine}. Pushing ${newlyImported.length} to Nostr…`);
         let pushedOk = 0;
         let pushedFail = 0;
         const pushErrors: string[] = [];
@@ -1721,9 +1719,7 @@ export default function ImportPage() {
 
               if (result.success) {
                 pushedOk++;
-                console.log(
-                  formatPushRepoSuccessAlert(result).slice(0, 200)
-                );
+                console.log(formatPushRepoSuccessAlert(result).slice(0, 200));
               } else {
                 pushedFail++;
                 pushErrors.push(
@@ -1732,15 +1728,13 @@ export default function ImportPage() {
               }
             } catch (e: any) {
               pushedFail++;
-              pushErrors.push(
-                `${item.repoSlug}: ${e?.message || String(e)}`
-              );
+              pushErrors.push(`${item.repoSlug}: ${e?.message || String(e)}`);
             }
           }
 
-          statusLine = `${statusLine}. Pushed ${pushedOk}/${newlyImported.length} to Nostr${
-            pushedFail > 0 ? ` (${pushedFail} failed)` : ""
-          }`;
+          statusLine = `${statusLine}. Pushed ${pushedOk}/${
+            newlyImported.length
+          } to Nostr${pushedFail > 0 ? ` (${pushedFail} failed)` : ""}`;
           setStatus(statusLine);
           if (pushErrors.length > 0) {
             console.error("[Import] Push failures:", pushErrors);
@@ -1758,9 +1752,12 @@ export default function ImportPage() {
 
       // Navigate to repositories page after import (and optional push) completes
       if (importedCount > 0) {
-        setTimeout(() => {
-          router.push("/repositories");
-        }, pushAfter ? 1200 : 500);
+        setTimeout(
+          () => {
+            router.push("/repositories");
+          },
+          pushAfter ? 1200 : 500
+        );
       }
     } catch (error: any) {
       setStatus(`Import error: ${error.message}`);
@@ -1790,8 +1787,8 @@ export default function ImportPage() {
             After you click <strong>Fetch Repos</strong>, you{" "}
             <strong>choose</strong> which repositories to import (checkboxes).
             By default <strong>Import … Selected</strong> (or{" "}
-            <strong>Import All</strong>) only saves those repos locally — nothing
-            goes to Nostr until you push.
+            <strong>Import All</strong>) only saves those repos locally —
+            nothing goes to Nostr until you push.
           </li>
           <li>
             Optional: tick <strong>Also Push selected to Nostr</strong> before
@@ -1958,8 +1955,8 @@ export default function ImportPage() {
                   ? `Importing + pushing ${selectedRepos.size}…`
                   : `Importing ${selectedRepos.size} repositories...`
                 : pushSelectedAfterImport
-                  ? `Import + Push ${selectedRepos.size} Selected`
-                  : `Import ${selectedRepos.size} Selected Repositories`}
+                ? `Import + Push ${selectedRepos.size} Selected`
+                : `Import ${selectedRepos.size} Selected Repositories`}
             </button>
             <button
               className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e34] text-white px-4 py-2 rounded disabled:opacity-50"
@@ -1969,8 +1966,8 @@ export default function ImportPage() {
               {importing
                 ? "Importing All..."
                 : pushSelectedAfterImport
-                  ? "Import All + Push"
-                  : "Import All"}
+                ? "Import All + Push"
+                : "Import All"}
             </button>
 
             {/* Import All Confirmation Modal */}

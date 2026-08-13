@@ -21,13 +21,13 @@ import {
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
 import Link from "next/link";
 import { getEventHash } from "nostr-tools";
-import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 

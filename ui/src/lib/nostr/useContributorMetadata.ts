@@ -65,11 +65,7 @@ function hasUsableProfileName(meta?: Metadata | null): boolean {
 /** Lightning receive fields used for zaps / invoices. */
 function hasPaymentReceiveFields(meta?: Metadata | null): boolean {
   if (!meta) return false;
-  return !!(
-    meta.lud16?.trim() ||
-    meta.lnurl?.trim() ||
-    meta.nwcRecv?.trim()
-  );
+  return !!(meta.lud16?.trim() || meta.lnurl?.trim() || meta.nwcRecv?.trim());
 }
 
 /**
@@ -102,8 +98,8 @@ function mergeKind0OntoExisting(
     Array.isArray(existing?.identities) && existing.identities.length > 0
       ? existing.identities
       : Array.isArray(incoming.identities) && incoming.identities.length > 0
-        ? incoming.identities
-        : undefined;
+      ? incoming.identities
+      : undefined;
 
   const created_at = Math.max(existingTime, incomingTime) || undefined;
 
@@ -126,8 +122,10 @@ function mergeKind0OntoExisting(
   }
 
   // Always backfill payment fields — a cached name must not permanently hide lud16.
-  if (!next.lud16?.trim() && incoming.lud16?.trim()) next.lud16 = incoming.lud16;
-  if (!next.lnurl?.trim() && incoming.lnurl?.trim()) next.lnurl = incoming.lnurl;
+  if (!next.lud16?.trim() && incoming.lud16?.trim())
+    next.lud16 = incoming.lud16;
+  if (!next.lnurl?.trim() && incoming.lnurl?.trim())
+    next.lnurl = incoming.lnurl;
   if (!next.nwcRecv?.trim() && incoming.nwcRecv?.trim()) {
     next.nwcRecv = incoming.nwcRecv;
   }
@@ -516,7 +514,11 @@ export function useContributorMetadata(pubkeys: string[]) {
           const next = { ...prev };
           for (const [pk, meta] of Object.entries(profiles)) {
             const key = pk.toLowerCase();
-            next[key] = mergeKind0OntoExisting(next[key], meta, meta.created_at);
+            next[key] = mergeKind0OntoExisting(
+              next[key],
+              meta,
+              meta.created_at
+            );
           }
           saveMetadataCache(next);
           return next;
@@ -692,9 +694,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                   ) {
                     console.log(
                       `✅ [useContributorMetadata] Found ${legacyIdentities.length} legacy kind-0 identities:`,
-                      legacyIdentities.map(
-                        (i) => `${i.platform}:${i.identity}`
-                      )
+                      legacyIdentities.map((i) => `${i.platform}:${i.identity}`)
                     );
                   }
 
@@ -717,10 +717,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                         : []),
                       ...legacyIdentities,
                     ];
-                    const unioned = preferNip39Identities(
-                      from10011,
-                      fromKind0
-                    );
+                    const unioned = preferNip39Identities(from10011, fromKind0);
                     if (unioned.length > 0) merged.identities = unioned;
                     else delete (merged as { identities?: unknown }).identities;
 

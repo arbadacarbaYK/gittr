@@ -23,8 +23,7 @@ export function shouldHardNavigate(
   pathname?: string | null
 ): boolean {
   const path =
-    pathname ??
-    (typeof window !== "undefined" ? window.location.pathname : "");
+    pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
   return isExplorePath(path) || isExploreHref(href);
 }
 

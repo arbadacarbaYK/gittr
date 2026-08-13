@@ -1,14 +1,12 @@
+import type { ReactNode } from "react";
+
+import { OG_SIZE } from "@/lib/seo/create-og-image";
+import { type RepoOgData, formatOgCount } from "@/lib/seo/fetch-repo-og-data";
+
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ReactNode } from "react";
 import sharp from "sharp";
-
-import {
-  formatOgCount,
-  type RepoOgData,
-} from "@/lib/seo/fetch-repo-og-data";
-import { OG_SIZE } from "@/lib/seo/create-og-image";
 
 async function svgToPngDataUrl(
   svg: string,

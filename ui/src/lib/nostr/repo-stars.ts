@@ -217,10 +217,7 @@ export async function queryRepoAnnouncementEventId(
       () => {
         eoseCount += 1;
         // First empty relay must not abort — wait for quorum/all/timeout
-        if (
-          eoseCount >= expectedEose ||
-          (latest && eoseCount >= eoseQuorum)
-        ) {
+        if (eoseCount >= expectedEose || (latest && eoseCount >= eoseQuorum)) {
           finish(unsub as () => void);
         }
       },

@@ -20,9 +20,10 @@ import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { mkdir, rm } from "fs/promises";
 import { dirname } from "path";
 import { promisify } from "util";
+
+import { mkdir, rm } from "fs/promises";
 
 import { verifyNostrAuth, verifySSHKeyOwnership } from "./push-auth";
 
@@ -153,10 +154,12 @@ export default async function handler(
     return res.status(400).json({ error: "sourceUrl is required" });
   }
 
-  const normalizedSource = normalizeGithubSourceUrl(sourceUrlInput) || sourceUrlInput.trim();
+  const normalizedSource =
+    normalizeGithubSourceUrl(sourceUrlInput) || sourceUrlInput.trim();
   if (!isCloneableUpstreamSourceUrl(normalizedSource)) {
     return res.status(400).json({
-      error: "sourceUrl must be a cloneable forge URL (GitHub/GitLab/Codeberg/Gitea/…)",
+      error:
+        "sourceUrl must be a cloneable forge URL (GitHub/GitLab/Codeberg/Gitea/…)",
     });
   }
 
@@ -230,9 +233,7 @@ export default async function handler(
     await mkdir(dirname(repoPath), { recursive: true });
 
     if (!existsSync(repoPath)) {
-      console.log(
-        `🔄 [SyncFromSource] Cloning ${cloneUrl} → ${repoPath}`
-      );
+      console.log(`🔄 [SyncFromSource] Cloning ${cloneUrl} → ${repoPath}`);
       await execAsync(
         `git clone --bare ${shellQuote(cloneUrl)} ${shellQuote(repoPath)}`,
         { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
@@ -244,18 +245,24 @@ export default async function handler(
       // Ensure upstream remote points at forge
       try {
         await execAsync(
-          `git --git-dir=${shellQuote(repoPath)} remote set-url upstream ${shellQuote(cloneUrl)}`,
+          `git --git-dir=${shellQuote(
+            repoPath
+          )} remote set-url upstream ${shellQuote(cloneUrl)}`,
           { timeout: 15000 }
         );
       } catch {
         await execAsync(
-          `git --git-dir=${shellQuote(repoPath)} remote add upstream ${shellQuote(cloneUrl)}`,
+          `git --git-dir=${shellQuote(
+            repoPath
+          )} remote add upstream ${shellQuote(cloneUrl)}`,
           { timeout: 15000 }
         );
       }
       // Force-update local heads/tags to match upstream tip (exact forge SHAs)
       await execAsync(
-        `git --git-dir=${shellQuote(repoPath)} fetch --prune upstream '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'`,
+        `git --git-dir=${shellQuote(
+          repoPath
+        )} fetch --prune upstream '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'`,
         { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
       );
     }
@@ -267,11 +274,15 @@ export default async function handler(
     const branchRef = `refs/heads/${branch}`;
     try {
       await execAsync(
-        `git --git-dir=${shellQuote(repoPath)} rev-parse --verify ${shellQuote(branchRef)}`,
+        `git --git-dir=${shellQuote(repoPath)} rev-parse --verify ${shellQuote(
+          branchRef
+        )}`,
         { timeout: 10000 }
       );
       await execAsync(
-        `git --git-dir=${shellQuote(repoPath)} symbolic-ref HEAD ${shellQuote(branchRef)}`,
+        `git --git-dir=${shellQuote(repoPath)} symbolic-ref HEAD ${shellQuote(
+          branchRef
+        )}`,
         { timeout: 10000 }
       );
     } catch {
@@ -293,7 +304,9 @@ export default async function handler(
       null;
 
     console.log(
-      `✅ [SyncFromSource] ${safeRepoName} tip=${headCommit?.slice(0, 12) || "none"} refs=${refs.length}`
+      `✅ [SyncFromSource] ${safeRepoName} tip=${
+        headCommit?.slice(0, 12) || "none"
+      } refs=${refs.length}`
     );
 
     return res.status(200).json({
@@ -310,7 +323,9 @@ export default async function handler(
     if (existsSync(repoPath)) {
       try {
         const { stdout } = await execAsync(
-          `git --git-dir=${shellQuote(repoPath)} rev-parse --is-bare-repository`,
+          `git --git-dir=${shellQuote(
+            repoPath
+          )} rev-parse --is-bare-repository`,
           { timeout: 5000 }
         );
         if (stdout.trim() !== "true") {

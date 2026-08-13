@@ -8,7 +8,5 @@ export const size = OG_SIZE;
 export const contentType = "image/png";
 
 export default async function OpenGraphImage() {
-  return createGittrOgImage(
-    "Create or import — Nostr git & foreign mirrors"
-  );
+  return createGittrOgImage("Create or import — Nostr git & foreign mirrors");
 }

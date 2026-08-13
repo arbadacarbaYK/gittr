@@ -18,6 +18,9 @@ export const APPS_DESCRIPTION =
 export const PAGES_DESCRIPTION =
   "Published static sites on Nostr (gittr Pages / nsite) — open each site on pages.gittr.space. Separate from git clone and the Apps catalog.";
 
+export const LAB_DESCRIPTION =
+  "Snapshot of an agent that maps ecosystem dependencies and their security, starting from gittr as the seed repo. Run local-agent yourself from the linked repo.";
+
 export const EXPLORE_DESCRIPTION =
   "Explore public Nostr git repositories — browse announcements on relays (same list as Repos). Discover projects before you open Code, Issues, or zap the owner.";
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parseTreeLastCommitLog,
   TREE_LAST_COMMIT_MARKER,
+  parseTreeLastCommitLog,
 } from "./bare-repo-tree-last-commits";
 
 const children = [
@@ -11,10 +11,8 @@ const children = [
   { type: "file" as const, path: "package.json" },
 ];
 
-const HASH =
-  "04a8c01ae73cdad5e7e72eb1aa6993765791ff33";
-const HASH2 =
-  "aeeea7baa1c1011cd4c2564450c4ed088b84dc4d";
+const HASH = "04a8c01ae73cdad5e7e72eb1aa6993765791ff33";
+const HASH2 = "aeeea7baa1c1011cd4c2564450c4ed088b84dc4d";
 
 describe("parseTreeLastCommitLog", () => {
   it("maps files exactly and dirs by prefix (marker format)", () => {
@@ -49,7 +47,10 @@ describe("parseTreeLastCommitLog", () => {
     const orphanPathHeaders: string[] = [];
     const nulSplitHits: Record<string, string> = {};
     for (const record of nulSeparated.split("\0").filter((r) => r.trim())) {
-      const lines = record.split("\n").map((l) => l.trim()).filter(Boolean);
+      const lines = record
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
       const header = lines[0] || "";
       const id = header.split("\x1f")[0] || "";
       if (!/^[0-9a-f]{40}$/i.test(id)) {

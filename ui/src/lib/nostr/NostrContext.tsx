@@ -23,8 +23,8 @@ import { nip19 } from "nostr-tools";
 
 import useLocalStorage from "../hooks/useLocalStorage";
 
-import { WEB_STORAGE_KEYS } from "./localStorage";
 import { isBunkerMainPoolBlocked } from "./bunker-main-pool-guard";
+import { WEB_STORAGE_KEYS } from "./localStorage";
 import { getDefaultRelayUrls } from "./relay-env";
 import {
   RemoteSignerManager,

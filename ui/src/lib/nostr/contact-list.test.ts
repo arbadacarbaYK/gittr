@@ -189,8 +189,20 @@ describe("followingCountFromContactEvents / followersCountFromContactEvents", ()
     const c = "c".repeat(64);
     expect(
       followingCountFromContactEvents([
-        { tags: [["p", a], ["p", b]], content: "" },
-        { tags: [["p", b], ["p", c]], content: "" },
+        {
+          tags: [
+            ["p", a],
+            ["p", b],
+          ],
+          content: "",
+        },
+        {
+          tags: [
+            ["p", b],
+            ["p", c],
+          ],
+          content: "",
+        },
       ])
     ).toBe(3);
   });

@@ -68,7 +68,8 @@ export async function pushPrRef({
       const data = await response.json().catch(() => ({}));
       return {
         success: false,
-        error: data.error || data.details || `Push ref failed (${response.status})`,
+        error:
+          data.error || data.details || `Push ref failed (${response.status})`,
       };
     }
 

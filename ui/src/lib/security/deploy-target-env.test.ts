@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { resolveDeployTargetFromEnv } from "./deploy-target-env";
 
 describe("resolveDeployTargetFromEnv", () => {

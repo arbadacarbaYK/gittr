@@ -142,7 +142,11 @@ require (
 `;
     const pkgs = parseManifest("go.mod", content);
     const gin = pkgs.find((p) => p.name === "github.com/gin-gonic/gin");
-    expect(gin).toMatchObject({ ecosystem: "Go", version: "1.9.1", direct: true });
+    expect(gin).toMatchObject({
+      ecosystem: "Go",
+      version: "1.9.1",
+      direct: true,
+    });
     const crypto = pkgs.find((p) => p.name === "golang.org/x/crypto");
     expect(crypto?.direct).toBe(false);
   });

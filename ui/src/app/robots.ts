@@ -15,13 +15,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         // Explicit /new so card validators that cached the old Disallow: /new clear faster.
         allow: ["/", "/new", "/new/"],
-        disallow: [
-          "/api/",
-          "/settings/",
-          "/import",
-          "/login",
-          "/signup",
-        ],
+        disallow: ["/api/", "/settings/", "/import", "/login", "/signup"],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

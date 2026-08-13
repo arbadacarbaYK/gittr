@@ -12,12 +12,6 @@ import {
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import {
-  type EventKey,
-  type NotificationPrefs,
-  DEFAULT_PREFS,
-  deepMergePrefs,
-} from "@/lib/notifications/prefs";
-import {
   KIND_NOTIFICATION_PREFS,
   LEGACY_CVE_OPT_IN_D_TAG,
   NOTIFICATION_PREFS_D_TAG,
@@ -25,6 +19,12 @@ import {
   parseNotificationPrefsContent,
   pickLatestNotificationPrefsEvent,
 } from "@/lib/notifications/notification-prefs-event";
+import {
+  DEFAULT_PREFS,
+  type EventKey,
+  type NotificationPrefs,
+  deepMergePrefs,
+} from "@/lib/notifications/prefs";
 import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 
 import { nip19 } from "nostr-tools";
@@ -158,10 +158,7 @@ export default function NotificationsPage() {
       }
       const { signer } = signingCreds;
       const signerPubkey = await signer.getPublicKey();
-      const unsigned = buildNotificationPrefsUnsignedEvent(
-        signerPubkey,
-        prefs
-      );
+      const unsigned = buildNotificationPrefsUnsignedEvent(signerPubkey, prefs);
       const signed = await signer.signEvent(unsigned);
       publish(signed, defaultRelays);
 
@@ -241,14 +238,18 @@ export default function NotificationsPage() {
             with a usable gittr mirror (created / imported / pushed here — not
             every repo announced from another client), only when that mirror
             matches your Push announcement (kind 30618) — if GitHub/forge moved,
-            sync from source then <strong className="text-gray-300">Push</strong>{" "}
-            (a browser-only refetch without Push does not fix a tip mismatch) —
-            and reviewed before mass send. See Help → Security alerts.
+            sync from source then{" "}
+            <strong className="text-gray-300">Push</strong> (a browser-only
+            refetch without Push does not fix a tip mismatch) — and reviewed
+            before mass send. See Help → Security alerts.
           </li>
         </ul>
         <p className="text-xs text-gray-500">
           More detail:{" "}
-          <a href="/help#notifications" className="text-purple-400 hover:text-purple-300">
+          <a
+            href="/help#notifications"
+            className="text-purple-400 hover:text-purple-300"
+          >
             Help → Notifications
           </a>
           {SECURITY_AUDIT_UI_ENABLED ? (
@@ -375,8 +376,8 @@ export default function NotificationsPage() {
                       @gittrupdatebot
                     </a>
                     , send <code className="text-gray-300">/start</code>, and
-                    paste the User ID. It is stored on this server for delivery —
-                    not published to public relays. You can enable Nostr and
+                    paste the User ID. It is stored on this server for delivery
+                    — not published to public relays. You can enable Nostr and
                     Telegram together.
                   </p>
                 </div>
@@ -403,7 +404,7 @@ export default function NotificationsPage() {
                 ["bounty_released", "Bounty released to me"],
                 [
                   "security_cve",
-                  "Security: confirmed CRITICAL/HIGH CVE on a direct dependency in my gittr-hosted repo tip",
+                  "Security: confirmed CRITICAL/HIGH CVE on a direct dependency in my gittr-hosted repo tip (also includes early pre-CVE warnings by DM)",
                 ],
               ] as [EventKey, string][]
             )
@@ -432,16 +433,26 @@ export default function NotificationsPage() {
               </p>
               <p>
                 Only confirmed lockfile matches (direct dependency +
-                CRITICAL/HIGH) on repos that have code on gittr (created /
-                imported / pushed here). Alerts need your{" "}
+                CRITICAL/HIGH) on <strong className="text-gray-300">repos you own</strong>{" "}
+                that have code on gittr (created / imported / pushed here) — not
+                watched or starred projects. Want coverage of someone else&apos;s
+                stack? Fork or import it under your account. Alerts need your{" "}
                 <strong className="text-gray-300">Nostr announcement</strong>{" "}
                 (kind 30618 from Push) to match the tip on gittr — if they
                 disagree, we skip rather than warn from the wrong tree. After
                 GitHub (or another forge) moves on, sync that source onto gittr
                 and <strong className="text-gray-300">Push</strong> again so the
-                announcement catches up; a browser-only refetch without Push does
-                not fix the mismatch. Opt in + Save registers consent; mass DMs
-                are reviewed before send.
+                announcement catches up; a browser-only refetch without Push
+                does not fix the mismatch. Opt in + Save registers consent; mass
+                DMs are reviewed before send.
+              </p>
+              <p>
+                The same Security toggle also enables private{" "}
+                <strong className="text-gray-300">early warnings</strong> when a
+                public Spoiler Alert feed flags a HIGH/CRITICAL patch that looks
+                related to a direct dependency (often before a CVE). Those DMs
+                are not listed on the Dependencies tab; if that feed is down,
+                normal OSV CVE checks keep working.
               </p>
               <p>
                 Details:{" "}

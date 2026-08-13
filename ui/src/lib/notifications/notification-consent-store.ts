@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { type EventKey, DEFAULT_PREFS } from "./prefs";
+import { DEFAULT_PREFS, type EventKey } from "./prefs";
 
 export type NotificationConsentRecord = {
   nostr: boolean;

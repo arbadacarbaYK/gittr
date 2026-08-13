@@ -1,7 +1,7 @@
 // Main notification service - dispatches via server deliver (recipient consent)
+import type { NotificationData } from "./nostr-dm";
 import { type EventKey } from "./prefs";
 import { sendTelegramChannelAnnouncement } from "./telegram-channel";
-import type { NotificationData } from "./nostr-dm";
 
 export interface NotificationEventData {
   eventType: EventKey;

@@ -25,9 +25,9 @@ describe("normalizeGitCloneUrl", () => {
   });
 
   it("keeps plain clone URLs", () => {
-    expect(
-      normalizeGitCloneUrl("https://gitlab.com/owner/repo.git")
-    ).toBe("https://gitlab.com/owner/repo.git");
+    expect(normalizeGitCloneUrl("https://gitlab.com/owner/repo.git")).toBe(
+      "https://gitlab.com/owner/repo.git"
+    );
   });
 });
 
@@ -38,9 +38,7 @@ describe("detectGitForge", () => {
 
   it("routes GitLab / Codeberg / Gitea to git clone", () => {
     expect(detectGitForge("https://gitlab.com/a/b").type).toBe("gitlab");
-    expect(detectGitForge("https://codeberg.org/a/b").useGithubApi).toBe(
-      false
-    );
+    expect(detectGitForge("https://codeberg.org/a/b").useGithubApi).toBe(false);
     expect(detectGitForge("https://gitea.example.com/a/b").type).toBe("gitea");
   });
 });
@@ -59,15 +57,11 @@ describe("parseOwnerRepoFromGitUrl", () => {
 
 describe("isCloneableUpstreamSourceUrl", () => {
   it("allows GitHub, GitLab, Codeberg", () => {
-    expect(
-      isCloneableUpstreamSourceUrl("https://github.com/a/b")
-    ).toBe(true);
-    expect(
-      isCloneableUpstreamSourceUrl("https://gitlab.com/group/repo")
-    ).toBe(true);
-    expect(
-      isCloneableUpstreamSourceUrl("https://codeberg.org/a/b")
-    ).toBe(true);
+    expect(isCloneableUpstreamSourceUrl("https://github.com/a/b")).toBe(true);
+    expect(isCloneableUpstreamSourceUrl("https://gitlab.com/group/repo")).toBe(
+      true
+    );
+    expect(isCloneableUpstreamSourceUrl("https://codeberg.org/a/b")).toBe(true);
   });
 
   it("allows self-hosted HTTPS and git@", () => {
@@ -82,9 +76,7 @@ describe("isCloneableUpstreamSourceUrl", () => {
   it("rejects GRASP npub paths and empty", () => {
     expect(isCloneableUpstreamSourceUrl("")).toBe(false);
     expect(
-      isCloneableUpstreamSourceUrl(
-        "https://git.gittr.space/npub1abc/repo.git"
-      )
+      isCloneableUpstreamSourceUrl("https://git.gittr.space/npub1abc/repo.git")
     ).toBe(false);
   });
 });

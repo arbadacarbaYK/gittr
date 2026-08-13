@@ -47,7 +47,9 @@ export function uniqContactPubkeys(pubkeys: string[]): string[] {
 }
 
 /** Union of several contact lists (order not meaningful). */
-export function mergeContactLists(...lists: Array<string[] | null | undefined>): string[] {
+export function mergeContactLists(
+  ...lists: Array<string[] | null | undefined>
+): string[] {
   const out = new Set<string>();
   for (const list of lists) {
     if (!Array.isArray(list)) continue;
@@ -88,12 +90,12 @@ export function parseContactListPubkeys(event: {
             typeof entry === "string"
               ? entry
               : Array.isArray(entry)
-                ? entry[0]
-                : entry &&
-                    typeof entry === "object" &&
-                    typeof (entry as { pubkey?: string }).pubkey === "string"
-                  ? (entry as { pubkey: string }).pubkey
-                  : "";
+              ? entry[0]
+              : entry &&
+                typeof entry === "object" &&
+                typeof (entry as { pubkey?: string }).pubkey === "string"
+              ? (entry as { pubkey: string }).pubkey
+              : "";
           if (typeof pk === "string" && /^[0-9a-f]{64}$/i.test(pk)) {
             out.add(pk.toLowerCase());
           }
@@ -273,10 +275,7 @@ export function resolveContactListBase(args: {
   const memory = uniqContactPubkeys(args.inMemory || []);
   const backup = uniqContactPubkeys(args.backup || []);
   const largestLocal = Math.max(memory.length, backup.length);
-  const largestRelay = Math.max(
-    args.largestRelayListSize || 0,
-    relay.length
-  );
+  const largestRelay = Math.max(args.largestRelayListSize || 0, relay.length);
   const largestKnown = Math.max(largestLocal, largestRelay);
 
   const relayLooksPartial =

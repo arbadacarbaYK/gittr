@@ -32,10 +32,7 @@ describe("sanitizeDescriptionForMarkdown", () => {
 
 describe("sidebarAboutText", () => {
   it("sanitizes doxa-style descriptions", () => {
-    const d = sidebarAboutText(
-      '"English quote"\n---\nCzech quote',
-      "doxa"
-    );
+    const d = sidebarAboutText('"English quote"\n---\nCzech quote', "doxa");
     expect(d).toBe('"English quote"\n\nCzech quote');
   });
 });
@@ -55,11 +52,7 @@ describe("preferOwnedDescription", () => {
   it("keeps owner local description when event is placeholder", async () => {
     const { preferOwnedDescription } = await import("./repo-about-text");
     expect(
-      preferOwnedDescription(
-        "My custom about",
-        "Repository: chatty",
-        "chatty"
-      )
+      preferOwnedDescription("My custom about", "Repository: chatty", "chatty")
     ).toBe("My custom about");
   });
 

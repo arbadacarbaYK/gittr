@@ -2,7 +2,6 @@
  * "Forked from" in the UI must mean a real foreign forge upstream — never the
  * owner's own GRASP / Nostr-git mirror clone URL (e.g. git.shakespeare.diy/npub…/repo).
  */
-
 import { isGraspCloneUrl } from "../utils/grasp-servers";
 
 import { urlLooksLikeSourceUpstream } from "./forge-tree-shrink";
@@ -23,5 +22,7 @@ export function sanitizeForkedFromField(
   raw: string | null | undefined
 ): string | undefined {
   if (!isDisplayableForkAttribution(raw)) return undefined;
-  return String(raw).trim().replace(/\.git$/i, "");
+  return String(raw)
+    .trim()
+    .replace(/\.git$/i, "");
 }

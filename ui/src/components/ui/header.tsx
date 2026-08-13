@@ -12,13 +12,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { gittrLabNavEnabled } from "@/lib/lab/gittr-lab-config";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import useSession from "@/lib/nostr/useSession";
-import { startWarmAllReposIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { startWarmAllReposIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
+import { cn } from "@/lib/utils";
+import { appNavigate } from "@/lib/utils/app-navigate";
 import {
   readRepoIssuesFromLocalStorage,
   readRepoPullsFromLocalStorage,
@@ -27,9 +30,6 @@ import {
   normalizeIssueListStatus,
   normalizePrListStatus,
 } from "@/lib/utils/issue-pr-status";
-
-import { appNavigate } from "@/lib/utils/app-navigate";
-import { cn } from "@/lib/utils";
 
 import { ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -61,6 +61,10 @@ const HeaderConfig = {
     {
       title: "Apps",
       href: "/apps",
+    },
+    {
+      title: "Lab",
+      href: "/lab",
     },
     {
       title: "Bounty Hunt",
@@ -241,15 +245,17 @@ export function Header() {
 
   const navItems = useMemo(
     () =>
-      HeaderConfig.mainNav.map((item) => {
-        if (item.href === "/issues" && isLoggedIn && openIssueTotal > 0) {
-          return { ...item, badgeCount: openIssueTotal };
-        }
-        if (item.href === "/pulls" && isLoggedIn && openPrTotal > 0) {
-          return { ...item, badgeCount: openPrTotal };
-        }
-        return item;
-      }),
+      HeaderConfig.mainNav
+        .filter((item) => item.href !== "/lab" || gittrLabNavEnabled())
+        .map((item) => {
+          if (item.href === "/issues" && isLoggedIn && openIssueTotal > 0) {
+            return { ...item, badgeCount: openIssueTotal };
+          }
+          if (item.href === "/pulls" && isLoggedIn && openPrTotal > 0) {
+            return { ...item, badgeCount: openPrTotal };
+          }
+          return item;
+        }),
     [isLoggedIn, openIssueTotal, openPrTotal]
   );
 
@@ -281,7 +287,10 @@ export function Header() {
         {mounted && isLoggedIn && (
           <a
             href="/new"
-            className={cn(buttonVariants({ variant: "outline" }), "max-h-8 min-w-max")}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "max-h-8 min-w-max"
+            )}
             onClick={(e) => {
               go("/new", e);
             }}

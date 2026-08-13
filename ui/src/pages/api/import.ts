@@ -1,6 +1,7 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { validateGitHubUrl } from "@/lib/security/input-validation";
+import { mapGithubReleaseAssets } from "@/lib/utils/map-github-release-assets";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -552,6 +553,15 @@ export default async function handler(
       published_at?: string;
       html_url?: string;
       author?: { login: string; avatar_url?: string };
+      prerelease?: boolean;
+      source?: "github";
+      assets?: Array<{
+        name: string;
+        platform: string;
+        url: string;
+        size?: number;
+        contentType?: string;
+      }>;
     }> = [];
     if (releasesResponse.ok) {
       const list: any[] = await releasesResponse.json();
@@ -565,6 +575,9 @@ export default async function handler(
           author: r.author
             ? { login: r.author.login, avatar_url: r.author.avatar_url }
             : undefined,
+          prerelease: Boolean(r.prerelease),
+          source: "github" as const,
+          assets: mapGithubReleaseAssets(r.assets),
         }))
         .slice(0, 50);
     }

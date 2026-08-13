@@ -107,6 +107,7 @@ export function formatRelativeShort(
   if (seconds < 90) return "1m ago";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 3600 * 36) return `${Math.floor(seconds / 3600)}h ago`;
-  if (seconds < 3600 * 24 * 60) return `${Math.floor(seconds / (3600 * 24))}d ago`;
+  if (seconds < 3600 * 24 * 60)
+    return `${Math.floor(seconds / (3600 * 24))}d ago`;
   return formatDate24h(date);
 }

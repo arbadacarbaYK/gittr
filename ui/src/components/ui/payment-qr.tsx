@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { parseNwcConnectionUri } from "@/lib/payments/nwc-uri";
 
 import { CheckCircle, Copy, Download, X } from "lucide-react";
 import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
 import { QRCodeSVG } from "qrcode.react";
-
-import { parseNwcConnectionUri } from "@/lib/payments/nwc-uri";
 
 // NIP-44 is only available in nostr-tools v2.x+, so we'll import it conditionally at runtime
 // This avoids build errors when nip44 doesn't exist in v1.7.4
@@ -534,8 +533,7 @@ export function PaymentQR({
             paidViaRelay = true;
             break;
           } catch (err: any) {
-            lastPayError =
-              err instanceof Error ? err : new Error(String(err));
+            lastPayError = err instanceof Error ? err : new Error(String(err));
             console.warn(
               `NWC pay_invoice failed on ${candidate}:`,
               lastPayError.message

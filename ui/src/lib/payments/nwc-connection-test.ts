@@ -85,7 +85,9 @@ export async function testNWCConnection(
     connected: false,
     relayReachable: false,
     requestAccepted: false,
-    error: lastError || `Cannot connect to any URI relay: ${parsed.relays.join(", ")}`,
+    error:
+      lastError ||
+      `Cannot connect to any URI relay: ${parsed.relays.join(", ")}`,
   };
 }
 

@@ -202,7 +202,11 @@ export function FileDiffViewer({
         diff.push({ line: raw, type: "hunk" });
         continue;
       }
-      if (raw.startsWith("+++ ") || raw.startsWith("--- ") || raw.startsWith("diff ")) {
+      if (
+        raw.startsWith("+++ ") ||
+        raw.startsWith("--- ") ||
+        raw.startsWith("diff ")
+      ) {
         diff.push({ line: raw, type: "hunk" });
         continue;
       }
@@ -251,7 +255,11 @@ export function FileDiffViewer({
     if (before !== undefined && after !== undefined) {
       return calculateDiff(before, after);
     }
-    if (after !== undefined && before === undefined && looksLikeUnifiedPatch(after)) {
+    if (
+      after !== undefined &&
+      before === undefined &&
+      looksLikeUnifiedPatch(after)
+    ) {
       return parseUnifiedPatch(after);
     }
     if (after !== undefined && before === undefined && status === "added") {
@@ -440,7 +448,8 @@ export function FileDiffViewer({
                         </span>
                       </td>
                     </tr>
-                  ))}                </tbody>
+                  ))}{" "}
+                </tbody>
               </table>
             </div>
           ) : (

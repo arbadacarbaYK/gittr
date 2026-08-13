@@ -649,8 +649,7 @@ export default function RepoPullsPage({
                           typeof event.pubkey === "string" && event.pubkey
                             ? event.pubkey
                             : currentPR.mergedBy,
-                        mergedAt:
-                          currentPR.mergedAt || event.created_at * 1000,
+                        mergedAt: currentPR.mergedAt || event.created_at * 1000,
                       }
                     : {}),
                 };

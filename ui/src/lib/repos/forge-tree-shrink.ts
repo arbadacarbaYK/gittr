@@ -65,7 +65,10 @@ export function isSourceUpstreamFetchType(
 
 /** True when this fetch status is the declared SOURCE (not a GRASP mirror). */
 export function isSourceUpstreamFetchStatus(
-  status: { source?: { type?: string; url?: string } | null } | null | undefined,
+  status:
+    | { source?: { type?: string; url?: string } | null }
+    | null
+    | undefined,
   sourceUrl?: string | null,
   forkedFrom?: string | null
 ): boolean {
@@ -83,7 +86,11 @@ export function isSourceUpstreamFetchStatus(
       .toLowerCase()
       .replace(/\.git$/i, "");
     if (!target) continue;
-    if (fetched === target || fetched.includes(target) || target.includes(fetched)) {
+    if (
+      fetched === target ||
+      fetched.includes(target) ||
+      target.includes(fetched)
+    ) {
       return true;
     }
   }

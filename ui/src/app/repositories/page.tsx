@@ -41,6 +41,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
@@ -50,7 +51,6 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
-import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -643,8 +643,7 @@ export default function RepositoriesPage() {
     }
     try {
       // Prefer session catalog (survives quota-full writes) then localStorage.
-      let list = (reposCatalogRef.current ??
-        (loadStoredRepos() as Repo[]));
+      let list = reposCatalogRef.current ?? (loadStoredRepos() as Repo[]);
 
       // CRITICAL: Clean up corrupted repos on page load using general corruption check
       const beforeCount = list.length;
@@ -1901,7 +1900,7 @@ export default function RepositoriesPage() {
             }
 
             // Persist without throwing on quota; session catalog keeps UI usable.
-            persistReposCatalog(cleanedRepos );
+            persistReposCatalog(cleanedRepos);
 
             // Debounced React refresh (same-tab storage events do not fire).
             scheduleUiReloadFromNostr();
@@ -2062,8 +2061,7 @@ export default function RepositoriesPage() {
           publicRead: row.publicRead !== false,
         }));
 
-        const base =
-          reposCatalogRef.current ?? (loadStoredRepos() as any[]);
+        const base = reposCatalogRef.current ?? (loadStoredRepos() as any[]);
         const merged = mergeProfileRepoList(base, rows);
         persistReposCatalog(merged as Repo[]);
         if (!cancelled) {
@@ -2601,9 +2599,7 @@ export default function RepositoriesPage() {
               title="Flush only your own repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Unpushed local-only work is lost. Other people’s cached repos stay."
             >
               <span className="sm:hidden">Flush my repos</span>
-              <span className="hidden sm:inline">
-                Flush my own repos cache
-              </span>
+              <span className="hidden sm:inline">Flush my own repos cache</span>
             </button>
           )}
 
@@ -2654,9 +2650,7 @@ export default function RepositoriesPage() {
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
                       <li>Your own repositories in this browser</li>
-                      <li>
-                        Files / issues / PRs for your own repos
-                      </li>
+                      <li>Files / issues / PRs for your own repos</li>
                       <li>Everything already on Nostr (unchanged)</li>
                     </ul>
                   </div>
@@ -2666,16 +2660,19 @@ export default function RepositoriesPage() {
                       When to use this:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>After Explore/import filled the cache with others&apos; repos</li>
+                      <li>
+                        After Explore/import filled the cache with others&apos;
+                        repos
+                      </li>
                       <li>To free space so your own repos keep syncing</li>
-                      <li>Anytime — other people&apos;s repos can be re-fetched</li>
+                      <li>
+                        Anytime — other people&apos;s repos can be re-fetched
+                      </li>
                     </ul>
                   </div>
 
                   <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
-                    <p className="font-semibold text-red-300 mb-2">
-                      ⚠️ Note:
-                    </p>
+                    <p className="font-semibold text-red-300 mb-2">⚠️ Note:</p>
                     <p className="text-sm text-red-200/90">
                       This only clears other people&apos;s repos from your
                       browser. Opening those repos again will download a fresh
@@ -2709,10 +2706,7 @@ export default function RepositoriesPage() {
                           preserveWithMetadata: false,
                         });
 
-                        console.log(
-                          "✅ Flushed others' repos cache:",
-                          result
-                        );
+                        console.log("✅ Flushed others' repos cache:", result);
 
                         setShowClearForeignConfirm(false);
 
@@ -2842,10 +2836,7 @@ export default function RepositoriesPage() {
 
                         const result = clearOwnReposFromStorage(pubkey);
 
-                        console.log(
-                          "✅ Flushed my own repos cache:",
-                          result
-                        );
+                        console.log("✅ Flushed my own repos cache:", result);
 
                         setShowClearConfirm(false);
 
@@ -2861,9 +2852,7 @@ export default function RepositoriesPage() {
                           "Failed to flush my own repos cache:",
                           error
                         );
-                        alert(
-                          `❌ Error flushing my own repos cache: ${error}`
-                        );
+                        alert(`❌ Error flushing my own repos cache: ${error}`);
                         setShowClearConfirm(false);
                       }
                     }}
@@ -3321,9 +3310,8 @@ export default function RepositoriesPage() {
                 return;
               }
               if (needsCloneRepublish.length === 0) return;
-              const nameList = formatCloneRepublishRepoNames(
-                needsCloneRepublish
-              );
+              const nameList =
+                formatCloneRepublishRepoNames(needsCloneRepublish);
               const ok = window.confirm(
                 `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses):\n\n` +
                   `${nameList}\n\n` +
@@ -3383,9 +3371,9 @@ export default function RepositoriesPage() {
                       <strong className="font-medium text-amber-50">
                         {formatCloneRepublishRepoNames(needsCloneRepublish)}
                       </strong>
-                      . Hidden from explore until fixed. Each repo needs its
-                      own Push / signatures; this can take a while, please leave
-                      the tab open until finished.
+                      . Hidden from explore until fixed. Each repo needs its own
+                      Push / signatures; this can take a while, please leave the
+                      tab open until finished.
                     </span>
                     <Button
                       type="button"

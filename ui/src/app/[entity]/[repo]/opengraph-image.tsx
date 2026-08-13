@@ -1,5 +1,5 @@
-import { createRepoOgImage } from "@/lib/seo/create-repo-og-image";
 import { OG_SIZE } from "@/lib/seo/create-og-image";
+import { createRepoOgImage } from "@/lib/seo/create-repo-og-image";
 import { fetchRepoOgData } from "@/lib/seo/fetch-repo-og-data";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
@@ -32,10 +32,6 @@ export default async function OpenGraphImage({
     decodedRepo = repo;
   }
 
-  const data = await fetchRepoOgData(
-    entity,
-    decodedRepo,
-    getPublicSiteUrl()
-  );
+  const data = await fetchRepoOgData(entity, decodedRepo, getPublicSiteUrl());
   return createRepoOgImage(data);
 }

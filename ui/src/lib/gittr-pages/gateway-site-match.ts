@@ -33,7 +33,10 @@ export function gatewaySiteMatchesRepo(
   try {
     const hostname = new URL(u).hostname.toLowerCase();
     if (hostname === `${d}.${host}`) return true;
-    if (hostname.endsWith(`${d}.${host}`) && hostname.length > d.length + host.length + 1) {
+    if (
+      hostname.endsWith(`${d}.${host}`) &&
+      hostname.length > d.length + host.length + 1
+    ) {
       return true;
     }
   } catch {

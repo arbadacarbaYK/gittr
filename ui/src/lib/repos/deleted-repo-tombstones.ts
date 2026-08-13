@@ -4,7 +4,6 @@
  * 30617 under the same owner+name must clear them or HP (relay-fed) shows the
  * repo while those pages keep hiding it forever.
  */
-
 import { nip19 } from "nostr-tools";
 
 export type DeletedRepoTombstone = {
@@ -68,10 +67,7 @@ export function clearDeletedRepoTombstones(opts: {
     });
 
     if (nextDeleted.length !== deletedRepos.length) {
-      localStorage.setItem(
-        "gittr_deleted_repos",
-        JSON.stringify(nextDeleted)
-      );
+      localStorage.setItem("gittr_deleted_repos", JSON.stringify(nextDeleted));
       return deletedRepos.length - nextDeleted.length;
     }
   } catch {

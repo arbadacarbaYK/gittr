@@ -32,12 +32,12 @@ import {
   removePendingEdit,
   removePendingUpload,
 } from "@/lib/pending-changes";
+import { resolveRepoForPublish } from "@/lib/repos/resolve-repo-for-publish";
 import {
   type StoredContributor,
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
-import { resolveRepoForPublish } from "@/lib/repos/resolve-repo-for-publish";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
@@ -504,7 +504,8 @@ export default function NewPullRequestPage({
                   repo
                 );
                 if (targetRepo) {
-                  (targetRepo as any).earliestUniqueCommit = earliestUniqueCommit;
+                  (targetRepo as any).earliestUniqueCommit =
+                    earliestUniqueCommit;
                   localStorage.setItem(
                     "gittr_repos",
                     JSON.stringify(reposForUpdate)

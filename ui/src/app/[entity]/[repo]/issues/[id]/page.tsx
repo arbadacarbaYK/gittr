@@ -51,6 +51,7 @@ import {
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -89,7 +90,6 @@ import { Reply } from "lucide-react";
 import Link from "next/link";
 import { type UnsignedEvent, nip19 } from "nostr-tools";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
-import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 

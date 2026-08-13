@@ -30,9 +30,9 @@ import {
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
+import { removeStaleAutoLinks } from "@/lib/repos/enrich-repo-links";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
-import { removeStaleAutoLinks } from "@/lib/repos/enrich-repo-links";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -68,10 +68,11 @@ import {
   Youtube,
   Zap,
 } from "lucide-react";
-import { nip19 } from "nostr-tools";
 import { useParams, useRouter } from "next/navigation";
+import { nip19 } from "nostr-tools";
 
 import RepoWalletConfig from "./RepoWalletConfig";
+
 interface ZapSplit {
   pubkey: string;
   weight: number; // percentage 0-100
@@ -363,8 +364,7 @@ export default function RepoSettingsPage() {
         ) {
           const all = loadStoredRepos();
           const idx = all.findIndex(
-            (r) =>
-              (r.repo === repo || r.slug === repo) && r.entity === entity
+            (r) => (r.repo === repo || r.slug === repo) && r.entity === entity
           );
           if (idx >= 0 && all[idx]) {
             if (cleanedLinks.length > 0) {
@@ -409,8 +409,7 @@ export default function RepoSettingsPage() {
     const repos = loadStoredRepos();
     const stored = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
     let ownerHex =
-      (stored?.ownerPubkey &&
-      /^[0-9a-f]{64}$/i.test(stored.ownerPubkey)
+      (stored?.ownerPubkey && /^[0-9a-f]{64}$/i.test(stored.ownerPubkey)
         ? stored.ownerPubkey
         : ""
       ).toLowerCase() || "";
@@ -433,9 +432,7 @@ export default function RepoSettingsPage() {
     }
 
     const repoName =
-      stored?.repositoryName ||
-      stored?.name ||
-      decodeURIComponent(repo || "");
+      stored?.repositoryName || stored?.name || decodeURIComponent(repo || "");
     const dTags = Array.from(
       new Set(
         [repoName, repo, stored?.slug, stored?.repo]
@@ -2090,7 +2087,9 @@ export default function RepoSettingsPage() {
         <div className="flex items-center gap-3">
           <Button
             onClick={handleSave}
-            disabled={saving || (!visibilityReady && !visibilityTouchedRef.current)}
+            disabled={
+              saving || (!visibilityReady && !visibilityTouchedRef.current)
+            }
             variant="default"
           >
             {saving ? "Saving..." : "Save Settings"}

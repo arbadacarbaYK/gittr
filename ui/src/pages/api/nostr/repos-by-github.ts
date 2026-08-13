@@ -229,8 +229,7 @@ export default async function handler(
     );
 
     const sourceUrl =
-      tagSingle(event.tags, "source") ||
-      tagSingle(event.tags, "forkedFrom");
+      tagSingle(event.tags, "source") || tagSingle(event.tags, "forkedFrom");
     const gittrRepoUrl = `https://gittr.space/${npub}/${repoId}`;
     const gittrProfileUrl = `https://gittr.space/${npub}`;
 

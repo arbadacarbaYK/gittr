@@ -1,4 +1,7 @@
-import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
+import {
+  handlePaymentOptionsRequest,
+  setPaymentCorsHeaders,
+} from "@/lib/api/cors";
 import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -33,8 +36,7 @@ export default async function handler(
     });
   }
 
-  const finalLnbitsAdminKey =
-    String(lnbitsAdminKey || "").trim();
+  const finalLnbitsAdminKey = String(lnbitsAdminKey || "").trim();
   const finalLnbitsUrl = resolveLnbitsUrl(
     lnbitsUrl as string | string[] | undefined
   );

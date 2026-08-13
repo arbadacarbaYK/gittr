@@ -397,13 +397,12 @@ export default function CommitDetailPage({
           <h2 className="text-xl font-semibold">Files changed</h2>
           {fileDiffs.map((diff, idx) => (
             <div key={idx} className="space-y-1">
-              {diff.additions !== undefined &&
-                diff.deletions !== undefined && (
-                  <div className="flex justify-end text-sm text-gray-400 px-1">
-                    <span className="text-green-400">+{diff.additions}</span>{" "}
-                    <span className="text-red-400">-{diff.deletions}</span>
-                  </div>
-                )}
+              {diff.additions !== undefined && diff.deletions !== undefined && (
+                <div className="flex justify-end text-sm text-gray-400 px-1">
+                  <span className="text-green-400">+{diff.additions}</span>{" "}
+                  <span className="text-red-400">-{diff.deletions}</span>
+                </div>
+              )}
               <FileDiffViewer
                 path={diff.path}
                 status={diff.status}

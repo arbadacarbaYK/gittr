@@ -97,7 +97,10 @@ async function fetchGithubCommitsForBranch(
   return [];
 }
 
-function npubForCloneUrls(entity: string, ownerHex: string | null): string | null {
+function npubForCloneUrls(
+  entity: string,
+  ownerHex: string | null
+): string | null {
   if (entity.startsWith("npub")) return entity;
   if (ownerHex && /^[0-9a-f]{64}$/i.test(ownerHex)) {
     try {

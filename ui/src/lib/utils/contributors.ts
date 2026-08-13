@@ -127,7 +127,7 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
     typeof ownerPubkey !== "string" ||
     !HEX_64_REGEX.test(ownerPubkey.trim())
   ) {
-    return sanitizeContributors(base, { keepNameOnly: true }) ;
+    return sanitizeContributors(base, { keepNameOnly: true });
   }
   const pk = ownerPubkey.trim().toLowerCase();
   const dn = typeof displayName === "string" ? displayName.trim() : "";
@@ -136,8 +136,7 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
   // otherwise Settings/UI shows a second "arbadacarba" with no identity.
   const withoutShadowOwner = base.filter((c) => {
     if (c.pubkey || c.githubLogin) return true;
-    const name =
-      typeof c.name === "string" ? c.name.trim().toLowerCase() : "";
+    const name = typeof c.name === "string" ? c.name.trim().toLowerCase() : "";
     const looksLikeOwner = c.weight === 100 || c.role === "owner";
     if (!looksLikeOwner) return true;
     if (!name) return false;
@@ -167,5 +166,5 @@ export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
       ...withoutShadowOwner,
     ];
   }
-  return sanitizeContributors(merged, { keepNameOnly: true }) ;
+  return sanitizeContributors(merged, { keepNameOnly: true });
 }

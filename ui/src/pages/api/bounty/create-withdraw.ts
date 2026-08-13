@@ -1,4 +1,7 @@
-import { handlePaymentOptionsRequest, setPaymentCorsHeaders } from "@/lib/api/cors";
+import {
+  handlePaymentOptionsRequest,
+  setPaymentCorsHeaders,
+} from "@/lib/api/cors";
 import {
   type LNbitsConfig,
   createWithdrawLink,

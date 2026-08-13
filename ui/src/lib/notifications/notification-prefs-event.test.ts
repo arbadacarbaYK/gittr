@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deepMergePrefs, DEFAULT_PREFS } from "./prefs";
+import { consentAllowsEvent } from "./notification-consent-store";
 import {
   KIND_NOTIFICATION_PREFS,
   LEGACY_CVE_OPT_IN_D_TAG,
@@ -10,7 +10,7 @@ import {
   parseNotificationPrefsContent,
   pickLatestNotificationPrefsEvent,
 } from "./notification-prefs-event";
-import { consentAllowsEvent } from "./notification-consent-store";
+import { DEFAULT_PREFS, deepMergePrefs } from "./prefs";
 
 describe("notification prefs event", () => {
   it("builds full prefs under d=gittr/notifications", () => {

@@ -20,11 +20,7 @@ function SearchBarInner({ className }: { className?: string }) {
   const exploreQuery =
     pathname === "/explore"
       ? urlQ ||
-        (urlUser
-          ? urlUser.startsWith("npub")
-            ? urlUser
-            : `@${urlUser}`
-          : "")
+        (urlUser ? (urlUser.startsWith("npub") ? urlUser : `@${urlUser}`) : "")
       : "";
 
   useEffect(() => {

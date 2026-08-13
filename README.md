@@ -17,8 +17,9 @@ flowchart TB
   end
 
   subgraph gittr_stack["gittr platform · hostnames"]
-    UI["★ YOU ARE HERE · gittr Client<br/>this repo · web forge<br/>gittr.space"]
+    UI["★ YOU ARE HERE · gittr Client<br/>this repo · web UI<br/>gittr.space"]
     Pages["Pages / nsite<br/>pages.gittr.space"]
+    Blossom["Blossom<br/>blossom.gittr.space<br/>blob store for Pages / media"]
     Bridge["gitnostr Bridge<br/>git.gittr.space<br/>SSH / HTTPS git"]
     MCP["gittr-mcp<br/>tools for agents"]
     RelayGittr["gittr Pyramid relay<br/>relay.gittr.space<br/>wss · open forge + GRASP"]
@@ -37,11 +38,13 @@ flowchart TB
   UI --> Relays
   UI --> Bridge
   UI --> Pages
+  UI -->|Pages / Apps blobs| Blossom
+  Pages --> Relays
+  Pages --> Blossom
   MCP --> RelayGittr
   MCP --> Relays
   MCP --> Bridge
   MCP --> UI
-  Pages --> Relays
   Bridge --> RelayGittr
   Bridge --> Relays
   RemoteNostr --> Relays
@@ -50,19 +53,21 @@ flowchart TB
   classDef youAreHere fill:#0f766e,stroke:#5eead4,stroke-width:3px,color:#ecfdf5
   classDef hostUrl fill:#164e63,stroke:#22d3ee,stroke-width:2px,color:#ecfeff
   class UI youAreHere
-  class Bridge,Pages,RelayGittr hostUrl
+  class Bridge,Pages,Blossom,RelayGittr hostUrl
 ```
 
 | Piece | Host / repo | Job in one line |
 | --- | --- | --- |
-| **★ gittr Client (this README)** | [arbadacarbaYK/gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main) · `gittr.space` | Web forge: Code, Issues/PRs, Push, import, ToDo, Apps |
+| **★ gittr Client (this README)** | [arbadacarbaYK/gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main) · `gittr.space` | Web UI: Code, Issues/PRs, Push, import, ToDo, Apps |
 | **gitnostr Bridge** | [arbadacarbaYK/gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) (`ui/gitnostr/`) · **`git.gittr.space`** | Real git over SSH/HTTPS; watches relays; kind 52 keys |
 | **Pages / nsite** | [arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway) · **`pages.gittr.space`** | Static sites from Nostr (gittr Pages) |
+| **Blossom** | **`blossom.gittr.space`** (plus public Blossom hosts as fallback) | Blob store for Pages manifests / media uploads (NIP-96 style) |
 | **gittr Pyramid relay** | [arbadacarbaYK/pyramid](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid) · **`relay.gittr.space`** (`wss://`) | Open forge + discussion relay; GRASP-capable |
-| **gittr-mcp** | [arbadacarbaYK/gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp) | Same forge for AI agents (HTTP + Nostr, not SSH) |
+| **gittr-mcp** | [arbadacarbaYK/gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp) | Same platform for AI agents (HTTP + Nostr, not SSH) |
+| **gittr-helper-tools** | [arbadacarbaYK/gittr-helper-tools](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?branch=main) | Integrator snippets from production (not a live host in the diagram) |
 | **git remote nostr** | [ngit / git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) | `nostr://` remotes — other stack, same NIP-34 events |
 
-**Addressing:** repos are Nostr identities (`npub` / hex) + repo name on relays; git blobs live on **`git.gittr.space`** (or another `clone` host). Sites on **`pages.gittr.space`**. Prefer publishing to **`wss://relay.gittr.space`** plus other relays. Agents resolve via MCP; humans via the UI or `git clone` / `nostr://`.
+**Addressing:** repos are Nostr identities (`npub` / hex) + repo name on relays; git blobs live on **`git.gittr.space`** (or another `clone` host). Sites on **`pages.gittr.space`**; Pages/media blobs on **`blossom.gittr.space`**. Prefer publishing to **`wss://relay.gittr.space`** plus other relays. Agents resolve via MCP; humans via the UI or `git clone` / `nostr://`.
 
 Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nostr mirror or a path off a centralized host—not a skin on top of another forge’s login.
 
@@ -71,7 +76,8 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 - **Mirror / backup** — Push or import a repo. Files live on the **gitnostr** bridge (`git-nostr-bridge`, and/or upstream); metadata on relays.
 - **Issues & PRs on Nostr** — Same workflow as a normal forge. Events are NIP-34 and related kinds
 - **Pages** — Publish static sites from a repo
-- **Apps** — Browse NIP-82 / Zapstore apps; owners can **Announce app** from a repo (forge Release APK URLs, no gittr binary hosting)
+- **Apps** — Browse NIP-82 / Zapstore apps at [/apps](https://gittr.space/apps). Owners can **Announce app** from a repo (forge Release APK URLs; optional sibling binaries). gittr does not host the installers. See [Help → Releases](https://gittr.space/help#releases) for what lives where.
+- **Releases tab** — Lists forge Release assets (GitHub / Codeberg / GitLab). Separate from Push to Nostr and from Apps announce.
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.
 
 Sitemap/SEO: dynamic from relays — [docs/SEO.md](docs/SEO.md).
@@ -157,7 +163,7 @@ Corrections welcome.
 
 ## Features include
 
-Repos: create, import (incl. bulk), fork, browse/edit files, blame, diffs, releases, tags. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram — prefs on kind 30078 `gittr/notifications`, recipient-scoped delivery). **Security (opt-in):** Dependencies tab OSV audit; optional CVE alerts via Settings → Notifications → Security (`CVE_BOT_ENABLED`). Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
+Repos: create, import (incl. bulk), fork, browse/edit files, blame, diffs, releases, tags. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram — prefs on kind 30078 `gittr/notifications`, recipient-scoped delivery). **Security (opt-in):** Dependencies tab OSV audit; optional CVE alerts via Settings → Notifications → Security (`CVE_BOT_ENABLED`) — same toggle also gets private early (pre-CVE) Spoiler Alert DMs, not shown on Dependencies. Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
 
 Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md), [NIPS_AND_EVENT_KINDS.md](docs/NIPS_AND_EVENT_KINDS.md)).
 

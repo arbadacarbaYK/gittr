@@ -79,20 +79,24 @@ function enforceHighlightContrast(svg: string): string {
       strokeWidth: string
     ) => {
       doc.querySelectorAll(sel).forEach((node) => {
-        node.querySelectorAll("rect, polygon, circle, path, ellipse").forEach((shape) => {
-          shape.setAttribute("fill", fill);
-          shape.setAttribute("stroke", stroke);
-          shape.setAttribute("stroke-width", strokeWidth);
-          const s = (shape as SVGElement).style;
-          if (s) {
-            s.fill = fill;
-            s.stroke = stroke;
-          }
-        });
-        node.querySelectorAll("span, .nodeLabel, foreignObject div").forEach((el) => {
-          (el as HTMLElement).style.color = textFill;
-          el.setAttribute("fill", textFill);
-        });
+        node
+          .querySelectorAll("rect, polygon, circle, path, ellipse")
+          .forEach((shape) => {
+            shape.setAttribute("fill", fill);
+            shape.setAttribute("stroke", stroke);
+            shape.setAttribute("stroke-width", strokeWidth);
+            const s = (shape as SVGElement).style;
+            if (s) {
+              s.fill = fill;
+              s.stroke = stroke;
+            }
+          });
+        node
+          .querySelectorAll("span, .nodeLabel, foreignObject div")
+          .forEach((el) => {
+            (el as HTMLElement).style.color = textFill;
+            el.setAttribute("fill", textFill);
+          });
         node.querySelectorAll("text, tspan").forEach((el) => {
           el.setAttribute("fill", textFill);
         });

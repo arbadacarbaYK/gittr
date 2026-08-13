@@ -11,12 +11,12 @@ import {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import {
-  getActivityDeepPath,
   getActivityIcon as activityIconForType,
+  getActivityDeepPath,
   getActivityLabel,
 } from "@/lib/activity-links";
+import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   type Metadata,
@@ -24,9 +24,9 @@ import {
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
-import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 import {
   type PlatformRecentActivity,
   type PlatformRecentRepo,
@@ -134,7 +134,10 @@ export default function HomePage({
   const avatarSrc =
     mounted && picture && picture.trim() ? picture : "/logo.svg";
   const showBanner =
-    mounted && isLoggedIn && typeof banner === "string" && banner.trim().length > 0
+    mounted &&
+    isLoggedIn &&
+    typeof banner === "string" &&
+    banner.trim().length > 0
       ? banner.trim()
       : null;
   const [topRepos, setTopRepos] = useState<RepoStats[]>(
@@ -180,7 +183,7 @@ export default function HomePage({
   );
   // If SSR already gave us a snapshot, don't show a long "Loading…" while live API catches up.
   const [liveRecentReposLoading, setLiveRecentReposLoading] = useState(
-    () => !(initialLeaderboard?.recentRepos?.length)
+    () => !initialLeaderboard?.recentRepos?.length
   );
   const [platformRecentRepos, setPlatformRecentRepos] = useState<
     PlatformRecentRepo[]
@@ -1044,21 +1047,32 @@ export default function HomePage({
         }
         role="img"
         aria-label={
-          showBanner
-            ? "Your Nostr profile banner"
-            : "Default gittr banner"
+          showBanner ? "Your Nostr profile banner" : "Default gittr banner"
         }
       />
 
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-6 pb-6 relative">
-      <header className="mb-6">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
-            {profileHref ? (
-              <Link href={profileHref} className="block h-full w-full">
+        <header className="mb-6">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
+              {profileHref ? (
+                <Link href={profileHref} className="block h-full w-full">
+                  <img
+                    src={avatarSrc}
+                    alt={welcomeName || "You"}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (target.src !== "/logo.svg") target.src = "/logo.svg";
+                    }}
+                    referrerPolicy="no-referrer"
+                    suppressHydrationWarning
+                  />
+                </Link>
+              ) : (
                 <img
                   src={avatarSrc}
-                  alt={welcomeName || "You"}
+                  alt="gittr"
                   className="h-full w-full object-cover"
                   onError={(e) => {
                     const target = e.currentTarget;
@@ -1067,981 +1081,976 @@ export default function HomePage({
                   referrerPolicy="no-referrer"
                   suppressHydrationWarning
                 />
-              </Link>
-            ) : (
-              <img
-                src={avatarSrc}
-                alt="gittr"
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  if (target.src !== "/logo.svg") target.src = "/logo.svg";
-                }}
-                referrerPolicy="no-referrer"
-                suppressHydrationWarning
-              />
-            )}
-          </div>
-          <div className="min-w-0 pt-1 flex-1">
-            <h1
-              className="text-2xl font-bold text-[var(--color-text-primary)]"
-              suppressHydrationWarning
-            >
-              {welcomeName ? (
-                <>
-                  Welcome,{" "}
-                  {profileHref ? (
-                    <Link
-                      href={profileHref}
-                      className="text-[var(--color-accent-primary)] hover:underline"
-                    >
-                      {welcomeName}
-                    </Link>
-                  ) : (
-                    welcomeName
-                  )}
-                </>
-              ) : (
-                "Welcome to gittr"
               )}
-            </h1>
-            <p
-              className="mt-1 text-sm text-[var(--color-text-secondary)] max-w-2xl"
-              suppressHydrationWarning
-            >
-              Import or create repos, announce them on Nostr, and discover code
-              across the network.
-            </p>
+            </div>
+            <div className="min-w-0 pt-1 flex-1">
+              <h1
+                className="text-2xl font-bold text-[var(--color-text-primary)]"
+                suppressHydrationWarning
+              >
+                {welcomeName ? (
+                  <>
+                    Welcome,{" "}
+                    {profileHref ? (
+                      <Link
+                        href={profileHref}
+                        className="text-[var(--color-accent-primary)] hover:underline"
+                      >
+                        {welcomeName}
+                      </Link>
+                    ) : (
+                      welcomeName
+                    )}
+                  </>
+                ) : (
+                  "Welcome to gittr"
+                )}
+              </h1>
+              <p
+                className="mt-1 text-sm text-[var(--color-text-secondary)] max-w-2xl"
+                suppressHydrationWarning
+              >
+                Import or create repos, announce them on Nostr, and discover
+                code across the network.
+              </p>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {mounted && sourceOfflineNoticeVisible && (
-        <div
-          className="mb-6 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]"
-          role="status"
-        >
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
-              <div className="space-y-1">
-                <p>
-                  Import your git from GitHub / Gitea / Codeberg or Gitlab so it
-                  can still be discovered even if the source goes down. When that
-                  already happened you can still create a repo on nostr git with
-                  a local backup. Don&apos;t forget to{" "}
-                  <strong className="text-[var(--color-text-primary)]">
-                    Push to Nostr
-                  </strong>
-                  !
-                </p>
-                <p className="text-xs">
-                  <Link
-                    href="/help#when-source-goes-offline"
-                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                  >
-                    When the source is gone
-                  </Link>
-                  {" · "}
-                  <Link
-                    href="/new"
-                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                  >
-                    New repo
-                  </Link>
-                </p>
-              </div>
-              {SECURITY_AUDIT_UI_ENABLED && (
+        {mounted && sourceOfflineNoticeVisible && (
+          <div
+            className="mb-6 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]"
+            role="status"
+          >
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
                 <div className="space-y-1">
                   <p>
-                    Every repo here also gets a free security audit — known CVEs
-                    in its dependencies show on the repo&apos;s{" "}
+                    Import your git from GitHub / Gitea / Codeberg or Gitlab so
+                    it can still be discovered even if the source goes down.
+                    When that already happened you can still create a repo on
+                    nostr git with a local backup. Don&apos;t forget to{" "}
                     <strong className="text-[var(--color-text-primary)]">
-                      Dependencies
-                    </strong>{" "}
-                    tab, exact-version matches only.
+                      Push to Nostr
+                    </strong>
+                    !
                   </p>
                   <p className="text-xs">
                     <Link
-                      href="/help#security-alerts"
+                      href="/help#when-source-goes-offline"
                       className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
                     >
-                      How to get alerted
+                      When the source is gone
+                    </Link>
+                    {" · "}
+                    <Link
+                      href="/new"
+                      className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                    >
+                      New repo
                     </Link>
                   </p>
                 </div>
+                {SECURITY_AUDIT_UI_ENABLED && (
+                  <div className="space-y-1">
+                    <p>
+                      Every repo here also gets a free security audit — known
+                      CVEs in its dependencies show on the repo&apos;s{" "}
+                      <strong className="text-[var(--color-text-primary)]">
+                        Dependencies
+                      </strong>{" "}
+                      tab, exact-version matches only.
+                    </p>
+                    <p className="text-xs">
+                      <Link
+                        href="/help#security-alerts"
+                        className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                      >
+                        How to get alerted
+                      </Link>
+                    </p>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]"
+                aria-label="Dismiss notice"
+                onClick={() => {
+                  setSourceOfflineNoticeVisible(false);
+                  try {
+                    localStorage.setItem(SOURCE_OFFLINE_NOTICE_KEY, "1");
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Top Row: Most Active Repos, Most Active Users, Open Bounties */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Top Repos - Always show */}
+          <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+              Most Active Repos
+            </h3>
+            <div className="space-y-2 flex-1">
+              {topRepos.length > 0 ? (
+                topRepos.slice(0, 5).map((repo, idx) => {
+                  // repoId is in format "entity/repo"
+                  const [entity, repoName] =
+                    repo.repoId &&
+                    typeof repo.repoId === "string" &&
+                    repo.repoId.includes("/")
+                      ? repo.repoId.split("/")
+                      : [repo.entity || "", repo.repoId || ""];
+                  const href = getRepoUrl(entity || "", repoName || "");
+
+                  return (
+                    <Link
+                      key={repo.repoId}
+                      href={href}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
+                          {idx + 1}. {repo.repoName}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
+                          {repo.activityCount}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-[var(--color-text-secondary)] py-2">
+                  {leaderboardReady || lbTopReposReady
+                    ? "No active repos yet"
+                    : "Loading..."}
+                </div>
               )}
             </div>
-            <button
-              type="button"
-              className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]"
-              aria-label="Dismiss notice"
-              onClick={() => {
-                setSourceOfflineNoticeVisible(false);
-                try {
-                  localStorage.setItem(SOURCE_OFFLINE_NOTICE_KEY, "1");
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              Dismiss
-            </button>
           </div>
-        </div>
-      )}
 
-      {/* Top Row: Most Active Repos, Most Active Users, Open Bounties */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Top Repos - Always show */}
-        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-            Most Active Repos
-          </h3>
-          <div className="space-y-2 flex-1">
-            {topRepos.length > 0 ? (
-              topRepos.slice(0, 5).map((repo, idx) => {
-                // repoId is in format "entity/repo"
-                const [entity, repoName] =
-                  repo.repoId &&
-                  typeof repo.repoId === "string" &&
-                  repo.repoId.includes("/")
-                    ? repo.repoId.split("/")
-                    : [repo.entity || "", repo.repoId || ""];
-                const href = getRepoUrl(entity || "", repoName || "");
-
-                return (
-                  <Link
-                    key={repo.repoId}
-                    href={href}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
-                        {idx + 1}. {repo.repoName}
-                      </span>
-                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
-                        {repo.activityCount}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className="text-sm text-[var(--color-text-secondary)] py-2">
-                {leaderboardReady || lbTopReposReady
-                  ? "No active repos yet"
-                  : "Loading..."}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Top Users - Always show */}
-        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-            Most Active
-          </h3>
-          <div className="space-y-2 flex-1">
-            {topUsers.length > 0 ? (
-              topUsers.slice(0, 5).map((user, idx) => {
-                // Convert hex pubkey to npub format for profile link
-                let href = `/${user.pubkey}`;
-                if (user.pubkey && /^[0-9a-f]{64}$/i.test(user.pubkey)) {
-                  try {
-                    const npub = nip19.npubEncode(user.pubkey);
-                    href = `/${npub}`;
-                  } catch (error) {
-                    console.error("⚠️ [Home] Failed to encode npub for user:", {
-                      pubkey: user.pubkey,
-                      error,
-                    });
-                    // Fallback to hex pubkey if encoding fails
-                    href = `/${user.pubkey}`;
+          {/* Top Users - Always show */}
+          <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+              Most Active
+            </h3>
+            <div className="space-y-2 flex-1">
+              {topUsers.length > 0 ? (
+                topUsers.slice(0, 5).map((user, idx) => {
+                  // Convert hex pubkey to npub format for profile link
+                  let href = `/${user.pubkey}`;
+                  if (user.pubkey && /^[0-9a-f]{64}$/i.test(user.pubkey)) {
+                    try {
+                      const npub = nip19.npubEncode(user.pubkey);
+                      href = `/${npub}`;
+                    } catch (error) {
+                      console.error(
+                        "⚠️ [Home] Failed to encode npub for user:",
+                        {
+                          pubkey: user.pubkey,
+                          error,
+                        }
+                      );
+                      // Fallback to hex pubkey if encoding fails
+                      href = `/${user.pubkey}`;
+                    }
                   }
-                }
-                return (
-                  <Link
-                    key={user.pubkey}
-                    href={href}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
-                        {idx + 1}. {getDisplayName(user.pubkey)}
-                      </span>
-                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
-                        {user.activityCount}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className="text-sm text-[var(--color-text-secondary)] py-2">
-                {leaderboardReady || lbTopUsersReady
-                  ? "No active users yet"
-                  : "Loading..."}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Open Bounties - Always show */}
-        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)] flex items-center justify-between gap-2">
-            <span>Open Bounties</span>
-            <Link
-              href="/bounty-hunt?status=paid"
-              className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
-            >
-              Hunt →
-            </Link>
-          </h3>
-          <div className="space-y-2 flex-1">
-            {openBounties.length > 0 ? (
-              openBounties.slice(0, 5).map((bounty, idx) => {
-                const href = getRepoUrl(
-                  bounty.entity,
-                  `${bounty.repoName}/issues/${bounty.issueId}`
-                );
-                return (
-                  <Link
-                    key={bounty.issueId}
-                    href={href}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-[var(--color-text-primary)] truncate">
-                          {idx + 1}. {bounty.title}
-                        </div>
-                        <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
-                          {bounty.repoName}
-                        </div>
+                  return (
+                    <Link
+                      key={user.pubkey}
+                      href={href}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
+                          {idx + 1}. {getDisplayName(user.pubkey)}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
+                          {user.activityCount}
+                        </span>
                       </div>
-                      <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
-                        {bounty.bountyAmount.toLocaleString()} sats
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className="text-sm text-[var(--color-text-secondary)] py-2">
-                No open bounties available
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Other Stats Cards - Second Row */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4 auto-rows-fr">
-        {/* Top Devs */}
-        {topDevs.length > 0 && (
-          <div className="border border-[var(--color-border)] rounded p-4">
-            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-              Active Mergers
-            </h3>
-            <div className="space-y-2">
-              {topDevs.slice(0, 5).map((dev, idx) => {
-                // Use full pubkey for profile link (more reliable than 8-char prefix)
-                return (
-                  <Link
-                    key={dev.pubkey}
-                    href={`/${dev.pubkey}`}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
-                        {idx + 1}. {getDisplayName(dev.pubkey)}
-                      </span>
-                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
-                        {dev.prMergedCount} PRs
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-[var(--color-text-secondary)] py-2">
+                  {leaderboardReady || lbTopUsersReady
+                    ? "No active users yet"
+                    : "Loading..."}
+                </div>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Top Bounty Takers */}
-        {topBountyTakers.length > 0 && (
-          <div className="border border-[var(--color-border)] rounded p-4">
-            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-              Bounty Hunters
-            </h3>
-            <div className="space-y-2">
-              {topBountyTakers.slice(0, 5).map((hunter, idx) => {
-                // Use full pubkey for profile link (more reliable than 8-char prefix)
-                return (
-                  <Link
-                    key={hunter.pubkey}
-                    href={`/${hunter.pubkey}`}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
-                        {idx + 1}. {getDisplayName(hunter.pubkey)}
-                      </span>
-                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
-                        {hunter.bountyClaimedCount}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Platform Bounty Statistics */}
-        {platformBountyStats && platformBountyStats.totalBounties > 0 && (
-          <div className="border border-[var(--color-border)] rounded p-4">
+          {/* Open Bounties - Always show */}
+          <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
             <h3 className="font-semibold mb-3 text-[var(--color-text-primary)] flex items-center justify-between gap-2">
-              <span>Bounty Statistics</span>
+              <span>Open Bounties</span>
               <Link
-                href="/bounty-hunt"
+                href="/bounty-hunt?status=paid"
                 className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
               >
                 Hunt →
               </Link>
             </h3>
-            <div className="space-y-2 text-sm">
-              <Link
-                href="/bounty-hunt?status=paid"
-                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-              >
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Available:
-                  </span>
-                  <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
-                    {platformBountyStats.availableBounties} (
-                    {platformBountyStats.totalAvailable.toLocaleString()} sats)
-                  </span>
-                </div>
-              </Link>
-              <Link
-                href="/bounty-hunt?status=pending"
-                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-              >
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Pending:
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
-                    {platformBountyStats.pendingCount} (
-                    {platformBountyStats.pendingPayment.toLocaleString()} sats)
-                  </span>
-                </div>
-              </Link>
-              <Link
-                href="/bounty-hunt?status=released"
-                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-              >
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Released:
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
-                    {platformBountyStats.releasedCount}
-                  </span>
-                </div>
-              </Link>
-              {platformBountyStats.offlineCount > 0 && (
-                <div className="flex justify-between gap-2 px-2 -mx-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Offline:
-                  </span>
-                  <span className="text-[var(--color-text-secondary)] font-semibold tabular-nums">
-                    {platformBountyStats.offlineCount}
-                  </span>
+            <div className="space-y-2 flex-1">
+              {openBounties.length > 0 ? (
+                openBounties.slice(0, 5).map((bounty, idx) => {
+                  const href = getRepoUrl(
+                    bounty.entity,
+                    `${bounty.repoName}/issues/${bounty.issueId}`
+                  );
+                  return (
+                    <Link
+                      key={bounty.issueId}
+                      href={href}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-[var(--color-text-primary)] truncate">
+                            {idx + 1}. {bounty.title}
+                          </div>
+                          <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                            {bounty.repoName}
+                          </div>
+                        </div>
+                        <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                          {bounty.bountyAmount.toLocaleString()} sats
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-[var(--color-text-secondary)] py-2">
+                  No open bounties available
                 </div>
               )}
-              <div className="pt-2 border-t border-[var(--color-border)] flex justify-between gap-2">
-                <span className="text-[var(--color-text-primary)] font-semibold">
-                  Total:
-                </span>
-                <span className="text-[var(--color-accent-primary)] font-bold tabular-nums">
-                  {platformBountyStats.totalBounties}
-                </span>
-              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Your Bounty Status (if logged in) */}
-        {isLoggedIn &&
-          ownBountyStats &&
-          (ownBountyStats.totalPending > 0 ||
-            ownBountyStats.totalPaid > 0 ||
-            ownBountyStats.totalReleased > 0) && (
+        {/* Other Stats Cards - Second Row */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4 auto-rows-fr">
+          {/* Top Devs */}
+          {topDevs.length > 0 && (
             <div className="border border-[var(--color-border)] rounded p-4">
               <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-                Your Bounties
+                Active Mergers
+              </h3>
+              <div className="space-y-2">
+                {topDevs.slice(0, 5).map((dev, idx) => {
+                  // Use full pubkey for profile link (more reliable than 8-char prefix)
+                  return (
+                    <Link
+                      key={dev.pubkey}
+                      href={`/${dev.pubkey}`}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
+                          {idx + 1}. {getDisplayName(dev.pubkey)}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
+                          {dev.prMergedCount} PRs
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Top Bounty Takers */}
+          {topBountyTakers.length > 0 && (
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                Bounty Hunters
+              </h3>
+              <div className="space-y-2">
+                {topBountyTakers.slice(0, 5).map((hunter, idx) => {
+                  // Use full pubkey for profile link (more reliable than 8-char prefix)
+                  return (
+                    <Link
+                      key={hunter.pubkey}
+                      href={`/${hunter.pubkey}`}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
+                          {idx + 1}. {getDisplayName(hunter.pubkey)}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
+                          {hunter.bountyClaimedCount}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Platform Bounty Statistics */}
+          {platformBountyStats && platformBountyStats.totalBounties > 0 && (
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)] flex items-center justify-between gap-2">
+                <span>Bounty Statistics</span>
+                <Link
+                  href="/bounty-hunt"
+                  className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
+                >
+                  Hunt →
+                </Link>
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Pending Payment:
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
-                    {ownBountyStats.totalPending} (
-                    {ownBountyStats.pendingAmount.toLocaleString()} sats)
-                  </span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Available:
-                  </span>
-                  <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
-                    {ownBountyStats.totalPaid} (
-                    {ownBountyStats.paidAmount.toLocaleString()} sats)
-                  </span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Claimed:
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
-                    {ownBountyStats.totalReleased} (
-                    {ownBountyStats.releasedAmount.toLocaleString()} sats)
-                  </span>
-                </div>
+                <Link
+                  href="/bounty-hunt?status=paid"
+                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Available:
+                    </span>
+                    <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
+                      {platformBountyStats.availableBounties} (
+                      {platformBountyStats.totalAvailable.toLocaleString()}{" "}
+                      sats)
+                    </span>
+                  </div>
+                </Link>
+                <Link
+                  href="/bounty-hunt?status=pending"
+                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Pending:
+                    </span>
+                    <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
+                      {platformBountyStats.pendingCount} (
+                      {platformBountyStats.pendingPayment.toLocaleString()}{" "}
+                      sats)
+                    </span>
+                  </div>
+                </Link>
+                <Link
+                  href="/bounty-hunt?status=released"
+                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Released:
+                    </span>
+                    <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
+                      {platformBountyStats.releasedCount}
+                    </span>
+                  </div>
+                </Link>
+                {platformBountyStats.offlineCount > 0 && (
+                  <div className="flex justify-between gap-2 px-2 -mx-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Offline:
+                    </span>
+                    <span className="text-[var(--color-text-secondary)] font-semibold tabular-nums">
+                      {platformBountyStats.offlineCount}
+                    </span>
+                  </div>
+                )}
                 <div className="pt-2 border-t border-[var(--color-border)] flex justify-between gap-2">
                   <span className="text-[var(--color-text-primary)] font-semibold">
                     Total:
                   </span>
                   <span className="text-[var(--color-accent-primary)] font-bold tabular-nums">
-                    {ownBountyStats.totalAmount.toLocaleString()} sats
+                    {platformBountyStats.totalBounties}
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Your Bounty Status (if logged in) */}
+          {isLoggedIn &&
+            ownBountyStats &&
+            (ownBountyStats.totalPending > 0 ||
+              ownBountyStats.totalPaid > 0 ||
+              ownBountyStats.totalReleased > 0) && (
+              <div className="border border-[var(--color-border)] rounded p-4">
+                <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                  Your Bounties
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Pending Payment:
+                    </span>
+                    <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
+                      {ownBountyStats.totalPending} (
+                      {ownBountyStats.pendingAmount.toLocaleString()} sats)
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Available:
+                    </span>
+                    <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
+                      {ownBountyStats.totalPaid} (
+                      {ownBountyStats.paidAmount.toLocaleString()} sats)
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--color-text-secondary)]">
+                      Claimed:
+                    </span>
+                    <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
+                      {ownBountyStats.totalReleased} (
+                      {ownBountyStats.releasedAmount.toLocaleString()} sats)
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-[var(--color-border)] flex justify-between gap-2">
+                    <span className="text-[var(--color-text-primary)] font-semibold">
+                      Total:
+                    </span>
+                    <span className="text-[var(--color-accent-primary)] font-bold tabular-nums">
+                      {ownBountyStats.totalAmount.toLocaleString()} sats
+                    </span>
+                  </div>
+                </div>
+                <Link
+                  href="/settings/bounties"
+                  className="block mt-3 text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
+                >
+                  Manage bounties →
+                </Link>
+              </div>
+            )}
+
+          {/* Latest Bounties */}
+          {latestBounties.length > 0 && (
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                Latest Bounties
+              </h3>
+              <div className="space-y-2">
+                {latestBounties.slice(0, 5).map((bounty, idx) => {
+                  const href = getRepoUrl(
+                    bounty.entity,
+                    `${bounty.repoName}/issues/${bounty.issueId}`
+                  );
+                  return (
+                    <Link
+                      key={bounty.issueId}
+                      href={href}
+                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-[var(--color-text-primary)] truncate">
+                            {bounty.title}
+                          </div>
+                          <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
+                            {bounty.repoName}
+                          </div>
+                        </div>
+                        <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                          {bounty.bountyAmount.toLocaleString()} sats
+                        </div>
+                      </div>
+                      {bounty.bountyStatus === "pending" && (
+                        <div className="text-[10px] text-[var(--color-text-secondary)] mt-1">
+                          Pending payment
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
               <Link
-                href="/settings/bounties"
+                href="/bounty-hunt"
                 className="block mt-3 text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
               >
-                Manage bounties →
+                View all bounties →
               </Link>
             </div>
           )}
 
-        {/* Latest Bounties */}
-        {latestBounties.length > 0 && (
-          <div className="border border-[var(--color-border)] rounded p-4">
-            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-              Latest Bounties
-            </h3>
-            <div className="space-y-2">
-              {latestBounties.slice(0, 5).map((bounty, idx) => {
-                const href = getRepoUrl(
-                  bounty.entity,
-                  `${bounty.repoName}/issues/${bounty.issueId}`
-                );
-                return (
-                  <Link
-                    key={bounty.issueId}
-                    href={href}
-                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-[var(--color-text-primary)] truncate">
-                          {bounty.title}
-                        </div>
-                        <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
-                          {bounty.repoName}
-                        </div>
-                      </div>
-                      <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
-                        {bounty.bountyAmount.toLocaleString()} sats
-                      </div>
-                    </div>
-                    {bounty.bountyStatus === "pending" && (
-                      <div className="text-[10px] text-[var(--color-text-secondary)] mt-1">
-                        Pending payment
+          {/* Your Bounty Activities (if logged in) */}
+          {isLoggedIn &&
+            userBountyActivityStats &&
+            (userBountyActivityStats.bountiesSetOut > 0 ||
+              userBountyActivityStats.bountiesClaimed > 0 ||
+              recentBountyActivities.length > 0) && (
+              <div className="border border-[var(--color-border)] rounded p-4">
+                <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                  Your Bounty Activity
+                </h3>
+
+                {/* Quick Stats */}
+                {(userBountyActivityStats.bountiesSetOut > 0 ||
+                  userBountyActivityStats.bountiesClaimed > 0) && (
+                  <div className="mb-3 space-y-1.5 text-xs">
+                    {userBountyActivityStats.bountiesSetOut > 0 && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[var(--color-text-secondary)]">
+                          Bounties Set Out:
+                        </span>
+                        <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
+                          {userBountyActivityStats.bountiesSetOut} (
+                          {userBountyActivityStats.totalSetOutAmount.toLocaleString()}{" "}
+                          sats)
+                        </span>
                       </div>
                     )}
+                    {userBountyActivityStats.bountiesClaimed > 0 && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[var(--color-text-secondary)]">
+                          Bounties Claimed:
+                        </span>
+                        <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
+                          {userBountyActivityStats.bountiesClaimed} (
+                          {userBountyActivityStats.totalClaimedAmount.toLocaleString()}{" "}
+                          sats)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Recent Activities */}
+                {recentBountyActivities.length > 0 && (
+                  <>
+                    <div className="text-xs text-[var(--color-text-secondary)] mb-2">
+                      Recent Activity
+                    </div>
+                    <div className="space-y-1.5">
+                      {recentBountyActivities.slice(0, 3).map((activity) => {
+                        const href =
+                          activity.entity && activity.repo
+                            ? getRepoUrl(
+                                activity.entity,
+                                activity.repo.split("/").pop() || activity.repo
+                              )
+                            : "#";
+
+                        // Use mounted state to prevent hydration mismatch
+                        const timeAgo = mounted
+                          ? Math.floor(
+                              (Date.now() - activity.timestamp) / 1000 / 60
+                            )
+                          : 0;
+                        const timeStr = !mounted
+                          ? ""
+                          : timeAgo < 1
+                          ? "just now"
+                          : timeAgo < 60
+                          ? `${timeAgo}m ago`
+                          : timeAgo < 1440
+                          ? `${Math.floor(timeAgo / 60)}h ago`
+                          : `${Math.floor(timeAgo / 1440)}d ago`;
+
+                        const activityText =
+                          activity.type === "bounty_created"
+                            ? `Set bounty on ${
+                                activity.repoName || activity.repo
+                              }`
+                            : `Claimed bounty on ${
+                                activity.repoName || activity.repo
+                              }`;
+
+                        const bountyAmount = activity.metadata?.bountyAmount;
+
+                        return (
+                          <Link
+                            key={activity.id}
+                            href={href}
+                            className="block rounded p-1.5 -m-1.5 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-[var(--color-text-primary)] truncate">
+                                  {activityText}
+                                </div>
+                                <div
+                                  className="text-[10px] text-[var(--color-text-secondary)] mt-0.5"
+                                  suppressHydrationWarning
+                                >
+                                  {timeStr}
+                                </div>
+                              </div>
+                              {bountyAmount && (
+                                <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                                  {bountyAmount.toLocaleString()} sats
+                                </div>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                <div className="flex gap-2 mt-3">
+                  <Link
+                    href="/bounty-hunt"
+                    className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
+                  >
+                    Hunt bounties →
                   </Link>
-                );
-              })}
-            </div>
-            <Link
-              href="/bounty-hunt"
-              className="block mt-3 text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
-            >
-              View all bounties →
-            </Link>
+                  {ownBountyStats &&
+                    (ownBountyStats.totalPending > 0 ||
+                      ownBountyStats.totalPaid > 0) && (
+                      <Link
+                        href="/settings/bounties"
+                        className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
+                      >
+                        Manage →
+                      </Link>
+                    )}
+                </div>
+              </div>
+            )}
+        </div>
+
+        {/* Recent Activity - Full Width - Hidden on mobile */}
+        {(statsLoaded || displayRecentActivity.length > 0) && (
+          <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
+              {hydratedPubkey ? "Your recent activity" : "Recent Activity"}
+            </h3>
+            {displayRecentActivity.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                {displayRecentActivity.slice(0, 12).map((activity) => {
+                  const repoLabel =
+                    activity.repoName || activity.repo || "repo";
+                  const deep = getActivityDeepPath(activity);
+                  const repoNameOnly = (
+                    activity.repoName ||
+                    activity.repo?.split("/").pop() ||
+                    activity.repo ||
+                    ""
+                  ).trim();
+                  const href =
+                    activity.entity && repoNameOnly
+                      ? getRepoUrl(
+                          activity.entity,
+                          deep ? `${repoNameOnly}${deep}` : repoNameOnly
+                        )
+                      : "";
+
+                  // Use mounted state to prevent hydration mismatch
+                  const timeAgo = mounted
+                    ? Math.floor((Date.now() - activity.timestamp) / 1000 / 60)
+                    : 0;
+                  const timeStr = !mounted
+                    ? ""
+                    : timeAgo < 1
+                    ? "just now"
+                    : timeAgo < 60
+                    ? `${timeAgo}m ago`
+                    : timeAgo < 1440
+                    ? `${Math.floor(timeAgo / 60)}h ago`
+                    : `${Math.floor(timeAgo / 1440)}d ago`;
+
+                  return (
+                    <a
+                      key={activity.id}
+                      href={href || undefined}
+                      onClick={(e) => {
+                        if (!href) {
+                          e.preventDefault();
+                          return;
+                        }
+                        // Hard nav — soft Link into heavy repo trees was throwing
+                        // "Cannot read properties of undefined (reading 'call')".
+                        e.preventDefault();
+                        window.location.assign(href);
+                      }}
+                      className="block rounded p-3 border border-[var(--color-border)] transition-colors hover:bg-[var(--color-bg-secondary)]"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="text-base flex-shrink-0 text-[var(--color-text-secondary)]">
+                          {activityIconForType(activity.type)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-[var(--color-text-primary)] truncate">
+                            {getActivityLabel(activity.type, repoLabel)}
+                          </div>
+                          <div
+                            className="text-xs text-[var(--color-text-secondary)] mt-1"
+                            suppressHydrationWarning
+                          >
+                            {timeStr}
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-[var(--color-text-secondary)]">
+                {pubkey
+                  ? "No recent activity on your repos yet."
+                  : !lbRecentActivitiesReady &&
+                    platformRecentActivities.length === 0
+                  ? "Loading recent activity..."
+                  : "No recent activity yet."}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Your Bounty Activities (if logged in) */}
-        {isLoggedIn &&
-          userBountyActivityStats &&
-          (userBountyActivityStats.bountiesSetOut > 0 ||
-            userBountyActivityStats.bountiesClaimed > 0 ||
-            recentBountyActivities.length > 0) && (
-            <div className="border border-[var(--color-border)] rounded p-4">
-              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-                Your Bounty Activity
-              </h3>
-
-              {/* Quick Stats */}
-              {(userBountyActivityStats.bountiesSetOut > 0 ||
-                userBountyActivityStats.bountiesClaimed > 0) && (
-                <div className="mb-3 space-y-1.5 text-xs">
-                  {userBountyActivityStats.bountiesSetOut > 0 && (
-                    <div className="flex justify-between gap-2">
-                      <span className="text-[var(--color-text-secondary)]">
-                        Bounties Set Out:
-                      </span>
-                      <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
-                        {userBountyActivityStats.bountiesSetOut} (
-                        {userBountyActivityStats.totalSetOutAmount.toLocaleString()}{" "}
-                        sats)
-                      </span>
-                    </div>
-                  )}
-                  {userBountyActivityStats.bountiesClaimed > 0 && (
-                    <div className="flex justify-between gap-2">
-                      <span className="text-[var(--color-text-secondary)]">
-                        Bounties Claimed:
-                      </span>
-                      <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
-                        {userBountyActivityStats.bountiesClaimed} (
-                        {userBountyActivityStats.totalClaimedAmount.toLocaleString()}{" "}
-                        sats)
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Recent Activities */}
-              {recentBountyActivities.length > 0 && (
-                <>
-                  <div className="text-xs text-[var(--color-text-secondary)] mb-2">
-                    Recent Activity
-                  </div>
-                  <div className="space-y-1.5">
-                    {recentBountyActivities.slice(0, 3).map((activity) => {
-                      const href =
-                        activity.entity && activity.repo
-                          ? getRepoUrl(
-                              activity.entity,
-                              activity.repo.split("/").pop() || activity.repo
-                            )
-                          : "#";
-
-                      // Use mounted state to prevent hydration mismatch
-                      const timeAgo = mounted
-                        ? Math.floor(
-                            (Date.now() - activity.timestamp) / 1000 / 60
-                          )
-                        : 0;
-                      const timeStr = !mounted
-                        ? ""
-                        : timeAgo < 1
-                        ? "just now"
-                        : timeAgo < 60
-                        ? `${timeAgo}m ago`
-                        : timeAgo < 1440
-                        ? `${Math.floor(timeAgo / 60)}h ago`
-                        : `${Math.floor(timeAgo / 1440)}d ago`;
-
-                      const activityText =
-                        activity.type === "bounty_created"
-                          ? `Set bounty on ${
-                              activity.repoName || activity.repo
-                            }`
-                          : `Claimed bounty on ${
-                              activity.repoName || activity.repo
-                            }`;
-
-                      const bountyAmount = activity.metadata?.bountyAmount;
-
-                      return (
-                        <Link
-                          key={activity.id}
-                          href={href}
-                          className="block rounded p-1.5 -m-1.5 hover:bg-[var(--color-bg-secondary)] transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-[var(--color-text-primary)] truncate">
-                                {activityText}
-                              </div>
-                              <div
-                                className="text-[10px] text-[var(--color-text-secondary)] mt-0.5"
-                                suppressHydrationWarning
-                              >
-                                {timeStr}
-                              </div>
-                            </div>
-                            {bountyAmount && (
-                              <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
-                                {bountyAmount.toLocaleString()} sats
-                              </div>
-                            )}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-              <div className="flex gap-2 mt-3">
-                <Link
-                  href="/bounty-hunt"
-                  className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
-                >
-                  Hunt bounties →
-                </Link>
-                {ownBountyStats &&
-                  (ownBountyStats.totalPending > 0 ||
-                    ownBountyStats.totalPaid > 0) && (
-                    <Link
-                      href="/settings/bounties"
-                      className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
-                    >
-                      Manage →
-                    </Link>
-                  )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <section className="lg:col-span-2 border border-[var(--color-border)] rounded p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-[var(--color-text-primary)]">
+                Recent repositories
+              </h2>
+              <Link
+                href="/explore"
+                className="text-sm text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
+              >
+                See all repos
+              </Link>
+            </div>
+            {displayRecentRepos.length === 0 ? (
+              <div className="text-[var(--color-text-secondary)]">
+                {liveRecentReposLoading
+                  ? "Loading repositories..."
+                  : "No repositories yet. Create or import one to get started."}
               </div>
-            </div>
-          )}
+            ) : (
+              <ul className="divide-y divide-[var(--color-border)]">
+                {displayRecentRepos.map((r, index) => {
+                  const entity = r.entity;
+                  // Bare repo id only — never embed hex/path from broken d tags
+                  const rawRepo = String(r.repo || "");
+                  const repo = rawRepo.includes("/")
+                    ? rawRepo.split("/").filter(Boolean).pop() || rawRepo
+                    : rawRepo;
+                  if (!entity || entity === "user") return null;
 
-      </div>
+                  // CRITICAL: Resolve full owner pubkey and convert to npub format
+                  const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+                  let href: string;
 
-      {/* Recent Activity - Full Width - Hidden on mobile */}
-      {(statsLoaded || displayRecentActivity.length > 0) && (
-        <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
-          <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
-            {hydratedPubkey ? "Your recent activity" : "Recent Activity"}
-          </h3>
-          {displayRecentActivity.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-              {displayRecentActivity.slice(0, 12).map((activity) => {
-                const repoLabel = activity.repoName || activity.repo || "repo";
-                const deep = getActivityDeepPath(activity);
-                const repoNameOnly =
-                  (activity.repoName ||
-                    activity.repo?.split("/").pop() ||
-                    activity.repo ||
-                    "").trim();
-                const href =
-                  activity.entity && repoNameOnly
-                    ? getRepoUrl(
-                        activity.entity,
-                        deep ? `${repoNameOnly}${deep}` : repoNameOnly
-                      )
-                    : "";
-
-                // Use mounted state to prevent hydration mismatch
-                const timeAgo = mounted
-                  ? Math.floor((Date.now() - activity.timestamp) / 1000 / 60)
-                  : 0;
-                const timeStr = !mounted
-                  ? ""
-                  : timeAgo < 1
-                  ? "just now"
-                  : timeAgo < 60
-                  ? `${timeAgo}m ago`
-                  : timeAgo < 1440
-                  ? `${Math.floor(timeAgo / 60)}h ago`
-                  : `${Math.floor(timeAgo / 1440)}d ago`;
-
-                return (
-                  <a
-                    key={activity.id}
-                    href={href || undefined}
-                    onClick={(e) => {
-                      if (!href) {
-                        e.preventDefault();
-                        return;
-                      }
-                      // Hard nav — soft Link into heavy repo trees was throwing
-                      // "Cannot read properties of undefined (reading 'call')".
-                      e.preventDefault();
-                      window.location.assign(href);
-                    }}
-                    className="block rounded p-3 border border-[var(--color-border)] transition-colors hover:bg-[var(--color-bg-secondary)]"
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="text-base flex-shrink-0 text-[var(--color-text-secondary)]">
-                        {activityIconForType(activity.type)}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-[var(--color-text-primary)] truncate">
-                          {getActivityLabel(activity.type, repoLabel)}
-                        </div>
-                        <div
-                          className="text-xs text-[var(--color-text-secondary)] mt-1"
-                          suppressHydrationWarning
-                        >
-                          {timeStr}
-                        </div>
-                      </div>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[var(--color-text-secondary)]">
-              {pubkey
-                ? "No recent activity on your repos yet."
-                : !lbRecentActivitiesReady &&
-                  platformRecentActivities.length === 0
-                ? "Loading recent activity..."
-                : "No recent activity yet."}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className="lg:col-span-2 border border-[var(--color-border)] rounded p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-[var(--color-text-primary)]">
-              Recent repositories
-            </h2>
-            <Link
-              href="/explore"
-              className="text-sm text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
-            >
-              See all repos
-            </Link>
-          </div>
-          {displayRecentRepos.length === 0 ? (
-            <div className="text-[var(--color-text-secondary)]">
-              {liveRecentReposLoading
-                ? "Loading repositories..."
-                : "No repositories yet. Create or import one to get started."}
-            </div>
-          ) : (
-            <ul className="divide-y divide-[var(--color-border)]">
-              {displayRecentRepos.map((r, index) => {
-                const entity = r.entity;
-                // Bare repo id only — never embed hex/path from broken d tags
-                const rawRepo = String(r.repo || "");
-                const repo = rawRepo.includes("/")
-                  ? rawRepo.split("/").filter(Boolean).pop() || rawRepo
-                  : rawRepo;
-                if (!entity || entity === "user") return null;
-
-                // CRITICAL: Resolve full owner pubkey and convert to npub format
-                const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
-                let href: string;
-
-                // Always ensure we have a valid href - never use "#"
-                if (!entity || !repo) {
-                  console.error("⚠️ [Home] Missing entity or repo:", {
-                    entity,
-                    repo,
-                    r,
-                  });
-                  href = `/explore`; // Fallback to explore page
-                } else if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  try {
-                    const npub = nip19.npubEncode(ownerPubkey);
-                    href = `/${npub}/${repo}`;
-                  } catch (error) {
-                    console.error("⚠️ [Home] Failed to encode npub:", {
-                      ownerPubkey,
-                      error,
+                  // Always ensure we have a valid href - never use "#"
+                  if (!entity || !repo) {
+                    console.error("⚠️ [Home] Missing entity or repo:", {
+                      entity,
+                      repo,
+                      r,
                     });
+                    href = `/explore`; // Fallback to explore page
+                  } else if (
+                    ownerPubkey &&
+                    /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                  ) {
+                    try {
+                      const npub = nip19.npubEncode(ownerPubkey);
+                      href = `/${npub}/${repo}`;
+                    } catch (error) {
+                      console.error("⚠️ [Home] Failed to encode npub:", {
+                        ownerPubkey,
+                        error,
+                      });
+                      href = `/${entity}/${repo}`;
+                    }
+                  } else {
+                    // Use entity format as fallback (route handler accepts both)
                     href = `/${entity}/${repo}`;
                   }
-                } else {
-                  // Use entity format as fallback (route handler accepts both)
-                  href = `/${entity}/${repo}`;
-                }
 
-                // Get display name from metadata
-                // CRITICAL: Normalize pubkey to lowercase for metadata lookup
-                const normalizedOwnerPubkey =
-                  ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                    ? ownerPubkey.toLowerCase()
-                    : null;
-                // CRITICAL: Use userMetadata (which includes cache) for lookup
-                const metadata = normalizedOwnerPubkey
-                  ? userMetadata[normalizedOwnerPubkey] ||
-                    (ownerPubkey
-                      ? userMetadata[ownerPubkey.toLowerCase()]
-                      : undefined)
-                  : undefined;
-                const displayName =
-                  metadata?.name || metadata?.display_name
-                    ? metadata.name || metadata.display_name
-                    : normalizedOwnerPubkey
-                    ? getEntityDisplayName(
-                        normalizedOwnerPubkey,
-                        userMetadata,
-                        entity
-                      )
-                    : r.entityDisplayName || entity;
-
-                // Resolve icons - always show fallback if icon fails
-                let iconUrl: string | null = null;
-                let ownerPicture: string | undefined = undefined;
-                try {
-                  iconUrl = resolveRepoIcon(r);
-                  // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
-                  if (metadata?.picture) {
-                    ownerPicture = metadata.picture;
-                  } else if (normalizedOwnerPubkey) {
-                    ownerPicture =
-                      userMetadata[normalizedOwnerPubkey]?.picture ||
+                  // Get display name from metadata
+                  // CRITICAL: Normalize pubkey to lowercase for metadata lookup
+                  const normalizedOwnerPubkey =
+                    ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                      ? ownerPubkey.toLowerCase()
+                      : null;
+                  // CRITICAL: Use userMetadata (which includes cache) for lookup
+                  const metadata = normalizedOwnerPubkey
+                    ? userMetadata[normalizedOwnerPubkey] ||
                       (ownerPubkey
-                        ? userMetadata[ownerPubkey.toLowerCase()]?.picture
-                        : undefined);
+                        ? userMetadata[ownerPubkey.toLowerCase()]
+                        : undefined)
+                    : undefined;
+                  const displayName =
+                    metadata?.name || metadata?.display_name
+                      ? metadata.name || metadata.display_name
+                      : normalizedOwnerPubkey
+                      ? getEntityDisplayName(
+                          normalizedOwnerPubkey,
+                          userMetadata,
+                          entity
+                        )
+                      : r.entityDisplayName || entity;
+
+                  // Resolve icons - always show fallback if icon fails
+                  let iconUrl: string | null = null;
+                  let ownerPicture: string | undefined = undefined;
+                  try {
+                    iconUrl = resolveRepoIcon(r);
+                    // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
+                    if (metadata?.picture) {
+                      ownerPicture = metadata.picture;
+                    } else if (normalizedOwnerPubkey) {
+                      ownerPicture =
+                        userMetadata[normalizedOwnerPubkey]?.picture ||
+                        (ownerPubkey
+                          ? userMetadata[ownerPubkey.toLowerCase()]?.picture
+                          : undefined);
+                    }
+                  } catch (error) {
+                    console.error("⚠️ [Home] Error resolving icons:", error);
                   }
-                } catch (error) {
-                  console.error("⚠️ [Home] Error resolving icons:", error);
-                }
 
-                return (
-                  <li key={`${entity}-${repo}`} className="py-3">
-                    <Link
-                      href={href}
-                      className="flex items-center gap-3 sm:gap-4 rounded p-2 -m-2 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors"
-                    >
-                      {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
-                      {iconUrl ? (
-                        // Priority 1: Repo icon (circular like Avatar)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
-                          <AvatarImage src={iconUrl} alt="" loading="lazy" />
-                          {/* Never nest a remote <img> here — dead Blossom URLs show as broken icon + alt text */}
-                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
-                            <img
-                              src="/logo.svg"
-                              alt=""
-                              className="h-full w-full object-contain p-1"
-                            />
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : ownerPicture ? (
-                        // Priority 2: Owner profile picture (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
-                          <AvatarImage src={ownerPicture} alt="" />
-                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
-                            <img
-                              src="/logo.svg"
-                              alt=""
-                              className="h-full w-full object-contain p-1"
-                            />
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        // Priority 3: Platform default icon (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
-                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
-                            <img
-                              src="/logo.svg"
-                              alt=""
-                              className="h-full w-full object-contain p-1"
-                            />
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className="flex-1 min-w-0 min-w-[0]">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <div className="text-[var(--color-accent-primary)] hover:underline font-semibold truncate min-w-0">
-                            {displayName}/{r.name || repo}
-                          </div>
-                          {/* Status badge */}
-                          {hydratedPubkey &&
-                            (r as any).ownerPubkey === hydratedPubkey &&
-                            (() => {
-                              const status = getRepoStatus(r);
-                              const style = getStatusBadgeStyle(status);
-                              return (
-                                <span
-                                  className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                                >
-                                  {style.label}
-                                </span>
-                              );
-                            })()}
-                        </div>
-                        {(() => {
-                          const cardDesc = repoCardDescriptionText(
-                            r.description,
-                            r.name || repo
-                          );
-                          return cardDesc ? (
-                            <div className="text-sm opacity-60 mt-1 truncate">
-                              {cardDesc}
+                  return (
+                    <li key={`${entity}-${repo}`} className="py-3">
+                      <Link
+                        href={href}
+                        className="flex items-center gap-3 sm:gap-4 rounded p-2 -m-2 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      >
+                        {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
+                        {iconUrl ? (
+                          // Priority 1: Repo icon (circular like Avatar)
+                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
+                            <AvatarImage src={iconUrl} alt="" loading="lazy" />
+                            {/* Never nest a remote <img> here — dead Blossom URLs show as broken icon + alt text */}
+                            <AvatarFallback className="bg-[var(--color-bg-secondary)]">
+                              <img
+                                src="/logo.svg"
+                                alt=""
+                                className="h-full w-full object-contain p-1"
+                              />
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : ownerPicture ? (
+                          // Priority 2: Owner profile picture (circular)
+                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
+                            <AvatarImage src={ownerPicture} alt="" />
+                            <AvatarFallback className="bg-[var(--color-bg-secondary)]">
+                              <img
+                                src="/logo.svg"
+                                alt=""
+                                className="h-full w-full object-contain p-1"
+                              />
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          // Priority 3: Platform default icon (circular)
+                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
+                            <AvatarFallback className="bg-[var(--color-bg-secondary)]">
+                              <img
+                                src="/logo.svg"
+                                alt=""
+                                className="h-full w-full object-contain p-1"
+                              />
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div className="flex-1 min-w-0 min-w-[0]">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <div className="text-[var(--color-accent-primary)] hover:underline font-semibold truncate min-w-0">
+                              {displayName}/{r.name || repo}
                             </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+                            {/* Status badge */}
+                            {hydratedPubkey &&
+                              (r as any).ownerPubkey === hydratedPubkey &&
+                              (() => {
+                                const status = getRepoStatus(r);
+                                const style = getStatusBadgeStyle(status);
+                                return (
+                                  <span
+                                    className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                                  >
+                                    {style.label}
+                                  </span>
+                                );
+                              })()}
+                          </div>
+                          {(() => {
+                            const cardDesc = repoCardDescriptionText(
+                              r.description,
+                              r.name || repo
+                            );
+                            return cardDesc ? (
+                              <div className="text-sm opacity-60 mt-1 truncate">
+                                {cardDesc}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
 
-        <aside className="space-y-4">
-          <div className="border border-[var(--color-border)] rounded p-4">
-            <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
-              Quick actions
-            </h3>
-            <div className="flex flex-col gap-2">
-              <Link href="/new">
-                <Button className="w-full" variant="default">
-                  Create repository
-                </Button>
-              </Link>
-              <Link href="/explore">
-                <Button className="w-full" variant="outline">
-                  Repos
-                </Button>
-              </Link>
-              <a
-                className={cn(
-                  buttonVariants({ variant: "outline", className: "w-full" })
-                )}
-                href="/pages"
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Explore pages
-              </a>
-              <Link href="/repositories">
-                <Button className="w-full" variant="outline">
-                  Your repositories
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button className="w-full" variant="outline">
-                  Settings
-                </Button>
-              </Link>
+          <aside className="space-y-4">
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
+                Quick actions
+              </h3>
+              <div className="flex flex-col gap-2">
+                <Link href="/new">
+                  <Button className="w-full" variant="default">
+                    Create repository
+                  </Button>
+                </Link>
+                <Link href="/explore">
+                  <Button className="w-full" variant="outline">
+                    Repos
+                  </Button>
+                </Link>
+                <a
+                  className={cn(
+                    buttonVariants({ variant: "outline", className: "w-full" })
+                  )}
+                  href="/pages"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Explore pages
+                </a>
+                <Link href="/repositories">
+                  <Button className="w-full" variant="outline">
+                    Your repositories
+                  </Button>
+                </Link>
+                <Link href="/settings">
+                  <Button className="w-full" variant="outline">
+                    Settings
+                  </Button>
+                </Link>
+              </div>
             </div>
-          </div>
 
-          <div className="border border-[var(--color-border)] rounded p-4">
-            <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
-              Tips
-            </h3>
-            <ul className="list-disc list-inside text-[var(--color-text-secondary)] text-sm space-y-1">
-              <li>Import from GitHub to populate code and README.</li>
-              <li>Enable zaps in Settings → Account.</li>
-              <li>Link your GitHub profile to show contributor icons.</li>
-            </ul>
-          </div>
-        </aside>
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
+                Tips
+              </h3>
+              <ul className="list-disc list-inside text-[var(--color-text-secondary)] text-sm space-y-1">
+                <li>Import from GitHub to populate code and README.</li>
+                <li>Enable zaps in Settings → Account.</li>
+                <li>Link your GitHub profile to show contributor icons.</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
       </div>
-
-    </div>
     </>
   );
 }

@@ -111,7 +111,10 @@ function truncateProjectBody(
   return `${t.slice(0, max).trimEnd()}…`;
 }
 
-function mapStatusName(raw: string | undefined, closed?: boolean): KanbanStatus {
+function mapStatusName(
+  raw: string | undefined,
+  closed?: boolean
+): KanbanStatus {
   if (closed) return "done";
   const n = (raw || "").toLowerCase();
   if (!n) return "todo";
@@ -284,9 +287,7 @@ export async function syncGithubProjectsForRepo(
           description: node.shortDescription || undefined,
           status: node.closed ? ("archived" as const) : ("active" as const),
           items,
-          createdAt: node.updatedAt
-            ? Date.parse(node.updatedAt)
-            : Date.now(),
+          createdAt: node.updatedAt ? Date.parse(node.updatedAt) : Date.now(),
           view: "kanban" as const,
           source: "github" as const,
           githubProjectId: node.id,

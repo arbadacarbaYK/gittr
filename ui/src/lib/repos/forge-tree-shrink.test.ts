@@ -7,15 +7,15 @@ import {
 
 describe("urlLooksLikeSourceUpstream", () => {
   it("accepts github gitlab codeberg and gitea-shaped remotes", () => {
-    expect(
-      urlLooksLikeSourceUpstream("https://github.com/org/repo")
-    ).toBe(true);
+    expect(urlLooksLikeSourceUpstream("https://github.com/org/repo")).toBe(
+      true
+    );
     expect(
       urlLooksLikeSourceUpstream("https://gitlab.com/group/repo.git")
     ).toBe(true);
-    expect(
-      urlLooksLikeSourceUpstream("https://codeberg.org/user/repo")
-    ).toBe(true);
+    expect(urlLooksLikeSourceUpstream("https://codeberg.org/user/repo")).toBe(
+      true
+    );
     expect(
       urlLooksLikeSourceUpstream("https://git.example.com/owner/repo.git")
     ).toBe(true);
@@ -26,14 +26,10 @@ describe("urlLooksLikeSourceUpstream", () => {
 
   it("rejects GRASP /npub mirrors", () => {
     expect(
-      urlLooksLikeSourceUpstream(
-        "https://git.gittr.space/npub1abc/repo.git"
-      )
+      urlLooksLikeSourceUpstream("https://git.gittr.space/npub1abc/repo.git")
     ).toBe(false);
     expect(
-      urlLooksLikeSourceUpstream(
-        "https://relay.ngit.dev/npub1abc/repo.git"
-      )
+      urlLooksLikeSourceUpstream("https://relay.ngit.dev/npub1abc/repo.git")
     ).toBe(false);
   });
 });

@@ -61,12 +61,12 @@ import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
-import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
 import {
   applyDeletionMarkersToRepoData,
   isRepoAnnouncementDeleted,
 } from "@/lib/nostr/repo-deleted";
 import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
+import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -7685,7 +7685,9 @@ export function RepoCodePage() {
                   reason === "no files field in event" ||
                   reason === "files array is empty";
                 console.log(
-                  `${expectedNoFiles ? "ℹ️" : "⚠️"} [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${
+                  `${
+                    expectedNoFiles ? "ℹ️" : "⚠️"
+                  } [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${
                     eventRepoData.repositoryName || "none"
                   }, expectedRepoName=${
                     resolvedParams.repo
@@ -19506,7 +19508,7 @@ export function RepoCodePage() {
                                 }
                               }}
                             >
-                              Link forge source
+                              Link source URL
                             </Button>
                           </div>
                         )}
@@ -20142,28 +20144,30 @@ export function RepoCodePage() {
                                         "bat",
                                         "cmd",
                                       ];
-                                      const filesToFetch = skipClientContentHydrate
-                                        ? []
-                                        : newFiles
-                                            .filter(
-                                              (f: any) =>
-                                                f.type === "file" &&
-                                                f.size &&
-                                                f.size < MAX_FILE_SIZE_FOR_CONTENT
-                                            )
-                                            .filter((f: any) => {
-                                              const ext =
-                                                f.path
-                                                  .split(".")
-                                                  .pop()
-                                                  ?.toLowerCase() || "";
-                                              return (
-                                                textFileExtensions.includes(
-                                                  ext
-                                                ) || !f.path.includes(".")
-                                              );
-                                            })
-                                            .slice(0, 100); // Limit to 100 files to avoid timeout
+                                      const filesToFetch =
+                                        skipClientContentHydrate
+                                          ? []
+                                          : newFiles
+                                              .filter(
+                                                (f: any) =>
+                                                  f.type === "file" &&
+                                                  f.size &&
+                                                  f.size <
+                                                    MAX_FILE_SIZE_FOR_CONTENT
+                                              )
+                                              .filter((f: any) => {
+                                                const ext =
+                                                  f.path
+                                                    .split(".")
+                                                    .pop()
+                                                    ?.toLowerCase() || "";
+                                                return (
+                                                  textFileExtensions.includes(
+                                                    ext
+                                                  ) || !f.path.includes(".")
+                                                );
+                                              })
+                                              .slice(0, 100); // Limit to 100 files to avoid timeout
 
                                       if (skipClientContentHydrate) {
                                         console.log(
@@ -20237,8 +20241,7 @@ export function RepoCodePage() {
                                                   const response = await fetch(
                                                     apiUrl,
                                                     {
-                                                      signal:
-                                                        controller.signal,
+                                                      signal: controller.signal,
                                                     }
                                                   );
                                                   clearTimeout(timeoutId);

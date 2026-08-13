@@ -133,10 +133,7 @@ export async function assertSafeOutboundGitUrl(
   try {
     const hostname = new URL(preview).hostname;
     // Skip DNS for literal IPs — already checked above
-    if (
-      /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) ||
-      hostname.includes(":")
-    ) {
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":")) {
       if (isPrivateOrLocalIp(hostname)) {
         return { ok: false, error: "Remote URL resolves to a private address" };
       }

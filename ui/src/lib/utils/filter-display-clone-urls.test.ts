@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
 import { filterDisplayCloneUrlsForSidebar } from "./filter-display-clone-urls";
+import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
 
 describe("filterDisplayCloneUrlsForSidebar", () => {
   const npub = "npub1abc";

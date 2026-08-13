@@ -35,7 +35,12 @@ export function parseRelayListEvent(event: any): Nip65RelayListData | null {
   const seen = new Set<string>();
 
   if (!Array.isArray(event.tags)) {
-    return { relays, pubkey: event.pubkey, eventId: event.id, createdAt: event.created_at };
+    return {
+      relays,
+      pubkey: event.pubkey,
+      eventId: event.id,
+      createdAt: event.created_at,
+    };
   }
 
   for (const tag of event.tags) {
@@ -48,7 +53,9 @@ export function parseRelayListEvent(event: any): Nip65RelayListData | null {
     if (seen.has(key)) continue;
     seen.add(key);
     const marker =
-      tag[2] === "read" || tag[2] === "write" ? (tag[2] as Nip65Marker) : undefined;
+      tag[2] === "read" || tag[2] === "write"
+        ? (tag[2] as Nip65Marker)
+        : undefined;
     relays.push({ url: raw, marker });
   }
 

@@ -40,11 +40,13 @@ export function sanitizeDescriptionForMarkdown(raw: string): string {
     // Soft-escape ATX headings so "# Title" stays readable text in About
     if (/^#{1,6}\s+/.test(line)) {
       out.push(
-        line.replace(/^(#{1,6})(\s+)/, (_m, hashes: string, sp: string) =>
-          `${hashes
-            .split("")
-            .map(() => "\\#")
-            .join("")}${sp}`
+        line.replace(
+          /^(#{1,6})(\s+)/,
+          (_m, hashes: string, sp: string) =>
+            `${hashes
+              .split("")
+              .map(() => "\\#")
+              .join("")}${sp}`
         )
       );
       continue;

@@ -37,7 +37,10 @@ function looksLikeForeignForgeUrl(raw: string): boolean {
     ) {
       return false;
     }
-    const parts = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    const parts = parsed.pathname
+      .replace(/\/+$/, "")
+      .split("/")
+      .filter(Boolean);
     // GRASP / Nostr-git mirrors — never treat as forge SOURCE / forkedFrom
     if (parts[0]?.toLowerCase() === "grasp") {
       return false;

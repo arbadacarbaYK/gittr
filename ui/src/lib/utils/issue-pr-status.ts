@@ -168,7 +168,7 @@ function mergeIssueRowFields(
     for (const label of (row.labels as string[] | undefined) || []) {
       if (typeof label === "string" && label.trim()) labels.add(label);
     }
-    assignees.push(...normalizeAssigneePubkeys(row.assignees ));
+    assignees.push(...normalizeAssigneePubkeys(row.assignees));
     const st = normalizeIssueListStatus(String(row.status ?? "open"));
     if (st === "closed") status = "closed";
     const ca = Number(row.createdAt ?? 0) || 0;

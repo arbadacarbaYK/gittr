@@ -44,7 +44,8 @@ function resolvePubkey(entity: string): string | null {
   if (entity.startsWith("npub")) {
     try {
       const decoded = nip19.decode(entity);
-      if (decoded.type === "npub") return (decoded.data as string).toLowerCase();
+      if (decoded.type === "npub")
+        return (decoded.data as string).toLowerCase();
     } catch {
       /* ignore */
     }
@@ -88,12 +89,17 @@ function parseGithubOwnerRepo(
   const trimmed = url.trim();
   let normalized = trimmed;
   if (trimmed.startsWith("git@github.com:")) {
-    normalized = `https://github.com/${trimmed.slice("git@github.com:".length)}`;
+    normalized = `https://github.com/${trimmed.slice(
+      "git@github.com:".length
+    )}`;
   }
   try {
     const u = new URL(normalized);
     if (!/(^|\.)github\.com$/i.test(u.hostname)) return null;
-    const parts = u.pathname.replace(/^\//, "").replace(/\.git$/, "").split("/");
+    const parts = u.pathname
+      .replace(/^\//, "")
+      .replace(/\.git$/, "")
+      .split("/");
     if (parts.length < 2) return null;
     const owner = parts[0];
     const repo = parts[1];
@@ -108,7 +114,9 @@ function parseGithubOwnerRepo(
 }
 
 /** Scan multi-value NIP-34 tags for a github.com owner/repo. */
-function githubFromTags(tags: string[][]): { owner: string; repo: string } | null {
+function githubFromTags(
+  tags: string[][]
+): { owner: string; repo: string } | null {
   const prefer = ["source", "forkedFrom", "clone", "web", "link"] as const;
   for (const kind of prefer) {
     for (const tag of tags) {
@@ -337,7 +345,9 @@ async function fetchGithubMeta(
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+      `https://api.github.com/repos/${encodeURIComponent(
+        owner
+      )}/${encodeURIComponent(repo)}`,
       { headers, signal: ctrl.signal }
     );
     if (!res.ok) return empty;
@@ -348,7 +358,9 @@ async function fetchGithubMeta(
     };
     return {
       stars:
-        typeof data.stargazers_count === "number" ? data.stargazers_count : null,
+        typeof data.stargazers_count === "number"
+          ? data.stargazers_count
+          : null,
       forks: typeof data.forks_count === "number" ? data.forks_count : null,
       description:
         typeof data.description === "string" && data.description.trim()
@@ -589,10 +601,7 @@ export async function fetchRepoOgData(
           description: null,
         } as GithubMeta),
     announcement.eventId
-      ? fetchNostrStarCount(
-          announcement.eventId,
-          Math.min(700, phase2Budget)
-        )
+      ? fetchNostrStarCount(announcement.eventId, Math.min(700, phase2Budget))
       : Promise.resolve(null),
   ]);
 

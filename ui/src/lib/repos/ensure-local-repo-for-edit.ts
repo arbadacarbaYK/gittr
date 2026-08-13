@@ -8,11 +8,11 @@
  * When there **are** unpushed edits, we keep the local working tree (upload
  * merges on top of that intentional draft).
  */
-
-import { findRepoByEntityAndName } from "../utils/repo-finder";
 import { fetchBridgeFilesOnce } from "../utils/git-source-fetcher";
-import { repoHasUnpushedLocalEdits } from "./unpushed-local-edits";
+import { findRepoByEntityAndName } from "../utils/repo-finder";
 
+import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
+import { forgetOverrideBlob, idbDeleteRepoOverrides } from "./overrides-idb";
 import {
   type RepoFileEntry,
   type StoredRepo,
@@ -23,8 +23,7 @@ import {
   saveRepoOverrides,
   saveStoredRepos,
 } from "./storage";
-import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
-import { forgetOverrideBlob, idbDeleteRepoOverrides } from "./overrides-idb";
+import { repoHasUnpushedLocalEdits } from "./unpushed-local-edits";
 
 export type EnsureLocalRepoForEditResult = {
   ok: boolean;

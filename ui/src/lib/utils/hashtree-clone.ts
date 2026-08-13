@@ -52,7 +52,10 @@ export function parseHashtreeCloneUrl(
     const u = new URL(cloneUrl.trim());
     const npub = (u.hostname || "").toLowerCase();
     const repo =
-      u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean)[0] || "";
+      u.pathname
+        .replace(/^\/+|\/+$/g, "")
+        .split("/")
+        .filter(Boolean)[0] || "";
     return {
       type: "hashtree",
       url: cloneUrl.trim(),

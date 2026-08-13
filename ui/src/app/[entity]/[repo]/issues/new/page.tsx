@@ -320,14 +320,14 @@ export default function RepoIssueNewPage() {
 
         const finalOwnerPubkey = publishCtx.ownerPubkey;
         const actualRepositoryName = publishCtx.repositoryName || repo;
-        const repoData = (publishCtx.storedRepo || {
+        const repoData = publishCtx.storedRepo || {
           entity,
           repo,
           repositoryName: actualRepositoryName,
           ownerPubkey: finalOwnerPubkey,
           earliestUniqueCommit: publishCtx.earliestUniqueCommit,
           defaultBranch: publishCtx.defaultBranch,
-        });
+        };
 
         // Get earliest unique commit (required for NIP-34 "r" tag)
         let earliestUniqueCommit =
@@ -348,8 +348,8 @@ export default function RepoIssueNewPage() {
               publishCtx.defaultBranch.trim().length > 0
                 ? publishCtx.defaultBranch.trim()
                 : typeof repoData.defaultBranch === "string" &&
-                  (repoData.defaultBranch ).trim().length > 0
-                ? (repoData.defaultBranch ).trim()
+                  repoData.defaultBranch.trim().length > 0
+                ? repoData.defaultBranch.trim()
                 : "main";
 
             const commitsRes = await fetchBridgeRead(

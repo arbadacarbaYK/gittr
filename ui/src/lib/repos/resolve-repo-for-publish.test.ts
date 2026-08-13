@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveEntityToPubkeyAsync } from "../utils/entity-resolver";
+import { findRepoByEntityAndNameAsync } from "../utils/repo-finder";
+
+import {
+  parseAnnouncementHydration,
+  resolveRepoForPublish,
+} from "./resolve-repo-for-publish";
+import { loadStoredRepos } from "./storage";
+
 vi.mock("../repos/storage", () => ({
   loadStoredRepos: vi.fn(() => []),
 }));
 
 vi.mock("../utils/entity-resolver", () => ({
-  getRepoOwnerPubkey: vi.fn((repo: { ownerPubkey?: string }, entity: string) =>
-    repo?.ownerPubkey || (/^[0-9a-f]{64}$/i.test(entity) ? entity : "")
+  getRepoOwnerPubkey: vi.fn(
+    (repo: { ownerPubkey?: string }, entity: string) =>
+      repo?.ownerPubkey || (/^[0-9a-f]{64}$/i.test(entity) ? entity : "")
   ),
   resolveEntityToPubkeyAsync: vi.fn(async (entity: string) => {
     if (/^[0-9a-f]{64}$/i.test(entity)) return entity.toLowerCase();
@@ -32,15 +42,6 @@ vi.mock("../nostr/server-relay-subscribe", () => ({
 vi.mock("../nostr/repo-stars", () => ({
   repoAnnouncementDTagCandidates: vi.fn((slug: string) => [slug]),
 }));
-
-import { loadStoredRepos } from "./storage";
-import { resolveEntityToPubkeyAsync } from "../utils/entity-resolver";
-import { findRepoByEntityAndNameAsync } from "../utils/repo-finder";
-
-import {
-  parseAnnouncementHydration,
-  resolveRepoForPublish,
-} from "./resolve-repo-for-publish";
 
 const OWNER = "a".repeat(64);
 

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,9 +22,7 @@ import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import {
-  syncGithubProjectsForRepo,
-} from "@/lib/utils/sync-github-repo-projects";
+import { syncGithubProjectsForRepo } from "@/lib/utils/sync-github-repo-projects";
 
 import {
   CheckCircle2,
@@ -75,11 +79,7 @@ function normalizeProjects(stored: Project[]): Project[] {
         item.id.startsWith("gh-item-") ||
         p.source === "github" ||
         p.id.startsWith("gh-project-");
-      if (
-        isGh &&
-        item.content &&
-        item.content.length > 280
-      ) {
+      if (isGh && item.content && item.content.length > 280) {
         return {
           ...item,
           content: `${item.content.slice(0, 280).trimEnd()}…`,
@@ -91,10 +91,7 @@ function normalizeProjects(stored: Project[]): Project[] {
 }
 
 /** Plain one-liner preview — full markdown bodies must never inflate kanban cards. */
-function plainTextExcerpt(
-  markdown: string | undefined,
-  maxLen = 140
-): string {
+function plainTextExcerpt(markdown: string | undefined, maxLen = 140): string {
   if (!markdown) return "";
   const plain = markdown
     .replace(/```[\s\S]*?```/g, " ")
@@ -116,8 +113,12 @@ export default function ProjectsPage() {
   const params = useParams();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
-  const { pubkey: currentUserPubkey, remoteSigner, subscribe, defaultRelays } =
-    useNostrContext();
+  const {
+    pubkey: currentUserPubkey,
+    remoteSigner,
+    subscribe,
+    defaultRelays,
+  } = useNostrContext();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [hasWrite, setHasWrite] = useState(false); // Write access (owner or maintainer)
@@ -447,10 +448,7 @@ export default function ProjectsPage() {
     }
 
     const target = projects.find((p) => p.id === projectId);
-    if (
-      target?.source === "github" ||
-      target?.id.startsWith("gh-project-")
-    ) {
+    if (target?.source === "github" || target?.id.startsWith("gh-project-")) {
       alert(
         "GitHub Projects are read-only mirrors. They refresh from GitHub when you open this tab."
       );
@@ -607,10 +605,7 @@ export default function ProjectsPage() {
     }
 
     const target = projects.find((p) => p.id === projectId);
-    if (
-      target?.source === "github" ||
-      target?.id.startsWith("gh-project-")
-    ) {
+    if (target?.source === "github" || target?.id.startsWith("gh-project-")) {
       alert("GitHub Project titles are read-only here.");
       setEditingProjectName(null);
       setEditingProjectNameValue("");
@@ -890,9 +885,8 @@ export default function ProjectsPage() {
     // Editors keep all three for drag-and-drop targets.
     const visibleColumns = canEditBoard
       ? columns
-      : columns.filter(
-          (col) =>
-            project.items.some((item) => item.status === col.status)
+      : columns.filter((col) =>
+          project.items.some((item) => item.status === col.status)
         );
     const colCount = Math.max(1, visibleColumns.length);
     const gridCols =
@@ -1107,25 +1101,25 @@ export default function ProjectsPage() {
                         </div>
                       </div>
                       {canEditBoard && (
-                      <button
-                        onClick={() => {
-                          setEditingItem(item.id);
-                          setEditingTitle(item.title);
-                          setEditingContent(item.content || "");
-                          setEditingEstimatedDays(item.estimatedDays);
-                          setEditingDueDate(
-                            item.dueDate
-                              ? new Date(item.dueDate)
-                                  .toISOString()
-                                  .split("T")[0] || ""
-                              : ""
-                          );
-                        }}
-                        className="text-gray-400 hover:text-gray-300"
-                        title="Edit"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
+                        <button
+                          onClick={() => {
+                            setEditingItem(item.id);
+                            setEditingTitle(item.title);
+                            setEditingContent(item.content || "");
+                            setEditingEstimatedDays(item.estimatedDays);
+                            setEditingDueDate(
+                              item.dueDate
+                                ? new Date(item.dueDate)
+                                    .toISOString()
+                                    .split("T")[0] || ""
+                                : ""
+                            );
+                          }}
+                          className="text-gray-400 hover:text-gray-300"
+                          title="Edit"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                     <div className="h-3 bg-gray-800 rounded-full overflow-hidden relative mb-2">
@@ -1390,9 +1384,7 @@ export default function ProjectsPage() {
           </h1>
           {(syncingGithub || githubImportNote) && (
             <p className="mt-1 text-xs text-gray-400">
-              {syncingGithub
-                ? "Syncing GitHub Projects…"
-                : githubImportNote}
+              {syncingGithub ? "Syncing GitHub Projects…" : githubImportNote}
             </p>
           )}
           {isGithubBoard && (

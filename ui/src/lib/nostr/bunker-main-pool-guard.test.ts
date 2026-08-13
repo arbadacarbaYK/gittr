@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   isBunkerMainPoolBlocked,
@@ -12,10 +12,7 @@ describe("bunker-main-pool-guard", () => {
   });
 
   it("blocks normalized bunker hosts while set", () => {
-    setBunkerMainPoolBlockedHosts([
-      "wss://relay.primal.net/",
-      "wss://nos.lol",
-    ]);
+    setBunkerMainPoolBlockedHosts(["wss://relay.primal.net/", "wss://nos.lol"]);
     expect(isBunkerMainPoolBlocked("wss://relay.primal.net")).toBe(true);
     expect(isBunkerMainPoolBlocked("wss://nos.lol/")).toBe(true);
     expect(isBunkerMainPoolBlocked("wss://relay.gittr.space")).toBe(false);

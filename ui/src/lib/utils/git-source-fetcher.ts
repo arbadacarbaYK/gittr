@@ -293,9 +293,7 @@ export function parseGitSource(cloneUrl: string): GitSource {
   // Home GRASP path: https://laantungir.net/grasp/npub…/repo.git
   // Must be recognized before the generic 3-segment self-hosted matcher, and
   // must not fall through to "unknown" (which skips bridge + clone entirely).
-  const {
-    parseGraspPathClone,
-  } = require("@/lib/utils/grasp-servers") as {
+  const { parseGraspPathClone } = require("@/lib/utils/grasp-servers") as {
     parseGraspPathClone: (u: string) => {
       host: string;
       npub: string;
@@ -1380,10 +1378,7 @@ type BridgeFilesFetchOutcome =
       availableBranches?: string[];
     };
 
-const bridgeFilesInflight = new Map<
-  string,
-  Promise<BridgeFilesFetchOutcome>
->();
+const bridgeFilesInflight = new Map<string, Promise<BridgeFilesFetchOutcome>>();
 
 /** One bridge API call per owner/repo/branch — shared by parallel GRASP clone URLs. */
 export async function fetchBridgeFilesOnce(
@@ -1504,8 +1499,7 @@ async function fetchBridgeFilesResolvingBranch(
 
   return {
     payload: null,
-    branchNotFound:
-      first.status === 404 && first.error === "Branch not found",
+    branchNotFound: first.status === 404 && first.error === "Branch not found",
     resolvedBranch: branch,
   };
 }
@@ -1616,9 +1610,7 @@ async function fetchFromNostrGit(
       ) {
         console.log(
           `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
-            (bridgeResolvedBranch
-              ? ` (branch: ${bridgeResolvedBranch})`
-              : "")
+            (bridgeResolvedBranch ? ` (branch: ${bridgeResolvedBranch})` : "")
         );
         const rawFiles = bridgeJson.files as Array<{
           type: string;
@@ -1631,9 +1623,9 @@ async function fetchFromNostrGit(
         return {
           files,
           resolvedBranch: bridgeResolvedBranch,
-          truncated: !!(bridgeJson ).truncated,
-          listing: (bridgeJson ).listing,
-          totalFileCount: (bridgeJson ).totalFileCount,
+          truncated: !!bridgeJson.truncated,
+          listing: bridgeJson.listing,
+          totalFileCount: bridgeJson.totalFileCount,
         };
       }
 
@@ -1816,7 +1808,10 @@ async function fetchFromNostrGit(
             return remoteFiles;
           }
           console.warn(
-            `⚠️ [Git Source] Self-hosted clone unreachable from gittr server (DNS/firewall/offline). Host must be reachable from the public internet: ${normalizedCloneUrl.substring(0, 72)}…`
+            `⚠️ [Git Source] Self-hosted clone unreachable from gittr server (DNS/firewall/offline). Host must be reachable from the public internet: ${normalizedCloneUrl.substring(
+              0,
+              72
+            )}…`
           );
         } else {
           console.log(
@@ -2006,8 +2001,7 @@ export async function fetchFilesFromMultipleSources(
       return {
         source,
         status: "failed" as const,
-        error:
-          "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
+        error: "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
         fetchedAt: Date.now(),
       };
     });

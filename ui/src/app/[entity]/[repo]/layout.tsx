@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
@@ -5,7 +7,6 @@ import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { openGraphImageDescriptor } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
-import { Suspense } from "react";
 import { nip19 } from "nostr-tools";
 
 import RepoLayoutClient from "./layout-client";

@@ -10,7 +10,9 @@ describe("resolveReadmeMarkdownImage", () => {
     expect(normalizeRepoRelPath("./docs/assets/a.png")).toBe(
       "docs/assets/a.png"
     );
-    expect(normalizeRepoRelPath("/docs/assets/a.png")).toBe("docs/assets/a.png");
+    expect(normalizeRepoRelPath("/docs/assets/a.png")).toBe(
+      "docs/assets/a.png"
+    );
     expect(normalizeRepoRelPath("../secret")).toBe("");
   });
 
@@ -39,10 +41,9 @@ describe("resolveReadmeMarkdownImage", () => {
     const r = resolveReadmeMarkdownImage({
       src: "docs/assets/dashboard-map.png",
       branch: "main",
-      cloneUrls: [
-        "https://git.gittr.space/npub1abcxyz/lab-kit.git",
-      ],
-      ownerPubkey: "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      cloneUrls: ["https://git.gittr.space/npub1abcxyz/lab-kit.git"],
+      ownerPubkey:
+        "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
       repoName: "lab-kit",
     });
     expect(r).not.toBeNull();
@@ -57,7 +58,8 @@ describe("resolveReadmeMarkdownImage", () => {
     const r = resolveReadmeMarkdownImage({
       src: "docs/assets/board.png",
       branch: "master",
-      ownerPubkey: "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      ownerPubkey:
+        "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
       repoName: "lab-kit",
     });
     expect(r?.preferApi).toBe(true);

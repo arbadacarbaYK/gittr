@@ -1,172 +1,32 @@
 /**
  * Build and publish Zapstore-compatible NIP-82 events (32267 / 30063 / 3063)
  * pointing asset `url` at forge download URLs — gittr does not host binaries.
+ *
+ * Zapstore (Android) still requires an APK. Extra NIP-82 MIME assets (DMG,
+ * AppImage, MSI/EXE, IPA) on the same release tag are also published when
+ * sha256 is available — protocol allows multiple `e` tags on kind 30063.
  */
-import type {
-  ForgeReleaseAsset,
-  ForgeReleasesOk,
-} from "@/lib/repo/forge-releases";
-import {
-  suggestAppIdFromRepo,
-  versionFromTag,
-} from "@/lib/repo/forge-releases";
-
 import type { Event as NostrEvent } from "nostr-tools";
 
-import {
-  KIND_SOFTWARE_APPLICATION,
-  KIND_SOFTWARE_ASSET,
-  KIND_SOFTWARE_RELEASE,
-  MIME_ANDROID_APK,
-} from "./nip82-software";
 import { publishWithConfirmation } from "./publish-with-confirmation";
+import {
+  type SoftwareAnnounceInput,
+  type UnsignedAnnounceEvent,
+  buildSoftwareAnnounceEvents,
+} from "./software-announce-build";
 import {
   RELAY_ZAPSTORE,
   relaysForSoftwareCatalog,
 } from "./software-catalog-relays";
 
-/** Loose unsigned event — nostr-tools Kind enum lags NIP-82 kinds. */
-type UnsignedAnnounceEvent = {
-  kind: number;
-  created_at: number;
-  content: string;
-  tags: string[][];
-  pubkey: string;
-};
-
-export type SoftwareAnnounceInput = {
-  forge: ForgeReleasesOk;
-  appId: string;
-  appName: string;
-  summary?: string;
-  /** Optional SPDX license */
-  license?: string;
-  /** Optional NIP-34 pointer: 30617:pubkey:repo */
-  nip34Address?: string;
-  /** Prefer one APK; default = first apk asset */
-  selectedApkUrl?: string;
-  topics?: string[];
-};
-
-export type BuiltSoftwareAnnounce = {
-  app: UnsignedAnnounceEvent;
-  asset: UnsignedAnnounceEvent;
-  release: UnsignedAnnounceEvent;
-  version: string;
-  appId: string;
-  apk: ForgeReleaseAsset;
-};
-
-function assertValidAppId(appId: string): string {
-  const id = appId.trim();
-  if (!id || id.length > 200) {
-    throw new Error("Enter a package id (e.g. com.example.app).");
-  }
-  if (/\s/.test(id)) {
-    throw new Error("Package id cannot contain spaces.");
-  }
-  return id;
-}
-
-export function pickAnnounceApk(
-  forge: ForgeReleasesOk,
-  selectedApkUrl?: string
-): ForgeReleaseAsset {
-  const apks = forge.release.apkAssets;
-  if (apks.length === 0) {
-    throw new Error("No APK assets on this release.");
-  }
-  if (selectedApkUrl) {
-    const hit = apks.find((a) => a.downloadUrl === selectedApkUrl);
-    if (hit) return hit;
-  }
-  const arm64 = apks.find((a) => /arm64|aarch64/i.test(a.name));
-  const picked = arm64 || apks[0];
-  if (!picked) {
-    throw new Error("No APK assets on this release.");
-  }
-  return picked;
-}
-
-/**
- * Build unsigned NIP-82 events. Asset requires sha256 (`x`) — fetch with hash=1 first.
- */
-export function buildSoftwareAnnounceEvents(
-  input: SoftwareAnnounceInput
-): BuiltSoftwareAnnounce {
-  const appId = assertValidAppId(
-    input.appId || suggestAppIdFromRepo(input.forge.repo)
-  );
-  const version = versionFromTag(input.forge.release.tag);
-  const apk = pickAnnounceApk(input.forge, input.selectedApkUrl);
-  if (!apk.sha256 || !/^[0-9a-f]{64}$/i.test(apk.sha256)) {
-    throw new Error(
-      "Missing APK sha256. Reload the release with hashing enabled before publishing."
-    );
-  }
-
-  const name = (input.appName || input.forge.repo).trim() || input.forge.repo;
-  const summary = (input.summary || "").trim().slice(0, 280);
-  const now = Math.floor(Date.now() / 1000);
-
-  const appTags: string[][] = [
-    ["d", appId],
-    ["name", name],
-    ["repository", input.forge.repositoryUrl],
-    ["f", "android-arm64-v8a"],
-    ["t", "android"],
-  ];
-  if (summary) appTags.push(["summary", summary]);
-  if (input.license?.trim()) appTags.push(["license", input.license.trim()]);
-  for (const t of input.topics || []) {
-    if (t?.trim()) appTags.push(["t", t.trim()]);
-  }
-  if (input.nip34Address?.trim()) {
-    appTags.push(["a", input.nip34Address.trim(), RELAY_ZAPSTORE]);
-  }
-
-  const app: UnsignedAnnounceEvent = {
-    kind: KIND_SOFTWARE_APPLICATION,
-    created_at: now,
-    content: input.forge.release.body || summary || name,
-    tags: appTags,
-    pubkey: "",
-  };
-
-  const assetTags: string[][] = [
-    ["i", appId],
-    ["x", apk.sha256.toLowerCase()],
-    ["m", MIME_ANDROID_APK],
-    ["url", apk.downloadUrl],
-    ["version", version],
-    ["f", "android-arm64-v8a"],
-  ];
-  if (apk.size > 0) assetTags.push(["size", String(apk.size)]);
-
-  const asset: UnsignedAnnounceEvent = {
-    kind: KIND_SOFTWARE_ASSET,
-    created_at: now,
-    content: "",
-    tags: assetTags,
-    pubkey: "",
-  };
-
-  // Release `e` tag filled after asset is signed (needs event id).
-  const release: UnsignedAnnounceEvent = {
-    kind: KIND_SOFTWARE_RELEASE,
-    created_at: now,
-    content: input.forge.release.body || "",
-    tags: [
-      ["d", `${appId}@${version}`],
-      ["i", appId],
-      ["version", version],
-      ["c", "main"],
-    ],
-    pubkey: "",
-  };
-
-  return { app, asset, release, version, appId, apk };
-}
+export {
+  buildSoftwareAnnounceEvents,
+  pickAnnounceApk,
+  pickSiblingNip82Assets,
+  type BuiltSoftwareAnnounce,
+  type SoftwareAnnounceInput,
+  type UnsignedAnnounceEvent,
+} from "./software-announce-build";
 
 export type PublishSoftwareAnnounceArgs = {
   input: SoftwareAnnounceInput;
@@ -197,12 +57,13 @@ export type PublishSoftwareAnnounceResult = {
   appEventId: string;
   releaseEventId: string;
   assetEventId: string;
+  extraAssetEventIds: string[];
   confirmedRelays: string[];
   whitelistHint?: string;
 };
 
 /**
- * Sign as the logged-in owner and publish app + asset + release to catalog relays.
+ * Sign as the logged-in owner and publish app + asset(s) + release to catalog relays.
  */
 export async function publishSoftwareAnnounce(
   args: PublishSoftwareAnnounceArgs
@@ -232,16 +93,25 @@ export async function publishSoftwareAnnounce(
     return signer.signEvent(withPubkey);
   };
 
-  const signedAsset = await sign(built.asset);
-  const releaseUnsigned: UnsignedAnnounceEvent = {
+  const signedPrimary = await sign(built.asset);
+  const signedExtras: NostrEvent[] = [];
+  for (const extra of built.extraAssets) {
+    signedExtras.push(await sign(extra));
+  }
+
+  const releaseTags: string[][] = [
+    ...built.release.tags,
+    ["e", signedPrimary.id, RELAY_ZAPSTORE],
+    ...signedExtras.map((ev) => ["e", ev.id, RELAY_ZAPSTORE]),
+  ];
+  const signedRelease = await sign({
     ...built.release,
-    tags: [...built.release.tags, ["e", signedAsset.id, RELAY_ZAPSTORE]],
-  };
-  const signedRelease = await sign(releaseUnsigned);
+    tags: releaseTags,
+  });
   const signedApp = await sign(built.app);
 
   const confirmed: string[] = [];
-  for (const ev of [signedAsset, signedRelease, signedApp]) {
+  for (const ev of [signedPrimary, ...signedExtras, signedRelease, signedApp]) {
     const result = await publishWithConfirmation(
       args.publish as any,
       args.subscribe as any,
@@ -261,7 +131,8 @@ export async function publishSoftwareAnnounce(
     version: built.version,
     appEventId: signedApp.id,
     releaseEventId: signedRelease.id,
-    assetEventId: signedAsset.id,
+    assetEventId: signedPrimary.id,
+    extraAssetEventIds: signedExtras.map((e) => e.id),
     confirmedRelays: confirmed,
     whitelistHint: zapstoreOk
       ? undefined
@@ -301,23 +172,19 @@ export async function deleteSoftwareAnnounceEvents(args: {
   const signerPubkey = (await signer.getPublicKey()).toLowerCase();
   const owner = args.ownerPubkeyHex.toLowerCase();
   if (signerPubkey !== owner) {
-    throw new Error("Only the original publisher can delete these app events.");
+    throw new Error("Only the repository owner can delete this announce.");
   }
 
-  const tags: string[][] = ids.map((id) => ["e", id]);
-  tags.push(["k", String(KIND_SOFTWARE_APPLICATION)]);
-  tags.push(["k", String(KIND_SOFTWARE_RELEASE)]);
-  tags.push(["k", String(KIND_SOFTWARE_ASSET)]);
-
+  const now = Math.floor(Date.now() / 1000);
   const unsigned: UnsignedAnnounceEvent = {
     kind: 5,
-    created_at: Math.floor(Date.now() / 1000),
+    created_at: now,
     content:
       "Delete NIP-82 software announce (app/release/asset); repo unchanged.",
-    tags,
-    pubkey: signerPubkey,
+    tags: ids.map((id) => ["e", id]),
+    pubkey: "",
   };
-  const signed = await signer.signEvent(unsigned);
+  const signed = await signer.signEvent({ ...unsigned, pubkey: signerPubkey });
   const relays = relaysForSoftwareCatalog(args.defaultRelays);
   const result = await publishWithConfirmation(
     args.publish as any,

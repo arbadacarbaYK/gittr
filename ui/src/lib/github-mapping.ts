@@ -52,7 +52,9 @@ export async function queryGithubIdentitiesFromNostr(
   const from10011 = new Set<string>(); // github usernames claimed via kind 10011
   const githubLoginsLower = new Set(githubLogins.map((l) => l.toLowerCase()));
 
-  const { KIND_NIP39_IDENTITIES } = await import("@/lib/nostr/nip39-identities");
+  const { KIND_NIP39_IDENTITIES } = await import(
+    "@/lib/nostr/nip39-identities"
+  );
 
   return new Promise((resolve) => {
     let resolved = false;

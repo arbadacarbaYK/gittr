@@ -4,8 +4,7 @@
  * dedicated SimplePool used for kind 24133 (see remoteSigner directPool).
  */
 
-const normalize = (url: string) =>
-  url.trim().toLowerCase().replace(/\/+$/, "");
+const normalize = (url: string) => url.trim().toLowerCase().replace(/\/+$/, "");
 
 const blockedHosts = new Set<string>();
 

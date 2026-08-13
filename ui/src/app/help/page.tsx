@@ -16,8 +16,11 @@ import {
   GITTR_REPO_GITNOSTR,
   GITTR_REPO_GITTR,
   GITTR_REPO_HELPER_TOOLS,
+  GITTR_REPO_NSITE_GATEWAY,
+  HZRD146_NSITE_GATEWAY,
+  ZAPSTORE_ON_GITTR,
+  ZAPSTORE_PUBLISH_DOCS,
 } from "@/lib/gittr-repo-links";
-import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 import {
   SCHEMATA_NIP25,
   SCHEMATA_NIP34,
@@ -27,6 +30,7 @@ import {
   SCHEMATA_NIP_C0,
   SCHEMATA_REPO,
 } from "@/lib/nostr/schemata-links";
+import { SECURITY_AUDIT_UI_ENABLED } from "@/lib/security/audit-ui-flag";
 
 // @ts-ignore - lucide-react types are built-in, this is a TypeScript language server cache issue
 import {
@@ -61,7 +65,9 @@ export default function HelpPage() {
     // Next client nav to /help#… sometimes skips hashchange; catch clicks on in-page anchors
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      const anchor = target?.closest?.("a[href^='#']") as HTMLAnchorElement | null;
+      const anchor = target?.closest?.(
+        "a[href^='#']"
+      ) as HTMLAnchorElement | null;
       if (!anchor) return;
       const href = anchor.getAttribute("href") || "";
       const id = href.startsWith("#") ? href.slice(1) : "";
@@ -240,7 +246,14 @@ export default function HelpPage() {
               /pages
             </Link>
             . Owner tools live in the Code sidebar under{" "}
-            <strong className="text-white">Nostr Pages</strong>.
+            <strong className="text-white">Nostr Pages</strong>            . How-to:{" "}
+            <Link
+              href="#publish-pages-apps"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Publish Pages, Apps &amp; Releases
+            </Link>
+            .
           </li>
           <li>
             <strong className="text-white">Nostr apps</strong> — Discover and
@@ -251,11 +264,40 @@ export default function HelpPage() {
             >
               /apps
             </Link>
-            . Repo owners can <strong className="text-white">Nostr Apps</strong>{" "}
-            from the Code sidebar: list an Android app on Nostr from a forge{" "}
+            . Repo owners use the Code sidebar{" "}
+            <strong className="text-white">Nostr Apps</strong> panel to list an
+            Android app from a GitHub / Codeberg / GitLab{" "}
             <strong className="text-white">Release</strong> that has an{" "}
-            <code className="text-purple-200">.apk</code> (file stays on
-            GitHub/Codeberg/GitLab). Zapstore listing is optional and free.
+            <code className="text-purple-200">.apk</code> (Zapstore). Other
+            binaries on that same tag can be linked as extra NIP-82 assets;
+            files stay on the forge. Zapstore listing is optional and free — see{" "}
+            <Link
+              href="#publish-pages-apps"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Publish Pages, Apps &amp; Releases
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Releases</strong> — The repo{" "}
+            <strong className="text-white">Releases</strong> tab shows forge
+            download assets. Creating or announcing a release is{" "}
+            <em>not</em> the same as{" "}
+            <Link
+              href="#push-to-nostr"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Push to Nostr
+            </Link>
+            . Details:{" "}
+            <Link
+              href="#releases"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Releases &amp; where they live
+            </Link>
+            .
           </li>
           <li>
             <strong className="text-white">Bounties &amp; zaps</strong> — Fund
@@ -393,6 +435,24 @@ export default function HelpPage() {
                 className="text-green-400 hover:text-green-300"
               >
                 Nostr Pages
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#releases"
+                className="text-green-400 hover:text-green-300"
+              >
+                Releases &amp; where they live
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#publish-pages-apps"
+                className="text-green-400 hover:text-green-300"
+              >
+                Publish Pages, Apps &amp; Releases
               </Link>
             </li>
             <li>
@@ -626,14 +686,16 @@ export default function HelpPage() {
                     <strong className="text-gray-300">published tip</strong>{" "}
                     (when you have no unpushed edits), then merges your new
                     files on top — so an older local cache cannot overwrite a
-                    newer Nostr/bridge state. If you already have unpushed
-                    local edits, upload merges into those instead (use Refresh
-                    from gittr only if you want to discard them).
+                    newer Nostr/bridge state. If you already have unpushed local
+                    edits, upload merges into those instead (use Refresh from
+                    gittr only if you want to discard them).
                   </p>
                   <p className="mt-2 text-sm text-gray-400">
                     If the Code tab already shows files from the network but
                     Upload / Push complains about nothing local, use{" "}
-                    <strong className="text-gray-300">Refresh from gittr</strong>{" "}
+                    <strong className="text-gray-300">
+                      Refresh from gittr
+                    </strong>{" "}
                     once (sidebar) so your browser stores a copy. Upload then
                     merges your new files on top; Push publishes the combined
                     tree.
@@ -903,14 +965,19 @@ export default function HelpPage() {
                   NIP-34
                 </a>{" "}
                 announcements carry metadata and{" "}
-                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  clone[]
+                </code>{" "}
                 URLs. The Code sidebar shows where the tree is loading from:
                 bridge / GRASP, GitHub, GitLab, and so on. Legacy “embedded in
                 the event” trees are rare.
               </p>
             </HelpTopic>
 
-            <HelpTopic id="importing-repositories" title={<>Importing Repositories</>}>
+            <HelpTopic
+              id="importing-repositories"
+              title={<>Importing Repositories</>}
+            >
               <p>
                 Bring an existing remote into gittr, then{" "}
                 <Link
@@ -919,8 +986,8 @@ export default function HelpPage() {
                 >
                   Push to Nostr
                 </Link>{" "}
-                so others can discover and clone it from GRASP / the bridge
-                (not only from the original host). Details:{" "}
+                so others can discover and clone it from GRASP / the bridge (not
+                only from the original host). Details:{" "}
                 <Link
                   href="#when-source-goes-offline"
                   className="text-purple-400 hover:text-purple-300 underline"
@@ -1204,8 +1271,8 @@ export default function HelpPage() {
                 list come from the selected tip/branch on that mirror. Clone URL
                 chips should list every pushable GRASP host from the event (not
                 only git.gittr.space). After a clean Push with a forge{" "}
-                <code className="bg-gray-800 px-1 rounded">source</code>, the tip
-                should match the forge — not a new empty “Push from gittr”
+                <code className="bg-gray-800 px-1 rounded">source</code>, the
+                tip should match the forge — not a new empty “Push from gittr”
                 commit. Details:{" "}
                 <a
                   href={GITTR_DOC_FILE_FETCHING}
@@ -1284,7 +1351,17 @@ export default function HelpPage() {
                     git tag v1.2.3
                   </code>
                   <p className="text-[11px] text-gray-400">
-                    Releases and tags show up instantly in the UI.
+                    Git tags are part of the repo history after you push them.
+                    Downloadable release files live on the forge{" "}
+                    <strong className="text-gray-300">Releases</strong> page —
+                    see{" "}
+                    <Link
+                      href="#releases"
+                      className="text-purple-400 hover:text-purple-300"
+                    >
+                      Releases &amp; where they live
+                    </Link>
+                    .
                   </p>
                 </div>
                 <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-1">
@@ -1308,7 +1385,30 @@ export default function HelpPage() {
                 on the Code tab (sidebar) to publish updates.
               </p>
               <p className="mt-2 text-sm text-gray-400">
-                That does two different things:
+                That does two different things — and it does{" "}
+                <strong className="text-gray-300">not</strong> create a forge
+                Release, upload installers, or list the app on{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>
+                . Those are separate, on-purpose steps (
+                <Link
+                  href="#releases"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Releases
+                </Link>
+                ,{" "}
+                <Link
+                  href="#publish-pages-apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Pages &amp; Apps
+                </Link>
+                ):
               </p>
               <ul className="mt-2 text-sm text-gray-400 list-disc list-inside space-y-1 ml-1">
                 <li>
@@ -1442,7 +1542,9 @@ export default function HelpPage() {
                 or gittr <strong>import</strong> only copies{" "}
                 <strong>repo objects</strong> (commits, trees, blobs). It does{" "}
                 <strong>not</strong> bring over Gitea&apos;s{" "}
-                <code className="bg-black/40 px-1 rounded text-xs">app.ini</code>
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  app.ini
+                </code>
                 , internal token, or planted service hooks. Those stay on the
                 compromised or shut-down host. So code you already imported into
                 gittr is not carrying that server compromise with it.
@@ -1463,7 +1565,9 @@ export default function HelpPage() {
                   git.gittr.space
                 </code>{" "}
                 and other{" "}
-                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  clone[]
+                </code>{" "}
                 hosts). Others can keep discovering and cloning without the
                 original forge.
               </p>
@@ -1473,7 +1577,9 @@ export default function HelpPage() {
                   git clone
                 </code>{" "}
                 from a URL in your announcement{" "}
-                <code className="bg-black/40 px-1 rounded text-xs">clone[]</code>{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  clone[]
+                </code>{" "}
                 without the original host? If yes, that snapshot is fine. If
                 every clone URL still points only at the dead host, finish a
                 Push (or push to a GRASP remote) so the tree has somewhere else
@@ -1535,6 +1641,56 @@ export default function HelpPage() {
                     </tr>
                     <tr className="bg-slate-900/40">
                       <td className="p-3 align-top font-medium text-white">
+                        Forge Release assets (APK, AppImage, MSI, …)
+                      </td>
+                      <td className="p-3 align-top">
+                        Binary files on GitHub / Codeberg / GitLab (or another
+                        host). gittr&apos;s Releases tab mostly{" "}
+                        <em>lists</em> those links; it does not store the
+                        installers.
+                      </td>
+                      <td className="p-3 align-top text-amber-200/90">
+                        Download buttons that point at the dead forge break.
+                        Code you already Push&apos;d to GRASP can still be
+                        cloned — that is source, not the release installers. See{" "}
+                        <Link
+                          href="#releases"
+                          className="underline hover:text-amber-50"
+                        >
+                          Releases &amp; where they live
+                        </Link>
+                        .
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Nostr Apps announce (NIP-82 / Zapstore)
+                      </td>
+                      <td className="p-3 align-top">
+                        Signed events on relays (app / release / asset). Asset{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          url
+                        </code>{" "}
+                        usually still points at the forge download. Listing
+                        appears on{" "}
+                        <Link
+                          href="/apps"
+                          className="text-purple-400 hover:text-purple-300"
+                        >
+                          /apps
+                        </Link>{" "}
+                        and your profile Apps section.
+                      </td>
+                      <td className="p-3 align-top text-amber-200/90">
+                        The announce stays discoverable; the download may 404 if
+                        the forge is gone. Hashes on the event do not replace a
+                        live file unless you also host the blob elsewhere
+                        (Blossom / CDN). Pages (kind 35128) are different —
+                        those files are uploaded to Blossom.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
                         nak / git-remote-nostr announce with{" "}
                         <code className="bg-black/40 px-1 rounded text-xs">
                           clone
@@ -1588,10 +1744,7 @@ export default function HelpPage() {
                       Importing Repositories
                     </Link>
                     , or{" "}
-                    <Link
-                      href="/new"
-                      className="underline hover:text-blue-50"
-                    >
+                    <Link href="/new" className="underline hover:text-blue-50">
                       Create repository
                     </Link>{" "}
                     and paste the clone URL), then{" "}
@@ -1608,10 +1761,7 @@ export default function HelpPage() {
                       Only a local backup / disk copy left?
                     </strong>{" "}
                     Create a new repo from that tree on{" "}
-                    <Link
-                      href="/new"
-                      className="underline hover:text-blue-50"
-                    >
+                    <Link href="/new" className="underline hover:text-blue-50">
                       /new
                     </Link>
                     , then Push to Nostr so others can clone without the old
@@ -2272,160 +2422,205 @@ export default function HelpPage() {
             </HelpTopic>
 
             {SECURITY_AUDIT_UI_ENABLED && (
-            <HelpTopic
-              id="security-alerts"
-              title={<>Security (CVE) Alerts — no alarm spam, by design</>}
-            >
-              <p>
-                Supply-chain attacks on git forges are a hot topic. gittr scans
-                the dependencies of every repo against the public{" "}
-                <a
-                  href="https://osv.dev"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-400 hover:text-purple-300"
-                >
-                  OSV.dev
-                </a>{" "}
-                vulnerability database and shows the result on the repo&apos;s{" "}
-                <strong>Dependencies</strong> tab.
-              </p>
-              <p className="mt-2">
-                <strong>Exact matches only:</strong> an advisory is only
-                reported as confirmed when the exact dependency version from
-                your committed lockfile (
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  package-lock.json
-                </code>
-                ,{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  yarn.lock
-                </code>
-                ,{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  Cargo.lock
-                </code>
-                ,{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">go.mod</code>
-                , pinned{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  requirements.txt
-                </code>
-                , …) falls inside the version range the advisory declares as
-                affected. Versions guessed from ranges in{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  package.json
-                </code>{" "}
-                are listed separately as unconfirmed and never trigger alarms.
-              </p>
-              <p className="mt-2">
-                <strong>How the message looks:</strong> Telegram / Nostr DMs
-                lead with the <strong>repo name</strong>, list at most a few
-                findings, and link to the full security issue — not a wall of
-                hex URLs or truncated advisory dumps.
-              </p>
-              <p className="mt-2">
-                <strong>How often does the check run?</strong> The audit runs
-                fresh every time the <strong>Dependencies</strong> tab of a
-                repo is opened — there is no fixed schedule. It reads the
-                lockfiles from the <strong>pushed repo tip on gittr</strong>{" "}
-                (the bridge clone), not from files only on your laptop or only
-                on GitHub until those are synced here. Advisory details are
-                cached on the server for about 6 hours, so a newly published
-                CVE shows up within hours, at the latest on the next visit
-                after the cache expires.
-              </p>
-              <p className="mt-2">
-                <strong>How alerts reach you (Dependabot-style):</strong> when a
-                confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
-                <strong>direct</strong> pinned dependency on a repo that has
-                code on <strong>gittr</strong> (created / imported / pushed
-                here — not merely announced from another client), the platform
-                can open a security issue and notify you on the{" "}
-                <strong>same channels</strong> you enabled (Nostr and/or
-                Telegram). All notification toggles (including Security) live in
-                one kind{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">30078</code>{" "}
-                event (
-                <code className="bg-gray-800 px-1 rounded text-xs">
-                  d=gittr/notifications
-                </code>
-                ) so they sync across browsers. Save also registers delivery on
-                this server (Telegram User ID stays off public relays).
-              </p>
-              <p className="mt-2">
-                <strong>Fresh tip only — keep announcement in line with source:</strong>{" "}
-                the scanner reads lockfiles from the gittr bridge clone, but only
-                when Nostr repo state (kind{" "}
-                <code className="bg-gray-800 px-1 rounded text-xs">30618</code>
-                ) <strong>exactly matches</strong> that clone. No tip, or tip ≠
-                bridge → <strong>skip</strong> (no DM about the wrong tree).
-                That match is what a successful <strong>Push</strong> from the
-                gittr UI is supposed to publish. If you changed the repo on
-                GitHub (or another forge) and want CVE coverage of that tip:
-                bring it onto gittr (sync / refetch from source on the repo),
-                then <strong>Push</strong> so the announcement lines up with the
-                mirror. A browser-only file refresh without Push does not update
-                the announcement. Same idea if you only update in another Nostr
-                git client — Push/sync on gittr again when you want alerts here.
-              </p>
-              <p className="mt-2">
-                <strong>How alerts are sent:</strong> when you are opted in, the
-                platform bot opens a security issue on that repo and DMs you
-                (Nostr and/or Telegram per your prefs) for each new confirmed
-                CRITICAL/HIGH finding. The same advisory is not re-sent on later
-                scans.
-              </p>
-              <p className="mt-2">
-                <strong>One alert per problem — not per scan:</strong> each
-                advisory triggers at most one issue per package per repo.
-                Repeated scans that find the same known vulnerability stay
-                silent.
-              </p>
-              <p className="mt-3 font-semibold text-gray-300">
-                Get the most protection:
-              </p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-1 text-sm">
-                <li>
-                  <strong>Commit your lockfiles.</strong> Without them, exact
-                  versions can&apos;t be verified and you only get unconfirmed
-                  hints.
-                </li>
-                <li>
-                  <strong>Pin versions</strong> where your ecosystem supports it
-                  (e.g.{" "}
+              <HelpTopic
+                id="security-alerts"
+                title={<>Security (CVE) Alerts — no alarm spam, by design</>}
+              >
+                <p>
+                  Supply-chain attacks on git forges are a hot topic. gittr
+                  scans the dependencies of every repo against the public{" "}
+                  <a
+                    href="https://osv.dev"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    OSV.dev
+                  </a>{" "}
+                  vulnerability database and shows the result on the repo&apos;s{" "}
+                  <strong>Dependencies</strong> tab.
+                </p>
+                <p className="mt-2">
+                  <strong>Exact matches only:</strong> an advisory is only
+                  reported as confirmed when the exact dependency version from
+                  your committed lockfile (
                   <code className="bg-gray-800 px-1 rounded text-xs">
-                    package==1.2.3
+                    package-lock.json
+                  </code>
+                  ,{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    yarn.lock
+                  </code>
+                  ,{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    Cargo.lock
+                  </code>
+                  ,{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    go.mod
+                  </code>
+                  , pinned{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    requirements.txt
+                  </code>
+                  , …) falls inside the version range the advisory declares as
+                  affected. Versions guessed from ranges in{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    package.json
                   </code>{" "}
-                  in requirements.txt).
-                </li>
-                <li>
-                  <strong>Opt in and Save</strong> in Settings → Notifications
-                  so consent is on relays — localStorage alone is not enough for
-                  the bot.
-                </li>
-                <li>
-                  <strong>Keep Push / announcement current.</strong> After
-                  dependency or tip changes on GitHub (or on gittr), sync from
-                  source if needed, then Push so kind{" "}
-                  <code className="bg-gray-800 px-1 rounded text-xs">30618</code>{" "}
-                  matches the tip on gittr — otherwise CVE alerts stay skipped.
-                </li>
-                <li>
-                  <strong>Check the Dependencies tab</strong> after importing a
-                  repo and after dependency updates are on gittr.
-                </li>
-                <li>
-                  <strong>Update affected packages</strong> to a version outside
-                  the advisory&apos;s affected range, then get that new
-                  lockfile onto gittr before re-checking the tab:{" "}
-                  <strong>Nostr/git push</strong> if you fixed it locally, or{" "}
-                  <strong>sync from the source forge + Push</strong> if you
-                  fixed it there. Opening the tab alone does not see unpushed
-                  or unsynced changes.
-                </li>
-              </ul>
-            </HelpTopic>
+                  are listed separately as unconfirmed and never trigger alarms.
+                </p>
+                <p className="mt-2">
+                  <strong>How the message looks:</strong> Telegram / Nostr DMs
+                  lead with the <strong>repo name</strong>, list at most a few
+                  findings, and link to the full security issue — not a wall of
+                  hex URLs or truncated advisory dumps.
+                </p>
+                <p className="mt-2">
+                  <strong>How often does the check run?</strong> The audit runs
+                  fresh every time the <strong>Dependencies</strong> tab of a
+                  repo is opened — there is no fixed schedule. It reads the
+                  lockfiles from the <strong>pushed repo tip on gittr</strong>{" "}
+                  (the bridge clone), not from files only on your laptop or only
+                  on GitHub until those are synced here. Advisory details are
+                  cached on the server for about 6 hours, so a newly published
+                  CVE shows up within hours, at the latest on the next visit
+                  after the cache expires.
+                </p>
+                <p className="mt-2">
+                  <strong>How alerts reach you (Dependabot-style):</strong> when
+                  a confirmed <strong>CRITICAL or HIGH</strong> advisory hits a{" "}
+                  <strong>direct</strong> pinned dependency on a repo that has
+                  code on <strong>gittr</strong> (created / imported / pushed
+                  here — not merely announced from another client), the platform
+                  can open a security issue and notify you on the{" "}
+                  <strong>same channels</strong> you enabled (Nostr and/or
+                  Telegram). All notification toggles (including Security) live
+                  in one kind{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    30078
+                  </code>{" "}
+                  event (
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    d=gittr/notifications
+                  </code>
+                  ) so they sync across browsers. Save also registers delivery
+                  on this server (Telegram User ID stays off public relays).
+                </p>
+                <p className="mt-2">
+                  <strong>Your repos only — not watched / starred:</strong>{" "}
+                  Security scans the repos you{" "}
+                  <strong>own</strong> on gittr (your kind{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    30617
+                  </code>{" "}
+                  announcements), not projects you only watch, star, or follow.
+                  Watching someone else&apos;s stack is intentionally out of
+                  scope — noisy, permission-awkward, and easy to get wrong. If
+                  you want CVE / early-warning coverage of another project,
+                  <strong> fork or import it</strong> under your account so you
+                  own the tip on gittr, then keep Push in sync as usual.
+                </p>
+                <p className="mt-2">
+                  <strong>
+                    Fresh tip only — keep announcement in line with source:
+                  </strong>{" "}
+                  the scanner reads lockfiles from the gittr bridge clone, but
+                  only when Nostr repo state (kind{" "}
+                  <code className="bg-gray-800 px-1 rounded text-xs">
+                    30618
+                  </code>
+                  ) <strong>exactly matches</strong> that clone. No tip, or tip
+                  ≠ bridge → <strong>skip</strong> (no DM about the wrong tree).
+                  That match is what a successful <strong>Push</strong> from the
+                  gittr UI is supposed to publish. If you changed the repo on
+                  GitHub (or another forge) and want CVE coverage of that tip:
+                  bring it onto gittr (sync / refetch from source on the repo),
+                  then <strong>Push</strong> so the announcement lines up with
+                  the mirror. A browser-only file refresh without Push does not
+                  update the announcement. Same idea if you only update in
+                  another Nostr git client — Push/sync on gittr again when you
+                  want alerts here.
+                </p>
+                <p className="mt-2">
+                  <strong>How alerts are sent:</strong> when you are opted in,
+                  the platform bot opens a security issue on that repo and DMs
+                  you (Nostr and/or Telegram per your prefs) for each new
+                  confirmed CRITICAL/HIGH finding. The same advisory is not
+                  re-sent on later scans.
+                </p>
+                <p className="mt-2">
+                  <strong>Early (pre-CVE) warnings — same opt-in:</strong> with
+                  Security enabled you also get private DMs when the public{" "}
+                  <a
+                    href="https://vulnerabilityspoileralert.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    Vulnerability Spoiler Alert
+                  </a>{" "}
+                  RSS flags a HIGH/CRITICAL finding that looks related to a{" "}
+                  <strong>direct</strong> dependency in that repo (often before
+                  a CVE exists). There is no extra checkbox. These tips are{" "}
+                  <strong>not</strong> shown on the Dependencies tab (that tab
+                  stays OSV/confirmed only), and we do not open a gittr issue for
+                  them. If the Spoiler feed is unreachable, Dependencies + normal
+                  CVE alerts keep working unchanged.
+                </p>
+                <p className="mt-2">
+                  <strong>One alert per problem — not per scan:</strong> each
+                  advisory triggers at most one issue per package per repo.
+                  Repeated scans that find the same known vulnerability stay
+                  silent.
+                </p>
+                <p className="mt-3 font-semibold text-gray-300">
+                  Get the most protection:
+                </p>
+                <ul className="list-disc list-inside space-y-1 ml-4 mt-1 text-sm">
+                  <li>
+                    <strong>Commit your lockfiles.</strong> Without them, exact
+                    versions can&apos;t be verified and you only get unconfirmed
+                    hints.
+                  </li>
+                  <li>
+                    <strong>Pin versions</strong> where your ecosystem supports
+                    it (e.g.{" "}
+                    <code className="bg-gray-800 px-1 rounded text-xs">
+                      package==1.2.3
+                    </code>{" "}
+                    in requirements.txt).
+                  </li>
+                  <li>
+                    <strong>Opt in and Save</strong> in Settings → Notifications
+                    so consent is on relays — localStorage alone is not enough
+                    for the bot.
+                  </li>
+                  <li>
+                    <strong>Keep Push / announcement current.</strong> After
+                    dependency or tip changes on GitHub (or on gittr), sync from
+                    source if needed, then Push so kind{" "}
+                    <code className="bg-gray-800 px-1 rounded text-xs">
+                      30618
+                    </code>{" "}
+                    matches the tip on gittr — otherwise CVE alerts stay
+                    skipped.
+                  </li>
+                  <li>
+                    <strong>Check the Dependencies tab</strong> after importing
+                    a repo and after dependency updates are on gittr.
+                  </li>
+                  <li>
+                    <strong>Update affected packages</strong> to a version
+                    outside the advisory&apos;s affected range, then get that
+                    new lockfile onto gittr before re-checking the tab:{" "}
+                    <strong>Nostr/git push</strong> if you fixed it locally, or{" "}
+                    <strong>sync from the source forge + Push</strong> if you
+                    fixed it there. Opening the tab alone does not see unpushed
+                    or unsynced changes.
+                  </li>
+                </ul>
+              </HelpTopic>
             )}
 
             <HelpTopic title={<>Bounty Notifications</>}>
@@ -2464,6 +2659,282 @@ export default function HelpPage() {
                 </a>{" "}
                 Telegram channel, regardless of your notification preferences.
               </p>
+            </HelpTopic>
+          </div>
+        </HelpSection>
+
+        <HelpSection
+          id="publish-pages-apps"
+          title={<>Publish Pages, Apps &amp; Releases</>}
+        >
+          <div className="space-y-2">
+            <HelpTopic
+              id="releases"
+              title={<>Releases &amp; where they live</>}
+            >
+              <p>
+                Think of three separate layers. Mixing them up is what causes
+                confusion — not the UI itself.
+              </p>
+
+              <div className="mt-3 overflow-x-auto rounded border border-slate-600">
+                <table className="w-full min-w-[640px] text-left text-sm text-gray-300">
+                  <thead className="bg-slate-800/80 text-slate-100">
+                    <tr>
+                      <th className="p-3 font-semibold">Layer</th>
+                      <th className="p-3 font-semibold">What it is</th>
+                      <th className="p-3 font-semibold">Where it lives</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700">
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Forge Release
+                      </td>
+                      <td className="p-3 align-top">
+                        A tagged Release on GitHub / Codeberg / GitLab with real
+                        download files (APK, AppImage, MSI, checksums, …).
+                        Create those assets on the forge (or with their CLI /
+                        CI).
+                      </td>
+                      <td className="p-3 align-top">
+                        On that forge. gittr&apos;s{" "}
+                        <strong className="text-white">Releases</strong> tab
+                        syncs and lists them when the repo has a matching{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          source
+                        </code>{" "}
+                        URL.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        gittr &quot;New release&quot;
+                      </td>
+                      <td className="p-3 align-top">
+                        Optional notes / tag label in the browser for this repo.
+                        Does <em>not</em> upload binaries yet (Blossom upload is
+                        planned), and does <em>not</em> publish to{" "}
+                        <Link
+                          href="/apps"
+                          className="text-purple-400 hover:text-purple-300"
+                        >
+                          /apps
+                        </Link>
+                        .
+                      </td>
+                      <td className="p-3 align-top">
+                        Local to your browser (per-repo storage). Useful as a
+                        memo; not a substitute for forge assets.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Nostr Apps announce
+                      </td>
+                      <td className="p-3 align-top">
+                        Owner-only, explicit step from the Code sidebar →{" "}
+                        <strong className="text-white">Nostr Apps</strong>.
+                        Needs a forge Release with an{" "}
+                        <code className="text-purple-200">.apk</code> for
+                        Zapstore. Other verified platform files on the same tag
+                        can be linked as extra NIP-82 assets. You choose this —
+                        it never runs on ordinary{" "}
+                        <Link
+                          href="#push-to-nostr"
+                          className="text-purple-400 hover:text-purple-300"
+                        >
+                          Push to Nostr
+                        </Link>
+                        .
+                      </td>
+                      <td className="p-3 align-top">
+                        Signed events on Nostr relays (kinds{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          32267
+                        </code>{" "}
+                        app,{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          30063
+                        </code>{" "}
+                        release,{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          3063
+                        </code>{" "}
+                        asset). Shown on{" "}
+                        <Link
+                          href="/apps"
+                          className="text-purple-400 hover:text-purple-300"
+                        >
+                          /apps
+                        </Link>
+                        , your profile <strong className="text-white">Apps</strong>{" "}
+                        section, and optionally Zapstore. Download{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          url
+                        </code>{" "}
+                        still points at the forge unless you host elsewhere.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <HelpSubTopic title={<>Suggested flow</>}>
+                <ol className="list-decimal list-inside space-y-1.5 ml-1 text-sm text-gray-300">
+                  <li>
+                    Publish installers on the forge Release for that tag (CI or
+                    manual upload).
+                  </li>
+                  <li>
+                    Open the repo on gittr →{" "}
+                    <strong className="text-white">Releases</strong> — assets
+                    should appear after a soft refresh from the forge.
+                  </li>
+                  <li>
+                    (Optional) On that forge tag, click{" "}
+                    <strong className="text-white">Announce on Nostr</strong>{" "}
+                    (same Zapstore rules as Code sidebar →{" "}
+                    <strong className="text-white">Nostr Apps</strong>): verify
+                    APK → <strong>Publish on Nostr</strong> for{" "}
+                    <Link
+                      href="/apps"
+                      className="text-purple-400 hover:text-purple-300"
+                    >
+                      /apps
+                    </Link>{" "}
+                    / Zapstore.
+                  </li>
+                  <li>
+                    Prefer a <strong className="text-white">new version / tag</strong>{" "}
+                    when binaries change. Re-announce the same version only to
+                    fix a bad listing.
+                  </li>
+                </ol>
+              </HelpSubTopic>
+
+              <p className="mt-3 text-sm text-gray-400">
+                If the forge later goes offline, mirrored{" "}
+                <strong className="text-gray-300">source code</strong> (after
+                Push) can still be cloned from GRASP — but{" "}
+                <strong className="text-gray-300">release installers</strong>{" "}
+                that only lived on the forge will not. Full table:{" "}
+                <Link
+                  href="#when-source-goes-offline"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  When your git host goes dark
+                </Link>
+                .
+              </p>
+            </HelpTopic>
+
+            <HelpTopic title={<>Nostr Pages (static sites)</>}>
+              <p>
+                Owners publish a static site from the repo Code sidebar →{" "}
+                <strong className="text-white">Nostr Pages</strong>: add a root
+                entry file (for example{" "}
+                <code className="text-purple-200">index.html</code>), keep the
+                README Pages block in sync, <strong>Push to Nostr</strong>, then{" "}
+                <strong>Push Manifest</strong> (uploads to Blossom and publishes
+                kind <strong>35128</strong>). Browse live sites at{" "}
+                <Link
+                  href="/pages"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /pages
+                </Link>
+                .
+              </p>
+              <p className="mt-3 text-sm text-gray-300">
+                gittr&apos;s gateway is adapted from{" "}
+                <strong className="text-white">hzrd146</strong>&apos;s nsite
+                work — credit where it&apos;s due:
+              </p>
+              <ul className="mt-2 text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                <li>
+                  Upstream:{" "}
+                  <a
+                    href={HZRD146_NSITE_GATEWAY}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    hzrd146 / nsite-gateway
+                  </a>
+                </li>
+                <li>
+                  gittr fork / deploy:{" "}
+                  <a
+                    href={GITTR_REPO_NSITE_GATEWAY}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    gittr / nsite-gateway
+                  </a>
+                </li>
+              </ul>
+            </HelpTopic>
+
+            <HelpTopic title={<>Nostr Apps &amp; Zapstore</>}>
+              <p>
+                Owners list an Android app from the Code sidebar →{" "}
+                <strong className="text-white">Nostr Apps</strong>: link a
+                GitHub / Codeberg / GitLab source URL, pick a{" "}
+                <strong className="text-white">Release</strong> that includes an{" "}
+                <code className="text-purple-200">.apk</code>, verify the APK,
+                then <strong>Publish on Nostr</strong> (NIP-82). Zapstore needs
+                the APK; other binaries on the same Release tag (DMG, AppImage,
+                MSI/EXE, …) can be linked as extra NIP-82 assets on that
+                version. Files stay on the forge; gittr only announces. The repo{" "}
+                <strong className="text-white">Releases</strong> tab lists all
+                forge download assets (not only APKs). How Releases, forge files,
+                and announces fit together:{" "}
+                <Link
+                  href="#releases"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Releases &amp; where they live
+                </Link>
+                . Discover apps at{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>
+                .
+              </p>
+              <p className="mt-3 text-sm text-gray-300">
+                Optional Zapstore catalog: add{" "}
+                <code className="text-purple-200">zapstore.yaml</code> at the
+                source repo root, then publish again. Details:
+              </p>
+              <ul className="mt-2 text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                <li>
+                  Zapstore on gittr:{" "}
+                  <a
+                    href={ZAPSTORE_ON_GITTR}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    zapstore
+                  </a>
+                </li>
+                <li>
+                  Publish docs:{" "}
+                  <a
+                    href={ZAPSTORE_PUBLISH_DOCS}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    zapstore.dev/docs/publish
+                  </a>
+                </li>
+              </ul>
             </HelpTopic>
           </div>
         </HelpSection>

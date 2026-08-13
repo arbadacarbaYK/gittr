@@ -28,16 +28,14 @@ describe("hostnameLooksPrivateOrLocal", () => {
 
 describe("isSafeOutboundGitUrlSync", () => {
   it("accepts common forge and GRASP URLs", () => {
+    expect(isSafeOutboundGitUrlSync("https://github.com/owner/repo.git")).toBe(
+      true
+    );
+    expect(isSafeOutboundGitUrlSync("git@github.com:owner/repo.git")).toBe(
+      true
+    );
     expect(
-      isSafeOutboundGitUrlSync("https://github.com/owner/repo.git")
-    ).toBe(true);
-    expect(
-      isSafeOutboundGitUrlSync("git@github.com:owner/repo.git")
-    ).toBe(true);
-    expect(
-      isSafeOutboundGitUrlSync(
-        "https://relay.ngit.dev/npub1abc/my-repo.git"
-      )
+      isSafeOutboundGitUrlSync("https://relay.ngit.dev/npub1abc/my-repo.git")
     ).toBe(true);
   });
 

@@ -4,12 +4,13 @@ import { fetchForgeReleasesForAnnounce } from "@/lib/repo/forge-releases";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 /**
- * GET /api/repo/forge-releases?sourceUrl=…&hash=1
+ * GET /api/repo/forge-releases?sourceUrl=…&hash=1&tag=v1.2.3
  *
- * Returns the latest non-draft forge Release with APK assets for Zapstore announce.
+ * Returns a forge Release with APK assets for Zapstore announce.
+ * Omit `tag` → latest non-draft (Code sidebar). With `tag` → that Release.
  * Missing forge / bad request → 4xx. no_releases / no_apk → 200 with ok:false
  * (expected for most repos; avoids red Network noise on owner page load).
- * Optional hash=1 streams each APK to compute sha256 (not stored).
+ * Optional hash=1 streams APKs (+ NIP-82 siblings) to compute sha256 (not stored).
  */
 export default async function handler(
   req: NextApiRequest,
@@ -45,6 +46,15 @@ export default async function handler(
     });
   }
 
+  const tagRaw = String(req.query.tag || "").trim();
+  if (tagRaw.length > 128) {
+    return res.status(400).json({
+      ok: false,
+      code: "invalid_request",
+      message: "tag is too long",
+    });
+  }
+
   const includeHash =
     req.query.hash === "1" ||
     req.query.hash === "true" ||
@@ -53,6 +63,7 @@ export default async function handler(
   const result = await fetchForgeReleasesForAnnounce({
     sourceUrl,
     includeHash,
+    tag: tagRaw || null,
   });
 
   if (!result.ok) {

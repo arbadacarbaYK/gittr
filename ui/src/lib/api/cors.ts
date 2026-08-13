@@ -25,9 +25,7 @@ export function handleOptionsRequest(res: any, _req?: any): void {
  */
 export function setPaymentCorsHeaders(res: any, req?: any): void {
   const site =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "";
+    process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "";
   const origin =
     typeof req?.headers?.origin === "string" ? req.headers.origin : "";
   let allow = "";

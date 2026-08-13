@@ -383,11 +383,7 @@ export default function ArchitecturePage({
 
       setStatus(`Analyzing ${files.length} files for architecture...`);
 
-      const diagram = generateArchitectureDiagram(
-        files,
-        mode,
-        actualRepoName
-      );
+      const diagram = generateArchitectureDiagram(files, mode, actualRepoName);
       console.log("📊 [Architecture] Generated diagram:", mode, diagram);
 
       setMermaidDiagram(diagram);

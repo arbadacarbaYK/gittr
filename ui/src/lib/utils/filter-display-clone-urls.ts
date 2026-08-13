@@ -1,7 +1,4 @@
-import {
-  isGraspDomainForPushing,
-  isGraspServer,
-} from "./grasp-servers";
+import { isGraspDomainForPushing, isGraspServer } from "./grasp-servers";
 
 const UPSTREAM_HOSTS = ["github.com", "gitlab.com", "codeberg.org"] as const;
 
@@ -72,9 +69,7 @@ export function filterDisplayCloneUrlsForSidebar(
     sourceUrl?: string;
   }
 ): string[] {
-  const withoutEmpty = urls
-    .map((u) => String(u || "").trim())
-    .filter(Boolean);
+  const withoutEmpty = urls.map((u) => String(u || "").trim()).filter(Boolean);
 
   const hasNamedHost = withoutEmpty.some((u) => {
     if (u.startsWith("nostr://")) return true;

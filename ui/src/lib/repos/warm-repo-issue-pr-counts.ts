@@ -16,12 +16,12 @@ import {
   readRepoIssuesFromLocalStorage,
   readRepoPullsFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
+import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import {
   normalizeIssueListStatus,
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
@@ -39,7 +39,8 @@ export type WarmableRepo = {
 
 function resolveOwnerHex(entity: string, repo: string): string | null {
   const resolved = resolveEntityToPubkey(entity);
-  if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) return resolved.toLowerCase();
+  if (resolved && /^[0-9a-f]{64}$/i.test(resolved))
+    return resolved.toLowerCase();
   try {
     const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
     const row = findRepoByEntityAndName(repos, entity, repo);
@@ -68,16 +69,13 @@ function eventBelongsToRepo(
   const repoTag = event.tags.find((t) => t[0] === "repo");
   if (!repoTag) return false;
   const ownerOk =
-    repoTag[1] === entity ||
-    (ownerHex != null && repoTag[1] === ownerHex);
+    repoTag[1] === entity || (ownerHex != null && repoTag[1] === ownerHex);
   return ownerOk && repoTag[2] === repo;
 }
 
 function upsertIssue(entity: string, repo: string, event: any): void {
   const key = getRepoStorageKey("gittr_issues", entity, repo);
-  const existing = [
-    ...(readRepoIssuesFromLocalStorage(entity, repo) as any[]),
-  ];
+  const existing = [...(readRepoIssuesFromLocalStorage(entity, repo) as any[])];
   const idx = existing.findIndex((i) => i.id === event.id);
   const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
   let title = subjectTag ? subjectTag[1] : "";
@@ -171,9 +169,7 @@ function applyStatus(
     kind === "issues"
       ? ([...(readRepoIssuesFromLocalStorage(entity, repo) as any[])] as any[])
       : ([...(readRepoPullsFromLocalStorage(entity, repo) as any[])] as any[]);
-  const idx = rows.findIndex(
-    (r) => (r.nostrEventId || r.id) === eventId
-  );
+  const idx = rows.findIndex((r) => (r.nostrEventId || r.id) === eventId);
   if (idx < 0) return;
 
   let status = "open";

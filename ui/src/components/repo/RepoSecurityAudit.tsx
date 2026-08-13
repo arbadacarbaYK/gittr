@@ -82,9 +82,11 @@ function RepoSecurityAuditInner({
   } | null> => {
     const repos = loadStoredRepos();
     const stored =
-      findRepoByEntityAndName<any>(repos, entity, repo) ?? ({ entity, repo } as any);
+      findRepoByEntityAndName<any>(repos, entity, repo) ??
+      ({ entity, repo } as any);
     let ownerPubkey =
-      getRepoOwnerPubkey(stored, entity) || resolveEntityToPubkey(entity, stored);
+      getRepoOwnerPubkey(stored, entity) ||
+      resolveEntityToPubkey(entity, stored);
     if (!ownerPubkey) {
       ownerPubkey =
         resolveEntityToPubkey(entity) ||
@@ -94,7 +96,8 @@ function RepoSecurityAuditInner({
     if (!ownerPubkey) return null;
     let repoName =
       stored?.repositoryName || stored?.repo || stored?.name || repo;
-    if (repoName.includes("/")) repoName = repoName.split("/").pop() || repoName;
+    if (repoName.includes("/"))
+      repoName = repoName.split("/").pop() || repoName;
     repoName = repoName.replace(/\.git$/, "");
     return { ownerPubkey: ownerPubkey.toLowerCase(), repoName };
   }, [entity, repo]);
@@ -295,8 +298,7 @@ function AdvisoryList({
   // them as confirmed alarms would be permanent noise. Severe-but-unpatched
   // advisories still count as confirmed.
   const informational = advisories.filter(
-    (a) =>
-      a.precision === "pinned" && a.unfixable && a.severity === "UNKNOWN"
+    (a) => a.precision === "pinned" && a.unfixable && a.severity === "UNKNOWN"
   );
   const confirmed = advisories.filter(
     (a) =>

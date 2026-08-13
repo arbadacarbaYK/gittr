@@ -34,10 +34,7 @@ const KNOWN_TYPES = new Set<string>([
 ]);
 
 /** Nostr-git forge UIs that put browse URLs in `web` (not project docs). */
-const FORGE_BROWSE_HOSTS = new Set([
-  "gitworkshop.dev",
-  "www.gitworkshop.dev",
-]);
+const FORGE_BROWSE_HOSTS = new Set(["gitworkshop.dev", "www.gitworkshop.dev"]);
 
 /**
  * Hosts that serve GRASP/Nostr-git clones. A `web` URL on these with an npub
@@ -56,8 +53,7 @@ const GRASP_OR_GIT_HOST_HINTS = [
   "gittr.space",
 ];
 
-const IMAGE_EXT_RE =
-  /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)(\?|#|$)/i;
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)(\?|#|$)/i;
 
 const NPUB_PATH_RE = /\/npub1[a-z0-9]+(\/|$)/i;
 
@@ -198,7 +194,7 @@ export function parseRepoLinksFromNip34Tags(
 
 /** Drop forge-browse / clone-shaped / image rows previously stored as docs. */
 export function stripNonDocumentationWebLinks<
-  T extends { url: string; label?: string; type?: string },
+  T extends { url: string; label?: string; type?: string }
 >(links: T[] | undefined | null): T[] {
   const list = Array.isArray(links) ? links : [];
   return list.filter((link) => {

@@ -19,11 +19,13 @@ flowchart LR
   RelayGittr["gittr Pyramid relay<br/>relay.gittr.space<br/>wss · open forge + GRASP"]
   Relays["Other Nostr relays"]
   Pages["Pages / nsite<br/>pages.gittr.space"]
+  Blossom["Blossom<br/>blossom.gittr.space"]
   Remote["git remote nostr<br/>optional · ngit"]
 
   UI -->|announce · push UI| RelayGittr
   UI -->|announce · push UI| Relays
   UI -->|import / sync| Bridge
+  UI -->|Pages blobs| Blossom
   MCP -->|HTTP + Nostr auth| Bridge
   MCP --> RelayGittr
   MCP --> Relays
@@ -31,12 +33,13 @@ flowchart LR
   Bridge -->|watch kinds · bare repos| RelayGittr
   Bridge -->|watch kinds · bare repos| Relays
   Pages -.->|sites, not git objects| Relays
+  Pages --> Blossom
   Remote -.->|same NIP-34 events| Relays
 
   classDef youAreHere fill:#0f766e,stroke:#5eead4,stroke-width:3px,color:#ecfdf5
   classDef hostUrl fill:#164e63,stroke:#22d3ee,stroke-width:2px,color:#ecfeff
   class Bridge youAreHere
-  class Pages,RelayGittr hostUrl
+  class Pages,Blossom,RelayGittr hostUrl
 ```
 
 | Piece | Host / on gittr | Talks to this bridge how? |
@@ -45,7 +48,9 @@ flowchart LR
 | **★ gitnostr (this README)** | [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) · **`git.gittr.space`** | **You are here** — bare repos, SSH keys (kind 52), permissions |
 | **gittr-mcp** | [gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp) | Agents push/list via HTTPS + signed Nostr headers |
 | **Pages / nsite** | [nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway) · **`pages.gittr.space`** | Separate — static sites from Nostr, not the git object store |
+| **Blossom** | **`blossom.gittr.space`** | Blob store used by Pages (and related media) — not git objects |
 | **gittr Pyramid relay** | [pyramid](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid) · **`relay.gittr.space`** | Open `wss://` forge relay the bridge also watches |
+| **gittr-helper-tools** | [gittr-helper-tools](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?branch=main) | Snippets only — not a runtime host (omitted from the diagram) |
 | **git remote nostr** | [ngit-cli](https://github.com/DanConwayDev/ngit-cli) | Optional; reads/writes same relay events; may also hit `clone` HTTPS |
 
 **Addressing:** on disk, owner dirs are **hex pubkey**; HTTPS clone tags use **npub** via `npub → hex` symlinks on **`git.gittr.space`** (NIP-34-friendly). SSH accepts hex or npub.

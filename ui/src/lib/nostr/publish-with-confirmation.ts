@@ -2,12 +2,12 @@
  * Publish repository event to Nostr and wait for confirmation
  * Stores the event ID in the repository data when confirmed
  */
+import { clearDeletedRepoTombstones } from "../repos/deleted-repo-tombstones";
 import {
   type StoredRepo,
   loadStoredRepos,
   saveStoredRepos,
 } from "../repos/storage";
-import { clearDeletedRepoTombstones } from "../repos/deleted-repo-tombstones";
 
 import { KIND_REPOSITORY, resolveNip34HeadBranchName } from "./events";
 

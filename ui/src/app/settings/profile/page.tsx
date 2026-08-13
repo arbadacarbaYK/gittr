@@ -240,25 +240,19 @@ export default function ProfilePage() {
             typeof profile?.githubUsername === "string"
               ? profile.githubUsername
               : null;
-          if (
-            !githubUsername &&
-            typeof profile?.githubUrl === "string"
-          ) {
+          if (!githubUsername && typeof profile?.githubUrl === "string") {
             const url = new URL(profile.githubUrl);
-            githubUsername =
-              url.pathname.split("/").filter(Boolean)[0] || null;
+            githubUsername = url.pathname.split("/").filter(Boolean)[0] || null;
           }
         } catch {
           const url = new URL(githubProfile);
-          githubUsername =
-            url.pathname.split("/").filter(Boolean)[0] || null;
+          githubUsername = url.pathname.split("/").filter(Boolean)[0] || null;
         }
 
         if (githubUsername) {
           setIdentities((prev) => {
             const hasGithubIdentity = prev.some(
-              (id) =>
-                id.platform === "github" && id.identity === githubUsername
+              (id) => id.platform === "github" && id.identity === githubUsername
             );
             if (!hasGithubIdentity) {
               return [
@@ -848,8 +842,8 @@ export default function ProfilePage() {
                 Claim your external identities (GitHub, X, etc.) to verify
                 ownership. These publish as NIP-39 kind{" "}
                 <code className="text-xs">10011</code>. Your name, bio, and
-                avatar still publish as kind{" "}
-                <code className="text-xs">0</code> — both are saved together.
+                avatar still publish as kind <code className="text-xs">0</code>{" "}
+                — both are saved together.
                 <br />
                 <span className="text-purple-400">Tip:</span> If you connected
                 GitHub on the{" "}
@@ -859,8 +853,8 @@ export default function ProfilePage() {
                 >
                   SSH Keys page
                 </a>
-                , it can appear here automatically — then save Profile to publish
-                the claim.
+                , it can appear here automatically — then save Profile to
+                publish the claim.
               </p>
 
               {/* Existing Identities */}

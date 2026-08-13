@@ -1,10 +1,7 @@
-import { nip19 } from "nostr-tools";
-
-import {
-  loadNostrSeoReposSnapshot,
-} from "@/lib/seo/nostr-seo-repos-snapshot";
+import { loadNostrSeoReposSnapshot } from "@/lib/seo/nostr-seo-repos-snapshot";
 
 import type { NextApiRequest, NextApiResponse } from "next";
+import { nip19 } from "nostr-tools";
 
 export type ExploreSeedRepo = {
   entity: string;

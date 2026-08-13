@@ -16,9 +16,7 @@ describe("isDisplayableForkAttribution", () => {
 
   it("rejects gittr / ngit grasp paths", () => {
     expect(
-      isDisplayableForkAttribution(
-        "https://git.gittr.space/npub1abc/repo.git"
-      )
+      isDisplayableForkAttribution("https://git.gittr.space/npub1abc/repo.git")
     ).toBe(false);
   });
 
@@ -26,9 +24,9 @@ describe("isDisplayableForkAttribution", () => {
     expect(
       isDisplayableForkAttribution("https://github.com/other/project")
     ).toBe(true);
-    expect(
-      isDisplayableForkAttribution("https://codeberg.org/org/repo")
-    ).toBe(true);
+    expect(isDisplayableForkAttribution("https://codeberg.org/org/repo")).toBe(
+      true
+    );
   });
 });
 

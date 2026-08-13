@@ -1,12 +1,6 @@
-import {
-  mkdtempSync,
-  writeFileSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -76,9 +70,9 @@ describe("notification-consent-store wipe guards", () => {
       },
       file
     );
-    expect(() =>
-      saveNotificationConsentStore({ byPubkey: {} }, file)
-    ).toThrow(/refusing to overwrite non-empty/);
+    expect(() => saveNotificationConsentStore({ byPubkey: {} }, file)).toThrow(
+      /refusing to overwrite non-empty/
+    );
     const raw = JSON.parse(readFileSync(file, "utf8"));
     expect(Object.keys(raw.byPubkey)).toHaveLength(1);
   });

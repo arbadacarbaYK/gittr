@@ -8,12 +8,13 @@
 import { getDefaultRelayUrls } from "../nostr/relay-env";
 import { repoAnnouncementDTagCandidates } from "../nostr/repo-stars";
 import { PLATFORM_STATS_RELAYS } from "../nostr/server-relay-subscribe";
-import { loadStoredRepos } from "./storage";
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkeyAsync,
 } from "../utils/entity-resolver";
 import { findRepoByEntityAndNameAsync } from "../utils/repo-finder";
+
+import { loadStoredRepos } from "./storage";
 
 const KIND_REPOSITORY_NIP34 = 30617;
 
@@ -89,7 +90,11 @@ function eventMatchesD(
     dCandidates.map((name) => `30617:${author}:${name}`.toLowerCase())
   );
   for (const t of tags) {
-    if (t[0] === "a" && typeof t[1] === "string" && want.has(t[1].toLowerCase())) {
+    if (
+      t[0] === "a" &&
+      typeof t[1] === "string" &&
+      want.has(t[1].toLowerCase())
+    ) {
       return true;
     }
   }
@@ -133,7 +138,8 @@ async function defaultFetchAnnouncement(
 
       let latest: { created_at?: number; tags?: string[][] } | null = null;
       for (const event of events || []) {
-        if ((event as { kind?: number }).kind !== KIND_REPOSITORY_NIP34) continue;
+        if ((event as { kind?: number }).kind !== KIND_REPOSITORY_NIP34)
+          continue;
         if (
           !eventMatchesD(
             (event as { tags?: string[][] }).tags,
@@ -213,9 +219,7 @@ export async function resolveRepoForPublish(
         ? found.earliestUniqueCommit
         : undefined;
     const defaultBranch =
-      typeof found.defaultBranch === "string"
-        ? found.defaultBranch
-        : undefined;
+      typeof found.defaultBranch === "string" ? found.defaultBranch : undefined;
 
     // Fill missing euc / canonical name from relays when cache is thin
     if (!earliestUniqueCommit || repositoryName === trimmedRepo) {

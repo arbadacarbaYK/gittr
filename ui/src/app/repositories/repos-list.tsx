@@ -1,9 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  formatPushRepoSuccessAlert,
+  pushRepoToNostr,
+} from "@/lib/nostr/push-repo-to-nostr";
 import {
   CLONE_REPUBLISH_BADGE_LABEL,
   CLONE_REPUBLISH_BADGE_TITLE,
@@ -11,10 +17,6 @@ import {
   formatCloneRepublishRepoNames,
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
-import {
-  formatPushRepoSuccessAlert,
-  pushRepoToNostr,
-} from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -31,8 +33,6 @@ import {
   isPublishedRepoStatus,
   statusNeedsPushAction,
 } from "@/lib/utils/repo-status";
-
-import { useState } from "react";
 
 import { Globe, Loader2, Lock, Upload } from "lucide-react";
 import { nip19 } from "nostr-tools";
@@ -699,7 +699,9 @@ export function ReposList({
       alert(
         `Republished ${repaired.length} repo(s).` +
           (failed.length
-            ? `\nFailed: ${failed.map((f) => `${f.repo}: ${f.error}`).join("; ")}`
+            ? `\nFailed: ${failed
+                .map((f) => `${f.repo}: ${f.error}`)
+                .join("; ")}`
             : "")
       );
       window.dispatchEvent(new Event("storage"));
@@ -999,8 +1001,8 @@ export function ReposList({
                     {isPushing
                       ? "Pushing..."
                       : needsRepublish
-                        ? "Republish"
-                        : "Push to Nostr"}
+                      ? "Republish"
+                      : "Push to Nostr"}
                   </Button>
                   <PushPaywallStatus
                     entity={entity}

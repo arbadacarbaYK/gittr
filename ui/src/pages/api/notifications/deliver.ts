@@ -3,7 +3,7 @@ import {
   consentAllowsEvent,
   getNotificationConsent,
 } from "@/lib/notifications/notification-consent-store";
-import { type EventKey, DEFAULT_PREFS } from "@/lib/notifications/prefs";
+import { DEFAULT_PREFS, type EventKey } from "@/lib/notifications/prefs";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -53,7 +53,9 @@ export default async function handler(
     });
   }
 
-  const wantNostr = consent ? consent.nostr : DEFAULT_PREFS.channels.nostr.enabled;
+  const wantNostr = consent
+    ? consent.nostr
+    : DEFAULT_PREFS.channels.nostr.enabled;
   const wantTelegram = consent
     ? consent.telegram
     : DEFAULT_PREFS.channels.telegram.enabled;
@@ -83,7 +85,10 @@ export default async function handler(
           url,
         }),
       });
-      results.nostr = { status: r.status, body: await r.json().catch(() => null) };
+      results.nostr = {
+        status: r.status,
+        body: await r.json().catch(() => null),
+      };
     } catch (e: any) {
       results.nostr = { error: e?.message || String(e) };
     }
@@ -115,8 +120,32 @@ export default async function handler(
     }
   }
 
+  const nostrFailed =
+    wantNostr &&
+    !(
+      results.nostr &&
+      typeof results.nostr === "object" &&
+      (results.nostr as { status?: number }).status === 200
+    );
+  const telegramFailed =
+    wantTelegram &&
+    !(
+      results.telegram &&
+      typeof results.telegram === "object" &&
+      ((results.telegram as { skipped?: string }).skipped ||
+        (results.telegram as { status?: number }).status === 200)
+    );
+
+  let status: "ok" | "partial" | "failed" = "ok";
+  if (nostrFailed || telegramFailed) {
+    status =
+      wantNostr && wantTelegram && !(nostrFailed && telegramFailed)
+        ? "partial"
+        : "failed";
+  }
+
   return res.status(200).json({
-    status: "ok",
+    status,
     eventType: key,
     channels: { nostr: wantNostr, telegram: wantTelegram },
     results,

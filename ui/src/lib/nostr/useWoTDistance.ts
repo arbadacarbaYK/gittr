@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   CONTACT_LIST_CHANGED_EVENT,
   type ContactListChangedDetail,
@@ -10,7 +11,6 @@ import {
   parseContactListPubkeys as parseContactListEvent,
   rememberContactList,
 } from "@/lib/nostr/contact-list";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   KIND_CONTACT_LIST,
@@ -69,10 +69,7 @@ export function useWoTDistance(
       // Persist so repo visits refill from backup without re-waiting on relays.
       rememberContactList(viewerHex, pubkeys);
       setFollows((prev) => {
-        const merged = mergeContactLists(
-          prev ? Array.from(prev) : [],
-          pubkeys
-        );
+        const merged = mergeContactLists(prev ? Array.from(prev) : [], pubkeys);
         return new Set(merged);
       });
     };

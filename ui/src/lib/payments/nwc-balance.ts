@@ -42,7 +42,9 @@ export async function getNWCBalance(nwcUri: string): Promise<NWCBalanceResult> {
   }
   throw (
     lastError ||
-    new Error(`NWC balance failed on all URI relays: ${parsed.relays.join(", ")}`)
+    new Error(
+      `NWC balance failed on all URI relays: ${parsed.relays.join(", ")}`
+    )
   );
 }
 

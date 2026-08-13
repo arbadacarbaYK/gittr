@@ -23,6 +23,19 @@ export const GITTR_REPO_GITNOSTR = gittrRepoBrowse("gitnostr");
 export const GITTR_REPO_HELPER_TOOLS = gittrRepoBrowse("gittr-helper-tools");
 export const GITTR_REPO_NSITE_GATEWAY = gittrRepoBrowse("nsite-gateway");
 
+/** Pages / Apps blob host (not a gittr git repo). */
+export const GITTR_BLOSSOM_ORIGIN = "https://blossom.gittr.space";
+
+/** Upstream nsite-gateway we forked/adapted (hzrd146). */
+export const HZRD146_NSITE_GATEWAY =
+  "https://gittr.space/npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr/nsite-gateway";
+
+/** Zapstore on gittr — Android app catalog / publish flow companion. */
+export const ZAPSTORE_ON_GITTR =
+  "https://gittr.space/npub10r8xl2njyepcw2zwv3a6dyufj4e4ajx86hz6v4ehu4gnpupxxp7stjt2p8/zapstore";
+
+export const ZAPSTORE_PUBLISH_DOCS = "https://zapstore.dev/docs/publish";
+
 export const GITTR_DOC_GITNOSTR_ARCHITECTURE = gittrRepoFile(
   "gitnostr",
   "docs/ARCHITECTURE.md"

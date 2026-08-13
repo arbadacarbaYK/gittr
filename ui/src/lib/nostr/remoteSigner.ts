@@ -1678,9 +1678,14 @@ export class RemoteSignerManager {
     const run = () => {
       void this.warmBunkerTransportQuietly();
     };
-    const idle = (window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-    }).requestIdleCallback;
+    const idle = (
+      window as Window & {
+        requestIdleCallback?: (
+          cb: () => void,
+          opts?: { timeout: number }
+        ) => number;
+      }
+    ).requestIdleCallback;
     if (typeof idle === "function") {
       idle(run, { timeout: 4000 });
     } else {

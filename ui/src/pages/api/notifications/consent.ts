@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { upsertNotificationConsent } from "@/lib/notifications/notification-consent-store";
 import {
   KIND_NOTIFICATION_PREFS,
   LEGACY_CVE_OPT_IN_D_TAG,
@@ -6,7 +7,6 @@ import {
   getNotificationPrefsDTag,
   parseNotificationPrefsContent,
 } from "@/lib/notifications/notification-prefs-event";
-import { upsertNotificationConsent } from "@/lib/notifications/notification-consent-store";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -64,8 +64,7 @@ export default async function handler(
     return res.status(400).json({ error: "invalid_pubkey" });
   }
 
-  const tgId =
-    typeof telegramUserId === "string" ? telegramUserId.trim() : "";
+  const tgId = typeof telegramUserId === "string" ? telegramUserId.trim() : "";
   if (prefs.channels.telegram.enabled && !tgId) {
     return res.status(400).json({
       error: "telegram_userid_required",

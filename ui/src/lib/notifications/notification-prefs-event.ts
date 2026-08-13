@@ -3,9 +3,9 @@
  * Public on relays: channels + event toggles. Telegram User ID is server-only.
  */
 import {
+  DEFAULT_PREFS,
   type EventKey,
   type NotificationPrefs,
-  DEFAULT_PREFS,
   deepMergePrefs,
 } from "./prefs";
 

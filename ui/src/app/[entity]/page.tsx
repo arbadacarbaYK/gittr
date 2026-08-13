@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { TrustBadge } from "@/components/ui/trust-badge";
-import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
   type NostrActivityCounts,
   backfillActivities,
@@ -30,11 +29,9 @@ import {
   parseContactListPubkeys,
   rememberContactList,
   resolveContactListBase,
-  wouldWipeFollowList,
   uniqContactPubkeys,
+  wouldWipeFollowList,
 } from "@/lib/nostr/contact-list";
-import { useProfileFollowCounts } from "@/lib/nostr/useProfileFollowCounts";
-import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -44,11 +41,8 @@ import {
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
+import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
-import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
-import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
-import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
-import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -57,10 +51,16 @@ import {
   type ClaimedIdentity,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
+import { useProfileFollowCounts } from "@/lib/nostr/useProfileFollowCounts";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
+import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
+import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
   getEntityDisplayName,
   getEntityPicture,
@@ -110,7 +110,7 @@ function decodeNpubToHex(entity: string): string | null {
   try {
     const decoded = nip19.decode(entity);
     if (decoded.type === "npub" && typeof decoded.data === "string") {
-      const hex = decoded.data ;
+      const hex = decoded.data;
       if (isHexPubkey(hex)) return hex.toLowerCase();
     }
   } catch {
@@ -2870,378 +2870,383 @@ export default function EntityPage({
     setFollowingLoading(true);
     try {
       await enqueueFollowPublish(async () => {
-      const signingCreds = await resolveSigningCredentials({ remoteSigner });
-      if (!signingCreds) {
-        alert(NO_SIGNING_METHOD_MESSAGE);
-        return;
-      }
-      const { hasNip07, privateKey } = signingCreds;
-      let signerPubkey: string = currentUserPubkey;
+        const signingCreds = await resolveSigningCredentials({ remoteSigner });
+        if (!signingCreds) {
+          alert(NO_SIGNING_METHOD_MESSAGE);
+          return;
+        }
+        const { hasNip07, privateKey } = signingCreds;
+        let signerPubkey: string = currentUserPubkey;
 
-      // Check if remote signer is ready (for nowser/bunker)
-      const isRemoteSignerReady =
-        remoteSigner?.getSession()?.userPubkey &&
-        remoteSigner?.getState() === "ready";
+        // Check if remote signer is ready (for nowser/bunker)
+        const isRemoteSignerReady =
+          remoteSigner?.getSession()?.userPubkey &&
+          remoteSigner?.getState() === "ready";
 
-      if (hasNip07 && window.nostr) {
-        // Use NIP-07 extension or remote signer adapter - this will trigger a popup for the user to sign
-        try {
-          // For remote signer (nowser), check if it's ready before calling
-          if (isRemoteSignerReady || !remoteSigner) {
-            // Either remote signer is ready, or it's a regular NIP-07 extension
-            signerPubkey = await window.nostr.getPublicKey();
-          } else {
-            // Remote signer exists but not ready - fall through to private key
-            console.warn(
-              "⚠️ [Follow] Remote signer not ready, falling back to private key"
-            );
-            throw new Error("Remote signer not ready");
-          }
-        } catch (error: any) {
-          const errorMsg = error?.message || String(error);
-          // If it's a "not paired" error from remote signer, fall back gracefully
-          if (
-            errorMsg.includes("not paired") ||
-            errorMsg.includes("not ready")
-          ) {
-            console.warn(
-              "⚠️ [Follow] Remote signer not paired/ready, falling back to private key:",
-              errorMsg
-            );
-            // Fall through to private key
-          } else {
-            console.warn(
-              "⚠️ [Follow] Failed to get pubkey from NIP-07, using current user pubkey:",
-              error
-            );
-            // For other errors, just use current user pubkey and continue
+        if (hasNip07 && window.nostr) {
+          // Use NIP-07 extension or remote signer adapter - this will trigger a popup for the user to sign
+          try {
+            // For remote signer (nowser), check if it's ready before calling
+            if (isRemoteSignerReady || !remoteSigner) {
+              // Either remote signer is ready, or it's a regular NIP-07 extension
+              signerPubkey = await window.nostr.getPublicKey();
+            } else {
+              // Remote signer exists but not ready - fall through to private key
+              console.warn(
+                "⚠️ [Follow] Remote signer not ready, falling back to private key"
+              );
+              throw new Error("Remote signer not ready");
+            }
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            // If it's a "not paired" error from remote signer, fall back gracefully
+            if (
+              errorMsg.includes("not paired") ||
+              errorMsg.includes("not ready")
+            ) {
+              console.warn(
+                "⚠️ [Follow] Remote signer not paired/ready, falling back to private key:",
+                errorMsg
+              );
+              // Fall through to private key
+            } else {
+              console.warn(
+                "⚠️ [Follow] Failed to get pubkey from NIP-07, using current user pubkey:",
+                error
+              );
+              // For other errors, just use current user pubkey and continue
+            }
           }
         }
-      }
 
-      let privateKeyCache: string | undefined | null = null;
-      const loadPrivateKey = async (): Promise<string | undefined> => {
-        if (privateKeyCache !== null) return privateKeyCache;
-        privateKeyCache = (await getNostrPrivateKey()) || undefined;
-        return privateKeyCache;
-      };
+        let privateKeyCache: string | undefined | null = null;
+        const loadPrivateKey = async (): Promise<string | undefined> => {
+          if (privateKeyCache !== null) return privateKeyCache;
+          privateKeyCache = (await getNostrPrivateKey()) || undefined;
+          return privateKeyCache;
+        };
 
-      if (!hasNip07) {
-        const pk = await loadPrivateKey();
-        if (!pk) {
+        if (!hasNip07) {
+          const pk = await loadPrivateKey();
+          if (!pk) {
+            alert(
+              "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings."
+            );
+            return;
+          }
+          signerPubkey = getPublicKey(pk);
+        }
+
+        // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
+        // Always union ALL kind-3 events + backup + session + in-memory so a
+        // tiny newer wipe cannot become the sole base for the next publish.
+        let currentContacts: string[] = [];
+        let uncertainEmpty = false;
+        let relayLooksPartial = false;
+        let largestRelayListSize = 0;
+        try {
+          const contactListPromise = new Promise<{
+            relayContacts: string[] | null;
+            relayCreatedAt: number;
+            largestRelayListSize: number;
+            sawAnyEvent: boolean;
+          }>((resolve) => {
+            let resolved = false;
+            let bestCreatedAt = -1;
+            let newestContacts: string[] | null = null;
+            let unionContacts: string[] = [];
+            let largestSeen = 0;
+            let sawAnyEvent = false;
+            let eoseCount = 0;
+            const relayCount = Math.max(1, defaultRelays?.length || 1);
+            const eoseQuorum = Math.min(3, relayCount);
+
+            const finish = () => {
+              if (resolved) return;
+              resolved = true;
+              // Prefer the union of everything we saw; fall back to newest alone.
+              const relayContacts =
+                unionContacts.length > 0 ? unionContacts : newestContacts;
+              resolve({
+                relayContacts,
+                relayCreatedAt: bestCreatedAt,
+                largestRelayListSize: largestSeen,
+                sawAnyEvent,
+              });
+            };
+
+            const timeout = setTimeout(() => {
+              console.warn(
+                "⚠️ [Follow] Timeout; finishing with union of kind 3 so far"
+              );
+              finish();
+            }, 12000);
+
+            const unsub = subscribe(
+              [
+                {
+                  kinds: [3],
+                  authors: [signerPubkey],
+                  limit: 20,
+                },
+              ],
+              defaultRelays,
+              (event) => {
+                if (event.kind !== 3 || resolved) return;
+                sawAnyEvent = true;
+                const created = event.created_at || 0;
+                const pubkeys = parseContactListPubkeys(event);
+                if (pubkeys.length > largestSeen) largestSeen = pubkeys.length;
+                if (pubkeys.length > 0) {
+                  unionContacts = mergeContactLists(unionContacts, pubkeys);
+                }
+                // Track newest for logging / created_at only
+                if (
+                  created > bestCreatedAt ||
+                  (created === bestCreatedAt &&
+                    pubkeys.length > (newestContacts?.length || 0))
+                ) {
+                  bestCreatedAt = created;
+                  newestContacts = pubkeys;
+                  console.log(
+                    `✅ [Follow] Saw kind 3 with ${pubkeys.length} contacts (created_at=${created}, union=${unionContacts.length}, largest=${largestSeen})`
+                  );
+                }
+              },
+              undefined,
+              () => {
+                // Per-relay EOSE — wait for a small quorum so one empty relay
+                // cannot finish before a fuller list arrives elsewhere.
+                eoseCount += 1;
+                if (resolved) return;
+                const solid = unionContacts.length >= 10 || largestSeen >= 10;
+                if (
+                  eoseCount >= eoseQuorum ||
+                  (solid && eoseCount >= Math.min(2, relayCount))
+                ) {
+                  if (solid && eoseCount >= Math.min(2, relayCount)) {
+                    clearTimeout(timeout);
+                    finish();
+                    if (unsub) unsub();
+                    return;
+                  }
+                  if (eoseCount >= eoseQuorum) {
+                    clearTimeout(timeout);
+                    finish();
+                    if (unsub) unsub();
+                  }
+                }
+              }
+            );
+          });
+
+          const fetched = await contactListPromise;
+          const memory = uniqContactPubkeys(
+            contactList.map((p) => p.toLowerCase())
+          );
+          const backup = loadKnownContactList(signerPubkey);
+          largestRelayListSize = fetched.largestRelayListSize;
+          const resolvedBase = resolveContactListBase({
+            relayContacts: fetched.relayContacts,
+            relayCreatedAt: fetched.relayCreatedAt,
+            inMemory: memory,
+            backup,
+            largestRelayListSize: fetched.largestRelayListSize,
+          });
+          currentContacts = resolvedBase.contacts;
+          uncertainEmpty = resolvedBase.uncertainEmpty && !fetched.sawAnyEvent;
+          relayLooksPartial = resolvedBase.relayLooksPartial;
+          if (currentContacts.length > 0) {
+            rememberContactList(signerPubkey, currentContacts);
+          }
+          console.log(
+            `✅ [Follow] Using ${currentContacts.length} contacts (relayUnion=${
+              fetched.relayContacts?.length ?? 0
+            }, newestLargest=${fetched.largestRelayListSize}, memory=${
+              memory.length
+            }, backup=${
+              backup.length
+            }, partial=${relayLooksPartial}, uncertainEmpty=${uncertainEmpty})`
+          );
+        } catch (error) {
+          console.error("❌ [Follow] Error fetching contact list:", error);
+          const fromBackup = loadKnownContactList(signerPubkey);
+          currentContacts = mergeContactLists(
+            contactList.map((p) => p.toLowerCase()),
+            fromBackup
+          );
+          uncertainEmpty = currentContacts.length === 0;
+          console.warn(
+            `⚠️ [Follow] Falling back to state/backup: ${currentContacts.length} contacts`
+          );
+        }
+
+        // Start with the merged full contact list
+        let newContacts = uniqContactPubkeys(currentContacts);
+        const targetPubkey = fullPubkeyForMeta.toLowerCase();
+        const wasFollowing = newContacts.includes(targetPubkey);
+
+        if (wasFollowing) {
+          // Unfollow: remove from list
+          newContacts = newContacts.filter((p) => p !== targetPubkey);
+        } else {
+          // Follow: add to list
+          newContacts.push(targetPubkey);
+        }
+
+        if (wasFollowing && currentContacts.length === 0) {
           alert(
-            "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings."
+            "Could not load your follow list from relays, so unfollowing safely isn’t possible. Wait a moment and try again."
           );
           return;
         }
-        signerPubkey = getPublicKey(pk);
-      }
 
-      // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
-      // Always union ALL kind-3 events + backup + session + in-memory so a
-      // tiny newer wipe cannot become the sole base for the next publish.
-      let currentContacts: string[] = [];
-      let uncertainEmpty = false;
-      let relayLooksPartial = false;
-      let largestRelayListSize = 0;
-      try {
-        const contactListPromise = new Promise<{
-          relayContacts: string[] | null;
-          relayCreatedAt: number;
-          largestRelayListSize: number;
-          sawAnyEvent: boolean;
-        }>((resolve) => {
-          let resolved = false;
-          let bestCreatedAt = -1;
-          let newestContacts: string[] | null = null;
-          let unionContacts: string[] = [];
-          let largestSeen = 0;
-          let sawAnyEvent = false;
-          let eoseCount = 0;
-          const relayCount = Math.max(1, defaultRelays?.length || 1);
-          const eoseQuorum = Math.min(3, relayCount);
+        // Hard-stop: never publish a near-empty kind 3 when the fetch was uncertain.
+        if (
+          !wasFollowing &&
+          uncertainEmpty &&
+          currentContacts.length === 0 &&
+          newContacts.length === 1
+        ) {
+          console.warn(
+            "🛑 [Follow] Aborted — contact list fetch uncertain; refusing to publish"
+          );
+          setFollowListRiskOpen(true);
+          return;
+        }
 
-          const finish = () => {
-            if (resolved) return;
-            resolved = true;
-            // Prefer the union of everything we saw; fall back to newest alone.
-            const relayContacts =
-              unionContacts.length > 0
-                ? unionContacts
-                : newestContacts;
-            resolve({
-              relayContacts,
-              relayCreatedAt: bestCreatedAt,
-              largestRelayListSize: largestSeen,
-              sawAnyEvent,
-            });
-          };
+        // Hard-stop: refuse to shrink a large known list (backup, session, or relay).
+        const knownSize = Math.max(
+          loadKnownContactList(signerPubkey).length,
+          largestRelayListSize,
+          currentContacts.length
+        );
+        if (
+          !wasFollowing &&
+          wouldWipeFollowList({
+            nextCount: newContacts.length,
+            backupSize: knownSize,
+            largestRelayListSize,
+            inMemorySize: contactList.length,
+            relayLooksPartial,
+          })
+        ) {
+          console.warn(
+            `🛑 [Follow] Aborted — refusing shrink ${knownSize} → ${newContacts.length}`
+          );
+          alert(
+            `Follow blocked: your known follow list has ~${knownSize} people, but this publish would only keep ${newContacts.length}. Wait a few seconds and try again so relays can return your full list.`
+          );
+          return;
+        }
 
-          const timeout = setTimeout(() => {
-            console.warn(
-              "⚠️ [Follow] Timeout; finishing with union of kind 3 so far"
-            );
-            finish();
-          }, 12000);
+        // Create kind 3 contact list event
+        const contactListContent = {
+          p: newContacts.map((pubkey) => [pubkey, "", "wss://relay.damus.io"]), // Format: [pubkey, relay, petname]
+        };
 
-          const unsub = subscribe(
-            [
-              {
-                kinds: [3],
-                authors: [signerPubkey],
-                limit: 20,
-              },
-            ],
-            defaultRelays,
-            (event) => {
-              if (event.kind !== 3 || resolved) return;
-              sawAnyEvent = true;
-              const created = event.created_at || 0;
-              const pubkeys = parseContactListPubkeys(event);
-              if (pubkeys.length > largestSeen) largestSeen = pubkeys.length;
-              if (pubkeys.length > 0) {
-                unionContacts = mergeContactLists(unionContacts, pubkeys);
-              }
-              // Track newest for logging / created_at only
-              if (
-                created > bestCreatedAt ||
-                (created === bestCreatedAt &&
-                  pubkeys.length > (newestContacts?.length || 0))
-              ) {
-                bestCreatedAt = created;
-                newestContacts = pubkeys;
-                console.log(
-                  `✅ [Follow] Saw kind 3 with ${pubkeys.length} contacts (created_at=${created}, union=${unionContacts.length}, largest=${largestSeen})`
+        const event = {
+          kind: 3,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: newContacts.map((pubkey) => ["p", pubkey]),
+          content: JSON.stringify(contactListContent),
+          pubkey: signerPubkey,
+          id: "",
+          sig: "",
+        };
+
+        event.id = getEventHash(event);
+
+        // Sign with NIP-07/remote signer or private key
+        if (hasNip07 && window.nostr) {
+          // Use NIP-07 extension or remote signer adapter - this will open the signing modal
+          try {
+            // For remote signer (nowser), check if it's ready before calling
+            if (isRemoteSignerReady || !remoteSigner) {
+              // Either remote signer is ready, or it's a regular NIP-07 extension
+              const signedEvent = await window.nostr.signEvent(event);
+              event.sig = signedEvent.sig;
+            } else {
+              // Remote signer exists but not ready - fall back to private key
+              const pk = await loadPrivateKey();
+              if (pk) {
+                event.pubkey = getPublicKey(pk);
+                event.id = getEventHash(event);
+                event.sig = signEvent(event, pk);
+              } else {
+                throw new Error(
+                  "Remote signer not ready and no private key available"
                 );
               }
-            },
-            undefined,
-            () => {
-              // Per-relay EOSE — wait for a small quorum so one empty relay
-              // cannot finish before a fuller list arrives elsewhere.
-              eoseCount += 1;
-              if (resolved) return;
-              const solid =
-                unionContacts.length >= 10 || largestSeen >= 10;
-              if (
-                eoseCount >= eoseQuorum ||
-                (solid &&
-                  eoseCount >= Math.min(2, relayCount))
-              ) {
-                if (solid && eoseCount >= Math.min(2, relayCount)) {
-                  clearTimeout(timeout);
-                  finish();
-                  if (unsub) unsub();
-                  return;
-                }
-                if (eoseCount >= eoseQuorum) {
-                  clearTimeout(timeout);
-                  finish();
-                  if (unsub) unsub();
-                }
+            }
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            // If it's a "not paired" error from remote signer, fall back to private key
+            if (
+              errorMsg.includes("not paired") ||
+              errorMsg.includes("not ready")
+            ) {
+              console.warn(
+                "⚠️ [Follow] Remote signer not paired/ready, falling back to private key for signing"
+              );
+              const pk = await loadPrivateKey();
+              if (pk) {
+                event.pubkey = getPublicKey(pk);
+                event.id = getEventHash(event);
+                event.sig = signEvent(event, pk);
+              } else {
+                throw new Error(
+                  "Remote signer not ready and no private key available"
+                );
               }
-            }
-          );
-        });
-
-        const fetched = await contactListPromise;
-        const memory = uniqContactPubkeys(
-          contactList.map((p) => p.toLowerCase())
-        );
-        const backup = loadKnownContactList(signerPubkey);
-        largestRelayListSize = fetched.largestRelayListSize;
-        const resolvedBase = resolveContactListBase({
-          relayContacts: fetched.relayContacts,
-          relayCreatedAt: fetched.relayCreatedAt,
-          inMemory: memory,
-          backup,
-          largestRelayListSize: fetched.largestRelayListSize,
-        });
-        currentContacts = resolvedBase.contacts;
-        uncertainEmpty = resolvedBase.uncertainEmpty && !fetched.sawAnyEvent;
-        relayLooksPartial = resolvedBase.relayLooksPartial;
-        if (currentContacts.length > 0) {
-          rememberContactList(signerPubkey, currentContacts);
-        }
-        console.log(
-          `✅ [Follow] Using ${currentContacts.length} contacts (relayUnion=${fetched.relayContacts?.length ?? 0}, newestLargest=${fetched.largestRelayListSize}, memory=${memory.length}, backup=${backup.length}, partial=${relayLooksPartial}, uncertainEmpty=${uncertainEmpty})`
-        );
-      } catch (error) {
-        console.error("❌ [Follow] Error fetching contact list:", error);
-        const fromBackup = loadKnownContactList(signerPubkey);
-        currentContacts = mergeContactLists(
-          contactList.map((p) => p.toLowerCase()),
-          fromBackup
-        );
-        uncertainEmpty = currentContacts.length === 0;
-        console.warn(
-          `⚠️ [Follow] Falling back to state/backup: ${currentContacts.length} contacts`
-        );
-      }
-
-      // Start with the merged full contact list
-      let newContacts = uniqContactPubkeys(currentContacts);
-      const targetPubkey = fullPubkeyForMeta.toLowerCase();
-      const wasFollowing = newContacts.includes(targetPubkey);
-
-      if (wasFollowing) {
-        // Unfollow: remove from list
-        newContacts = newContacts.filter((p) => p !== targetPubkey);
-      } else {
-        // Follow: add to list
-        newContacts.push(targetPubkey);
-      }
-
-      if (wasFollowing && currentContacts.length === 0) {
-        alert(
-          "Could not load your follow list from relays, so unfollowing safely isn’t possible. Wait a moment and try again."
-        );
-        return;
-      }
-
-      // Hard-stop: never publish a near-empty kind 3 when the fetch was uncertain.
-      if (
-        !wasFollowing &&
-        uncertainEmpty &&
-        currentContacts.length === 0 &&
-        newContacts.length === 1
-      ) {
-        console.warn(
-          "🛑 [Follow] Aborted — contact list fetch uncertain; refusing to publish"
-        );
-        setFollowListRiskOpen(true);
-        return;
-      }
-
-      // Hard-stop: refuse to shrink a large known list (backup, session, or relay).
-      const knownSize = Math.max(
-        loadKnownContactList(signerPubkey).length,
-        largestRelayListSize,
-        currentContacts.length
-      );
-      if (
-        !wasFollowing &&
-        wouldWipeFollowList({
-          nextCount: newContacts.length,
-          backupSize: knownSize,
-          largestRelayListSize,
-          inMemorySize: contactList.length,
-          relayLooksPartial,
-        })
-      ) {
-        console.warn(
-          `🛑 [Follow] Aborted — refusing shrink ${knownSize} → ${newContacts.length}`
-        );
-        alert(
-          `Follow blocked: your known follow list has ~${knownSize} people, but this publish would only keep ${newContacts.length}. Wait a few seconds and try again so relays can return your full list.`
-        );
-        return;
-      }
-
-      // Create kind 3 contact list event
-      const contactListContent = {
-        p: newContacts.map((pubkey) => [pubkey, "", "wss://relay.damus.io"]), // Format: [pubkey, relay, petname]
-      };
-
-      const event = {
-        kind: 3,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: newContacts.map((pubkey) => ["p", pubkey]),
-        content: JSON.stringify(contactListContent),
-        pubkey: signerPubkey,
-        id: "",
-        sig: "",
-      };
-
-      event.id = getEventHash(event);
-
-      // Sign with NIP-07/remote signer or private key
-      if (hasNip07 && window.nostr) {
-        // Use NIP-07 extension or remote signer adapter - this will open the signing modal
-        try {
-          // For remote signer (nowser), check if it's ready before calling
-          if (isRemoteSignerReady || !remoteSigner) {
-            // Either remote signer is ready, or it's a regular NIP-07 extension
-            const signedEvent = await window.nostr.signEvent(event);
-            event.sig = signedEvent.sig;
-          } else {
-            // Remote signer exists but not ready - fall back to private key
-            const pk = await loadPrivateKey();
-            if (pk) {
-              event.pubkey = getPublicKey(pk);
-              event.id = getEventHash(event);
-              event.sig = signEvent(event, pk);
             } else {
-              throw new Error(
-                "Remote signer not ready and no private key available"
-              );
+              // Re-throw other errors (user cancellation, etc.)
+              throw error;
             }
           }
-        } catch (error: any) {
-          const errorMsg = error?.message || String(error);
-          // If it's a "not paired" error from remote signer, fall back to private key
-          if (
-            errorMsg.includes("not paired") ||
-            errorMsg.includes("not ready")
-          ) {
-            console.warn(
-              "⚠️ [Follow] Remote signer not paired/ready, falling back to private key for signing"
-            );
-            const pk = await loadPrivateKey();
-            if (pk) {
-              event.pubkey = getPublicKey(pk);
-              event.id = getEventHash(event);
-              event.sig = signEvent(event, pk);
-            } else {
-              throw new Error(
-                "Remote signer not ready and no private key available"
-              );
-            }
-          } else {
-            // Re-throw other errors (user cancellation, etc.)
-            throw error;
+        } else {
+          const pk = await loadPrivateKey();
+          if (!pk) {
+            throw new Error("No signing method available");
           }
+          event.pubkey = getPublicKey(pk);
+          event.id = getEventHash(event);
+          event.sig = signEvent(event, pk);
         }
-      } else {
-        const pk = await loadPrivateKey();
-        if (!pk) {
-          throw new Error("No signing method available");
-        }
-        event.pubkey = getPublicKey(pk);
-        event.id = getEventHash(event);
-        event.sig = signEvent(event, pk);
-      }
 
-      // Publish and wait so the next Follow cannot race a stale kind 3
-      await publishWithConfirmation(
-        publish,
-        subscribe,
-        event,
-        defaultRelays,
-        12_000
-      );
+        // Publish and wait so the next Follow cannot race a stale kind 3
+        await publishWithConfirmation(
+          publish,
+          subscribe,
+          event,
+          defaultRelays,
+          12_000
+        );
 
-      // Update local state + backup (allowShrink only after intentional unfollow)
-      setIsFollowing(!wasFollowing);
-      setContactList(newContacts);
-      rememberContactList(signerPubkey, newContacts, {
-        allowShrink: wasFollowing && newContacts.length < currentContacts.length,
-      });
-      setFollowersOverride((prev) => {
-        const base =
-          prev !== null
-            ? prev
-            : profileFollowCounts.followers !== null
+        // Update local state + backup (allowShrink only after intentional unfollow)
+        setIsFollowing(!wasFollowing);
+        setContactList(newContacts);
+        rememberContactList(signerPubkey, newContacts, {
+          allowShrink:
+            wasFollowing && newContacts.length < currentContacts.length,
+        });
+        setFollowersOverride((prev) => {
+          const base =
+            prev !== null
+              ? prev
+              : profileFollowCounts.followers !== null
               ? profileFollowCounts.followers
               : 0;
-        return wasFollowing ? Math.max(0, base - 1) : base + 1;
-      });
+          return wasFollowing ? Math.max(0, base - 1) : base + 1;
+        });
 
-      console.log(
-        `✅ ${
-          wasFollowing ? "Unfollowed" : "Followed"
-        } user ${fullPubkeyForMeta.slice(0, 8)} (${newContacts.length} follows)`
-      );
+        console.log(
+          `✅ ${
+            wasFollowing ? "Unfollowed" : "Followed"
+          } user ${fullPubkeyForMeta.slice(0, 8)} (${
+            newContacts.length
+          } follows)`
+        );
       });
     } catch (error: any) {
       console.error("Failed to follow/unfollow:", error);
@@ -4245,11 +4250,11 @@ export default function EntityPage({
               const ownerHex = (repo.ownerPubkey || "").toLowerCase();
               const profileHex = (profileHexForFetch || "").toLowerCase();
               const inferredOwner =
-                ownerHex &&
-                profileHex &&
-                ownerHex === profileHex;
+                ownerHex && profileHex && ownerHex === profileHex;
               const userRole = (repo.userRole ||
-                (inferredOwner ? "owner" : "contributor")) as keyof typeof roleColors;
+                (inferredOwner
+                  ? "owner"
+                  : "contributor")) as keyof typeof roleColors;
               const roleColor = roleColors[userRole] || "border-[#383B42]";
 
               return (

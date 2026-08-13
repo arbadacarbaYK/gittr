@@ -103,7 +103,10 @@ export async function listBareRepoRecursivePaths(
     )}`,
     { timeout, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
-  return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  return stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 /**

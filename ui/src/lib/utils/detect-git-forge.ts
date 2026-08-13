@@ -64,7 +64,10 @@ export function normalizeGitCloneUrl(input: string): string {
     // Codeberg / Gitea / Forgejo: /owner/repo/src/branch/main → /owner/repo
     pathname = pathname.replace(/\/src\/(branch|tag|commit)\/.*$/i, "");
     // GitHub-style browse paths
-    pathname = pathname.replace(/\/(tree|blob|commit|commits|raw|issues|pulls|wiki)\/.*$/i, "");
+    pathname = pathname.replace(
+      /\/(tree|blob|commit|commits|raw|issues|pulls|wiki)\/.*$/i,
+      ""
+    );
     pathname = pathname.replace(/\/+$/, "");
     if (!pathname.startsWith("/")) pathname = `/${pathname}`;
 
@@ -159,8 +162,7 @@ export function parseOwnerRepoFromGitUrl(sourceUrl: string): {
       .filter(Boolean);
     if (parts.length < 1) return null;
     const repo = (parts[parts.length - 1] || "").replace(/\.git$/i, "");
-    const owner =
-      parts.length >= 2 ? parts.slice(0, -1).join("/") : "";
+    const owner = parts.length >= 2 ? parts.slice(0, -1).join("/") : "";
     if (!repo) return null;
     return { owner, repo, host: url.hostname };
   } catch {

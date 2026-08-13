@@ -28,10 +28,10 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
-import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {

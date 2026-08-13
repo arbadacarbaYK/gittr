@@ -4,8 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
-import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import {
   detectGitForge,
   normalizeGitCloneUrl,

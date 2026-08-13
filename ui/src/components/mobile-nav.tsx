@@ -5,8 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLockBody } from "@/lib/hooks/use-lock-body";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
-import { appNavigate } from "@/lib/utils/app-navigate";
 import { cn } from "@/lib/utils";
+import { appNavigate } from "@/lib/utils/app-navigate";
 
 import { usePathname, useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";

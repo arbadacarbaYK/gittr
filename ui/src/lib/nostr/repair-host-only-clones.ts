@@ -5,14 +5,14 @@
  * Supports nsec, NIP-07, and remote signing via pushRepoToNostr.
  */
 import {
-  isHostOnlyCloneUrl,
   collectCloneUrlsFromTags,
+  isHostOnlyCloneUrl,
   shouldHideAnnounceForUnusableClones,
 } from "@/lib/nostr/clone-url-quality";
 import {
-  pushRepoToNostr,
   type PushRepoOptions,
   type PushRepoResult,
+  pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
 
 /** @deprecated Prefer cloneListNeedsRepublish — kept for call-site clarity. */
@@ -74,7 +74,9 @@ export async function repairHostOnlyCloneAnnounces(opts: {
     const repoName = (t.repoSlug || "").trim();
     if (!repoName) continue;
     opts.onProgress?.(
-      `Republishing ${repoName} (${i + 1}/${total}) — approve signatures if asked…`
+      `Republishing ${repoName} (${
+        i + 1
+      }/${total}) — approve signatures if asked…`
     );
     try {
       const result: PushRepoResult = await pushRepoToNostr({

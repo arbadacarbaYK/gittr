@@ -669,7 +669,12 @@ export function activityOnUsersRepo(
   if (!repoName) return false;
 
   const found = list.find((r: any) => {
-    const rRepo = (r.repo || r.slug?.split("/")[1] || r.slug || "").toLowerCase();
+    const rRepo = (
+      r.repo ||
+      r.slug?.split("/")[1] ||
+      r.slug ||
+      ""
+    ).toLowerCase();
     if (rRepo !== repoName) return false;
     return userHasAccessToRepo(userPubkey, r);
   });
@@ -694,9 +699,9 @@ export function getRecentActivity(
   if (userPubkey) {
     filtered = activities.filter((a) => {
       if (!a.repo || !a.entity) return false;
-      const parts = (a.repo.includes("/") ? a.repo : `${a.entity}/${a.repo}`).split(
-        "/"
-      );
+      const parts = (
+        a.repo.includes("/") ? a.repo : `${a.entity}/${a.repo}`
+      ).split("/");
       const activityEntity = parts[0] || a.entity;
       const activityRepo = parts[parts.length - 1] || a.repoName || "";
       if (!activityEntity || !activityRepo) return false;

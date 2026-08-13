@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { KIND_RELAY_LIST } from "@/lib/nostr/events";
 import {
   buildRelayListTags,
   parseRelayListEvent,
 } from "@/lib/nostr/nip65-relay-list";
-import { KIND_RELAY_LIST } from "@/lib/nostr/events";
+
+import { describe, expect, it } from "vitest";
 
 describe("nip65-relay-list", () => {
   it("parses r tags and markers", () => {

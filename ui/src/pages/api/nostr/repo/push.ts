@@ -5,8 +5,8 @@ import {
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
-import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 import { resolveBridgePushCommitMessage } from "@/lib/utils/push-commit-message";
+import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
@@ -265,7 +265,8 @@ export default async function handler(
   const allowTreeShrink = allowTreeShrinkRaw === true;
   const deletedPaths: string[] = Array.isArray(deletedPathsRaw)
     ? deletedPathsRaw.filter(
-        (p: unknown): p is string => typeof p === "string" && p.trim().length > 0
+        (p: unknown): p is string =>
+          typeof p === "string" && p.trim().length > 0
       )
     : [];
 
@@ -840,7 +841,9 @@ export default async function handler(
       );
       const commitDateRFC2822 = commitAt.toUTCString();
       await execAsync(
-        `git -C "${tempDir}" commit --allow-empty -m ${shellQuote(commitSubject)}`,
+        `git -C "${tempDir}" commit --allow-empty -m ${shellQuote(
+          commitSubject
+        )}`,
         {
           env: {
             ...process.env,

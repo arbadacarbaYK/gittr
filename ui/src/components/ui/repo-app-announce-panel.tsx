@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ZAPSTORE_PUBLISH_DOCS } from "@/lib/gittr-repo-links";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { publishSoftwareAnnounce } from "@/lib/nostr/publish-software-announce";
 import { resolveNostrSigner } from "@/lib/nostr/signer";
@@ -11,7 +12,10 @@ import type {
   ForgeReleasesOk,
   ForgeReleasesResult,
 } from "@/lib/repo/forge-releases";
-import { suggestAppIdFromRepo } from "@/lib/repo/forge-releases";
+import {
+  nip82MimeForAssetName,
+  suggestAppIdFromRepo,
+} from "@/lib/repo/forge-releases";
 import { cn } from "@/lib/utils";
 
 import {
@@ -24,8 +28,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-const ZAPSTORE_PUBLISH_DOCS = "https://zapstore.dev/docs/publish";
-
 type RepoAppAnnouncePanelProps = {
   isOwnerSession: boolean;
   sourceUrl?: string | null;
@@ -36,6 +38,15 @@ type RepoAppAnnouncePanelProps = {
   nip34Address?: string | null;
   /** Persist app id onto the stored repo after a successful announce */
   onAnnounced?: (appId: string) => void;
+  /**
+   * Forge release tag to announce. Omit for latest (Code sidebar).
+   * When set, queries `/api/repo/forge-releases?tag=…`.
+   */
+  preferredTag?: string | null;
+  /** sidebar = auto-load latest; inline = lazy-load when opened (Releases tab). */
+  variant?: "sidebar" | "inline";
+  /** Start open (inline Releases panel after clicking Announce). */
+  defaultOpen?: boolean;
 };
 
 function ChecklistRow(props: {
@@ -76,8 +87,12 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     ownerPubkeyHex,
     nip34Address,
     onAnnounced,
+    preferredTag,
+    variant = "sidebar",
+    defaultOpen = false,
   } = props;
   const { publish, subscribe, defaultRelays, remoteSigner } = useNostrContext();
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   const [loading, setLoading] = useState(false);
   const [hashing, setHashing] = useState(false);
@@ -92,14 +107,19 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     version: string;
     whitelistHint?: string;
   } | null>(null);
+  const [panelOpen, setPanelOpen] = useState(defaultOpen);
 
   const hasSource = Boolean(sourceUrl?.trim());
+  const tagForQuery = (preferredTag || "").trim();
+  const isInline = variant === "inline";
 
   const loadPreview = useCallback(
     async (withHash: boolean) => {
       if (!sourceUrl?.trim()) {
         setForge(null);
-        setError("Link a forge URL first (Settings → source).");
+        setError(
+          "Link a GitHub, Codeberg, or GitLab source URL first (Settings → source)."
+        );
         return;
       }
       setLoading(true);
@@ -108,6 +128,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       try {
         const qs = new URLSearchParams({ sourceUrl: sourceUrl.trim() });
         if (withHash) qs.set("hash", "1");
+        if (tagForQuery) qs.set("tag", tagForQuery);
         const res = await fetch(`/api/repo/forge-releases?${qs.toString()}`);
         const data = (await res.json()) as ForgeReleasesResult;
         if (!data.ok) {
@@ -126,7 +147,9 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         );
         if (!data.release.apkAssets.length) {
           setError(
-            "Your repo or latest release has no .apk assets."
+            tagForQuery
+              ? `Release “${data.release.tag}” has no .apk assets.`
+              : "Your repo or latest release has no .apk assets."
           );
         } else if (withHash) {
           const missing = data.release.apkAssets.filter((a) => !a.sha256);
@@ -144,17 +167,38 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         setHashing(false);
       }
     },
-    [sourceUrl, repoName]
+    [sourceUrl, repoName, tagForQuery]
   );
 
+  // Sidebar: auto-preview latest on mount. Inline: only when opened.
   useEffect(() => {
     if (!isOwnerSession) return;
+    if (isInline) return;
     void loadPreview(false);
-  }, [isOwnerSession, loadPreview]);
+  }, [isOwnerSession, isInline, loadPreview]);
+
+  useEffect(() => {
+    if (!isOwnerSession || !isInline) return;
+    if (!panelOpen) return;
+    void loadPreview(false);
+  }, [isOwnerSession, isInline, panelOpen, loadPreview]);
 
   useEffect(() => {
     setAppName(repoName);
   }, [repoName]);
+
+  useEffect(() => {
+    setForge(null);
+    setError(null);
+    setPublishResult(null);
+    setSelectedApkUrl("");
+  }, [tagForQuery]);
+
+  useEffect(() => {
+    if (!defaultOpen || !detailsRef.current) return;
+    detailsRef.current.open = true;
+    setPanelOpen(true);
+  }, [defaultOpen, tagForQuery]);
 
   const selectedApk = useMemo(() => {
     if (!forge) return null;
@@ -164,6 +208,15 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       null
     );
   }, [forge, selectedApkUrl]);
+
+  const siblingNip82Count = useMemo(() => {
+    if (!forge || !selectedApk) return 0;
+    return forge.release.assets.filter((a) => {
+      if (a.downloadUrl === selectedApk.downloadUrl) return false;
+      if (a.name.toLowerCase().endsWith(".apk")) return false;
+      return Boolean(nip82MimeForAssetName(a.name) && a.sha256);
+    }).length;
+  }, [forge, selectedApk]);
 
   const readyToPublish = Boolean(
     forge &&
@@ -186,6 +239,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           sourceUrl: sourceUrl!.trim(),
           hash: "1",
         });
+        if (tagForQuery) qs.set("tag", tagForQuery);
         const res = await fetch(`/api/repo/forge-releases?${qs.toString()}`);
         const data = (await res.json()) as ForgeReleasesResult;
         if (!data.ok) throw new Error(data.message);
@@ -225,8 +279,24 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
 
   if (!isOwnerSession) return null;
 
+  const summaryLabel = tagForQuery
+    ? `Announce ${tagForQuery}`
+    : isInline
+    ? "Announce on Nostr"
+    : "Nostr Apps";
+
   return (
-    <details className="group mt-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-bg-secondary)] to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <details
+      ref={detailsRef}
+      className={cn(
+        "group overflow-hidden rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-bg-secondary)] to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]",
+        isInline ? "mt-0" : "mt-3"
+      )}
+      onToggle={(e) => {
+        const open = (e.currentTarget as HTMLDetailsElement).open;
+        setPanelOpen(open);
+      }}
+    >
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-primary)]/20 ring-1 ring-[var(--color-accent-primary)]/35">
           <Smartphone
@@ -234,34 +304,68 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             aria-hidden
           />
         </span>
-        <span className="min-w-0 flex-1 leading-tight">Nostr Apps</span>
+        <span className="min-w-0 flex-1 leading-tight">{summaryLabel}</span>
         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-[var(--color-accent-primary)]" />
       </summary>
 
       <div className="space-y-3 border-t border-[var(--color-border)] px-3 pb-3.5 pt-3">
         <p className="text-[11px] leading-snug text-zinc-400">
-          List an Android APK from your forge{" "}
-          <strong className="font-medium text-zinc-300">Release</strong> on{" "}
-          <Link
-            href="/apps"
-            className="text-[var(--color-link)] underline-offset-2 hover:underline"
-          >
-            Apps
-          </Link>
-          . APK stays on the forge — gittr only publishes the Nostr announce.
+          {tagForQuery ? (
+            <>
+              Announce forge tag{" "}
+              <strong className="font-medium text-zinc-300">
+                {tagForQuery}
+              </strong>{" "}
+              on{" "}
+              <Link
+                href="/apps"
+                className="text-[var(--color-link)] underline-offset-2 hover:underline"
+              >
+                Apps
+              </Link>{" "}
+              / Zapstore. An{" "}
+              <strong className="font-medium text-zinc-300">.apk</strong> on
+              that tag is required. Files stay on the forge — gittr only
+              publishes Nostr events.
+            </>
+          ) : (
+            <>
+              List this release on{" "}
+              <Link
+                href="/apps"
+                className="text-[var(--color-link)] underline-offset-2 hover:underline"
+              >
+                Apps
+              </Link>{" "}
+              / Zapstore. An{" "}
+              <strong className="font-medium text-zinc-300">.apk</strong> is
+              required for Zapstore. Other NIP-82 binaries on the same forge
+              Release (DMG, AppImage, MSI/EXE, …) are announced as extra assets
+              on that version when verified. Files stay on the forge — gittr
+              only publishes the Nostr events. The repo{" "}
+              <strong className="font-medium text-zinc-300">Releases</strong>{" "}
+              tab still lists every downloadable forge file.
+            </>
+          )}
         </p>
 
         <div className="space-y-0.5 border-b border-zinc-800/80 pb-3">
           <ChecklistRow
             ok={hasSource}
-            title={hasSource ? "Forge linked" : "Link GitHub / Codeberg / GitLab"}
+            title={
+              hasSource ? "Source linked" : "Link GitHub / Codeberg / GitLab"
+            }
           />
           <ChecklistRow
             ok={Boolean(forge?.release.apkAssets.length)}
-            warning={Boolean(error && hasSource && !forge?.release.apkAssets.length)}
+            warning={Boolean(
+              error && hasSource && !forge?.release.apkAssets.length
+            )}
             title={
               forge?.release.apkAssets.length
                 ? `${forge.release.tag} · ${forge.release.apkAssets.length} APK`
+                : tagForQuery
+                ? `Tag ${tagForQuery} needs an .apk`
                 : "Release needs an .apk asset"
             }
           />
@@ -289,7 +393,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 {forge.release.name || forge.release.tag}
               </p>
               <p className="mt-0.5 text-[10px] text-zinc-500">
-                {forge.forge} · {forge.owner}/{forge.repo}
+                {forge.forge} · {forge.owner}/{forge.repo} · {forge.release.tag}
               </p>
               <ul className="mt-2 space-y-1">
                 {forge.release.apkAssets.map((a) => (
@@ -298,7 +402,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                       <input
                         type="radio"
                         className="mt-0.5"
-                        name="announce-apk"
+                        name={`announce-apk-${tagForQuery || "latest"}`}
                         checked={selectedApkUrl === a.downloadUrl}
                         onChange={() => setSelectedApkUrl(a.downloadUrl)}
                       />
@@ -315,6 +419,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                   </li>
                 ))}
               </ul>
+              {siblingNip82Count > 0 ? (
+                <p className="mt-2 text-[10px] text-zinc-500">
+                  Plus {siblingNip82Count} other verified platform file
+                  {siblingNip82Count === 1 ? "" : "s"} on this tag will be
+                  linked on the same Nostr release (Zapstore still uses the
+                  APK).
+                </p>
+              ) : null}
             </div>
 
             <label className="block space-y-1">
@@ -391,8 +503,8 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               <p className="mt-1.5 text-amber-100/95">
                 For Zapstore catalog indexing, add{" "}
                 <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code>{" "}
-                at the forge repo root (pubkey + repository), then publish
-                again.{" "}
+                at the GitHub / Codeberg / GitLab repo root (pubkey +
+                repository), then publish again.{" "}
                 <a
                   href={ZAPSTORE_PUBLISH_DOCS}
                   target="_blank"
@@ -409,7 +521,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           <p className="text-[10px] leading-snug text-zinc-500">
             Optional Zapstore: commit{" "}
             <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code> in
-            the forge repo — see{" "}
+            that source repo — see{" "}
             <a
               href={ZAPSTORE_PUBLISH_DOCS}
               target="_blank"

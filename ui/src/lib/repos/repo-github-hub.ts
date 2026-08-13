@@ -1,7 +1,9 @@
 "use client";
 
+import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
+import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
   loadStoredRepos,
@@ -16,7 +18,6 @@ import {
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
@@ -24,8 +25,6 @@ import {
 import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
 
 import { nip19 } from "nostr-tools";
-
-import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 
 export { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
 

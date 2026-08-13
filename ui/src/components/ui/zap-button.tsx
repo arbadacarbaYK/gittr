@@ -423,7 +423,10 @@ export function ZapButton({
       } catch (ledgerErr: unknown) {
         const msg =
           ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr);
-        if (/quota/i.test(msg) || (ledgerErr as { name?: string })?.name === "QuotaExceededError") {
+        if (
+          /quota/i.test(msg) ||
+          (ledgerErr as { name?: string })?.name === "QuotaExceededError"
+        ) {
           console.warn(
             "[ZapButton] Invoice ready but localStorage is full — zap history not saved. Clear site data or unused repos if this keeps happening."
           );

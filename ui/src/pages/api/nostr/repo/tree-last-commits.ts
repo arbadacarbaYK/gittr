@@ -4,10 +4,13 @@
  */
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { detectBareRepoDefaultBranch } from "@/lib/git/bare-repo-default-branch";
-import { listBareRepoShallow, sanitizeRepoTreePath } from "@/lib/git/bare-repo-ls-tree";
 import {
-  listBareRepoTreeLastCommits,
+  listBareRepoShallow,
+  sanitizeRepoTreePath,
+} from "@/lib/git/bare-repo-ls-tree";
+import {
   type TreeLastCommitMap,
+  listBareRepoTreeLastCommits,
 } from "@/lib/git/bare-repo-tree-last-commits";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
@@ -127,9 +130,7 @@ export default async function handler(
   const pathRaw = req.query.path;
 
   if (!ownerPubkeyInput || !repoName) {
-    return res
-      .status(400)
-      .json({ error: "ownerPubkey and repo are required" });
+    return res.status(400).json({ error: "ownerPubkey and repo are required" });
   }
 
   const folderPath = sanitizeRepoTreePath(pathRaw);

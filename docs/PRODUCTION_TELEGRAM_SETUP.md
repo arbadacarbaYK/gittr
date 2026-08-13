@@ -53,6 +53,10 @@ Should show webhook URL `https://gittr.space/api/telegram/webhook`.
 
 No public channel post is required. The webhook ignores channel posts for auth.
 
+**History tip:** Clearing or deleting the chat with `@gittrupdatebot` removes past DMs from Telegram’s view. `/start` only re-shows the User ID onboarding — it does not re-send old alerts. Server logs should include a Telegram `messageId` when a DM was truly accepted.
+
+**Delivery checks:** `POST /api/notifications/send-telegram` requires Telegram’s JSON `ok: true` (not only HTTP status) and returns `messageId`. `POST /api/notifications/deliver` reports `partial` / `failed` when a requested channel errors.
+
 ---
 
 ## Roles

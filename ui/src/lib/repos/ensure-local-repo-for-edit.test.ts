@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ensureLocalRepoForEdit } from "./ensure-local-repo-for-edit";
+
 const mockFetchBridge = vi.fn();
 const mockLoadStored = vi.fn(() => [] as any[]);
 const mockSaveStored = vi.fn(() => true);
@@ -30,8 +32,6 @@ vi.mock("./storage", () => ({
   saveRepoDeletedPaths: (...args: unknown[]) => mockSaveDeleted(...args),
 }));
 
-import { ensureLocalRepoForEdit } from "./ensure-local-repo-for-edit";
-
 const OWNER =
   "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c";
 const ENTITY =
@@ -51,13 +51,11 @@ describe("ensureLocalRepoForEdit", () => {
 
   it("creates a local shell when the repo is missing", async () => {
     mockFetchBridge.mockResolvedValue({ files: [] });
-    mockFind
-      .mockReturnValueOnce(null)
-      .mockReturnValue({
-        entity: ENTITY,
-        repo: "local-agent",
-        ownerPubkey: OWNER,
-      });
+    mockFind.mockReturnValueOnce(null).mockReturnValue({
+      entity: ENTITY,
+      repo: "local-agent",
+      ownerPubkey: OWNER,
+    });
 
     const result = await ensureLocalRepoForEdit({
       entity: ENTITY,

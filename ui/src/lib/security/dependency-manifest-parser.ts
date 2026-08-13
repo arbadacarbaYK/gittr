@@ -160,7 +160,11 @@ function parseYarnLock(content: string, file: string): ManifestPackage[] {
     if (!versionMatch) continue;
     const version = versionMatch[1]!.trim();
     // Header is comma-separated specifiers: `"foo@^1", "foo@~1.2":`
-    const first = header.split(",")[0]!.trim().replace(/:$/, "").replace(/^"|"$/g, "");
+    const first = header
+      .split(",")[0]!
+      .trim()
+      .replace(/:$/, "")
+      .replace(/^"|"$/g, "");
     // strip trailing @range → package name (handle @scope/name@range)
     const at = first.lastIndexOf("@");
     const name = at > 0 ? first.slice(0, at) : first;
@@ -177,7 +181,10 @@ function parseYarnLock(content: string, file: string): ManifestPackage[] {
   return out;
 }
 
-function parseRequirementsTxt(content: string, file: string): ManifestPackage[] {
+function parseRequirementsTxt(
+  content: string,
+  file: string
+): ManifestPackage[] {
   const out: ManifestPackage[] = [];
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.split("#")[0]!.trim();
@@ -199,7 +206,8 @@ function parseRequirementsTxt(content: string, file: string): ManifestPackage[] 
 
 function parseGoMod(content: string, file: string): ManifestPackage[] {
   const out: ManifestPackage[] = [];
-  const requireRe = /^\s*(?:require\s+)?([\w./-]+\.[\w./-]+)\s+v(\d+\.\d+\.\d+[\w.+-]*)/;
+  const requireRe =
+    /^\s*(?:require\s+)?([\w./-]+\.[\w./-]+)\s+v(\d+\.\d+\.\d+[\w.+-]*)/;
   let inBlock = false;
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -300,7 +308,10 @@ function parseComposerLock(content: string, file: string): ManifestPackage[] {
 }
 
 /** Parse a single manifest file by its path + content. */
-export function parseManifest(path: string, content: string): ManifestPackage[] {
+export function parseManifest(
+  path: string,
+  content: string
+): ManifestPackage[] {
   const base = (path.split("/").pop() || "").toLowerCase();
   switch (base) {
     case "package.json":

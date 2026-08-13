@@ -1,10 +1,6 @@
 "use client";
 
-import type {
-  AnchorHTMLAttributes,
-  MouseEvent,
-  ReactNode,
-} from "react";
+import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from "react";
 
 export type MarkdownAnchorContext = {
   /** e.g. `() => \`/${entity}/${repo}\`` */
@@ -290,7 +286,10 @@ function MarkdownAnchorInner({
           ? window.location.origin
           : "https://gittr.space"
       );
-      if (typeof window !== "undefined" && u.origin !== window.location.origin) {
+      if (
+        typeof window !== "undefined" &&
+        u.origin !== window.location.origin
+      ) {
         return;
       }
       if (!u.searchParams.has("path") && !u.searchParams.has("file")) return;

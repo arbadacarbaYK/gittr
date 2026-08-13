@@ -31,7 +31,9 @@ const FORGE_RAW: Array<{
   {
     re: /github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
     raw: (o, r, b, p) =>
-      `https://raw.githubusercontent.com/${o}/${r}/${encodeURIComponent(b)}/${p}`,
+      `https://raw.githubusercontent.com/${o}/${r}/${encodeURIComponent(
+        b
+      )}/${p}`,
   },
   {
     re: /gitlab\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
