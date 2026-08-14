@@ -1637,10 +1637,24 @@ export function RepoCodePage() {
               contributors: storedContributors,
               defaultBranch: branch,
             } as StoredRepo);
+          // Bridge-first loads often beat NIP-34 clone tags. Seed sidebar clone
+          // URLs immediately so Git Server / Clone URL are not blank until a
+          // hard refresh (or a later multi-source finalize).
+          const sidebarClones = discoverableCloneUrlsForSidebar(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            Array.isArray((base as { clone?: string[] }).clone)
+              ? (base as { clone?: string[] }).clone
+              : [],
+            Array.isArray(storedRepoRow?.clone) ? storedRepoRow.clone : []
+          );
           const updated = {
             ...base,
             files: filesToApply,
-            clone: (base as { clone?: string[] }).clone,
+            clone: mergeDiscoverableCloneUrls(
+              (base as { clone?: string[] }).clone,
+              sidebarClones
+            ),
             contributors:
               Array.isArray(base.contributors) && base.contributors.length > 0
                 ? base.contributors
@@ -5826,11 +5840,16 @@ export function RepoCodePage() {
                   syncResolvedBranchFromFetch(branchFromFetch);
                   setRepoData((prev: any) => {
                     // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
+                    const mergedClone = mergeDiscoverableCloneUrls(
+                      prev?.clone,
+                      initialCloneUrls
+                    );
                     const updated = prev
                       ? {
                           ...prev,
                           files: status.files,
                           filesBranch: branchFromFetch,
+                          clone: mergedClone,
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
@@ -5851,6 +5870,7 @@ export function RepoCodePage() {
                           files: status.files,
                           filesBranch: branchFromFetch,
                           defaultBranch: "main",
+                          clone: mergedClone,
                           successfulSources: [
                             {
                               source: status.source,
@@ -5906,6 +5926,10 @@ export function RepoCodePage() {
                     const updated = prev
                       ? {
                           ...prev,
+                          clone: mergeDiscoverableCloneUrls(
+                            prev.clone,
+                            initialCloneUrls
+                          ),
                           // Add new successful source to array
                           successfulSources: [
                             ...existingSources,
@@ -6127,9 +6151,18 @@ export function RepoCodePage() {
             persistRepoFiles(files, "[File Fetch]", { allowShrink });
           }
 
-          // Update localStorage - only store fileCount, not full files array
+          // Update localStorage - only store fileCount, not full files array —
+          // but hydrate clone[] so soft nav / hard refresh keep Git Server + Clone URL.
           try {
             const repos = loadStoredRepos();
+            const sidebarClones = discoverableCloneUrlsForSidebar(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              initialCloneUrls,
+              successfulStatuses
+                .map((s: any) => pickHttpSourceUrl(s.source))
+                .filter((u): u is string => typeof u === "string" && !!u.trim())
+            );
             const updated = repos.map((r) => {
               const matchesOwner =
                 r.ownerPubkey &&
@@ -6149,7 +6182,11 @@ export function RepoCodePage() {
 
               if ((matchesOwner || matchesEntity) && matchesRepo) {
                 // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
-                return { ...r, fileCount: files.length };
+                return {
+                  ...r,
+                  fileCount: files.length,
+                  clone: mergeDiscoverableCloneUrls(r.clone, sidebarClones),
+                };
               }
               return r;
             });
@@ -9176,9 +9213,21 @@ export function RepoCodePage() {
                         allowShrink: allowShrinkEose,
                       });
                     }
-                    // Update localStorage - only store fileCount, not full files array
+                    // Update localStorage - only store fileCount, not full files array —
+                    // hydrate clone[] so soft nav keeps Git Server / Clone URL.
                     try {
                       const repos = loadStoredRepos();
+                      const sidebarClones = discoverableCloneUrlsForSidebar(
+                        resolvedParams.entity,
+                        resolvedParams.repo,
+                        cloneUrls,
+                        successfulStatuses
+                          .map((s) => pickHttpSourceUrl(s.source))
+                          .filter(
+                            (u): u is string =>
+                              typeof u === "string" && !!u.trim()
+                          )
+                      );
                       const updated = repos.map((r) => {
                         const matchesOwner =
                           r.ownerPubkey &&
@@ -9199,7 +9248,14 @@ export function RepoCodePage() {
 
                         if ((matchesOwner || matchesEntity) && matchesRepo) {
                           // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
-                          return { ...r, fileCount: files.length };
+                          return {
+                            ...r,
+                            fileCount: files.length,
+                            clone: mergeDiscoverableCloneUrls(
+                              r.clone,
+                              sidebarClones
+                            ),
+                          };
                         }
                         return r;
                       });
@@ -16179,6 +16235,24 @@ export function RepoCodePage() {
     if (fromRepoDataSource) {
       rawCloneList = [...rawCloneList, fromRepoDataSource];
     }
+    // successfulSources often exist before clone[] is written (bridge-first /
+    // first-success race). Prefer those hosts over blank sidebar.
+    const fromSuccessful = Array.isArray((repoData as any)?.successfulSources)
+      ? ((repoData as any).successfulSources as Array<{ sourceUrl?: string }>)
+          .map((s) =>
+            typeof s?.sourceUrl === "string" ? s.sourceUrl.trim() : ""
+          )
+          .filter(Boolean)
+      : [];
+    if (fromSuccessful.length > 0) {
+      rawCloneList = [...rawCloneList, ...fromSuccessful];
+    }
+    if (rawCloneList.length === 0 && resolvedParams.entity && decodedRepo) {
+      rawCloneList = discoverableCloneUrlsForSidebar(
+        resolvedParams.entity,
+        decodedRepo
+      );
+    }
     const uniqueCloneUrls = Array.from(
       new Set(
         rawCloneList.filter(
@@ -16241,6 +16315,11 @@ export function RepoCodePage() {
   }, [
     Array.isArray((repoData as any)?.clone)
       ? (repoData as any)?.clone.join("|")
+      : "",
+    Array.isArray((repoData as any)?.successfulSources)
+      ? ((repoData as any).successfulSources as Array<{ sourceUrl?: string }>)
+          .map((s) => s?.sourceUrl || "")
+          .join("|")
       : "",
     resolvedParams.entity,
     decodedRepo,
