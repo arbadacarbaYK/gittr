@@ -1742,6 +1742,167 @@ export default function PRDetailPage({
     [pr, handleMerge, resolvedParams.entity, resolvedParams.repo]
   );
 
+  const canCloseOrReopenPr = Boolean(
+    pr &&
+      currentUserPubkey &&
+      (canMerge ||
+        (pr.author &&
+          pr.author.toLowerCase() === currentUserPubkey.toLowerCase()))
+  );
+
+  /** Close without merging (or reopen). Does not apply file changes. */
+  const handleCloseOrReopenPr = useCallback(async () => {
+    if (!pr || !currentUserPubkey || !canCloseOrReopenPr) return;
+    if (pr.status === "merged") {
+      alert("Merged pull requests cannot be reopened here.");
+      return;
+    }
+
+    const closing = pr.status === "open";
+    const newStatus: "open" | "closed" = closing ? "closed" : "open";
+    if (
+      closing &&
+      !confirm(
+        "Close this pull request without merging?\n\nYour file changes will not be applied. You can reopen later."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const prsKey = getRepoStorageKey(
+        "gittr_prs",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+      const rowIdx = findPullRequestRowIndexByRouteParam(
+        prs,
+        resolvedParams.id
+      );
+      const statusMeta =
+        newStatus === "closed"
+          ? {
+              status: "closed" as const,
+              closedAt: Date.now(),
+              closedBy: currentUserPubkey,
+            }
+          : {
+              status: "open" as const,
+              closedAt: undefined,
+              closedBy: undefined,
+            };
+
+      let updatedPRs = prs;
+      if (rowIdx >= 0) {
+        updatedPRs = prs.map((p: any, i: number) =>
+          i === rowIdx ? { ...p, ...statusMeta } : p
+        );
+      } else {
+        updatedPRs = prs.map((p: any) =>
+          pr.id != null && p.id === pr.id ? { ...p, ...statusMeta } : p
+        );
+      }
+      localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
+      setPR({ ...pr, ...statusMeta });
+      window.dispatchEvent(new CustomEvent("gittr:pr-updated"));
+
+      // Publish NIP-34 status (1632 closed / 1630 open) when we have a root event id
+      const rootEventId = prEventId || (isHexEventId(pr.id) ? pr.id : null);
+      if (rootEventId && publish && defaultRelays?.length) {
+        try {
+          const repos = loadStoredRepos();
+          const repo = findRepoByEntityAndName<StoredRepo>(
+            repos,
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const ownerPubkeyHex =
+            (repo
+              ? getRepoOwnerPubkey(repo, resolvedParams.entity)
+              : null) ||
+            resolveEntityToPubkey(resolvedParams.entity) ||
+            "";
+          const signingCreds = await resolveSigningCredentials({
+            remoteSigner,
+          });
+          if (ownerPubkeyHex && signingCreds) {
+            const { hasNip07, privateKey } = signingCreds;
+            const statusKind = closing
+              ? KIND_STATUS_CLOSED
+              : KIND_STATUS_OPEN;
+            let statusEvent: any;
+            if (hasNip07 && window.nostr) {
+              const authorPubkey = await window.nostr.getPublicKey();
+              statusEvent = {
+                kind: statusKind,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [
+                  ["e", rootEventId, "", "root"],
+                  ["p", ownerPubkeyHex],
+                  ["p", pr.author],
+                  ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
+                  ["k", "1618"],
+                ],
+                content: closing
+                  ? `Closed PR #${pr.id} without merging`
+                  : `Reopened PR #${pr.id}`,
+                pubkey: authorPubkey,
+                id: "",
+                sig: "",
+              };
+              statusEvent.id = getEventHash(statusEvent);
+              statusEvent = await window.nostr.signEvent(statusEvent);
+            } else if (privateKey) {
+              statusEvent = createStatusEvent(
+                {
+                  statusKind,
+                  rootEventId,
+                  ownerPubkey: ownerPubkeyHex,
+                  rootEventAuthor: pr.author,
+                  repoName: resolvedParams.repo,
+                  rootKind: 1618,
+                  content: closing
+                    ? `Closed PR #${pr.id} without merging`
+                    : `Reopened PR #${pr.id}`,
+                },
+                privateKey
+              );
+            }
+            if (statusEvent) {
+              publish(statusEvent, defaultRelays);
+              console.log(
+                `✅ Published NIP-34 status event (${
+                  closing ? "closed" : "open"
+                }):`,
+                statusEvent.id
+              );
+            }
+          }
+        } catch (statusErr) {
+          console.warn(
+            "Failed to publish PR close/reopen status to Nostr:",
+            statusErr
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update PR status:", error);
+      alert("Failed to update pull request: " + (error as Error).message);
+    }
+  }, [
+    pr,
+    currentUserPubkey,
+    canCloseOrReopenPr,
+    prEventId,
+    publish,
+    defaultRelays,
+    remoteSigner,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    resolvedParams.id,
+  ]);
+
   if (loading) {
     return <div className="p-6">Loading PR...</div>;
   }
@@ -1777,6 +1938,9 @@ export default function PRDetailPage({
             <Badge className="bg-gray-700">#{resolvedParams.id}</Badge>
             {pr.status === "merged" && (
               <Badge className="bg-purple-600">Merged</Badge>
+            )}
+            {pr.status === "closed" && (
+              <Badge className="bg-gray-600">Closed</Badge>
             )}
           </div>
           <div className="text-sm text-gray-400">
@@ -1820,27 +1984,40 @@ export default function PRDetailPage({
             </Link>
           </div>
         </div>
-        {canMerge && pr.status === "open" && (
-          <Button
-            variant="default"
-            onClick={async () => {
-              setShowMergeModal(true);
-              await checkMergePublishPreflight();
-              // Check wallet balance if there's a bounty
-              if (
-                linkedIssue?.bountyAmount &&
-                (linkedIssue?.bountyWithdrawId ||
-                  linkedIssue?.bountyWithdrawUrl)
-              ) {
-                await checkWalletBalance();
-              }
-            }}
-            className="ml-4 bg-green-600 hover:bg-green-700"
-          >
-            <GitMerge className="mr-2 h-4 w-4" />
-            Merge pull request
-          </Button>
-        )}
+        <div className="ml-4 flex flex-col sm:flex-row gap-2 shrink-0">
+          {canMerge && pr.status === "open" && (
+            <Button
+              variant="default"
+              onClick={async () => {
+                setShowMergeModal(true);
+                await checkMergePublishPreflight();
+                // Check wallet balance if there's a bounty
+                if (
+                  linkedIssue?.bountyAmount &&
+                  (linkedIssue?.bountyWithdrawId ||
+                    linkedIssue?.bountyWithdrawUrl)
+                ) {
+                  await checkWalletBalance();
+                }
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <GitMerge className="mr-2 h-4 w-4" />
+              Merge pull request
+            </Button>
+          )}
+          {canCloseOrReopenPr && pr.status === "open" && (
+            <Button variant="outline" onClick={() => void handleCloseOrReopenPr()}>
+              <X className="mr-2 h-4 w-4" />
+              Close pull request
+            </Button>
+          )}
+          {canCloseOrReopenPr && pr.status === "closed" && (
+            <Button variant="outline" onClick={() => void handleCloseOrReopenPr()}>
+              Reopen pull request
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Conflict Resolution Modal */}
