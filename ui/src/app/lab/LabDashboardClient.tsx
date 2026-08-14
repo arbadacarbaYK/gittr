@@ -138,12 +138,13 @@ export function LabDashboardClient() {
               Snapshot from {new Date(updatedAt).toLocaleString()}, not live
             </div>
           ) : null}
+          {/* allow-scripts for offline canvas map; no allow-same-origin (opaque). */}
           <iframe
             key={frameKey}
             src={iframeSrc}
             title="Security lab snapshot"
             className="h-[min(85vh,calc(100vh-12rem))] w-full min-h-[32rem] border-0"
-            sandbox=""
+            sandbox="allow-scripts"
             referrerPolicy="no-referrer"
           />
         </div>

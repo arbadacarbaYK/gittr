@@ -1,10 +1,20 @@
 /**
  * Harden scrubbed lab-dashboard HTML before public serve / iframe preview.
- * Goal: display-only snapshot — no scripts, no reach into private/local nets.
+ *
+ * Display-only snapshot with an offline canvas map:
+ * - Keep inline scripts + JSON data islands (map needs them).
+ * - Strip external script src, iframes, objects, embeds, inline handlers.
+ * - Neutralize private/local URLs in href/src.
+ * - CSP allows inline scripts but blocks network (connect-src 'none').
+ * Pair with iframe sandbox="allow-scripts" (no allow-same-origin).
  */
 
 const PRIVATE_HOST_RE =
   /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|0x[0-9a-f]+)$/i;
+
+/** Response + meta CSP for /api/lab/snapshot (keep in sync). */
+export const LAB_SNAPSHOT_CSP =
+  "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' data:; font-src data: https:; media-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
 
 function isPrivateOrLocalUrl(raw: string): boolean {
   const value = raw.trim();
@@ -40,13 +50,24 @@ function neutralizePrivateUrls(html: string): string {
   );
 }
 
-/** Strip active content + block private-network targets. */
+/**
+ * Drop only scripts that load over the network (`src=`).
+ * Keep inline JS and `type="application/json"` data islands for the map.
+ */
+function stripExternalScripts(html: string): string {
+  return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (full, attrs: string) => {
+    if (/\bsrc\s*=/i.test(attrs)) {
+      return "";
+    }
+    return full;
+  });
+}
+
+/** Strip active network content + block private-network targets; keep map JS. */
 export function sanitizeLabSnapshotHtml(input: string): string {
   let html = String(input || "");
 
-  html = html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
-  html = html.replace(/<script\b[^>]*>/gi, "");
-  html = html.replace(/<\/script>/gi, "");
+  html = stripExternalScripts(html);
   html = html.replace(/<iframe\b[\s\S]*?<\/iframe>/gi, "");
   html = html.replace(/<iframe\b[^>]*>/gi, "");
   html = html.replace(/<object\b[\s\S]*?<\/object>/gi, "");
@@ -63,19 +84,20 @@ export function sanitizeLabSnapshotHtml(input: string): string {
 
   html = neutralizePrivateUrls(html);
 
-  const csp =
-    "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' data:; font-src data: https:; media-src 'none'; connect-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'";
+  // Replace any existing CSP meta so we don't leave a stale script-src 'none'.
+  html = html.replace(
+    /<meta\b[^>]*http-equiv\s*=\s*(["']?)Content-Security-Policy\1[^>]*>/gi,
+    ""
+  );
 
-  if (!/http-equiv\s*=\s*["']?Content-Security-Policy/i.test(html)) {
-    if (/<head\b[^>]*>/i.test(html)) {
-      html = html.replace(
-        /<head\b[^>]*>/i,
-        (m) =>
-          `${m}\n<meta http-equiv="Content-Security-Policy" content="${csp}">`
-      );
-    } else {
-      html = `<meta http-equiv="Content-Security-Policy" content="${csp}">\n${html}`;
-    }
+  if (/<head\b[^>]*>/i.test(html)) {
+    html = html.replace(
+      /<head\b[^>]*>/i,
+      (m) =>
+        `${m}\n<meta http-equiv="Content-Security-Policy" content="${LAB_SNAPSHOT_CSP}">`
+    );
+  } else {
+    html = `<meta http-equiv="Content-Security-Policy" content="${LAB_SNAPSHOT_CSP}">\n${html}`;
   }
 
   return html;

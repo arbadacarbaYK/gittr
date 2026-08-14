@@ -90,6 +90,7 @@ import {
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
+import { isOpaqueBinaryDataUrl } from "@/lib/repos/opaque-binary-data-url";
 import {
   hydrateRepoOverrideBlobs,
   idbDeleteOverride,
@@ -13795,50 +13796,50 @@ export function RepoCodePage() {
           bridgeRepo = parts[parts.length - 1] || bridgeRepo;
         }
         bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
-        const branch0 = resolveContentBranch(
+        const branchCandidates0 = branchesToTryForContent(
           repoData,
           selectedBranch,
           repoBranchRoute
         );
         try {
-          const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-            ownerPk.toLowerCase()
-          )}&repo=${encodeURIComponent(bridgeRepo)}&path=${encodeURIComponent(
-            path
-          )}&branch=${encodeURIComponent(branch0)}`;
-          const r0 = await fetchBridgeRead(api0);
-          if (r0.ok) {
+          for (const branch0 of branchCandidates0) {
+            const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+              ownerPk.toLowerCase()
+            )}&repo=${encodeURIComponent(bridgeRepo)}&path=${encodeURIComponent(
+              path
+            )}&branch=${encodeURIComponent(branch0)}`;
+            const r0 = await fetchBridgeRead(api0);
+            if (!r0.ok) continue;
             const d0 = await r0.json();
-            if (d0.content !== undefined) {
-              if (d0.isBinary) {
-                const ext0 = path.split(".").pop()?.toLowerCase() || "";
-                const mimeTypes0: Record<string, string> = {
-                  png: "image/png",
-                  jpg: "image/jpeg",
-                  jpeg: "image/jpeg",
-                  gif: "image/gif",
-                  webp: "image/webp",
-                  svg: "image/svg+xml",
-                  ico: "image/x-icon",
-                  pdf: "application/pdf",
-                  woff: "font/woff",
-                  woff2: "font/woff2",
-                  ttf: "font/ttf",
-                  otf: "font/otf",
-                  mp4: "video/mp4",
-                  mp3: "audio/mpeg",
-                  wav: "audio/wav",
-                };
-                const mime0 = mimeTypes0[ext0] || "application/octet-stream";
-                const dataUrl0 = `data:${mime0};base64,${d0.content}`;
-                return { content: null, url: dataUrl0, isBinary: true };
-              }
-              return {
-                content: d0.content,
-                url: null,
-                isBinary: false,
+            if (d0.content === undefined) continue;
+            if (d0.isBinary) {
+              const ext0 = path.split(".").pop()?.toLowerCase() || "";
+              const mimeTypes0: Record<string, string> = {
+                png: "image/png",
+                jpg: "image/jpeg",
+                jpeg: "image/jpeg",
+                gif: "image/gif",
+                webp: "image/webp",
+                svg: "image/svg+xml",
+                ico: "image/x-icon",
+                pdf: "application/pdf",
+                woff: "font/woff",
+                woff2: "font/woff2",
+                ttf: "font/ttf",
+                otf: "font/otf",
+                mp4: "video/mp4",
+                mp3: "audio/mpeg",
+                wav: "audio/wav",
               };
+              const mime0 = mimeTypes0[ext0] || "application/octet-stream";
+              const dataUrl0 = `data:${mime0};base64,${d0.content}`;
+              return { content: null, url: dataUrl0, isBinary: true };
             }
+            return {
+              content: d0.content,
+              url: null,
+              isBinary: false,
+            };
           }
         } catch (e) {
           console.warn(
@@ -15867,6 +15868,9 @@ export function RepoCodePage() {
   const isBinaryUrl =
     fileContent &&
     (fileContent.startsWith("http") || fileContent.startsWith("data:"));
+  // Extensionless binaries often land as data:application/octet-stream — never
+  // dump that string into the text CodeViewer.
+  const isOpaqueBinaryContent = isOpaqueBinaryDataUrl(fileContent);
   // Check if it's specifically a data URL
   const isDataUrl = fileContent && fileContent.startsWith("data:");
   // For HTML and Markdown files, track whether we're showing preview or code view
@@ -18366,7 +18370,8 @@ export function RepoCodePage() {
                           fileType !== "video" &&
                           fileType !== "audio" &&
                           fileType !== "pdf" &&
-                          fileType !== "binary" && (
+                          fileType !== "binary" &&
+                          !isOpaqueBinaryContent && (
                             <button
                               className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                               onClick={() => editCurrentFile()}
@@ -18389,7 +18394,8 @@ export function RepoCodePage() {
                           fileType !== "video" &&
                           fileType !== "audio" &&
                           fileType !== "pdf" &&
-                          fileType !== "binary" && (
+                          fileType !== "binary" &&
+                          !isOpaqueBinaryContent && (
                             <button
                               className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                               onClick={() => {
@@ -18973,7 +18979,8 @@ export function RepoCodePage() {
                       fileType === "yaml" ||
                       fileType === "csv" ||
                       fileType === "text") &&
-                    fileContent ? (
+                    fileContent &&
+                    !isOpaqueBinaryContent ? (
                     // Code, JSON, XML, YAML, CSV, and text files: Show with syntax highlighting and code snippet sharing
                     <CodeViewer
                       content={fileContent}
@@ -18982,7 +18989,7 @@ export function RepoCodePage() {
                       repo={resolvedParams.repo}
                       branch={selectedBranch}
                     />
-                  ) : isBinaryUrl ? (
+                  ) : isBinaryUrl || isOpaqueBinaryContent ? (
                     <div className="text-center p-8">
                       <p className="text-gray-400 mb-4">
                         {fileType === "image" ||

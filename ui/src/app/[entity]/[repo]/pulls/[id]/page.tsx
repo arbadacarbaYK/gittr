@@ -2045,7 +2045,8 @@ export default function PRDetailPage({
               {canCloseOrReopenPr && (
                 <p>
                   <span className="text-gray-300 font-medium">Close</span>{" "}
-                  only marks the PR closed (status on Nostr). It does{" "}
+                  publishes a closed status event to Nostr (so other git
+                  clients stop showing it as open). It does{" "}
                   <strong className="text-gray-300 font-medium">
                     not
                   </strong>{" "}
@@ -2053,15 +2054,19 @@ export default function PRDetailPage({
                   <strong className="text-gray-300 font-medium">
                     not
                   </strong>{" "}
-                  require Push to Nostr.
+                  need a Code-tab{" "}
+                  <strong className="text-gray-300 font-medium">
+                    Push to Nostr
+                  </strong>{" "}
+                  (that button is for repo files / tip, not PR status).
                 </p>
               )}
             </div>
           )}
           {pr.status === "closed" && canCloseOrReopenPr && (
             <p className="text-xs text-gray-400 leading-relaxed">
-              Reopen sets the PR back to open (status only). Still no file
-              changes and no Push to Nostr.
+              Reopen publishes open status to Nostr. Still no file changes and
+              no Code-tab Push to Nostr.
             </p>
           )}
         </div>

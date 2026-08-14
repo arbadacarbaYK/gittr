@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { sanitizeLabSnapshotHtml } from "./sanitize-lab-snapshot-html";
 
 describe("sanitizeLabSnapshotHtml", () => {
-  it("strips scripts and event handlers", () => {
+  it("strips external scripts and event handlers; keeps inline map scripts", () => {
     const out = sanitizeLabSnapshotHtml(
-      `<html><body onclick="alert(1)"><script>fetch('http://127.0.0.1:8767')</script><p>ok</p></body></html>`
+      `<html><body onclick="alert(1)"><script src="https://evil.example/x.js"></script><script type="application/json" id="lab-snapshot-data">{"ok":true}</script><script>const x=1;</script><p>ok</p></body></html>`
     );
-    expect(out).not.toMatch(/<script/i);
+    expect(out).not.toMatch(/evil\.example/i);
     expect(out).not.toMatch(/onclick/i);
+    expect(out).toContain('id="lab-snapshot-data"');
+    expect(out).toContain("const x=1;");
     expect(out).toContain("<p>ok</p>");
   });
 
@@ -22,12 +24,13 @@ describe("sanitizeLabSnapshotHtml", () => {
     expect(out).not.toContain("192.168.1.1");
   });
 
-  it("injects CSP meta that blocks connect/script", () => {
+  it("injects CSP that allows inline scripts but blocks connect", () => {
     const out = sanitizeLabSnapshotHtml(
       `<html><head></head><body>hi</body></html>`
     );
     expect(out).toMatch(/Content-Security-Policy/);
-    expect(out).toMatch(/script-src 'none'/);
+    expect(out).toMatch(/script-src 'unsafe-inline'/);
     expect(out).toMatch(/connect-src 'none'/);
+    expect(out).not.toMatch(/script-src 'none'/);
   });
 });

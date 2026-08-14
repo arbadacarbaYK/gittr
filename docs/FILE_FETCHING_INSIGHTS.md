@@ -96,7 +96,9 @@ Parallel `clone[]` sources use `Promise.race`: **first mirror that returns a non
 
 Empty bare dir with no branches: nostr files API may return `files: []` — step 2–3 still run.
 
-**Wrong default branch (common on foreign mirrors):** UI often asks for `main`, but the bare repo’s HEAD may be `develop` / a feature branch with **no** `main`. `/api/nostr/repo/files` falls back to `main`↔`master`, then the bare repo’s symbolic-ref HEAD (or first head). Success responses include the resolved `branch`. True “branch missing” 404s include `defaultBranch` + `availableBranches`; the client retries that once and **does not** start clone/poll storms. `includeSizes` defaults off (pass `includeSizes=1` when needed) so huge trees do not run per-file `cat-file`.
+**Wrong default branch (common on foreign mirrors):** UI often asks for `main`, but the bare repo’s HEAD may be `develop` / a feature branch with **no** `main`. `/api/nostr/repo/files` **and** `/api/nostr/repo/file-content` fall back to `main`↔`master`, then the bare repo’s symbolic-ref HEAD (or first heads), and try other heads if the path is missing on the first match. Success responses include the resolved `branch`. True “branch missing” 404s include `defaultBranch` + `availableBranches`; the client retries that once and **does not** start clone/poll storms. `includeSizes` defaults off (pass `includeSizes=1` when needed) so huge trees do not run per-file `cat-file`.
+
+**Extensionless binary blobs:** bridge may return `isBinary: true` + base64 for names like `willow` (null bytes). The Code tab must not dump `data:application/octet-stream;base64,…` into the text editor — show the binary download panel (`isOpaqueBinaryDataUrl`).
 
 **Huge trees (e.g. Trezor Suite, 10k+ files):** A naive soft-cap after dirs-first sort kept only directories → every subfolder looked empty. Now root listings above the threshold return `listing: "shallow"` (one level) plus `truncated: true` / `totalFileCount`. Folder navigation calls `GET /api/nostr/repo/files?...&path=packages/suite` for that directory’s children.
 

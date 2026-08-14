@@ -2975,13 +2975,16 @@ export default function HelpPage() {
                     when that push succeeds.
                   </li>
                   <li>
-                    <strong>Close (without merging):</strong> only marks the PR
-                    closed (NIP-34 status). It does <strong>not</strong> change
-                    files and does <strong>not</strong> require Push to Nostr.
-                    Use this to drop an unwanted PR.
+                    <strong>Close (without merging):</strong> publishes a NIP-34
+                    closed status event to relays so other git Nostr clients
+                    see it closed. It does <strong>not</strong> change files
+                    and does <strong>not</strong> need Code-tab{" "}
+                    <strong>Push to Nostr</strong> (that is for repo files /
+                    tip). Use Close to drop an unwanted PR.
                   </li>
                   <li>
-                    <strong>Reopen:</strong> status only — still no file push.
+                    <strong>Reopen:</strong> publishes open status to Nostr —
+                    still no file / tip push.
                   </li>
                 </ul>
               </div>

@@ -1,6 +1,9 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { resolveLabSnapshotHtmlPath } from "@/lib/lab/lab-snapshot-path";
-import { sanitizeLabSnapshotHtml } from "@/lib/lab/sanitize-lab-snapshot-html";
+import {
+  LAB_SNAPSHOT_CSP,
+  sanitizeLabSnapshotHtml,
+} from "@/lib/lab/sanitize-lab-snapshot-html";
 
 import { existsSync, readFileSync, statSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -57,10 +60,10 @@ export default async function handler(
   res.setHeader("X-Content-Type-Options", "nosniff");
   // Allow /lab same-origin iframe (global/nginx may send DENY).
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  // Snapshot is display-only; never treat as an active app context.
+  // Offline canvas map needs inline scripts; connect-src 'none' blocks network.
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' data:; font-src data: https:; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+    `${LAB_SNAPSHOT_CSP}; frame-ancestors 'self'`
   );
 
   const format = String(req.query.format || "").toLowerCase();

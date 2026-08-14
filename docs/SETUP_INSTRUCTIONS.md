@@ -311,7 +311,7 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 | `/opt/ngit/data/cve-bot-pending.json` | Leftover queue if ENABLED was off (`CVE_BOT_PENDING_PATH`) |
 | `/opt/ngit/data/cve-spoiler-dedup.json` | Spoiler RSS early-warning dedup (`CVE_SPOILER_DEDUP_PATH`) |
 | `/opt/ngit/data/cve-consent.json` | Legacy name — prefer notifications-consent |
-| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy) |
+| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy). Served via `/api/lab/snapshot` with sanitizer that keeps **inline** map scripts + JSON data, strips external `script src`, blocks `connect-src`, iframe `sandbox="allow-scripts"` (no same-origin). |
 
 Gitignore covers `data/` and those filenames. Back up this tree with bridge secrets; restore only intentionally.
 

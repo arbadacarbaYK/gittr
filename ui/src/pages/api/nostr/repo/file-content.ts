@@ -1,4 +1,8 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  detectBareRepoDefaultBranch,
+  listBareRepoBranches,
+} from "@/lib/git/bare-repo-default-branch";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
@@ -268,166 +272,86 @@ export default async function handler(
     // Git commands handle UTF-8 correctly when properly quoted
     const escapedFilePath = filePathStr.replace(/"/g, '\\"');
 
-    // CRITICAL: Try branch fallback if initial branch fails (main -> master)
-    let stdout: Buffer | string = Buffer.alloc(0),
-      stderr = "";
+    // Match /api/nostr/repo/files: remap missing main/master to bare HEAD / heads
+    // (foreign mirrors often have only feature branches like docs/asphazel).
+    const detectedDefault = await detectBareRepoDefaultBranch(repoPath);
+    const availableBranches = await listBareRepoBranches(repoPath);
+    const branchCandidates = [
+      branchStr,
+      ...(branchStr === "main"
+        ? ["master"]
+        : branchStr === "master"
+        ? ["main"]
+        : ["main", "master"]),
+      detectedDefault,
+      ...availableBranches,
+    ]
+      .map((b) => (typeof b === "string" ? b.trim() : ""))
+      .filter((b): b is string => !!b)
+      .filter((b, i, arr) => arr.indexOf(b) === i);
+
+    let stdout: Buffer | string = Buffer.alloc(0);
+    let stderr = "";
     let actualBranch = branchStr;
-    let branchNotFound = false;
+    let found = false;
 
-    try {
-      const escapedBranch = branchStr.replace(/"/g, '\\"');
-      // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
-      // The file path is already properly escaped, and git handles UTF-8 paths correctly
-      const result = await execAsync(
-        `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
-        {
-          timeout: 10000,
-          maxBuffer: 10 * 1024 * 1024, // 10MB max
-          encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
-        }
-      );
-      stdout = normalizeStdout(result.stdout);
-      stderr = execErrToString(result.stderr);
-    } catch (error: any) {
-      // execAsync throws when command fails - extract stderr from error
-      stderr = execErrToString(error.stderr ?? error.message ?? error);
-      stdout = normalizeStdout(error.stdout);
-
-      // CRITICAL: Check if stdout exists in error - git sometimes outputs to stderr even on success
-      // If we have stdout content, treat it as success
-      if (hasStdoutBytes(stdout)) {
-        // We have content, treat as success (git might have warnings in stderr)
-        branchNotFound = false;
-        console.log(
-          `✅ Got file content from '${branchStr}' branch (${stdout.length} bytes, had error but stdout exists)`
+    for (const candidate of branchCandidates) {
+      try {
+        await execAsync(
+          `git --git-dir="${repoPath}" rev-parse --verify ${JSON.stringify(
+            candidate
+          )}^{commit}`,
+          { timeout: 5000 }
         );
-      } else if (
-        stderr.includes("fatal: not a valid object name") ||
-        stderr.includes("fatal: Not a valid object name") ||
-        stderr.includes("fatal: invalid object name") ||
-        stderr.includes("fatal: Invalid object name") ||
-        stderr.includes("fatal: ambiguous argument")
-      ) {
-        // This is a "branch not found" error (git uses different error message formats)
-        branchNotFound = true;
-      } else {
-        // Other error - might be file not found
-        if (stderr && !hasStdoutBytes(stdout)) {
-          return res.status(404).json({
-            error: "File not found",
-            path: filePath,
-            branch: branchStr,
-          });
-        }
-        // Re-throw if it's not a branch issue and no stdout
-        throw error;
+      } catch {
+        continue;
       }
-    }
 
-    // If branch not found, try fallback branches
-    if (branchNotFound) {
-      console.warn(
-        `⚠️ Branch ${branchStr} not found, trying fallback branches...`
-      );
-      const fallbackBranches =
-        branchStr === "main"
-          ? ["master"]
-          : branchStr === "master"
-          ? ["main"]
-          : ["main", "master"];
-
-      for (const fallbackBranch of fallbackBranches) {
-        try {
+      try {
+        const escapedBranch = candidate.replace(/"/g, '\\"');
+        const result = await execAsync(
+          `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
+          {
+            timeout: 10000,
+            maxBuffer: 10 * 1024 * 1024,
+            encoding: "buffer" as any,
+          }
+        );
+        stdout = normalizeStdout(result.stdout);
+        stderr = execErrToString(result.stderr);
+        if (hasStdoutBytes(stdout)) {
+          actualBranch = candidate;
+          found = true;
+          if (candidate !== branchStr) {
+            console.log(
+              `✅ file-content: '${filePathStr}' via branch '${candidate}' (requested '${branchStr}')`
+            );
+          }
+          break;
+        }
+      } catch (error: any) {
+        stderr = execErrToString(error.stderr ?? error.message ?? error);
+        stdout = normalizeStdout(error.stdout);
+        if (hasStdoutBytes(stdout)) {
+          actualBranch = candidate;
+          found = true;
           console.log(
-            `🔍 Trying fallback branch: ${fallbackBranch} for file: ${filePathStr}`
+            `✅ file-content: '${filePathStr}' via '${candidate}' (stdout despite stderr)`
           );
-          const escapedFallbackBranch = fallbackBranch.replace(/"/g, '\\"');
-          // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
-          const result = await execAsync(
-            `git --git-dir="${repoPath}" show "${escapedFallbackBranch}:${escapedFilePath}"`,
-            {
-              timeout: 10000,
-              maxBuffer: 10 * 1024 * 1024,
-              encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
-            }
-          );
-          stdout = normalizeStdout(result.stdout);
-          stderr = execErrToString(result.stderr);
-
-          // Check if we actually got content (not just an empty buffer)
-          // Note: stdout is always Buffer when encoding is 'buffer', but type is Buffer | string for compatibility
-          const stdoutLength = Buffer.isBuffer(stdout)
-            ? stdout.length
-            : (stdout as string).length || 0;
-          if (stdoutLength > 0) {
-            actualBranch = fallbackBranch;
-            branchNotFound = false; // Reset flag - we found the file
-            console.log(
-              `✅ Found file in '${fallbackBranch}' branch (${stdoutLength} bytes)`
-            );
-            break; // Success - exit loop
-          } else {
-            console.warn(
-              `⚠️ Fallback branch '${fallbackBranch}' returned empty content`
-            );
-            // Continue to next fallback
-          }
-        } catch (fallbackError: any) {
-          const fallbackStderr = execErrToString(
-            fallbackError.stderr ?? fallbackError.message ?? fallbackError
-          );
-          const fallbackStdout = normalizeStdout(fallbackError.stdout);
-          console.warn(
-            `⚠️ Failed to fetch from '${fallbackBranch}' branch:`,
-            fallbackStderr.slice(0, 200)
-          );
-
-          // If the error has stdout, it might still be valid (some git commands output to stderr even on success)
-          // Also check if the error message indicates branch not found (we should try next fallback)
-          const isBranchError =
-            fallbackStderr.includes("fatal: not a valid object name") ||
-            fallbackStderr.includes("fatal: Not a valid object name") ||
-            fallbackStderr.includes("fatal: invalid object name") ||
-            fallbackStderr.includes("fatal: Invalid object name") ||
-            fallbackStderr.includes("fatal: ambiguous argument");
-
-          if (hasStdoutBytes(fallbackStdout)) {
-            stdout = fallbackStdout;
-            actualBranch = fallbackBranch;
-            branchNotFound = false;
-            console.log(
-              `✅ Found file in '${fallbackBranch}' branch (from error stdout, ${fallbackStdout.length} bytes)`
-            );
-            break;
-          } else if (!isBranchError) {
-            // Not a branch error and no stdout - file doesn't exist in this branch
-            console.warn(
-              `⚠️ File not found in '${fallbackBranch}' branch (not a branch error)`
-            );
-          }
-          // Continue to next fallback
+          break;
         }
-      }
-
-      // If all branches failed
-      if (
-        branchNotFound &&
-        (!hasStdoutBytes(stdout) || (stderr && stderr.includes("fatal")))
-      ) {
-        return res.status(404).json({
-          error: "File not found in any branch",
-          path: filePath,
-          branch: branchStr,
-          triedBranches: [branchStr, ...fallbackBranches],
-        });
+        // Branch exists but path missing — try next candidate (e.g. main empty, tip elsewhere)
       }
     }
 
-    if (stderr && !hasStdoutBytes(stdout)) {
+    if (!found || !hasStdoutBytes(stdout)) {
       return res.status(404).json({
-        error: "File not found",
+        error: "File not found in any branch",
         path: filePath,
-        branch: actualBranch,
+        branch: branchStr,
+        triedBranches: branchCandidates,
+        defaultBranch: detectedDefault || availableBranches[0] || null,
+        availableBranches,
       });
     }
 
