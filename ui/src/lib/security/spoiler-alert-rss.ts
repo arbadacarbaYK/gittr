@@ -149,6 +149,11 @@ export function eligibleSpoilerAlerts(
 /**
  * Does this lockfile/manifest package look related to a GitHub owner/repo
  * from a Spoiler Alert item?
+ *
+ * Intentionally strict: bare short-name equality (`react` ↔ `facebook/react`)
+ * caused mass false positives on every React app. Prefer scoped npm, Go module
+ * paths, or full `owner/repo` package ids. Version-aware matching can come later
+ * when the feed exposes affected ranges.
  */
 export function packageMatchesSpoilerGithubRepo(
   packageName: string,
@@ -165,18 +170,18 @@ export function packageMatchesSpoilerGithubRepo(
   if (!owner || !repo) return false;
 
   // Go / module paths
-  if (pkg.includes(`github.com/${slug}`)) return true;
-  if (pkg === `github.com/${slug}`) return true;
+  if (pkg === `github.com/${slug}` || pkg.startsWith(`github.com/${slug}/`)) {
+    return true;
+  }
 
-  // Scoped npm: @grafana/foo ↔ grafana/grafana or grafana/*
+  // Scoped npm: @grafana/foo ↔ grafana/grafana (same GitHub org/owner)
   if (pkg.startsWith(`@${owner}/`)) return true;
 
-  // Exact unscoped name equals repo short name
-  if (pkg === repo) return true;
-
-  // org/repo style package ids
+  // Full owner/repo package id (rare on npm, common elsewhere)
   if (pkg === slug) return true;
 
+  // Do NOT match bare `react` to `facebook/react` (or lodash→lodash/lodash, etc.)
+  void repo;
   return false;
 }
 

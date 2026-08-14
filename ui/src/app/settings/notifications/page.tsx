@@ -502,9 +502,12 @@ export default function NotificationsPage() {
                 The same Security toggle also enables private{" "}
                 <strong className="text-gray-300">early warnings</strong> when a
                 public Spoiler Alert feed flags a HIGH/CRITICAL patch that looks
-                related to a direct dependency (often before a CVE). Those DMs
-                are not listed on the Dependencies tab; if that feed is down,
-                normal OSV CVE checks keep working.
+                  related to a direct dependency (often before a CVE). Matching
+                  is intentionally strict (scoped packages / Go module paths) so
+                  common names like <code className="bg-gray-800 px-1 rounded text-xs">react</code>{" "}
+                  do not fire on every app. Those DMs are not listed on the
+                  Dependencies tab; if that feed is down, normal OSV CVE checks
+                  keep working.
               </p>
               <p>
                 Details:{" "}

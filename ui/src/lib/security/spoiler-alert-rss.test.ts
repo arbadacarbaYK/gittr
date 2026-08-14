@@ -73,37 +73,49 @@ describe("eligibleSpoilerAlerts", () => {
 });
 
 describe("packageMatchesSpoilerGithubRepo", () => {
-  it("matches scoped npm, exact repo name, and go paths", () => {
+  it("matches scoped npm and go paths, not bare short names", () => {
     expect(
       packageMatchesSpoilerGithubRepo("@grafana/data", "grafana/grafana")
     ).toBe(true);
-    expect(packageMatchesSpoilerGithubRepo("grafana", "grafana/grafana")).toBe(
-      true
-    );
     expect(
       packageMatchesSpoilerGithubRepo(
         "github.com/grafana/grafana/pkg/foo",
         "grafana/grafana"
       )
     ).toBe(true);
-    expect(packageMatchesSpoilerGithubRepo("lodash", "grafana/grafana")).toBe(
+    expect(packageMatchesSpoilerGithubRepo("grafana/grafana", "grafana/grafana")).toBe(
+      true
+    );
+    // False positives we must never do again:
+    expect(packageMatchesSpoilerGithubRepo("react", "facebook/react")).toBe(
+      false
+    );
+    expect(packageMatchesSpoilerGithubRepo("grafana", "grafana/grafana")).toBe(
+      false
+    );
+    expect(packageMatchesSpoilerGithubRepo("lodash", "lodash/lodash")).toBe(
+      false
+    );
+    expect(packageMatchesSpoilerGithubRepo("keycloak", "keycloak/keycloak")).toBe(
       false
     );
   });
 });
 
 describe("matchSpoilersToPackages", () => {
-  it("matches direct deps only by default", () => {
+  it("matches direct scoped deps only by default", () => {
     const items = parseSpoilerAlertRssXml(SAMPLE_XML);
     const matches = matchSpoilersToPackages(items, [
       { name: "@grafana/data", direct: true },
-      { name: "grafana", direct: false },
-      { name: "keycloak", direct: true },
+      { name: "@grafana/ui", direct: false },
+      { name: "react", direct: true },
+      { name: "github.com/keycloak/keycloak", direct: true },
     ]);
     expect(matches.map((m) => m.packageName).sort()).toEqual([
       "@grafana/data",
-      "keycloak",
+      "github.com/keycloak/keycloak",
     ]);
+    expect(matches.every((m) => m.packageName !== "react")).toBe(true);
   });
 });
 
