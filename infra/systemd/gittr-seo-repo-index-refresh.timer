@@ -5,7 +5,9 @@ Documentation=file:///opt/ngit/docs/SEO.md
 [Timer]
 OnCalendar=daily
 AccuracySec=15min
-Persistent=true
+# false: installing/enabling the timer mid-day must NOT catch up a missed run
+# into a live Next.js process (that spike wedged production on 2026-08-14).
+Persistent=false
 RandomizedDelaySec=1800
 
 [Install]

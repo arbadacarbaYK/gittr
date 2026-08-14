@@ -28,8 +28,8 @@ type ErrBody = { ok: false; error: string };
  * SEO repo index for `/sitemap.xml`.
  *
  * - GET — status of on-disk snapshot (`ui/data/nostr-seo-repos-snapshot.json`)
- * - GET ?refresh=1 — re-query Nostr (default + GRASP relays), rewrite snapshot
- *   (deletions / private / blocklist applied). Intended for daily systemd timer.
+ * - GET ?refresh=1 — emergency in-process rebuild only. Production daily job is
+ *   `scripts/refresh-seo-repo-index.mts` via systemd (own process, not this API).
  */
 export default async function handler(
   req: NextApiRequest,

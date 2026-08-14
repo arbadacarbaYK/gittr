@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { LAB_SNAPSHOT_HEIGHT_MESSAGE } from "@/lib/lab/sanitize-lab-snapshot-html";
 import { cn } from "@/lib/utils";
 
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
@@ -10,16 +11,21 @@ import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 const LOCAL_AGENT_REPO_URL =
   "https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/local-agent";
 
+const MIN_FRAME_PX = 480;
+
 /**
  * Lab board iframe must be same-origin (`/api/lab/snapshot`).
  * Site CSP is `frame-src 'self' …` — blob: URLs are blocked there.
  * Snapshot HTML is sanitized + CSP-locked on the API.
+ * Height comes via postMessage (sandbox has no allow-same-origin).
  */
 export function LabDashboardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [frameKey, setFrameKey] = useState(0);
+  const [frameHeight, setFrameHeight] = useState(MIN_FRAME_PX);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const refreshMeta = useCallback(async () => {
     setLoading(true);
@@ -44,6 +50,7 @@ export function LabDashboardClient() {
         throw new Error("Snapshot is empty");
       }
       setUpdatedAt(data.updatedAt || null);
+      setFrameHeight(MIN_FRAME_PX);
       setFrameKey((k) => k + 1);
     } catch (e) {
       setUpdatedAt(null);
@@ -56,6 +63,28 @@ export function LabDashboardClient() {
   useEffect(() => {
     void refreshMeta();
   }, [refreshMeta]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Sandboxed iframe without allow-same-origin → origin is "null".
+      if (event.origin !== "null" && event.origin !== window.location.origin) {
+        return;
+      }
+      const data = event.data as
+        | { type?: string; height?: number }
+        | null
+        | undefined;
+      if (!data || data.type !== LAB_SNAPSHOT_HEIGHT_MESSAGE) return;
+      const next = Math.ceil(Number(data.height) || 0);
+      if (!Number.isFinite(next) || next < 1) return;
+      setFrameHeight((prev) => {
+        const clamped = Math.max(MIN_FRAME_PX, Math.min(next + 8, 200_000));
+        return Math.abs(clamped - prev) < 2 ? prev : clamped;
+      });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   const iframeSrc = `/api/lab/snapshot?v=${frameKey}`;
 
@@ -132,7 +161,7 @@ export function LabDashboardClient() {
       ) : null}
 
       {!error && (updatedAt || frameKey > 0) ? (
-        <div className="overflow-hidden rounded-xl border border-[#383B42] bg-[#0E1116]">
+        <div className="rounded-xl border border-[#383B42] bg-[#0E1116]">
           {updatedAt ? (
             <div className="border-b border-[#383B42] px-4 py-2 text-xs text-gray-500">
               Snapshot from {new Date(updatedAt).toLocaleString()}, not live
@@ -140,10 +169,12 @@ export function LabDashboardClient() {
           ) : null}
           {/* allow-scripts for offline canvas map; no allow-same-origin (opaque). */}
           <iframe
+            ref={iframeRef}
             key={frameKey}
             src={iframeSrc}
             title="Security lab snapshot"
-            className="h-[min(85vh,calc(100vh-12rem))] w-full min-h-[32rem] border-0"
+            className="w-full border-0"
+            style={{ height: frameHeight, overflow: "hidden" }}
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
           />

@@ -24,14 +24,14 @@ The sitemap **exists in code everywhere** (`ui/src/app/sitemap.ts`). It is **not
 When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
 1. Adds static URLs: `/`, `/explore`, `/help`, `/pages`
-2. Loads the **daily SEO snapshot** (`ui/data/nostr-seo-repos-snapshot.json`) when present — explore-class discovery (env relays + known GRASP `wss://` hosts), with deletions / private / blocklist applied
-3. **Queries Nostr relays** live (same discovery set) for repository announcements (kinds **51** and **30617**) → merges with the snapshot
+2. Loads the **daily SEO snapshot** (`ui/data/nostr-seo-repos-snapshot.json`) when present — explore-class discovery written by a **standalone** systemd job (not inside live Next)
+3. **Live relay fan-out only if that snapshot is missing/stale** (or `SITEMAP_LIVE_NOSTR=1` for debugging) — crawlers normally hit disk only
 4. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
 5. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored; gittr-HTTP-push / manual supplement only)
 
 ### Daily SEO repo index (recommended on production)
 
-Explore discovers public Nostr repos (not only repos people Push’d from gittr). The sitemap already queries Nostr, but a **daily background refresh** writes a durable disk snapshot so crawlers still get a full list when a live relay query times out.
+Explore discovers public Nostr repos (not only repos people Push’d from gittr). A **daily standalone job** (`scripts/refresh-seo-repo-index.mts`) writes a durable disk snapshot; `/sitemap.xml` and `/api/explore/seed` prefer that file so crawlers and cold Explore loads do not fan out to relays inside the live Next process.
 
 The same snapshot **seeds `/explore`** when the browser cache is thin (`GET /api/explore/seed?limit=3000` reads `ui/data/nostr-seo-repos-snapshot.json` — no live relay round-trip). Client Nostr sync still runs afterward to enrich. Seed/sync writes go through `saveStoredRepos` (slim metadata only — no file trees). If localStorage is full, Explore keeps a **session catalog in memory** (and still shows those repos) while reclaiming space (evict `gittr_files__*` / other caches, progressive caps, ultra-slim rows). Soft merge cap is **3000**. Load-more is only UI page size (**48**), not the catalog ceiling. A prior bug reloaded Explore from localStorage after every failed persist, which froze the UI around ~180–190 repos even while relays kept sending events.
 
@@ -45,11 +45,16 @@ The same snapshot **seeds `/explore`** when the browser cache is thin (`GET /api
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
 ```
 
-- Timer: `gittr-seo-repo-index-refresh.timer` (**daily**)
-- Endpoint: `GET /api/seo/refresh-nostr-repo-index?refresh=1` (localhost via systemd)
+- Timer: `gittr-seo-repo-index-refresh.timer` (**daily**, `Persistent=false` so enabling the timer mid-day does **not** immediately catch up a missed run)
+- **Builder (own process):** `npx tsx /opt/ngit/scripts/refresh-seo-repo-index.mts` with `WorkingDirectory=/opt/ngit/ui` (sources `.env.local` for relays). Does **not** curl live Next.
 - Snapshot path: `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`
-- Status (no refresh): `curl -sS http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index`
+- **Lab-agent mirror (server-only):** after each successful refresh, systemd `ExecStartPost` copies the same JSON to `/opt/ngit/data/lab-snapshot/nostr-seo-repos-snapshot.json` (next to `/lab`’s `index.html`). Not a gittr UI feature — operators/lab agents can read one folder.
+- Status (read-only): `curl -sS http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index`
+- Emergency in-process rebuild (avoid on a sick box): `…?refresh=1` still exists on that API
+- Manual oneshot: `systemctl start gittr-seo-repo-index-refresh.service`
 - Logs: `journalctl -u gittr-seo-repo-index-refresh.service --since today`
+
+**Ops note:** the builder has its own `MemoryMax=1500M`. Live Next keeps serving while discovery runs. Pair with `gittr-frontend` `MemoryMax` so UI leaks still restart cleanly.
 
 A refresh that returns **0** paths does **not** overwrite the previous snapshot. Soft-deletes and NIP-09 deletions are applied on each successful rewrite.
 

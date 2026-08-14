@@ -96,12 +96,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  // Live Nostr + daily explore-class snapshot + optional gittr-push supplement
-  const [fromNostr, seoSnap] = await Promise.all([
-    fetchSitemapRepoPathsFromNostr(),
-    loadNostrSeoReposSnapshot(),
-  ]);
+  // Prefer daily disk snapshot (built by standalone systemd job). Live relay
+  // fan-out only when the snap is missing/stale — keeps crawler hits off the
+  // heavy SimplePool path inside the public Next process.
+  const seoSnap = await loadNostrSeoReposSnapshot();
   const fromSnapshot = snapshotPathMap(seoSnap);
+  const forceLive =
+    process.env.SITEMAP_LIVE_NOSTR === "1" ||
+    process.env.SITEMAP_LIVE_NOSTR === "true";
+  const fromNostr =
+    fromSnapshot.size === 0 || forceLive
+      ? await fetchSitemapRepoPathsFromNostr()
+      : new Map<string, number>();
   const fromFile = filterRepoPathLinesByPublisherBlocklist(
     loadNostrPushedRepoPaths()
   );

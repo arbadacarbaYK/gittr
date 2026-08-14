@@ -21,6 +21,8 @@ import {
   sanitizeBridgeRepoName,
 } from "@/lib/utils/sanitize-bridge-repo-name";
 
+import { BoundedTtlCache } from "@/lib/utils/bounded-ttl-cache";
+
 import { exec } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -29,20 +31,15 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
-const filesCache = new Map<
-  string,
-  {
-    timestamp: number;
-    payload: {
-      files: any[];
-      branch: string;
-      truncated?: boolean;
-      listing?: "full" | "shallow";
-      totalFileCount?: number;
-    };
-  }
->();
-const CACHE_TTL_MS = 30_000;
+type FilesCachePayload = {
+  files: any[];
+  branch: string;
+  truncated?: boolean;
+  listing?: "full" | "shallow";
+  totalFileCount?: number;
+};
+/** TTL + size cap — unbounded Map grew heap under crawl traffic. */
+const filesCache = new BoundedTtlCache<FilesCachePayload>(30_000, 250);
 
 const shouldIncludeSizes = (raw: string | string[] | undefined) => {
   // Default off: per-file `git cat-file -s` on large mirrors (10k+ paths) melts CPU.
@@ -322,8 +319,8 @@ export default async function handler(
       : "main";
     const cacheKey = `${repoPath}:${branchStr}:path=${treePath}:sizes=${includeSizes}`;
     const cached = filesCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return res.status(200).json(cached.payload);
+    if (cached) {
+      return res.status(200).json(cached);
     }
 
     // Resolve a branch that actually exists (main/master → HEAD for foreign mirrors)
@@ -387,10 +384,7 @@ export default async function handler(
         ...payload,
         files: scrubbed,
       };
-      filesCache.set(cacheKey, {
-        timestamp: Date.now(),
-        payload: finalPayload,
-      });
+      filesCache.set(cacheKey, finalPayload);
       return res.status(200).json(finalPayload);
     };
 

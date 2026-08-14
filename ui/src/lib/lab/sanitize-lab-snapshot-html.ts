@@ -6,11 +6,16 @@
  * - Strip external script src, iframes, objects, embeds, inline handlers.
  * - Neutralize private/local URLs in href/src.
  * - CSP allows inline scripts but blocks network (connect-src 'none').
+ * - Inject height reporter so /lab can grow the iframe (sandbox has no
+ *   allow-same-origin, so the parent cannot read scrollHeight directly).
  * Pair with iframe sandbox="allow-scripts" (no allow-same-origin).
  */
 
 const PRIVATE_HOST_RE =
   /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|::1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|0x[0-9a-f]+)$/i;
+
+/** postMessage type from injected reporter → LabDashboardClient */
+export const LAB_SNAPSHOT_HEIGHT_MESSAGE = "gittr-lab-snapshot-height" as const;
 
 /** Response + meta CSP for /api/lab/snapshot (keep in sync). */
 export const LAB_SNAPSHOT_CSP =
@@ -55,12 +60,28 @@ function neutralizePrivateUrls(html: string): string {
  * Keep inline JS and `type="application/json"` data islands for the map.
  */
 function stripExternalScripts(html: string): string {
-  return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (full, attrs: string) => {
-    if (/\bsrc\s*=/i.test(attrs)) {
-      return "";
+  return html.replace(
+    /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
+    (full, attrs: string) => {
+      if (/\bsrc\s*=/i.test(attrs)) {
+        return "";
+      }
+      return full;
     }
-    return full;
-  });
+  );
+}
+
+/** Auto-height bridge for sandboxed iframe (origin is typically "null"). */
+function injectAutoHeightReporter(html: string): string {
+  const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}</style>`;
+  const script = `<script id="gittr-lab-autoheight-script">(function(){function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(){var n=h();if(n<1)return;try{parent.postMessage({type:${JSON.stringify(
+    LAB_SNAPSHOT_HEIGHT_MESSAGE
+  )},height:n},"*")}catch(e){}}report();window.addEventListener("load",report);window.addEventListener("resize",report);if(typeof ResizeObserver!=="undefined"&&document.documentElement){try{new ResizeObserver(report).observe(document.documentElement);if(document.body)new ResizeObserver(report).observe(document.body)}catch(e){}}[250,800,2000,5000].forEach(function(ms){setTimeout(report,ms)});})();</script>`;
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${style}\n${script}\n</body>`);
+  }
+  return `${html}\n${style}\n${script}`;
 }
 
 /** Strip active network content + block private-network targets; keep map JS. */
@@ -100,5 +121,5 @@ export function sanitizeLabSnapshotHtml(input: string): string {
     html = `<meta http-equiv="Content-Security-Policy" content="${LAB_SNAPSHOT_CSP}">\n${html}`;
   }
 
-  return html;
+  return injectAutoHeightReporter(html);
 }

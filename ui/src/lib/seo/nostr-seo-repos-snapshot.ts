@@ -8,6 +8,15 @@ export const NOSTR_SEO_REPOS_SNAPSHOT_PATH = path.join(
   "nostr-seo-repos-snapshot.json"
 );
 
+/** Lab-agent mirror next to /lab HTML (server-only; Next does not read this). */
+export const NOSTR_SEO_REPOS_LAB_MIRROR_PATH = path.join(
+  process.cwd(),
+  "..",
+  "data",
+  "lab-snapshot",
+  "nostr-seo-repos-snapshot.json"
+);
+
 /** Ignore snapshots older than this (force a fresh discovery). */
 export const SEO_SNAPSHOT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -29,6 +38,21 @@ export async function loadNostrSeoReposSnapshot(): Promise<NostrSeoReposSnapshot
   }
 }
 
+/** Best-effort copy for lab agents (same bytes as UI snapshot). */
+export async function mirrorNostrSeoReposSnapshotToLab(): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(NOSTR_SEO_REPOS_LAB_MIRROR_PATH), {
+      recursive: true,
+    });
+    await fs.copyFile(
+      NOSTR_SEO_REPOS_SNAPSHOT_PATH,
+      NOSTR_SEO_REPOS_LAB_MIRROR_PATH
+    );
+  } catch {
+    /* optional mirror — do not fail the SEO write */
+  }
+}
+
 export async function saveNostrSeoReposSnapshot(
   pathToModified: Map<string, number>
 ): Promise<NostrSeoReposSnapshot> {
@@ -44,6 +68,7 @@ export async function saveNostrSeoReposSnapshot(
     JSON.stringify(snap),
     "utf8"
   );
+  await mirrorNostrSeoReposSnapshotToLab();
   return snap;
 }
 

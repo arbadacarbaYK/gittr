@@ -89,18 +89,18 @@ Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journ
 
 ### SEO sitemap repo index (daily, explore-class)
 
-`/sitemap.xml` merges live Nostr discovery with a **disk snapshot** of public repos (same filters as explore/sitemap: deletions, private, blocklist, unusable clones). Install the daily timer so the snapshot stays warm even when crawlers do not hit the sitemap:
+`/sitemap.xml` prefers a **disk snapshot** of public repos (same filters as explore/sitemap: deletions, private, blocklist, unusable clones); live relay fan-out only if that snap is missing or `SITEMAP_LIVE_NOSTR=1`. Install the daily timer so the snapshot stays warm:
 
 ```bash
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
 ```
 
-- Calls `http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index?refresh=1`
-- Writes `ui/data/nostr-seo-repos-snapshot.json` on the app host
-- Override URL in `/etc/default/gittr-seo-repo-index-refresh` if needed
-- See [SEO.md](SEO.md) for details
+- Runs **standalone** `scripts/refresh-seo-repo-index.mts` (own Node/tsx process; does **not** curl live Next). Timer uses `Persistent=false` so mid-day install does not catch up a missed run
+- Writes `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`; `ExecStartPost` mirrors to `/opt/ngit/data/lab-snapshot/` for lab agents (cheap `cp`)
+- `/sitemap.xml` prefers that disk snapshot; live relay fan-out only if the snap is missing (or `SITEMAP_LIVE_NOSTR=1`)
+- See [SEO.md](SEO.md); keep `gittr-frontend` `MemoryMax` on small VPS
 
-Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL after indexing runs (timer replaces a manual cron line for this endpoint).
+Optional: kick the same oneshot after other indexing (`systemctl start gittr-seo-repo-index-refresh.service`) — do **not** curl `?refresh=1` into live Next for the daily job.
 
 ### Homepage “Recent repositories” (live relay query)
 
@@ -200,7 +200,9 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Frontend** — `/etc/systemd/system/gittr-frontend.service` (adjust paths/user):
+**Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=2048` so a leaking Next process is restarted before it wedges a ~4 Gi host (symptoms: site slows, then Cloudflare 504 / `:3000` hang at ~2 Gi+ RSS).
+
+Minimal example (adjust paths/user; keep memory caps on small VPS):
 
 ```ini
 [Unit]
@@ -210,9 +212,13 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/opt/gittr/ui
-ExecStart=/usr/bin/yarn start
+WorkingDirectory=/opt/ngit/ui
+ExecStart=/usr/bin/npm start
 Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=2048
+MemoryHigh=1800M
+MemoryMax=2500M
+OOMPolicy=stop
 Restart=always
 RestartSec=10
 
@@ -311,7 +317,8 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 | `/opt/ngit/data/cve-bot-pending.json` | Leftover queue if ENABLED was off (`CVE_BOT_PENDING_PATH`) |
 | `/opt/ngit/data/cve-spoiler-dedup.json` | Spoiler RSS early-warning dedup (`CVE_SPOILER_DEDUP_PATH`) |
 | `/opt/ngit/data/cve-consent.json` | Legacy name — prefer notifications-consent |
-| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy). Served via `/api/lab/snapshot` with sanitizer that keeps **inline** map scripts + JSON data, strips external `script src`, blocks `connect-src`, iframe `sandbox="allow-scripts"` (no same-origin). |
+| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy). Served via `/api/lab/snapshot` with sanitizer that keeps **inline** map scripts + JSON data, strips external `script src`, blocks `connect-src`, iframe `sandbox="allow-scripts"` (no same-origin). Injected height `postMessage` so the frame grows with content (no inner scrollbar). |
+| `/opt/ngit/data/lab-snapshot/nostr-seo-repos-snapshot.json` | Server-only copy of the daily SEO repo index (same bytes as `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`). Updated by `gittr-seo-repo-index-refresh.service` `ExecStartPost` for lab agents — not a public gittr API. |
 
 Gitignore covers `data/` and those filenames. Back up this tree with bridge secrets; restore only intentionally.
 
@@ -337,6 +344,7 @@ sed -i '/^CVE_BOT_SEND_PENDING=/d' /etc/default/gittr-cve-bot
 
 | Symptom | Check |
 |---------|--------|
+| UI down / slow then 504 | Check `next-server` RSS (`ps -o rss,etime -C next-server`). ~2 Gi+ on a 4 Gi box = restart with `systemctl restart gittr-frontend`. Prefer unit with `MemoryMax` from `infra/systemd/gittr-frontend.service`. Not caused by lab snapshot/`cp` of SEO JSON. |
 | UI down | `journalctl -u gittr-frontend -n 100`, `WorkingDirectory`, `.env.local`, `yarn build` |
 | Bridge no relays | `relays` in JSON vs `.env.local`; `journalctl -u git-nostr-bridge` |
 | `git` asks for password | Key in Settings → SSH Keys; `authorized_keys` path for `git@`; [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) |

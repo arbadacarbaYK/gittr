@@ -15,15 +15,17 @@ import {
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
+import { BoundedTtlCache } from "@/lib/utils/bounded-ttl-cache";
+
 import { existsSync, readFileSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
 
-const cache = new Map<
-  string,
-  { timestamp: number; payload: { commits: TreeLastCommitMap; branch: string } }
->();
-const CACHE_TTL_MS = 30_000;
+const cache = new BoundedTtlCache<{
+  commits: TreeLastCommitMap;
+  branch: string;
+  path: string;
+}>(30_000, 250);
 
 async function resolveOwnerPubkey(
   ownerPubkeyInput: string
@@ -167,8 +169,8 @@ export default async function handler(
 
   const cacheKey = `${ownerPubkey}:${resolvedRepo.repoName}:${branch}:${folderPath}`;
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return res.status(200).json(cached.payload);
+  if (cached) {
+    return res.status(200).json(cached);
   }
 
   try {
@@ -183,7 +185,7 @@ export default async function handler(
       { folderPath, maxCommits: 500, timeoutMs: 25_000 }
     );
     const payload = { commits, branch, path: folderPath };
-    cache.set(cacheKey, { timestamp: Date.now(), payload });
+    cache.set(cacheKey, payload);
     return res.status(200).json(payload);
   } catch (error: any) {
     console.error("❌ [tree-last-commits]", error?.message || error);

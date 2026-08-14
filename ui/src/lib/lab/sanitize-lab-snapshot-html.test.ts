@@ -33,4 +33,13 @@ describe("sanitizeLabSnapshotHtml", () => {
     expect(out).toMatch(/connect-src 'none'/);
     expect(out).not.toMatch(/script-src 'none'/);
   });
+
+  it("injects auto-height reporter for sandboxed iframe", () => {
+    const out = sanitizeLabSnapshotHtml(
+      `<html><head></head><body><p>map</p></body></html>`
+    );
+    expect(out).toContain("gittr-lab-autoheight");
+    expect(out).toContain("gittr-lab-snapshot-height");
+    expect(out).toContain("postMessage");
+  });
 });

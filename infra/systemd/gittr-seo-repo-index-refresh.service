@@ -1,16 +1,22 @@
 [Unit]
 Description=gittr SEO Nostr repo index snapshot refresh (daily)
 Documentation=file:///opt/ngit/docs/SEO.md
-After=network-online.target gittr-frontend.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Override in /etc/default/gittr-seo-repo-index-refresh if the app listens elsewhere.
-Environment=GITTR_SEO_REPO_INDEX_URL=http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index?refresh=1
+# Must match Next UI cwd so data/nostr-seo-repos-snapshot.json lands next to the app.
+WorkingDirectory=/opt/ngit/ui
 EnvironmentFile=-/etc/default/gittr-seo-repo-index-refresh
-# Discovery can take a few minutes against many GRASP relays.
-ExecStart=/usr/bin/curl -fsS -o /tmp/gittr-seo-repo-index-refresh.json --connect-timeout 15 --max-time 300 "${GITTR_SEO_REPO_INDEX_URL}"
+# Own process (tsx) — does NOT curl live Next. Source relay env from ui/.env.local.
+ExecStart=/bin/bash -c 'set -euo pipefail; set -a; [ -f /opt/ngit/ui/.env.local ] && . /opt/ngit/ui/.env.local; set +a; exec /usr/bin/npx --yes tsx /opt/ngit/scripts/refresh-seo-repo-index.mts'
+# Cap so a bad discovery day cannot wedge the whole 4 Gi host.
+MemoryMax=1500M
+Nice=10
+TimeoutStartSec=15min
+# Server-only mirror for lab agents (same folder as /lab snapshot HTML) — not served by gittr UI.
+ExecStartPost=/bin/bash -c 'mkdir -p /opt/ngit/data/lab-snapshot && SRC=/opt/ngit/ui/data/nostr-seo-repos-snapshot.json && DEST=/opt/ngit/data/lab-snapshot/nostr-seo-repos-snapshot.json && if [[ -f "$SRC" ]]; then cp -a "$SRC" "$DEST" && chmod 0644 "$DEST"; fi'
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gittr-seo-repo-index-refresh

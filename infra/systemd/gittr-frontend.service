@@ -1,0 +1,24 @@
+[Unit]
+Description=gittr Frontend (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ngit/ui
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+# 3.7 Gi hosts: restart Next before it wedges the whole box (~2.3 Gi RSS was fatal).
+MemoryHigh=1800M
+MemoryMax=2500M
+OOMPolicy=stop
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=2048
+Environment="GIT_NOSTR_BRIDGE_REPOS_DIR=/home/git-nostr/git-nostr-repositories"
+Environment="HOME=/root"
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
