@@ -68,6 +68,7 @@ export default function NewPullRequestPage({
   const {
     pubkey: currentUserPubkey,
     publish,
+    subscribe,
     defaultRelays,
     remoteSigner,
   } = useNostrContext();
@@ -570,9 +571,8 @@ export default function NewPullRequestPage({
           const { getGraspServers, isGraspServer } = await import(
             "@/lib/utils/grasp-servers"
           );
-          const { subscribe } = await import("@/lib/nostr/NostrContext").then(
-            (m) => ({ subscribe: m.useNostrContext().subscribe })
-          );
+          // Use subscribe from the hook at render time — never call useNostrContext()
+          // inside async handlers (React #321 Invalid hook call).
 
           // Get user's GRASP list (non-blocking, with timeout)
           const defaultGraspRelays = getGraspServers(defaultRelays);

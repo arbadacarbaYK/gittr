@@ -18471,6 +18471,90 @@ export function RepoCodePage() {
                               }
 
                               try {
+                                // Owners / write-access: apply locally like Upload /
+                                // New file / Delete. Non-owners still open a PR.
+                                if (isOwner) {
+                                  const overrides = {
+                                    ...loadRepoOverrides(
+                                      resolvedParams.entity,
+                                      resolvedParams.repo
+                                    ),
+                                    [selectedFile]: after,
+                                  };
+                                  saveRepoOverrides(
+                                    resolvedParams.entity,
+                                    resolvedParams.repo,
+                                    overrides
+                                  );
+                                  try {
+                                    const storageRepo = resolveRepoStorageAlias(
+                                      resolvedParams.entity,
+                                      resolvedParams.repo
+                                    );
+                                    for (const slug of Array.from(
+                                      new Set([
+                                        storageRepo,
+                                        resolvedParams.repo,
+                                      ])
+                                    )) {
+                                      const indexed = loadRepoFiles(
+                                        resolvedParams.entity,
+                                        slug
+                                      );
+                                      if (!indexed.length) continue;
+                                      const next = indexed.map((f) =>
+                                        f.path === selectedFile
+                                          ? { ...f, size: after.length }
+                                          : f
+                                      );
+                                      saveRepoFiles(
+                                        resolvedParams.entity,
+                                        slug,
+                                        next
+                                      );
+                                    }
+                                  } catch (indexErr) {
+                                    console.warn(
+                                      "[Edit] Failed to update local file index:",
+                                      indexErr
+                                    );
+                                  }
+                                  const isReadme =
+                                    /(^|\/)readme(\.(md|txt|rst))?$/i.test(
+                                      selectedFile
+                                    );
+                                  if (isReadme) {
+                                    try {
+                                      syncReadmeTextIntoRepoFiles(
+                                        resolvedParams.entity,
+                                        resolvedParams.repo,
+                                        after
+                                      );
+                                    } catch (readmeErr) {
+                                      console.warn(
+                                        "[Edit] Failed to sync README into files:",
+                                        readmeErr
+                                      );
+                                    }
+                                  }
+                                  markRepoAsEdited(
+                                    resolvedParams.repo,
+                                    resolvedParams.entity
+                                  );
+                                  setRepoData((prev: any) =>
+                                    prev
+                                      ? { ...prev, hasUnpushedEdits: true }
+                                      : prev
+                                  );
+                                  setFileContent(after);
+                                  setProposeEdit(false);
+                                  setProposedContent("");
+                                  alert(
+                                    "Saved locally.\n\nUse Push to Nostr so everyone sees this on the bridge and relays."
+                                  );
+                                  return;
+                                }
+
                                 const { addPendingEdit } = await import(
                                   "@/lib/pending-changes"
                                 );
@@ -18500,7 +18584,7 @@ export function RepoCodePage() {
                               }
                             }}
                           >
-                            Create Pull Request
+                            {isOwner ? "Save changes" : "Create Pull Request"}
                           </button>
                           <button
                             className="px-3 py-1 border border-gray-500 bg-gray-700 rounded"

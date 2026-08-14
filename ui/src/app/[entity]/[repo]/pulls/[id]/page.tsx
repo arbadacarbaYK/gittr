@@ -1,6 +1,13 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +159,9 @@ export default function PRDetailPage({
   const { subscribe } = useNostrContext();
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [showConflictModal, setShowConflictModal] = useState(false);
+  /** After conflict resolve: use these files and skip re-detect (avoids sticky loop). */
+  const mergeFilesOverrideRef = useRef<ChangedFile[] | null>(null);
+  const skipConflictCheckRef = useRef(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
   const [bountyPaymentStatus, setBountyPaymentStatus] = useState<
@@ -686,7 +696,7 @@ export default function PRDetailPage({
         resolvedParams.repo
       );
 
-      const changedFiles: ChangedFile[] =
+      const initialChangedFiles: ChangedFile[] =
         pr.changedFiles ||
         (pr.path
           ? [
@@ -699,6 +709,14 @@ export default function PRDetailPage({
             ]
           : []);
 
+      // Prefer files from a just-resolved conflict pass (React state may lag).
+      const changedFiles: ChangedFile[] =
+        mergeFilesOverrideRef.current &&
+        mergeFilesOverrideRef.current.length > 0
+          ? mergeFilesOverrideRef.current
+          : initialChangedFiles;
+      mergeFilesOverrideRef.current = null;
+
       // Get current file state from overrides (expand IndexedDB pointers)
       const baseFiles: Record<string, string> = {};
 
@@ -710,26 +728,29 @@ export default function PRDetailPage({
           overrideValue !== ""
         ) {
           baseFiles[file.path] = overrideValue;
-        } else if (repo?.sourceUrl && repo?.files) {
-          baseFiles[file.path] = file.before || "";
         } else {
-          baseFiles[file.path] = "";
+          // Forge and Nostr-only: use PR "before" as tip baseline when we have
+          // no local override. Empty "" made every Nostr-only edit look conflicting.
+          baseFiles[file.path] = file.before || "";
         }
       }
 
-      // Detect conflicts
-      const conflictResult = detectConflicts(
-        changedFiles,
-        baseFiles,
-        pr.baseBranch || "main"
-      );
+      // Detect conflicts (skip once after user already resolved in the modal)
+      if (!skipConflictCheckRef.current) {
+        const conflictResult = detectConflicts(
+          changedFiles,
+          baseFiles,
+          pr.baseBranch || "main"
+        );
 
-      if (conflictResult.hasConflicts) {
-        setMerging(false);
-        setConflicts(conflictResult.conflicts);
-        setShowConflictModal(true);
-        return;
+        if (conflictResult.hasConflicts) {
+          setMerging(false);
+          setConflicts(conflictResult.conflicts);
+          setShowConflictModal(true);
+          return;
+        }
       }
+      skipConflictCheckRef.current = false;
 
       // Continue with merge (no conflicts)
 
@@ -1659,40 +1680,33 @@ export default function PRDetailPage({
       setShowConflictModal(false);
 
       try {
-        const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName<StoredRepo>(
-          repos,
-          resolvedParams.entity,
-          resolvedParams.repo
-        );
-        const overrides = loadRepoOverrides(
-          resolvedParams.entity,
-          resolvedParams.repo
-        );
-
         const changedFiles: ChangedFile[] = pr?.changedFiles || [];
 
-        // Apply resolved conflicts to PR's changedFiles
+        // Apply resolved conflicts to PR's changedFiles.
+        // Align `before` with the tip that was current when the conflict was
+        // detected so a retry does not re-flag the same edit-edit conflict.
         const updatedChangedFiles = changedFiles.map((file) => {
           const conflict = resolvedConflicts.find((c) => c.path === file.path);
           if (!conflict) return file;
 
           const resolution = resolutions[conflict.path];
+          const baseTip =
+            conflict.baseContent !== undefined ? conflict.baseContent : "";
           if (
             typeof resolution === "string" &&
             resolution !== "pr" &&
             resolution !== "base"
           ) {
-            return { ...file, after: resolution };
+            return { ...file, before: baseTip, after: resolution };
           } else if (resolution === "pr") {
-            return file; // Keep PR version
+            return { ...file, before: baseTip }; // Keep PR after; tip matches before
           } else if (resolution === "base") {
-            return { ...file, after: conflict.baseContent }; // Use base version
+            return { ...file, before: baseTip, after: baseTip };
           }
           return file;
         });
 
-        // Update PR with resolved conflicts
+        // Update PR with resolved conflicts in localStorage + React state
         if (pr) {
           const prsKey = getRepoStorageKey(
             "gittr_prs",
@@ -1705,41 +1719,27 @@ export default function PRDetailPage({
           );
           localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
 
-          // Update PR state with resolved conflicts
           const updatedPR = { ...pr, changedFiles: updatedChangedFiles };
           setPR(updatedPR);
-
-          // Also update overrides to reflect resolved conflicts
-          const overridesKey = `gittr_overrides__${normalizeEntityForStorage(
-            resolvedParams.entity
-          )}__${resolvedParams.repo}`;
-          const currentOverrides = JSON.parse(
-            localStorage.getItem(overridesKey) || "{}"
-          );
-          updatedChangedFiles.forEach((file: ChangedFile) => {
-            if (file.status === "modified" || file.status === "added") {
-              currentOverrides[file.path] = file.after || "";
-            } else if (file.status === "deleted") {
-              delete currentOverrides[file.path];
-            }
-          });
-          localStorage.setItem(overridesKey, JSON.stringify(currentOverrides));
         }
 
-        // Retry merge with resolved conflicts (wait for state update)
+        // Do NOT write overrides yet — handleMerge applies them on success.
+        // Hand the resolved files to merge and skip a second conflict pass.
+        mergeFilesOverrideRef.current = updatedChangedFiles;
+        skipConflictCheckRef.current = true;
         setMerging(false);
-        // Use a longer timeout to ensure state is updated
         setTimeout(() => {
-          setMerging(true);
-          handleMerge();
-        }, 200);
+          void handleMerge();
+        }, 50);
       } catch (error) {
         console.error("Failed to resolve conflicts:", error);
+        skipConflictCheckRef.current = false;
+        mergeFilesOverrideRef.current = null;
         setMerging(false);
         alert("Failed to resolve conflicts: " + (error as Error).message);
       }
     },
-    [pr, params, handleMerge]
+    [pr, handleMerge, resolvedParams.entity, resolvedParams.repo]
   );
 
   if (loading) {
