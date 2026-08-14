@@ -1763,7 +1763,7 @@ export default function PRDetailPage({
     if (
       closing &&
       !confirm(
-        "Close this pull request without merging?\n\nYour file changes will not be applied. You can reopen later."
+        "Close this pull request without merging?\n\nFile changes will not be applied. Only the PR status is updated on Nostr — no Push to Nostr / repo tip push is required."
       )
     ) {
       return;
@@ -1984,38 +1984,85 @@ export default function PRDetailPage({
             </Link>
           </div>
         </div>
-        <div className="ml-4 flex flex-col sm:flex-row gap-2 shrink-0">
-          {canMerge && pr.status === "open" && (
-            <Button
-              variant="default"
-              onClick={async () => {
-                setShowMergeModal(true);
-                await checkMergePublishPreflight();
-                // Check wallet balance if there's a bounty
-                if (
-                  linkedIssue?.bountyAmount &&
-                  (linkedIssue?.bountyWithdrawId ||
-                    linkedIssue?.bountyWithdrawUrl)
-                ) {
-                  await checkWalletBalance();
-                }
-              }}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <GitMerge className="mr-2 h-4 w-4" />
-              Merge pull request
-            </Button>
+        <div className="ml-4 flex flex-col gap-2 shrink-0 max-w-xs sm:max-w-sm">
+          <div className="flex flex-col sm:flex-row gap-2">
+            {canMerge && pr.status === "open" && (
+              <Button
+                variant="default"
+                onClick={async () => {
+                  setShowMergeModal(true);
+                  await checkMergePublishPreflight();
+                  // Check wallet balance if there's a bounty
+                  if (
+                    linkedIssue?.bountyAmount &&
+                    (linkedIssue?.bountyWithdrawId ||
+                      linkedIssue?.bountyWithdrawUrl)
+                  ) {
+                    await checkWalletBalance();
+                  }
+                }}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <GitMerge className="mr-2 h-4 w-4" />
+                Merge pull request
+              </Button>
+            )}
+            {canCloseOrReopenPr && pr.status === "open" && (
+              <Button
+                variant="outline"
+                onClick={() => void handleCloseOrReopenPr()}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Close pull request
+              </Button>
+            )}
+            {canCloseOrReopenPr && pr.status === "closed" && (
+              <Button
+                variant="outline"
+                onClick={() => void handleCloseOrReopenPr()}
+              >
+                Reopen pull request
+              </Button>
+            )}
+          </div>
+          {pr.status === "open" && (canMerge || canCloseOrReopenPr) && (
+            <div className="text-xs text-gray-400 space-y-1.5 leading-relaxed">
+              {canMerge && (
+                <p>
+                  <span className="text-gray-300 font-medium">Merge</span>{" "}
+                  applies the PR files and pushes the updated tip to Nostr /
+                  the bridge. Other clients see it after that — you do{" "}
+                  <strong className="text-gray-300 font-medium">
+                    not
+                  </strong>{" "}
+                  need a separate Code-tab{" "}
+                  <strong className="text-gray-300 font-medium">
+                    Push to Nostr
+                  </strong>
+                  .
+                </p>
+              )}
+              {canCloseOrReopenPr && (
+                <p>
+                  <span className="text-gray-300 font-medium">Close</span>{" "}
+                  only marks the PR closed (status on Nostr). It does{" "}
+                  <strong className="text-gray-300 font-medium">
+                    not
+                  </strong>{" "}
+                  change files and does{" "}
+                  <strong className="text-gray-300 font-medium">
+                    not
+                  </strong>{" "}
+                  require Push to Nostr.
+                </p>
+              )}
+            </div>
           )}
-          {canCloseOrReopenPr && pr.status === "open" && (
-            <Button variant="outline" onClick={() => void handleCloseOrReopenPr()}>
-              <X className="mr-2 h-4 w-4" />
-              Close pull request
-            </Button>
-          )}
-          {canCloseOrReopenPr && pr.status === "closed" && (
-            <Button variant="outline" onClick={() => void handleCloseOrReopenPr()}>
-              Reopen pull request
-            </Button>
+          {pr.status === "closed" && canCloseOrReopenPr && (
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Reopen sets the PR back to open (status only). Still no file
+              changes and no Push to Nostr.
+            </p>
           )}
         </div>
       </div>
@@ -2047,8 +2094,8 @@ export default function PRDetailPage({
                 }`}
               >
                 {mergePublishReady
-                  ? `Will sign and publish merge status to Nostr (${mergePublishReason}).`
-                  : `Local-only merge risk: ${mergePublishReason}.`}
+                  ? `Will sign and publish merge status to Nostr (${mergePublishReason}). Merge also pushes the repo tip so others see the files — no separate Push to Nostr needed afterward.`
+                  : `Local-only merge risk: ${mergePublishReason}. If publish is unavailable, file changes may stay local until you Push to Nostr on the Code tab.`}
               </div>
 
               {/* Bounty Warning - Prominent */}

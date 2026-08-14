@@ -2952,11 +2952,39 @@ export default function HelpPage() {
         {/* Collaboration */}
         <HelpSection id="collaboration" title={<>Collaboration</>}>
           <div className="space-y-2">
-            <HelpTopic title={<>Pull Requests</>}>
+            <HelpTopic id="pull-requests" title={<>Pull Requests</>}>
               <p>
                 Create PRs to propose changes. Reviewers can approve, request
-                changes, or merge PRs.
+                changes, or merge PRs. Repo owners editing their own Nostr /
+                bridge repos on the Code tab can{" "}
+                <strong>Save changes</strong> locally and use{" "}
+                <strong>Push to Nostr</strong> — they do not need a PR.
               </p>
+
+              <div className="mt-3 p-3 bg-emerald-900/20 border border-emerald-600/30 rounded">
+                <p className="text-sm font-semibold text-emerald-200 mb-2">
+                  Merge vs Close (what hits Nostr)
+                </p>
+                <ul className="text-sm text-gray-300 space-y-2 list-disc list-inside ml-2">
+                  <li>
+                    <strong>Merge:</strong> applies the PR files and{" "}
+                    <strong>pushes the updated tip</strong> to Nostr / the
+                    bridge (same idea as Code-tab Push to Nostr). Other
+                    clients can see the new files after merge. You do{" "}
+                    <strong>not</strong> need an extra Push to Nostr afterward
+                    when that push succeeds.
+                  </li>
+                  <li>
+                    <strong>Close (without merging):</strong> only marks the PR
+                    closed (NIP-34 status). It does <strong>not</strong> change
+                    files and does <strong>not</strong> require Push to Nostr.
+                    Use this to drop an unwanted PR.
+                  </li>
+                  <li>
+                    <strong>Reopen:</strong> status only — still no file push.
+                  </li>
+                </ul>
+              </div>
 
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm font-semibold text-blue-200 mb-2">
