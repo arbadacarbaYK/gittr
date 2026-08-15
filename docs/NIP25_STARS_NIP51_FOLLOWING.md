@@ -7,7 +7,15 @@ This document explains how to implement repository starring and following using 
 Following the [Nostr community discussion](https://github.com/nostr-protocol/nips/pull/880), we use:
 
 - **NIP-25 (Kind 7)** for repository stars (reactions to Kind 30617 repository events), when enabled.
-- **NIP-51 (Kind 10018)** for **followed Git repositories** (standard list: full `a` tag set per publish), used by **Watch** with NIP-07 in the web UI.
+- **NIP-51 (Kind 10018)** for **followed Git repositories** (standard list: full `a` tag set per publish), used by **Watch** with NIP-07 or a ready remote signer in the web UI.
+
+- **Stars page (`/stars`):** Card icons use the same owner resolution as Explore (`getRepoOwnerPubkey` + kind-0 `picture`). Npub entities must decode to hex for both metadata fetch and display — looking up pictures only when `entity` is already hex left most cards as grey placeholders.
+- **Star** and **Watch** always react to clicks: logged-out users get a toast and are sent to `/login` (buttons are not silently `disabled`).
+- **Star** needs a resolved kind **30617** event id (from relays or Code-tab broadcast). While relays are still resolving, the button shows “Looking up…”.
+- **Remote signer (NIP-46 / Amber):** Star and Watch use the same `resolveNostrSigner({ waitForRemote: true })` path as Push. After hydrate, gittr warms bunker sockets then sends `sign_event` (it does **not** wait 25s for a silent reconnect `connect` ack — Amber often ignores that while still prompting on sign). Keep Amber open/unlocked when starring. If Amber never answers the sign request you get a clear timeout toast.
+- **NIP-07:** Works when there is **no** paired bunker session (extension owns `window.nostr`). With a stored NIP-46 session, gittr prefers Amber so the extension is not used for Star.
+- **GitHub** is a separate live/import stargazer count (GitHub icon) — it does not star on Nostr.
+- Branch tip (`?branch=`) does **not** affect starring; `main`↔`master` is only for file/tree loading.
 
 **Key Benefits:**
 

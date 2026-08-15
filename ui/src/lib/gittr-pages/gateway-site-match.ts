@@ -1,4 +1,4 @@
-import { getPagesHostname } from "@/lib/nsite/nsite-url";
+import { getPagesHostname } from "../nsite/nsite-url";
 
 /**
  * True when a gateway status row is this repo's named/root site.
@@ -10,12 +10,15 @@ export function gatewaySiteMatchesRepo(
   siteUrl: string | undefined | null,
   namedUrl: string,
   dTag: string,
-  pagesHost = "pages.gittr.space"
+  pagesHost = "pages.gittr.space",
+  extra?: { rootUrl?: string | null }
 ): boolean {
   const u = (siteUrl || "").replace(/\/$/, "").toLowerCase();
   if (!u) return false;
   const want = namedUrl.replace(/\/$/, "").toLowerCase();
   if (want && u === want) return true;
+  const rootWant = (extra?.rootUrl || "").replace(/\/$/, "").toLowerCase();
+  if (rootWant && u === rootWant) return true;
 
   const d = (dTag || "").trim().toLowerCase();
   if (!d) return false;

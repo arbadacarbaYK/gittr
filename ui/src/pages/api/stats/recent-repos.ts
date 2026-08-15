@@ -1,5 +1,5 @@
 import {
-  PLATFORM_STATS_RELAYS,
+  PROFILE_REPOS_RELAYS,
   withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
@@ -35,8 +35,8 @@ export default async function handler(
 
   try {
     if (!inflight) {
-      inflight = withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-        getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12)
+      inflight = withRelayPoolSubscribe(PROFILE_REPOS_RELAYS, (subscribe) =>
+        getLiveRecentReposFromNostr(subscribe, PROFILE_REPOS_RELAYS, 12)
       ).finally(() => {
         inflight = null;
       });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  filterBunkerBlockedRelays,
   isBunkerMainPoolBlocked,
   listBunkerMainPoolBlockedHosts,
   setBunkerMainPoolBlockedHosts,
@@ -23,5 +24,33 @@ describe("bunker-main-pool-guard", () => {
     setBunkerMainPoolBlockedHosts(["wss://nos.lol"]);
     setBunkerMainPoolBlockedHosts(null);
     expect(isBunkerMainPoolBlocked("wss://nos.lol")).toBe(false);
+  });
+
+  it("strips blocked hosts from subscribe/publish relay lists", () => {
+    setBunkerMainPoolBlockedHosts([
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://relay.damus.io",
+    ]);
+    expect(
+      filterBunkerBlockedRelays([
+        "wss://relay.primal.net/",
+        "wss://relay.gittr.space",
+        "wss://nos.lol",
+        "wss://eden.nostr.land",
+      ])
+    ).toEqual(["wss://relay.gittr.space", "wss://eden.nostr.land"]);
+  });
+
+  it("returns the original list when nothing is blocked", () => {
+    const relays = ["wss://relay.primal.net", "wss://nos.lol"];
+    expect(filterBunkerBlockedRelays(relays)).toEqual(relays);
+  });
+
+  it("returns empty when every relay is a bunker host", () => {
+    setBunkerMainPoolBlockedHosts(["wss://relay.primal.net", "wss://nos.lol"]);
+    expect(
+      filterBunkerBlockedRelays(["wss://relay.primal.net", "wss://nos.lol/"])
+    ).toEqual([]);
   });
 });

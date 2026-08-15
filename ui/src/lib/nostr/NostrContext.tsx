@@ -23,7 +23,10 @@ import { nip19 } from "nostr-tools";
 
 import useLocalStorage from "../hooks/useLocalStorage";
 
-import { isBunkerMainPoolBlocked } from "./bunker-main-pool-guard";
+import {
+  filterBunkerBlockedRelays,
+  isBunkerMainPoolBlocked,
+} from "./bunker-main-pool-guard";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 import { getDefaultRelayUrls } from "./relay-env";
 import {
@@ -133,10 +136,16 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       options: SubscriptionOptions = {}
     ) => {
       // nostr-relaypool disallows using maxDelayMs and onEose together.
+      // Strip Amber bunker hosts — subscribe → addOrGetRelay bypasses addRelay
+      // and would re-steal sockets right after freeMainPoolBunkerCollisions.
+      const safeRelays = filterBunkerBlockedRelays(relays);
+      if (safeRelays.length === 0) {
+        return () => {};
+      }
       const safeMaxDelayMs = onEose ? undefined : maxDelayms;
       const unsub = relayPool.subscribe(
         filters,
-        relays,
+        safeRelays,
         onEvent,
         safeMaxDelayMs,
         onEose,
@@ -193,7 +202,9 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     if (remoteSignerRef.current) return; // Already initialized
 
     const publishFn = (event: any, relays: string[]) => {
-      relayPool.publish(event, relays);
+      const safeRelays = filterBunkerBlockedRelays(relays);
+      if (safeRelays.length === 0) return;
+      relayPool.publish(event, safeRelays);
     };
 
     const subscribeFn = (
@@ -204,11 +215,15 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       onEose?: (relayUrl: string, minCreatedAt: number) => void,
       options?: any
     ) => {
-      // Keep behavior aligned with main subscribe wrapper.
+      // Keep behavior aligned with main subscribe wrapper (strip bunker hosts).
+      const safeRelays = filterBunkerBlockedRelays(relays);
+      if (safeRelays.length === 0) {
+        return () => {};
+      }
       const safeMaxDelayMs = onEose ? undefined : maxDelayms;
       return relayPool.subscribe(
         filters,
-        relays,
+        safeRelays,
         onEvent,
         safeMaxDelayMs,
         onEose,
@@ -319,22 +334,29 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   }, [removePubKey]);
 
   const publish = useCallback((event: any, relays: string[]) => {
+    const safeRelays = filterBunkerBlockedRelays(relays);
     console.log(`📤 [NostrContext] Publishing event:`, {
       eventId: event.id,
       kind: event.kind,
       pubkey: event.pubkey ? `${event.pubkey.substring(0, 8)}...` : "none",
-      relays: relays.length,
-      relayList: relays,
+      relays: safeRelays.length,
+      relayList: safeRelays,
       tagsCount: event.tags?.length || 0,
       cloneTags:
         event.tags
           ?.filter((t: any[]) => Array.isArray(t) && t[0] === "clone")
           .map((t: any[]) => t[1]) || [],
     });
+    if (safeRelays.length === 0) {
+      console.warn(
+        "[NostrContext] Publish skipped — all relays are Amber bunker hosts"
+      );
+      return;
+    }
     try {
-      relayPool.publish(event, relays);
+      relayPool.publish(event, safeRelays);
       console.log(
-        `✅ [NostrContext] Event published to relayPool (${relays.length} relays)`
+        `✅ [NostrContext] Event published to relayPool (${safeRelays.length} relays)`
       );
     } catch (error) {
       console.error(`❌ [NostrContext] Failed to publish event:`, error);

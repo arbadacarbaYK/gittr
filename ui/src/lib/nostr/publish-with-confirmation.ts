@@ -184,7 +184,11 @@ export function persistRepoRefsMetadata(
       (r: any) =>
         (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
     );
-    if (repoIndex < 0) return null;
+    // Foreign / explore repos may not be in gittr_repos yet — still return
+    // branch lists so the Code UI is not stuck on "0 branches".
+    if (repoIndex < 0) {
+      return { branches, defaultBranch };
+    }
 
     const existing = repos[repoIndex] as StoredRepo;
     repos[repoIndex] = {
@@ -197,7 +201,7 @@ export function persistRepoRefsMetadata(
     return { branches, defaultBranch };
   } catch (error) {
     console.error("Failed to persist repo refs metadata:", error);
-    return null;
+    return { branches, defaultBranch };
   }
 }
 

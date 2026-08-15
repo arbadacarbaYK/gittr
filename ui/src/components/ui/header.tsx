@@ -88,10 +88,6 @@ export const DropdownItems = [
     href: "/repositories",
   },
   {
-    title: "Your organizations",
-    href: "/organizations",
-  },
-  {
     title: "Your projects",
     href: "/projects",
   },

@@ -6,7 +6,7 @@
  * (localhost, loopback, private LAN, *.local), hide it from discovery.
  * Announces with zero clone tags stay visible (legacy / GRASP-only).
  */
-import { isHexPathGitHost } from "@/lib/utils/grasp-servers";
+import { isHexPathGitHost } from "../utils/grasp-servers";
 
 /**
  * NIP-34 `d` must be a bare repo identifier (e.g. "gamestr"), not
@@ -333,7 +333,7 @@ export function pickUserFacingCloneUrl(opts: {
   add(opts.sourceUrl || undefined);
   for (const u of clones) add(u);
 
-  // 1) Upstream forge HTTPS
+  // 1) Upstream forge HTTPS — GitHub/GitLab/Codeberg always beat gittr mirrors
   for (const u of candidates) {
     if (
       isUpstreamForgeUrl(u) &&
@@ -347,7 +347,21 @@ export function pickUserFacingCloneUrl(opts: {
     }
   }
 
-  // 2) Any HTTPS from the announce (npub-path GRASP / gittr — keep as published)
+  const hasForge = candidates.some(isUpstreamForgeUrl);
+
+  // 2) Nostr-only: if Push listed git.gittr.space among several clones, copy that
+  if (!hasForge) {
+    for (const u of candidates) {
+      if (
+        hostnameOfCloneUrl(u) === "git.gittr.space" &&
+        (u.startsWith("http://") || u.startsWith("https://"))
+      ) {
+        return ensureDotGit(u);
+      }
+    }
+  }
+
+  // 3) Any HTTPS from the announce (npub-path GRASP / gittr — keep as published)
   for (const u of candidates) {
     if (u.startsWith("http://") || u.startsWith("https://")) {
       return ensureDotGit(u);

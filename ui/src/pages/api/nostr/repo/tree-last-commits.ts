@@ -3,7 +3,7 @@
  * GET /api/nostr/repo/tree-last-commits?ownerPubkey&repo&branch&path=
  */
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
-import { detectBareRepoDefaultBranch } from "@/lib/git/bare-repo-default-branch";
+import { resolveBareRepoBranch } from "@/lib/git/bare-repo-default-branch";
 import {
   listBareRepoShallow,
   sanitizeRepoTreePath,
@@ -164,8 +164,8 @@ export default async function handler(
     return res.status(404).json({ error: "Repository not found on bridge" });
   }
 
-  let branch = branchInput || (await detectBareRepoDefaultBranch(repoPath));
-  if (!branch) branch = "main";
+  const branch =
+    (await resolveBareRepoBranch(repoPath, branchInput)) || "main";
 
   const cacheKey = `${ownerPubkey}:${resolvedRepo.repoName}:${branch}:${folderPath}`;
   const cached = cache.get(cacheKey);

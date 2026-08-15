@@ -24,7 +24,7 @@
 
 **Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
 
-**Follow-up (Aug 2026)**: Do not treat *all* `KNOWN_GRASP_DOMAINS` URLs as inferred guesses when picking Git Server. If `git.gittr.space` is on the 30617 `clone` tags (normal after Push from gittr), it must win over shakespeare/ngit mirrors. Only strip inferred URLs that are **not** on the event.
+**Follow-up (Aug 2026)**: Do not treat *all* `KNOWN_GRASP_DOMAINS` URLs as inferred guesses when picking Git Server. If `git.gittr.space` is on the 30617 `clone` tags of a **Nostr-only** repo (normal after Push from gittr), it must win over shakespeare/ngit mirrors. That bump does **not** apply when the event has a GitHub/GitLab/Codeberg `source`. Only strip inferred URLs that are **not** on the event. Never invent gittr if the event never listed it.
 
 ## File tree last-commit dates (Aug 2026)
 

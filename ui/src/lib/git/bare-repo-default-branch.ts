@@ -3,6 +3,47 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+/**
+ * Prefer the requested tip, then main↔master, then bare HEAD / newest head.
+ * Same policy as `/api/nostr/repo/files` so tree-last-commits does not 500 when
+ * the UI still says `main` but the mirror only has `master` (e.g. wok).
+ */
+export async function resolveBareRepoBranch(
+  repoPath: string,
+  requested?: string | null
+): Promise<string | null> {
+  const branchStr = (requested || "").trim();
+  const candidates = [
+    ...(branchStr ? [branchStr] : []),
+    ...(branchStr === "main"
+      ? ["master"]
+      : branchStr === "master"
+        ? ["main"]
+        : branchStr
+          ? ["main", "master"]
+          : ["main", "master"]),
+  ];
+  const detectedDefault = await detectBareRepoDefaultBranch(repoPath);
+  if (detectedDefault && !candidates.includes(detectedDefault)) {
+    candidates.push(detectedDefault);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      await execAsync(
+        `git --git-dir="${repoPath}" rev-parse --verify ${JSON.stringify(
+          candidate
+        )}^{commit}`,
+        { timeout: 5000 }
+      );
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
+  return detectedDefault;
+}
+
 /** Resolve a branch name that exists on the bare repo (HEAD, first heads/*, etc.). */
 export async function detectBareRepoDefaultBranch(
   repoPath: string

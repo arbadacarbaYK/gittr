@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   nestedFilePathCount,
+  resolveSharedRepoBranch,
   shouldApplyFetchedFileTree,
 } from "./repo-file-tree-branch";
 
@@ -15,6 +16,39 @@ describe("nestedFilePathCount", () => {
         { type: "file", path: "scripts/b.sh" },
       ])
     ).toBe(2);
+  });
+});
+
+describe("resolveSharedRepoBranch", () => {
+  const params = (branch: string | null) => ({
+    get: (name: string) => (name === "branch" ? branch : null),
+  });
+
+  it("keeps URL tip when it exists on the mirror", () => {
+    expect(
+      resolveSharedRepoBranch(params("develop"), {
+        defaultBranch: "main",
+        branches: ["main", "develop"],
+      })
+    ).toBe("develop");
+  });
+
+  it("maps ?branch=main to master when only master exists", () => {
+    expect(
+      resolveSharedRepoBranch(params("main"), {
+        defaultBranch: "master",
+        branches: ["master", "release/0.3.0"],
+      })
+    ).toBe("master");
+  });
+
+  it("keeps URL tip when branch list is still unknown", () => {
+    expect(
+      resolveSharedRepoBranch(params("main"), {
+        defaultBranch: "master",
+        branches: [],
+      })
+    ).toBe("main");
   });
 });
 

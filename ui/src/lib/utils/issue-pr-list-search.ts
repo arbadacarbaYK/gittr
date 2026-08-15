@@ -165,7 +165,7 @@ export function filterListBySearchQuery<T extends ListSearchableItem>(
   return sortListItems(out, parsed.sort || "newest");
 }
 
-function sortListItems<T extends ListSearchableItem>(
+export function sortListItems<T extends ListSearchableItem>(
   items: T[],
   sort: "newest" | "oldest" | "updated"
 ): T[] {

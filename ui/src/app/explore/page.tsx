@@ -2383,14 +2383,15 @@ function ExplorePageContent() {
     // This ensures repos with recent updates appear first
     // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
     return reposWithEntity.slice().sort((a, b) => {
-      // Get latest event date in milliseconds for comparison
-      const aLatest = (a as any).lastNostrEventCreatedAt
-        ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-        : a.updatedAt || a.createdAt || 0;
-      const bLatest = (b as any).lastNostrEventCreatedAt
-        ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-        : b.updatedAt || b.createdAt || 0;
-      return bLatest - aLatest; // Newest first
+      const toMs = (r: (typeof reposWithEntity)[number]) => {
+        const nostrAt = Number((r as any).lastNostrEventCreatedAt);
+        if (Number.isFinite(nostrAt) && nostrAt > 0) {
+          // Seconds (~1.7e9) vs accidental milliseconds (~1.7e12)
+          return nostrAt > 1e12 ? nostrAt : nostrAt * 1000;
+        }
+        return r.updatedAt || r.createdAt || 0;
+      };
+      return toMs(b) - toMs(a);
     });
   }, [repos]);
 

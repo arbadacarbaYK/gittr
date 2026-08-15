@@ -98,8 +98,8 @@ Optional: kick the same oneshot after other indexing (`systemctl start gittr-seo
 
 The **Recent repositories** strip is **not** taken from the 3h leaderboard snapshot. It uses a separate endpoint so pushes show up without waiting for the heavy platform stats job:
 
-- **`GET /api/stats/recent-repos`** — queries Nostr relays for the latest kind **30617/30618** announcements, sorted by `created_at`, returns up to 12 repos.
-- Soft-deleted repos (`content`/`tags` with `deleted:true`, see `repo-deleted.ts`) are excluded — a delete republish must not appear as a “new” recent repo.
+- **`GET /api/stats/recent-repos`** — queries **`PROFILE_REPOS_RELAYS`** for kind **30617** announcements, sorts by announcement `created_at`, returns up to 12 repos. Same “newest announced” idea as `/explore` (not kind **30618** push state — those used to bury new repos behind busy ones). Relays include ngit / Shakespeare / NostrHub, not only the slim stats set.
+- Soft-deleted repos (`content`/`tags` with `deleted:true`, see `repo-deleted.ts`) are excluded — a delete republish must not appear as a “new” recent repo. Explore also hides those; leftover SEO rows without a live tombstone are not “deleted showing by accident,” they are a different catalog.
 - **Server cache ~45s** (`Cache-Control` + in-memory) so the homepage can poll without hammering relays.
 - The UI shows this list for **both logged-in and logged-out** users (do not substitute the visitor’s localStorage sync — that caused mismatched homepage lists).
 - Warm after deploy: `curl -sS https://YOUR_DOMAIN/api/stats/recent-repos | head` (first call can take several seconds while relays respond).
@@ -109,6 +109,16 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 - **Logged out:** shared platform feed from the leaderboard snapshot / live Nostr scan (commits, PRs, issues, repo creates across the network).
 - **Logged in:** only activity on **repos you own or can write** (local `gittr_activities` merged with the platform feed filtered by owner/access). Title becomes **Your recent activity**.
 - Cards deep-link to the matching tab (`/pulls`, `/issues`, `/commits`, `/releases`, or a specific PR/issue id when known) and use a hard navigation to avoid soft-router crashes into heavy repo pages.
+
+### Global `/issues` and `/pulls` list controls
+
+The aggregate Issues and Pulls pages use real menus (not decorative GitHub placeholders):
+
+- **Source** — All repos / Hide forks / Forks only (uses `forkedFrom` on stored repos)
+- **Group** — Group by repository (collapsible sections) or Flat list
+- **Sort** — Recently updated / Newest / Oldest
+
+Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo** so fork noise can be collapsed.
 
 ### Profile repo list (logged-out visitors)
 
@@ -192,7 +202,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=1536` so a leaking Next process is restarted before it wedges a ~4 Gi host (symptoms: site slows, then Cloudflare 504 / `:3000` hang around ~1.5–2 Gi RSS).
+**Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=…` so a runaway Next process is restarted before it wedges the host. On ~4 Gi boxes use lower caps (~1.4/1.8 Gi); on ~15 Gi production the checked-in unit uses **3 Gi / 4 Gi**.
 
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
@@ -207,9 +217,9 @@ User=www-data
 WorkingDirectory=/opt/ngit/ui
 ExecStart=/usr/bin/npm start
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=1536
-MemoryHigh=1400M
-MemoryMax=1800M
+Environment=NODE_OPTIONS=--max-old-space-size=3072
+MemoryHigh=3G
+MemoryMax=4G
 OOMPolicy=stop
 Restart=always
 RestartSec=10
@@ -256,9 +266,9 @@ NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 
 `NEXT_PUBLIC_GIT_SERVER_URL` may be the **host only** (e.g. `https://git.gittr.space`). Announcements must still publish **full** clone URLs (`https://git…/<npub>/<repo>.git`). The UI expands host-only values in `buildUnsignedRepositoryEvent`; do not hand-publish bare hosts into kind 30617. On **My Repositories**, owners with only unusable clones (host-only / localhost) see a **Please republish** badge and can batch-republish (one Push + signatures per repo; nsec / NIP-07 / remote signer).
 
-**Push clone mirrors:** hosts from `GRASP_SERVERS_FOR_PUSHING` (env relays) plus the owner’s kind **10317** preferred GRASP list, merged host-deduped via `mergeGraspHostsForPush`. Exclusions in `GRASP_DOMAINS_EXCLUDED_FROM_PUSHING` (e.g. `git-01.uid.ovh`, `git.jb55.com`, `ngit-relay.nostrver.se` while unreachable) never get auto `clone` tags or sync waits — they stay in `KNOWN_GRASP_DOMAINS` for reading other people’s events. The sidebar **Git Server** label prefers `NEXT_PUBLIC_GIT_SERVER_URL` / `git.gittr.space` when that host is on the announcement’s `clone` tags — extra mirrors (shakespeare, ngit, …) stay in the Clone URL list for discoverability, they are not meant to replace the primary git host in that label.
+**Push clone mirrors:** hosts from `GRASP_SERVERS_FOR_PUSHING` (env relays) plus the owner’s kind **10317** preferred GRASP list, merged host-deduped via `mergeGraspHostsForPush`. Exclusions in `GRASP_DOMAINS_EXCLUDED_FROM_PUSHING` (e.g. `git-01.uid.ovh`, `git.jb55.com`, `ngit-relay.nostrver.se` while unreachable) never get auto `clone` tags or sync waits — they stay in `KNOWN_GRASP_DOMAINS` for reading other people’s events. The sidebar **Git Server** label prefers `NEXT_PUBLIC_GIT_SERVER_URL` / `git.gittr.space` only for **Nostr-only** repos when that host is on the announcement’s `clone` tags (so a gittr Push is not shown as ngit). Repos with a GitHub/GitLab/Codeberg `source` keep that forge as Git Server; extra mirrors stay in the Clone URL list.
 
-**Repo Links (docs section → 30617):** Simple rules — (1) Import/batch/refetch: GitHub `homepage` → docs link if present, else nothing. (2) Settings: user can add more docs links anytime; all show under Repository Links. (3) Nostr Pages: add a docs link only when the gateway lists the site (not invented). (4) Push publishes whatever is in `repo.links`. Never invent `owner.github.io` or `*.pages.gittr.space`. (5) NIP-34 `web` browse URLs from other forges (e.g. `gitworkshop.dev/…/relay…/repo`) are **not** shown as Documentation; Iris `git.iris.to` remains labeled **Iris Git**. Logo URLs are not published in `web`.
+**Repo Links (docs section → 30617):** Simple rules — (1) Import/batch/refetch: GitHub `homepage` → docs link if present, else nothing. (2) Settings: user can add more docs links anytime; all show under Repository Links. (3) Nostr Pages: add a docs link only when the gateway lists the site (not invented). (4) Push publishes whatever is in `repo.links`. Never invent `owner.github.io` or `*.pages.gittr.space`. (5) NIP-34 `web` browse URLs from other forges (e.g. `gitworkshop.dev/…/relay…/repo`, plain `github.com/owner/repo`, GitLab/Codeberg repo pages) are **not** shown as Documentation; Iris `git.iris.to` remains labeled **Iris Git**. Real Pages hosts (`*.github.io`, `*.gitlab.io`) still qualify. Logo URLs are not published in `web`.
 
 **Repo About (Settings → Description):** Owner text is authoritative. Saving Settings writes localStorage, publishes kind **30617** `description`, and notifies the Code page (`gittr:repos-updated`). GitHub mirror hydrate must not replace a non-placeholder About (stars/forks/activity still sync). See [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md).
 
@@ -309,7 +319,7 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 | `/opt/ngit/data/cve-bot-pending.json` | Leftover queue if ENABLED was off (`CVE_BOT_PENDING_PATH`) |
 | `/opt/ngit/data/cve-spoiler-dedup.json` | Spoiler RSS early-warning dedup (`CVE_SPOILER_DEDUP_PATH`) |
 | `/opt/ngit/data/cve-consent.json` | Legacy name — prefer notifications-consent |
-| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy). Served via `/api/lab/snapshot` with sanitizer that keeps **inline** map scripts + JSON data, strips external `script src`, blocks `connect-src`, iframe `sandbox="allow-scripts"` (no same-origin). Injected height `postMessage` so the frame grows with content (no inner scrollbar). |
+| `/opt/ngit/data/lab-snapshot/index.html` | Scrubbed security-lab dashboard HTML for `/lab` — push with `./scripts/push-lab-snapshot.sh` (not via full deploy). Served via `/api/lab/snapshot` with sanitizer that keeps **inline** map scripts + JSON data, strips external `script src`, blocks `connect-src`, iframe `sandbox="allow-scripts"` (no same-origin). Injected height `postMessage` so the frame grows with content (no inner scrollbar). Sanitizer strips snapshot `resize→fitCamera` and freezes late height reports so iframe auto-height / scroll-lock cannot reset map zoom. |
 | `/opt/ngit/data/lab-snapshot/nostr-seo-repos-snapshot.json` | Server-only copy of the daily SEO repo index (same bytes as `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`). Updated by `gittr-seo-repo-index-refresh.service` `ExecStartPost` for lab agents — not a public gittr API. |
 
 Gitignore covers `data/` and those filenames. Back up this tree with bridge secrets; restore only intentionally.
@@ -344,6 +354,7 @@ sed -i '/^CVE_BOT_SEND_PENDING=/d' /etc/default/gittr-cve-bot
 | Empty Code tab (GRASP) | [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md), `POST /api/nostr/repo/clone` |
 | Empty Code tab (home Freebox / NAS `clone[]`) | Same doc — `repo-files` runs on the **app host**; hostname must resolve/reach from Hetzner (LAN-only remotes stay empty until a public clone is published) |
 | Pages 502 on upload | nginx `proxy_read_timeout` on `/api/`; Blossom URL in env |
+| Mass `/api/*` 502 during deploy | Expected while `systemctl restart gittr-frontend` — nginx `Connection refused` to `:3000`. Avoid overlapping deploys; officecli-style “everything 502 then 429” often coincides with a restart + crawler storms on absurd nested `?path=` URLs (fixed by `isAbsurdRepoPath` + no root-README under nested folders — see [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md)) |
 
 ---
 

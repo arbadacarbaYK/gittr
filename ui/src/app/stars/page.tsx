@@ -8,10 +8,19 @@ import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { aggregateMyStarredRepoEventIds } from "@/lib/nostr/repo-stars";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import {
+  collectStarredOwnerPubkeys,
+  findMatchingLocalRepo,
+  resolveStarredRepoIcon,
+} from "@/lib/repos/starred-repo-icon";
+import {
+  getEntityDisplayName,
+  getRepoOwnerPubkey,
+} from "@/lib/utils/entity-resolver";
 
 import { Star } from "lucide-react";
 import Link from "next/link";
-import { type Event as NostrEvent, nip19 } from "nostr-tools";
+import { type Event as NostrEvent } from "nostr-tools";
 
 type StarredRepo = {
   slug: string;
@@ -22,6 +31,7 @@ type StarredRepo = {
   createdAt?: number;
   entityDisplayName?: string;
   logoUrl?: string;
+  ownerPubkey?: string;
 };
 
 export default function StarsPage() {
@@ -31,6 +41,7 @@ export default function StarsPage() {
   const [allRepos, setAllRepos] = useState<any[]>([]);
   const [repoListVersion, setRepoListVersion] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [brokenIcons, setBrokenIcons] = useState<Record<string, true>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -145,6 +156,7 @@ export default function StarsPage() {
             createdAt: r.createdAt,
             entityDisplayName: r.entityDisplayName,
             logoUrl: r.logoUrl,
+            ownerPubkey: r.ownerPubkey,
           });
         }
       }
@@ -169,6 +181,7 @@ export default function StarsPage() {
           createdAt: repo.createdAt,
           entityDisplayName: repo.entityDisplayName,
           logoUrl: repo.logoUrl,
+          ownerPubkey: repo.ownerPubkey,
         });
       } else {
         const [entity, repoName] = starredId.split("/");
@@ -187,114 +200,16 @@ export default function StarsPage() {
     return Array.from(byKey.values());
   }, [isLoggedIn, pubkey, myStarEvents, allRepos]);
 
-  const ownerPubkeys = useMemo(() => {
-    if (typeof window === "undefined") return [];
-    const pubkeys = new Set<string>();
-    for (const repo of starredRepos) {
-      if (!repo.entity || repo.entity === "user") continue;
-      try {
-        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-        const matchingRepo = repos.find(
-          (r: any) =>
-            r.slug === repo.slug ||
-            (r.entity === repo.entity &&
-              (r.repo === repo.repo || r.slug === repo.slug))
-        );
-        if (
-          matchingRepo?.ownerPubkey &&
-          /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)
-        ) {
-          pubkeys.add(matchingRepo.ownerPubkey);
-        } else if (/^[0-9a-f]{64}$/i.test(repo.entity)) {
-          pubkeys.add(repo.entity);
-        } else if (repo.entity.startsWith("npub")) {
-          try {
-            const decoded = nip19.decode(repo.entity);
-            if (decoded.type === "npub") {
-              pubkeys.add(decoded.data as string);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-    return Array.from(pubkeys);
-  }, [starredRepos]);
+  const ownerPubkeys = useMemo(
+    () => collectStarredOwnerPubkeys(starredRepos, allRepos),
+    [starredRepos, allRepos]
+  );
 
   const ownerMetadata = useContributorMetadata(ownerPubkeys);
 
   const getRepoIcon = (repo: StarredRepo): string | null => {
-    if (repo.logoUrl) return repo.logoUrl;
-    if (typeof window === "undefined") return null;
-
-    try {
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      const matchingRepo = repos.find(
-        (r: any) =>
-          r.slug === repo.slug ||
-          (r.entity === repo.entity &&
-            (r.repo === repo.repo || r.slug === repo.slug))
-      );
-
-      if (
-        matchingRepo?.ownerPubkey &&
-        /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)
-      ) {
-        const normalizedKey = matchingRepo.ownerPubkey.toLowerCase();
-        const meta =
-          ownerMetadata[normalizedKey] ||
-          ownerMetadata[matchingRepo.ownerPubkey];
-        if (meta?.picture) return meta.picture;
-      }
-
-      if (matchingRepo?.files && Array.isArray(matchingRepo.files)) {
-        const logoFiles = matchingRepo.files
-          .map((f: any) => f.path)
-          .filter((p: string) => {
-            const fileName = p.split("/").pop() || "";
-            const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
-            const extension = fileName.split(".").pop()?.toLowerCase() || "";
-            const imageExts = [
-              "png",
-              "jpg",
-              "jpeg",
-              "gif",
-              "webp",
-              "svg",
-              "ico",
-            ];
-            return (
-              baseName.includes("logo") &&
-              !baseName.includes("logo-alby") &&
-              !baseName.includes("alby-logo") &&
-              imageExts.includes(extension)
-            );
-          });
-        if (logoFiles.length > 0 && matchingRepo.sourceUrl) {
-          try {
-            const url = new URL(matchingRepo.sourceUrl);
-            if (url.hostname === "github.com") {
-              const parts = url.pathname.split("/").filter(Boolean);
-              if (parts.length >= 2 && parts[0] && parts[1]) {
-                const owner = parts[0];
-                const repoName = parts[1].replace(/\.git$/, "");
-                const branch = matchingRepo.defaultBranch || "main";
-                return `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                  branch
-                )}/${logoFiles[0]}`;
-              }
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-
-    if (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)) {
-      const normalizedKey = repo.entity.toLowerCase();
-      const meta = ownerMetadata[normalizedKey] || ownerMetadata[repo.entity];
-      if (meta?.picture) return meta.picture;
-    }
-
-    return null;
+    const matching = findMatchingLocalRepo(repo, allRepos);
+    return resolveStarredRepoIcon(repo, matching, ownerMetadata);
   };
 
   if (!mounted) {
@@ -348,7 +263,22 @@ export default function StarsPage() {
             const entity = repo.entity || "";
             const repoSlug = repo.repo || repo.slug || "";
             const href = entity && repoSlug ? `/${entity}/${repoSlug}` : "#";
-            const iconUrl = getRepoIcon(repo);
+            const iconUrl = brokenIcons[repo.slug]
+              ? null
+              : getRepoIcon(repo);
+            const matching = findMatchingLocalRepo(repo, allRepos);
+            const ownerPk = getRepoOwnerPubkey(
+              matching || {
+                entity: repo.entity,
+                ownerPubkey: repo.ownerPubkey,
+              },
+              entity
+            );
+            const displayEntity =
+              repo.entityDisplayName ||
+              getEntityDisplayName(ownerPk, ownerMetadata, entity) ||
+              entity ||
+              "Unknown";
 
             return (
               <Link
@@ -360,10 +290,13 @@ export default function StarsPage() {
                   {iconUrl ? (
                     <img
                       src={iconUrl}
-                      alt="repo"
+                      alt=""
                       className="h-6 w-6 rounded-sm object-contain flex-shrink-0"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
+                      onError={() => {
+                        setBrokenIcons((prev) => ({
+                          ...prev,
+                          [repo.slug]: true,
+                        }));
                       }}
                     />
                   ) : (
@@ -372,8 +305,7 @@ export default function StarsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold truncate">{repo.name}</div>
                     <div className="text-sm text-gray-400 truncate">
-                      {repo.entityDisplayName || entity || "Unknown"} /{" "}
-                      {repoSlug}
+                      {displayEntity} / {repoSlug}
                     </div>
                     {repo.sourceUrl ? (
                       <div className="text-xs text-gray-500 truncate mt-0.5">

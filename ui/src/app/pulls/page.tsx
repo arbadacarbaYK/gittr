@@ -4,6 +4,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -26,6 +27,18 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
+  type AggregateListGroup,
+  type AggregateListSort,
+  type AggregateListSource,
+  filterByAggregateSource,
+  loadAggregateListPrefs,
+  loadCollapsedRepoKeys,
+  repoIsFork,
+  saveAggregateListPrefs,
+  saveCollapsedRepoKeys,
+} from "@/lib/utils/global-issues-pr-list";
+import { sortListItems } from "@/lib/utils/issue-pr-list-search";
+import {
   mergeGithubPrsAfterRefetch,
   mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
@@ -39,6 +52,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleDot,
   GitMerge,
   GitPullRequest,
@@ -75,6 +89,8 @@ interface IPullRequestData {
   requiredApprovals?: number;
   /** Merged in gittr but GitHub still open. */
   sourcePrStillOpen?: boolean;
+  /** Repo has forkedFrom — Source: Hide forks / Forks only. */
+  isFork?: boolean;
 }
 
 function collectPullRequestRowsForAggregatedPage(
@@ -179,6 +195,7 @@ function collectPullRequestRowsForAggregatedPage(
         requiredApprovals,
         needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
         sourcePrStillOpen: Boolean(pr.sourcePrStillOpen),
+        isFork: repoIsFork(repo),
       });
     });
   });
@@ -203,6 +220,21 @@ export default function PullsPage({}) {
   const [search, setSearch] = useState<string>("");
   const [allPRs, setAllPRs] = useState<IPullRequestData[]>([]);
   const [prStatus, setPrStatus] = useState<"open" | "closed">("open");
+  const [listSource, setListSource] = useState<AggregateListSource>("all");
+  const [listGroup, setListGroup] = useState<AggregateListGroup>("repo");
+  const [listSort, setListSort] = useState<AggregateListSort>("updated");
+  const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  useEffect(() => {
+    const prefs = loadAggregateListPrefs("pulls");
+    setListSource(prefs.source);
+    setListGroup(prefs.group);
+    setListSort(prefs.sort);
+    setCollapsedRepos(loadCollapsedRepoKeys("pulls"));
+  }, []);
+
 
   // Load PRs from repos owned by the logged-in user only
   useEffect(() => {
@@ -694,32 +726,53 @@ export default function PullsPage({}) {
     return filtered;
   }, [prsForStatusCounts, prType, currentUserPubkey]);
 
-  // Filter by status and sort for rendered list
+  // Filter by status, source (forks), and sort for rendered list
   const filteredPRs = useMemo(() => {
-    const filtered = prsForTypedList.filter((pr) => {
+    const statusFiltered = prsForTypedList.filter((pr) => {
       const bucket = normalizePrListStatus(pr.status);
       return prStatus === "open" ? bucket === "open" : bucket === "closed";
     });
+    const sourced = filterByAggregateSource(statusFiltered, listSource);
+    return sortListItems(sourced, listSort);
+  }, [prsForTypedList, prStatus, listSource, listSort]);
 
-    // Sort by createdAt (newest first)
-    filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const toggleRepoCollapsed = useCallback((key: string) => {
+    setCollapsedRepos((prev) => {
+      const next = new Set(prev);
+      const k = key.toLowerCase();
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      saveCollapsedRepoKeys("pulls", next);
+      return next;
+    });
+  }, []);
 
-    return filtered;
-  }, [prsForTypedList, prStatus]);
+  const handleListSource = useCallback((v: AggregateListSource) => {
+    setListSource(v);
+    saveAggregateListPrefs("pulls", { source: v });
+  }, []);
+  const handleListGroup = useCallback((v: AggregateListGroup) => {
+    setListGroup(v);
+    saveAggregateListPrefs("pulls", { group: v });
+  }, []);
+  const handleListSort = useCallback((v: AggregateListSort) => {
+    setListSort(v);
+    saveAggregateListPrefs("pulls", { sort: v });
+  }, []);
 
   const openCount = useMemo(
     () =>
-      prsForStatusCounts.filter(
+      filterByAggregateSource(prsForStatusCounts, listSource).filter(
         (pr) => normalizePrListStatus(pr.status) === "open"
       ).length,
-    [prsForStatusCounts]
+    [prsForStatusCounts, listSource]
   );
   const closedCount = useMemo(
     () =>
-      prsForStatusCounts.filter(
+      filterByAggregateSource(prsForStatusCounts, listSource).filter(
         (pr) => normalizePrListStatus(pr.status) === "closed"
       ).length,
-    [prsForStatusCounts]
+    [prsForStatusCounts, listSource]
   );
 
   // Collect all unique entity pubkeys for metadata fetching
@@ -830,17 +883,14 @@ export default function PullsPage({}) {
                   Closed
                 </button>
               </div>
-              <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Visibility <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Organization <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Sort <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-              </div>
+              <GlobalIssuesPrListControls
+                source={listSource}
+                group={listGroup}
+                sort={listSort}
+                onSourceChange={handleListSource}
+                onGroupChange={handleListGroup}
+                onSortChange={handleListSort}
+              />
             </div>
           </div>
           <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
@@ -851,12 +901,71 @@ export default function PullsPage({}) {
                     ? "No pull requests yet. Create a pull request in a repository to get started."
                     : search.trim()
                     ? "No pull requests match your search."
+                    : listSource !== "all"
+                    ? listSource === "originals"
+                      ? "No pull requests in non-fork repos. Try Source → All repos."
+                      : "No pull requests in forked repos. Try Source → All repos."
                     : prStatus === "open"
                     ? "No open pull requests."
                     : "No closed pull requests."}
                 </li>
               ) : (
-                filteredPRs.map((item) => (
+                filteredPRs.flatMap((item, idx) => {
+                  const repoKey = `${item.entity}/${item.repo}`.toLowerCase();
+                  const prev = idx > 0 ? filteredPRs[idx - 1] : null;
+                  const prevKey = prev
+                    ? `${prev.entity}/${prev.repo}`.toLowerCase()
+                    : null;
+                  const isNewGroup =
+                    listGroup === "repo" && repoKey !== prevKey;
+                  const nodes: React.ReactNode[] = [];
+                  if (isNewGroup) {
+                    const entityPubkey = resolveEntityToPubkey(item.entity);
+                    const displayName = getEntityDisplayName(
+                      entityPubkey,
+                      entityMetadata,
+                      item.entity
+                    );
+                    const groupCount = filteredPRs.filter(
+                      (p) =>
+                        `${p.entity}/${p.repo}`.toLowerCase() === repoKey
+                    ).length;
+                    const collapsed = collapsedRepos.has(repoKey);
+                    nodes.push(
+                      <li
+                        key={`group-${repoKey}`}
+                        className="bg-[#12151a] px-3 py-2"
+                      >
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 text-left text-sm font-medium text-zinc-200 hover:text-purple-300"
+                          onClick={() => toggleRepoCollapsed(repoKey)}
+                          aria-expanded={!collapsed}
+                        >
+                          {collapsed ? (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-zinc-500" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
+                          )}
+                          <Link
+                            href={`/${item.entity}/${item.repo}`}
+                            className="truncate hover:text-purple-400"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {displayName}/{item.repo}
+                          </Link>
+                          <span className="ml-auto shrink-0 text-xs text-zinc-500">
+                            {groupCount}
+                            {item.isFork ? " · fork" : ""}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  }
+                  if (listGroup === "repo" && collapsedRepos.has(repoKey)) {
+                    return nodes;
+                  }
+                  nodes.push(
                   <li
                     key={`${item.id} ${item.entity}`}
                     className="text-gray-400 grid grid-cols-8 p-2 text-sm hover:bg-[#171B21]"
@@ -1046,7 +1155,9 @@ export default function PullsPage({}) {
                       </span>
                     </div>
                   </li>
-                ))
+                  );
+                  return nodes;
+                })
               )}
             </ul>
           </div>

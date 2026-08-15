@@ -17,6 +17,12 @@ If the public oracle returns **502**, older code treated that like “no path”
 
 Now: HTTP/network failure → **Distance unknown**. Confirmed null hops from a healthy oracle → **Outside your network**. Direct follows still win first from kind-3 + local backup (even when the oracle is down).
 
+### `/apps` TrustBadge stampede (fixed Aug 2026)
+
+Logged-in `/apps` mounts a TrustBadge on every card (~hundreds). Without throttling that fan-out hit `/api/wot/distance` once per card whenever the public oracle was 502, flooding the browser console and our proxy.
+
+Client `wot.ts` now: (1) coalesces in-flight requests for the same `(from,to)`, (2) caps concurrent oracle HTTP to 2, (3) opens a **60s circuit** after the first oracle failure so remaining badges return **Distance unknown** without more HTTP. Independent of NIP-46 / Amber bunker sockets.
+
 ## Public follow counts (profile legitimacy)
 
 On every public profile (`/{npub}`), gittr shows **Following** and **Followers** in the stats row (visible logged out):

@@ -1,9 +1,41 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { httpBodyIsBinary } from "@/lib/git/file-bytes-look-like-text";
+import { isAbsurdRepoPath } from "@/lib/repos/repo-path-sanity";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { normalizeSiteUrl } from "@/lib/utils/public-site-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
+
+async function jsonFromGitHttpBody(
+  response: Response,
+  filePath: string,
+  branch: string | string[] | undefined
+): Promise<{
+  content: string;
+  isBinary: boolean;
+  path: string;
+  branch?: string;
+}> {
+  const branchName = Array.isArray(branch) ? branch[0] : branch;
+  const contentType = response.headers.get("content-type") || "";
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  if (httpBodyIsBinary(contentType, bytes)) {
+    return {
+      content: Buffer.from(arrayBuffer).toString("base64"),
+      isBinary: true,
+      path: filePath,
+      branch: branchName,
+    };
+  }
+  return {
+    content: Buffer.from(arrayBuffer).toString("utf8"),
+    isBinary: false,
+    path: filePath,
+    branch: branchName,
+  };
+}
 
 /**
  * API endpoint to fetch file content from external git servers (GitHub, GitLab)
@@ -72,6 +104,14 @@ export default async function handler(
 
   if (!filePath || typeof filePath !== "string") {
     return res.status(400).json({ error: "path is required" });
+  }
+
+  // Reject crawler/markdown nest traps before any forge/bridge work.
+  if (isAbsurdRepoPath(filePath)) {
+    return res.status(400).json({
+      error: "Invalid path",
+      details: "Path is too deep or looks like a nested link loop",
+    });
   }
 
   // Get user's GitHub token if provided (for private repos)
@@ -522,37 +562,13 @@ export default async function handler(
         });
 
         if (rawResponse.ok) {
-          const contentType = rawResponse.headers.get("content-type") || "";
-          const isBinary =
-            !contentType.startsWith("text/") &&
-            !contentType.includes("json") &&
-            !contentType.includes("xml") &&
-            !contentType.includes("javascript") &&
-            !contentType.includes("css") &&
-            !contentType.includes("markdown");
-
-          if (isBinary) {
-            // For binary files, return base64 encoded content
-            const arrayBuffer = await rawResponse.arrayBuffer();
-            const base64 = Buffer.from(arrayBuffer).toString("base64");
-            return res.status(200).json({
-              content: base64,
-              isBinary: true,
-              path: filePath,
-              branch,
-            });
+          const body = await jsonFromGitHttpBody(rawResponse, filePath, branch);
+          if (!body.isBinary) {
+            console.log(
+              `✅ [Git API] Successfully fetched file from GitHub: ${filePath} (${body.content.length} chars)`
+            );
           }
-
-          const txt = await rawResponse.text();
-          console.log(
-            `✅ [Git API] Successfully fetched file from GitHub: ${filePath} (${txt.length} chars)`
-          );
-          return res.status(200).json({
-            content: txt,
-            isBinary: false,
-            path: filePath,
-            branch,
-          });
+          return res.status(200).json(body);
         } else if (rawResponse.status === 429) {
           // Rate limited - return helpful error message
           const retryAfter = rawResponse.headers.get("retry-after") || "60";
@@ -726,34 +742,9 @@ export default async function handler(
       }
 
       if (response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const isBinary =
-          !contentType.startsWith("text/") &&
-          !contentType.includes("json") &&
-          !contentType.includes("xml") &&
-          !contentType.includes("javascript") &&
-          !contentType.includes("css") &&
-          !contentType.includes("markdown");
-
-        if (isBinary) {
-          // For binary files, we need to return base64 encoded content
-          const arrayBuffer = await response.arrayBuffer();
-          const base64 = Buffer.from(arrayBuffer).toString("base64");
-          return res.status(200).json({
-            content: base64,
-            isBinary: true,
-            path: filePath,
-            branch,
-          });
-        }
-
-        const txt = await response.text();
-        return res.status(200).json({
-          content: txt,
-          isBinary: false,
-          path: filePath,
-          branch,
-        });
+        return res
+          .status(200)
+          .json(await jsonFromGitHttpBody(response, filePath, branch));
       } else {
         const errorText = await response.text().catch(() => "");
         console.error(
@@ -800,37 +791,13 @@ export default async function handler(
         });
 
         if (response.ok) {
-          const contentType = response.headers.get("content-type") || "";
-          const isBinary =
-            !contentType.startsWith("text/") &&
-            !contentType.includes("json") &&
-            !contentType.includes("xml") &&
-            !contentType.includes("javascript") &&
-            !contentType.includes("css") &&
-            !contentType.includes("markdown");
-
-          if (isBinary) {
-            // For binary files, return base64 encoded content
-            const arrayBuffer = await response.arrayBuffer();
-            const base64 = Buffer.from(arrayBuffer).toString("base64");
-            return res.status(200).json({
-              content: base64,
-              isBinary: true,
-              path: filePath,
-              branch,
-            });
+          const body = await jsonFromGitHttpBody(response, filePath, branch);
+          if (!body.isBinary) {
+            console.log(
+              `✅ [Git API] Successfully fetched file from Codeberg: ${filePath} (${body.content.length} chars)`
+            );
           }
-
-          const txt = await response.text();
-          console.log(
-            `✅ [Git API] Successfully fetched file from Codeberg: ${filePath} (${txt.length} chars)`
-          );
-          return res.status(200).json({
-            content: txt,
-            isBinary: false,
-            path: filePath,
-            branch,
-          });
+          return res.status(200).json(body);
         } else if (response.status === 404) {
           // File doesn't exist - return 404
           console.log(`⚠️ [Git API] File not found on Codeberg: ${filePath}`);
@@ -948,31 +915,9 @@ export default async function handler(
           });
           lastStatus = response.status;
           if (response.ok) {
-            const contentType = response.headers.get("content-type") || "";
-            const isBinary =
-              !contentType.startsWith("text/") &&
-              !contentType.includes("json") &&
-              !contentType.includes("xml") &&
-              !contentType.includes("javascript") &&
-              !contentType.includes("css") &&
-              !contentType.includes("markdown");
-            if (isBinary) {
-              const arrayBuffer = await response.arrayBuffer();
-              const base64 = Buffer.from(arrayBuffer).toString("base64");
-              return res.status(200).json({
-                content: base64,
-                isBinary: true,
-                path: filePath,
-                branch,
-              });
-            }
-            const txt = await response.text();
-            return res.status(200).json({
-              content: txt,
-              isBinary: false,
-              path: filePath,
-              branch,
-            });
+            return res
+              .status(200)
+              .json(await jsonFromGitHttpBody(response, filePath, branch));
           }
         } catch (e: any) {
           console.warn(`⚠️ [Git API] Self-hosted fetch failed:`, e?.message);

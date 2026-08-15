@@ -3,7 +3,9 @@ import {
   detectBareRepoDefaultBranch,
   listBareRepoBranches,
 } from "@/lib/git/bare-repo-default-branch";
+import { fileBytesLookLikeText } from "@/lib/git/file-bytes-look-like-text";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
+import { isAbsurdRepoPath } from "@/lib/repos/repo-path-sanity";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
@@ -149,6 +151,13 @@ export default async function handler(
   // CRITICAL: Explicitly decode file path from URL encoding to handle non-ASCII characters (Cyrillic, Chinese, etc.)
   // Next.js auto-decodes query params, but we ensure proper UTF-8 handling
   const decodedFilePath = decodeURIComponent(filePath);
+
+  if (isAbsurdRepoPath(decodedFilePath)) {
+    return res.status(400).json({
+      error: "Invalid path",
+      details: "Path is too deep or looks like a nested link loop",
+    });
+  }
 
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
   // This allows other Nostr git clients to use NIP-05 format (e.g., user@example.com)
@@ -466,52 +475,25 @@ export default async function handler(
     const hasNullBytes = buffer.includes(0);
     const isBinaryByExt = binaryExts.includes(ext);
     const isTextByExt = textExts.includes(ext);
-
-    // Determine if binary: has null bytes OR is binary extension (but NOT text extension)
-    const isBinary = (hasNullBytes || isBinaryByExt) && !isTextByExt;
+    const looksText = fileBytesLookLikeText(new Uint8Array(buffer));
+    const isBinary =
+      (hasNullBytes || isBinaryByExt || !looksText) && !isTextByExt;
 
     if (isBinary) {
-      // For binary files, encode as base64
       const base64Content = buffer.toString("base64");
       return res.status(200).json({
         content: base64Content,
         path: filePath,
-        branch: actualBranch, // Return actual branch used
+        branch: actualBranch,
         isBinary: true,
       });
-    } else {
-      // For text files, return as UTF-8 string
-      // Try to decode as UTF-8, fallback to base64 if it fails
-      try {
-        const textContent = buffer.toString("utf8");
-        // Check if decoded content is valid UTF-8 text (no control characters except common ones)
-        if (/[\x00-\x08\x0E-\x1F]/.test(textContent)) {
-          // Contains control characters, likely binary - encode as base64
-          const base64Content = buffer.toString("base64");
-          return res.status(200).json({
-            content: base64Content,
-            path: filePath,
-            branch: actualBranch, // Return actual branch used
-            isBinary: true,
-          });
-        }
-        return res.status(200).json({
-          content: textContent,
-          path: filePath,
-          branch: actualBranch, // Return actual branch used
-          isBinary: false,
-        });
-      } catch (e) {
-        // UTF-8 decoding failed, encode as base64
-        const base64Content = buffer.toString("base64");
-        return res.status(200).json({
-          content: base64Content,
-          path: filePath,
-          branch: actualBranch, // Return actual branch used
-          isBinary: true,
-        });
-      }
     }
+    return res.status(200).json({
+      content: buffer.toString("utf8"),
+      path: filePath,
+      branch: actualBranch,
+      isBinary: false,
+    });
   } catch (error: any) {
     console.error("Error fetching file content:", error);
 

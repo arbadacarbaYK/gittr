@@ -4,8 +4,7 @@ import {
   listBareRepoBranches,
 } from "@/lib/git/bare-repo-default-branch";
 import {
-  buildFlatTreeFromPaths,
-  listBareRepoRecursivePaths,
+  listBareRepoRecursiveWithSizes,
   listBareRepoShallow,
   sanitizeRepoTreePath,
 } from "@/lib/git/bare-repo-ls-tree";
@@ -42,10 +41,10 @@ type FilesCachePayload = {
 const filesCache = new BoundedTtlCache<FilesCachePayload>(30_000, 250);
 
 const shouldIncludeSizes = (raw: string | string[] | undefined) => {
-  // Default off: per-file `git cat-file -s` on large mirrors (10k+ paths) melts CPU.
-  // Callers that need sizes must pass includeSizes=1 explicitly.
+  // Sizes use `git ls-tree -l` (one pass) — cheap. Default on so the Code tab
+  // shows byte sizes. Pass includeSizes=0 only to skip size fields.
   if (raw === undefined) {
-    return false;
+    return true;
   }
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value) return false;
@@ -419,10 +418,11 @@ export default async function handler(
       }
     }
 
-    // Root: recursive when small; shallow when huge (Trezor-scale mirrors)
-    let filePaths: string[];
+    // Root: recursive when small; shallow when huge (Trezor-scale mirrors).
+    // `ls-tree -r -l` gives paths + sizes in one pass (no per-blob cat-file).
+    let flat: Awaited<ReturnType<typeof listBareRepoRecursiveWithSizes>>;
     try {
-      filePaths = await listBareRepoRecursivePaths(repoPath, resolvedBranch);
+      flat = await listBareRepoRecursiveWithSizes(repoPath, resolvedBranch);
     } catch (err: any) {
       console.error("Git ls-tree error:", err?.stderr || err?.message);
       return res.status(500).json({
@@ -431,27 +431,32 @@ export default async function handler(
       });
     }
 
-    console.log(`✅ Found ${filePaths.length} files in '${resolvedBranch}'`);
+    const fileCount = flat.filter((e) => e.type === "file").length;
+    console.log(`✅ Found ${fileCount} files in '${resolvedBranch}'`);
 
-    if (filePaths.length > REPO_FILE_TREE_SHALLOW_THRESHOLD) {
+    if (fileCount > REPO_FILE_TREE_SHALLOW_THRESHOLD) {
       const entries = await listBareRepoShallow(repoPath, resolvedBranch, "", {
         includeSizes,
       });
       console.log(
-        `ℹ️ Large tree (${filePaths.length} files) — returning shallow root (${entries.length} entries)`
+        `ℹ️ Large tree (${fileCount} files) — returning shallow root (${entries.length} entries)`
       );
       return respondWithTree({
         files: entries,
         branch: resolvedBranch,
         truncated: true,
         listing: "shallow",
-        totalFileCount: filePaths.length,
+        totalFileCount: fileCount,
       });
     }
 
-    const flat = buildFlatTreeFromPaths(filePaths);
+    const sized = includeSizes
+      ? flat
+      : flat.map((e) =>
+          e.size === undefined ? e : { type: e.type, path: e.path }
+        );
     const capped = capRepoFileTreeForDisplay(
-      filterGraspMirrorPollutionFromFileTree(flat, {
+      filterGraspMirrorPollutionFromFileTree(sized, {
         ownerPubkeyHex: ownerPubkey,
       })
     );
@@ -460,7 +465,7 @@ export default async function handler(
       branch: resolvedBranch,
       truncated: capped.truncated,
       listing: "full",
-      totalFileCount: filePaths.length,
+      totalFileCount: fileCount,
     });
   } catch (error: any) {
     console.error("Error fetching repository files:", error);

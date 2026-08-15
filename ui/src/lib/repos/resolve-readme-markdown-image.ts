@@ -100,11 +100,20 @@ export function resolveReadmeMarkdownImage(
       const owner = m[1] || "";
       const repo = (m[2] || "").replace(/\.git$/, "");
       if (!owner || !repo) continue;
+      // Keep ownerPubkey/repoName so a dead forge raw URL (wrong fork / main vs
+      // master) can still load from the gittr bridge. Prefer API for SVG —
+      // forge raw often 404s while the bare mirror has the asset.
+      const preferBridgeSvg =
+        /\.svg(\?|#|$)/i.test(repoPath) && !!(ownerPubkey && repoName);
       return {
-        primarySrc: f.raw(owner, repo, branch, repoPath),
+        primarySrc: preferBridgeSvg
+          ? ""
+          : f.raw(owner, repo, branch, repoPath),
         repoPath,
         sourceUrl: forge,
-        preferApi: false,
+        ownerPubkey,
+        repoName,
+        preferApi: preferBridgeSvg,
       };
     }
   }

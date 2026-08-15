@@ -65,23 +65,40 @@ export function writeUserPickedRepoBranch(
   }
 }
 
-/** Same branch on every repo tab: URL ?branch= if set, else stored repo default. */
+/** Same branch on every repo tab: URL ?branch= if set, else stored repo default.
+ * When the URL tip is missing on the mirror (e.g. ?branch=main but only master),
+ * fall back to the sibling default or repo default — never keep a dead tip.
+ */
 export function resolveSharedRepoBranch(
   searchParams: { get(name: string): string | null } | null | undefined,
   repo?: { defaultBranch?: string; branches?: string[] } | null,
   route?: { entity: string; repo: string } | null
 ): string {
   const fromUrl = searchParams?.get("branch")?.trim();
+  const def = repoDefaultBranch(repo);
+  const branches = (repo?.branches || [])
+    .map((b) => (b || "").trim())
+    .filter(Boolean);
+
   if (fromUrl) {
-    if (!isBotFeatureBranch(fromUrl)) return fromUrl;
-    if (
-      route &&
-      readUserPickedRepoBranch(route.entity, route.repo) === fromUrl
-    ) {
+    if (isBotFeatureBranch(fromUrl)) {
+      if (
+        route &&
+        readUserPickedRepoBranch(route.entity, route.repo) === fromUrl
+      ) {
+        return fromUrl;
+      }
+    } else if (!branches.length || branches.includes(fromUrl)) {
       return fromUrl;
+    } else if (fromUrl === "main" && branches.includes("master")) {
+      return "master";
+    } else if (fromUrl === "master" && branches.includes("main")) {
+      return "main";
+    } else {
+      return def;
     }
   }
-  return repoDefaultBranch(repo);
+  return def;
 }
 
 /** @deprecated alias */

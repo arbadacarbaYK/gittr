@@ -78,6 +78,11 @@ export function LabDashboardClient() {
   }, [refreshMeta]);
 
   useEffect(() => {
+    // Keep scrollbar width stable so locking scroll does not resize the iframe
+    // (snapshot used to call fitCamera on every window resize → zoom "flips back").
+    const prevGutter = document.documentElement.style.scrollbarGutter;
+    document.documentElement.style.scrollbarGutter = "stable";
+
     const unlockPageScroll = () => {
       mapInteractRef.current = false;
       if (bodyOverflowRef.current !== null) {
@@ -109,13 +114,15 @@ export function LabDashboardClient() {
       }
 
       if (data.type !== LAB_SNAPSHOT_HEIGHT_MESSAGE) return;
-      // Avoid iframe height thrash while zooming (map listens to window resize → fitCamera).
       if (mapInteractRef.current) return;
       const next = Math.ceil(Number(data.height) || 0);
       if (!Number.isFinite(next) || next < 1) return;
       setFrameHeight((prev) => {
+        // Prefer grow-only after first real size so late reports do not thrash.
         const clamped = Math.max(MIN_FRAME_PX, Math.min(next + 8, 200_000));
-        return Math.abs(clamped - prev) < 2 ? prev : clamped;
+        if (prev > MIN_FRAME_PX && clamped + 24 < prev) return prev;
+        if (Math.abs(clamped - prev) < 12) return prev;
+        return clamped;
       });
     };
 
@@ -123,6 +130,7 @@ export function LabDashboardClient() {
     return () => {
       window.removeEventListener("message", onMessage);
       unlockPageScroll();
+      document.documentElement.style.scrollbarGutter = prevGutter;
     };
   }, []);
 

@@ -30,11 +30,31 @@ describe("resolveReadmeMarkdownImage", () => {
       src: "docs/assets/dashboard-map.png",
       branch: "main",
       forgeSourceUrl: "https://github.com/acme/lab-kit.git",
+      ownerPubkey:
+        "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      repoName: "lab-kit",
     });
     expect(r?.preferApi).toBe(false);
     expect(r?.primarySrc).toContain("raw.githubusercontent.com/acme/lab-kit");
     expect(r?.primarySrc).toContain("docs/assets/dashboard-map.png");
     expect(r?.repoPath).toBe("docs/assets/dashboard-map.png");
+    expect(r?.ownerPubkey).toHaveLength(64);
+    expect(r?.repoName).toBe("lab-kit");
+  });
+
+  it("prefers bridge API for forge SVG so wrong fork/branch cannot break logos", () => {
+    const r = resolveReadmeMarkdownImage({
+      src: "docs/wok.svg",
+      branch: "main",
+      forgeSourceUrl: "https://github.com/hzrd149/wok",
+      ownerPubkey:
+        "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      repoName: "wok",
+    });
+    expect(r?.preferApi).toBe(true);
+    expect(r?.primarySrc).toBe("");
+    expect(r?.repoPath).toBe("docs/wok.svg");
+    expect(r?.ownerPubkey).toHaveLength(64);
   });
 
   it("uses same-origin API for Nostr/GRASP clones (no invented /raw/)", () => {

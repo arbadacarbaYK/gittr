@@ -37,6 +37,46 @@ const KNOWN_TYPES = new Set<string>([
 const FORGE_BROWSE_HOSTS = new Set(["gitworkshop.dev", "www.gitworkshop.dev"]);
 
 /**
+ * Classic git forges: plain `/owner/repo` (or deeper browse) in `web` is a
+ * forge mirror link, not Documentation. Real docs stay on `*.github.io` /
+ * `*.gitlab.io` / explicit Settings `link` tags.
+ */
+const CLASSIC_FORGE_BROWSE_HOSTS = new Set([
+  "github.com",
+  "www.github.com",
+  "gitlab.com",
+  "www.gitlab.com",
+  "codeberg.org",
+  "www.codeberg.org",
+  "bitbucket.org",
+  "www.bitbucket.org",
+  "gitea.com",
+  "www.gitea.com",
+  "code.forgejo.org",
+]);
+
+const CLASSIC_FORGE_NON_REPO_FIRST = new Set([
+  "settings",
+  "marketplace",
+  "explore",
+  "topics",
+  "features",
+  "pricing",
+  "about",
+  "login",
+  "orgs",
+  "users",
+  "sponsors",
+  "notifications",
+  "pulls",
+  "issues",
+  "search",
+  "new",
+  "organizations",
+  "dashboard",
+]);
+
+/**
  * Hosts that serve GRASP/Nostr-git clones. A `web` URL on these with an npub
  * path is a repo mirror/browse endpoint, not documentation.
  */
@@ -79,6 +119,30 @@ function isGraspOrGitHost(hostname: string): boolean {
   );
 }
 
+/** True for github.com/owner/repo (and GitLab/Codeberg equivalents). */
+function isClassicForgeRepoBrowseUrl(hostname: string, pathname: string): boolean {
+  const host = hostname.toLowerCase();
+  // GitHub/GitLab Pages are real documentation hosts — never treat as forge browse.
+  if (host.endsWith(".github.io") || host.endsWith(".gitlab.io")) {
+    return false;
+  }
+  const isClassic =
+    CLASSIC_FORGE_BROWSE_HOSTS.has(host) ||
+    host.endsWith(".gitlab.com") ||
+    host.endsWith(".gitea.com");
+  if (!isClassic) return false;
+
+  const parts = pathname
+    .replace(/\/+$/, "")
+    .split("/")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return false;
+  const first = parts[0]!.toLowerCase();
+  if (CLASSIC_FORGE_NON_REPO_FIRST.has(first)) return false;
+  return true;
+}
+
 /**
  * True for forge browse / clone-shaped / logo URLs that must not become
  * sidebar "Documentation" via the `web` fallback.
@@ -100,6 +164,7 @@ export function isNostrForgeBrowseOrCloneWebUrl(url: string): boolean {
     if (FORGE_BROWSE_HOSTS.has(host)) return true;
     if (IMAGE_EXT_RE.test(path) || IMAGE_EXT_RE.test(trimmed)) return true;
     if (/\.git$/i.test(path)) return true;
+    if (isClassicForgeRepoBrowseUrl(host, path)) return true;
 
     // GRASP/git hosts with npub path = clone/browse mirror, not a project site
     if (isGraspOrGitHost(host) && NPUB_PATH_RE.test(path)) return true;

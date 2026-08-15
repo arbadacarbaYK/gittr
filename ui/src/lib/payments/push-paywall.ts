@@ -41,7 +41,26 @@ export async function ensurePushPaymentAuthorization(params: {
     )}`
   );
   if (!checkRes.ok) {
-    return { ok: false, error: "Failed to check push payment policy" };
+    // Infra 5xx/502 during Next restarts must not hard-block owner self-push.
+    if (checkRes.status >= 500) {
+      const isOwner =
+        ownerPubkey.trim().toLowerCase() === payerPubkey.trim().toLowerCase();
+      if (isOwner) {
+        console.warn(
+          "[push-paywall] push-payment check returned",
+          checkRes.status,
+          "— allowing owner self-push"
+        );
+        return { ok: true };
+      }
+    }
+    return {
+      ok: false,
+      error:
+        checkRes.status >= 500
+          ? "Push payment check temporarily unavailable (server error). Try again in a moment."
+          : "Failed to check push payment policy",
+    };
   }
   const checkData = await checkRes.json();
   const pushCostSats =

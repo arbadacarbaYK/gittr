@@ -27,6 +27,7 @@ import {
 } from "./nostr/events";
 import { isRepoAnnouncementDeleted } from "./nostr/repo-deleted";
 import { isPublicReadFromEvent } from "./nostr/repo-public-read";
+import { hexPubkeyToNpub } from "./stats/live-recent-repos";
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
@@ -34,16 +35,12 @@ import {
 
 /** Re-export for callers that imported from stats. */
 export { normalizeNip34RepoIdentifier } from "./nostr/clone-url-quality";
-
-/** Home "Recent repositories" card — npub entity for links */
-export type PlatformRecentRepo = {
-  entity: string;
-  repo: string;
-  repoName: string;
-  ownerPubkey: string;
-  lastActivity: number;
-  description?: string;
-};
+export {
+  type PlatformRecentRepo,
+  getLiveRecentReposFromNostr,
+  getRecentReposFromNostr,
+  hexPubkeyToNpub,
+} from "./stats/live-recent-repos";
 
 /** Home "Recent Activity" when browser has no local gittr_activities */
 export type PlatformRecentActivity = {
@@ -56,22 +53,6 @@ export type PlatformRecentActivity = {
   repoName: string;
   metadata?: Activity["metadata"];
 };
-
-export function hexPubkeyToNpub(pubkey: string): string {
-  const hex = (pubkey || "").trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(hex)) return pubkey;
-  try {
-    return nip19.npubEncode(hex);
-  } catch {
-    return hex.slice(0, 8);
-  }
-}
-
-function repoIdToNpubEntity(repoId: string, fallbackHex: string): string {
-  const parts = repoId.split("/");
-  const hex = parts[0] || fallbackHex;
-  return hexPubkeyToNpub(hex);
-}
 
 export interface RepoStats {
   repoId: string;
@@ -1683,178 +1664,6 @@ export async function getTopUsersFromNostr(
     `✅ [getTopUsersFromNostr] Returning ${users.length} users (map size ${userMap.size}, ranked ${ranked.length})`
   );
   return users;
-}
-
-/** Recent repos by latest kind 30617/30618 timestamp (for home + APIs — not activity score). */
-export function getLiveRecentReposFromNostr(
-  subscribe: (
-    filters: any[],
-    relays: string[],
-    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
-    maxDelayms?: number,
-    onEose?: (relayUrl: string, minCreatedAt: number) => void,
-    options?: any
-  ) => () => void,
-  relays: string[],
-  count = 12
-): Promise<PlatformRecentRepo[]> {
-  const activeRelays = relays.filter(Boolean);
-  const byKey = new Map<string, PlatformRecentRepo>();
-  const privateRepoIds = new Set<string>();
-  /** Announces whose clone tags are all localhost/private — keep off discovery. */
-  const unusableCloneRepoIds = new Set<string>();
-
-  return new Promise((resolve) => {
-    let resolved = false;
-    let eoseCount = 0;
-    const expectedEose = activeRelays.length;
-
-    const noteRepo = (
-      ownerHex: string,
-      repoName: string,
-      tsMs: number,
-      description?: string
-    ) => {
-      if (!ownerHex || !repoName) return;
-      const key = `${ownerHex}/${repoName}`;
-      if (unusableCloneRepoIds.has(key) || privateRepoIds.has(key)) return;
-      const existing = byKey.get(key);
-      if (!existing || tsMs > existing.lastActivity) {
-        byKey.set(key, {
-          entity: repoIdToNpubEntity(key, ownerHex),
-          repo: repoName,
-          repoName,
-          ownerPubkey: ownerHex,
-          lastActivity: tsMs,
-          description: description || existing?.description,
-        });
-      } else if (description && !existing.description) {
-        existing.description = description;
-      }
-    };
-
-    const filters = [
-      { kinds: [KIND_REPOSITORY_NIP34], limit: 800 },
-      { kinds: [KIND_REPOSITORY_STATE], limit: 600 },
-    ];
-
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      try {
-        unsub();
-      } catch {
-        /* ignore */
-      }
-      resolve(
-        Array.from(byKey.values())
-          .sort((a, b) => b.lastActivity - a.lastActivity)
-          .slice(0, count)
-      );
-    };
-
-    const maybeEarlyFinish = () => {
-      // Don't wait for every dead relay once we have a full card.
-      if (byKey.size >= count && eoseCount >= 1) {
-        setTimeout(finish, 150);
-      }
-    };
-
-    const unsub = subscribe(
-      filters,
-      activeRelays,
-      (event) => {
-        if (isPublisherBlocklisted(event.pubkey)) return;
-        const ts = (event.created_at || 0) * 1000;
-        const ownerHex = (event.pubkey || "").toLowerCase();
-        if (!/^[0-9a-f]{64}$/.test(ownerHex)) return;
-
-        if (event.kind === KIND_REPOSITORY_NIP34) {
-          const dTag = event.tags?.find(
-            (t: any) => Array.isArray(t) && t[0] === "d"
-          );
-          const nameTag = event.tags?.find(
-            (t: any) => Array.isArray(t) && t[0] === "name"
-          );
-          const repoName = normalizeNip34RepoIdentifier(
-            typeof dTag?.[1] === "string" ? dTag[1] : "",
-            typeof nameTag?.[1] === "string" ? nameTag[1] : ""
-          );
-          if (!repoName) return;
-          const repoKey = `${ownerHex}/${repoName}`;
-          // Soft-delete tombstone (content/tags) — remove from recent list
-          if (isRepoAnnouncementDeleted(event)) {
-            byKey.delete(repoKey);
-            return;
-          }
-          if (!isPublicReadFromEvent(event)) {
-            privateRepoIds.add(repoKey);
-            byKey.delete(repoKey);
-            return;
-          }
-          privateRepoIds.delete(repoKey);
-          // Local-forge / localhost-only clone announces — not discoverable.
-          if (shouldHideNip34EventForUnusableClones(event)) {
-            unusableCloneRepoIds.add(repoKey);
-            byKey.delete(repoKey);
-            return;
-          }
-          unusableCloneRepoIds.delete(repoKey);
-          let description: string | undefined;
-          try {
-            const content = JSON.parse(event.content || "{}");
-            if (content?.description) description = String(content.description);
-          } catch {
-            /* NIP-34 tags only */
-          }
-          noteRepo(ownerHex, repoName, ts, description);
-          maybeEarlyFinish();
-        } else if (event.kind === KIND_REPOSITORY_STATE) {
-          const dTag = event.tags?.find(
-            (t: any) => Array.isArray(t) && t[0] === "d"
-          );
-          const nameTag = event.tags?.find(
-            (t: any) => Array.isArray(t) && t[0] === "name"
-          );
-          const repoName = normalizeNip34RepoIdentifier(
-            typeof dTag?.[1] === "string" ? dTag[1] : "",
-            typeof nameTag?.[1] === "string" ? nameTag[1] : ""
-          );
-          if (repoName) {
-            const repoKey = `${ownerHex}/${repoName}`;
-            if (privateRepoIds.has(repoKey)) return;
-            if (unusableCloneRepoIds.has(repoKey)) return;
-            // State alone must not invent a discovery card (no clone check).
-            if (!byKey.has(repoKey)) return;
-            noteRepo(ownerHex, repoName, ts);
-            maybeEarlyFinish();
-          }
-        }
-      },
-      undefined,
-      () => {
-        eoseCount++;
-        if (eoseCount >= expectedEose) {
-          setTimeout(finish, 200);
-        } else {
-          maybeEarlyFinish();
-        }
-      },
-      {}
-    );
-
-    // Soft deadline — homepage should not wait 8s on hung EOSes.
-    setTimeout(finish, 4000);
-  });
-}
-
-/** @deprecated Snapshot helper — prefer getLiveRecentReposFromNostr for “recent” UI. */
-export async function getRecentReposFromNostr(
-  subscribe: Parameters<typeof getLiveRecentReposFromNostr>[0],
-  relays: string[],
-  count = 12
-): Promise<PlatformRecentRepo[]> {
-  return getLiveRecentReposFromNostr(subscribe, relays, count);
 }
 
 function parseATagRepo(

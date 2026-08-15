@@ -2,6 +2,10 @@
  * While an Amber/NIP-46 session is active, bunker transport hosts must not be
  * dialed on the app relaypool. Duplicate sockets to the same hosts starve the
  * dedicated SimplePool used for kind 24133 (see remoteSigner directPool).
+ *
+ * Callers must filter every main-pool entry point that can dial — not only
+ * `addRelay`. `relayPool.subscribe` → `addOrGetRelay` bypasses addRelay and
+ * will re-open bunker hosts from .env defaults unless stripped here.
  */
 
 const normalize = (url: string) => url.trim().toLowerCase().replace(/\/+$/, "");
@@ -24,4 +28,10 @@ export function isBunkerMainPoolBlocked(url: string): boolean {
 
 export function listBunkerMainPoolBlockedHosts(): string[] {
   return [...blockedHosts];
+}
+
+/** Strip bunker-owned hosts from a main-pool subscribe/publish relay list. */
+export function filterBunkerBlockedRelays(relays: string[]): string[] {
+  if (!relays?.length || blockedHosts.size === 0) return relays || [];
+  return relays.filter((url) => !isBunkerMainPoolBlocked(url));
 }

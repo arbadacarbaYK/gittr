@@ -45,6 +45,34 @@ describe("parseRepoLinksFromNip34Tags", () => {
     expect(links).toEqual([{ type: "docs", url: "https://yuki.example.org/" }]);
   });
 
+  it("does not treat plain github.com/owner/repo web tags as Documentation", () => {
+    const links = parseRepoLinksFromNip34Tags([
+      ["web", "https://github.com/erskingardner/wok"],
+    ]);
+    expect(links).toHaveLength(0);
+    expect(
+      isDocumentationEligibleWebUrl("https://github.com/erskingardner/wok")
+    ).toBe(false);
+  });
+
+  it("keeps github.io Pages web URLs as docs", () => {
+    const links = parseRepoLinksFromNip34Tags([
+      ["web", "https://erskingardner.github.io/wok/"],
+    ]);
+    expect(links).toEqual([
+      { type: "docs", url: "https://erskingardner.github.io/wok/" },
+    ]);
+  });
+
+  it("keeps explicit Settings link tags even when URL is a forge browse URL", () => {
+    const links = parseRepoLinksFromNip34Tags([
+      ["link", "docs", "https://github.com/erskingardner/wok", "Upstream"],
+    ]);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.url).toBe("https://github.com/erskingardner/wok");
+    expect(links[0]?.label).toBe("Upstream");
+  });
+
   it("parses explicit link tags (Settings / gittr)", () => {
     const links = parseRepoLinksFromNip34Tags([
       ["link", "docs", "https://docs.example.com/guide", "Guide"],
@@ -102,6 +130,22 @@ describe("stripNonDocumentationWebLinks", () => {
     expect(cleaned.map((l) => l.url)).toEqual([
       "https://example.com",
       "https://docs.example.com",
+    ]);
+  });
+
+  it("drops unlabeled github.com/owner/repo docs leftovers", () => {
+    const cleaned = stripNonDocumentationWebLinks([
+      {
+        type: "docs",
+        url: "https://github.com/erskingardner/wok",
+      },
+      {
+        type: "docs",
+        url: "https://erskingardner.github.io/wok/",
+      },
+    ]);
+    expect(cleaned.map((l) => l.url)).toEqual([
+      "https://erskingardner.github.io/wok/",
     ]);
   });
 });

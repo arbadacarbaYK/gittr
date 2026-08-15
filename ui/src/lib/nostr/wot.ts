@@ -39,13 +39,62 @@ export type WoTOracleDistanceResponse = {
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+/** After an oracle 502/network failure, skip further HTTP for this long. */
+const ORACLE_CIRCUIT_OPEN_MS = 60_000;
+/** Cap parallel /api/wot/distance calls (e.g. /apps TrustBadge storm). */
+const ORACLE_MAX_CONCURRENT = 2;
+
 const distanceCache = new Map<
   string,
   { value: WoTDistanceResult | null; expires: number }
 >();
+/** Coalesce duplicate (from,to) fetches while in flight. */
+const oracleInFlight = new Map<string, Promise<WoTDistanceResult | null>>();
+let oracleDownUntil = 0;
+let oracleActiveCount = 0;
+const oracleWaitQueue: Array<() => void> = [];
 
 function cacheKey(fromHex: string, toHex: string): string {
   return `${fromHex.toLowerCase()}:${toHex.toLowerCase()}`;
+}
+
+function unavailableResult(): WoTDistanceResult {
+  return { hops: null, source: "unavailable" };
+}
+
+function tripOracleCircuit(): void {
+  oracleDownUntil = Date.now() + ORACLE_CIRCUIT_OPEN_MS;
+}
+
+function isOracleCircuitOpen(): boolean {
+  return Date.now() < oracleDownUntil;
+}
+
+function acquireOracleSlot(): Promise<void> {
+  if (oracleActiveCount < ORACLE_MAX_CONCURRENT) {
+    oracleActiveCount += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    oracleWaitQueue.push(() => {
+      oracleActiveCount += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseOracleSlot(): void {
+  oracleActiveCount = Math.max(0, oracleActiveCount - 1);
+  const next = oracleWaitQueue.shift();
+  if (next) next();
+}
+
+/** Test helper — reset module oracle throttle state. */
+export function resetWoTOracleThrottleForTests(): void {
+  oracleDownUntil = 0;
+  oracleActiveCount = 0;
+  oracleWaitQueue.length = 0;
+  oracleInFlight.clear();
 }
 
 /** Drop oracle cache entries (all, or for one viewer) after a follow change. */
@@ -210,57 +259,91 @@ export async function fetchWoTDistanceFromOracle(
     return cached.value;
   }
 
-  const params = new URLSearchParams({
-    from: viewerHex,
-    to: targetHex,
-    max_hops: String(maxHops),
-  });
-
-  try {
-    const res = await fetch(`/api/wot/distance?${params.toString()}`);
-    if (!res.ok) {
-      // Do not cache as Outside — oracle 502 ≠ "no path".
-      const unavailable: WoTDistanceResult = {
-        hops: null,
-        source: "unavailable",
-      };
-      distanceCache.set(key, {
-        value: unavailable,
-        expires: Date.now() + 60_000,
-      });
-      return unavailable;
-    }
-    const body = (await res.json()) as WoTOracleDistanceResponse;
-    const hops = hopsFromOracleBody(body);
-    if (hops === null) {
-      // Oracle answered: no path within max_hops → confirmed Outside.
-      const outside: WoTDistanceResult = { hops: null, source: "oracle" };
-      distanceCache.set(key, {
-        value: outside,
-        expires: Date.now() + CACHE_TTL_MS,
-      });
-      return outside;
-    }
-    const result: WoTDistanceResult = {
-      hops,
-      mutual: Boolean(body.mutual_follow ?? body.mutual),
-      source: "oracle",
-    };
-    distanceCache.set(key, {
-      value: result,
-      expires: Date.now() + CACHE_TTL_MS,
-    });
-    return result;
-  } catch {
-    const unavailable: WoTDistanceResult = {
-      hops: null,
-      source: "unavailable",
-    };
+  // /apps mounts hundreds of TrustBadges — after one oracle failure, stop
+  // hammering /api/wot/distance (and the dead upstream) for a minute.
+  if (isOracleCircuitOpen()) {
+    const unavailable = unavailableResult();
     distanceCache.set(key, {
       value: unavailable,
-      expires: Date.now() + 60_000,
+      expires: Math.max(oracleDownUntil, Date.now() + 1_000),
     });
     return unavailable;
+  }
+
+  const inflight = oracleInFlight.get(key);
+  if (inflight) return inflight;
+
+  const run = async (): Promise<WoTDistanceResult | null> => {
+    await acquireOracleSlot();
+    try {
+      if (isOracleCircuitOpen()) {
+        const unavailable = unavailableResult();
+        distanceCache.set(key, {
+          value: unavailable,
+          expires: Math.max(oracleDownUntil, Date.now() + 1_000),
+        });
+        return unavailable;
+      }
+
+      const params = new URLSearchParams({
+        from: viewerHex,
+        to: targetHex,
+        max_hops: String(maxHops),
+      });
+
+      try {
+        const res = await fetch(`/api/wot/distance?${params.toString()}`);
+        if (!res.ok) {
+          // Do not cache as Outside — oracle 502 ≠ "no path".
+          tripOracleCircuit();
+          const unavailable = unavailableResult();
+          distanceCache.set(key, {
+            value: unavailable,
+            expires: Date.now() + ORACLE_CIRCUIT_OPEN_MS,
+          });
+          return unavailable;
+        }
+        const body = (await res.json()) as WoTOracleDistanceResponse;
+        const hops = hopsFromOracleBody(body);
+        if (hops === null) {
+          // Oracle answered: no path within max_hops → confirmed Outside.
+          const outside: WoTDistanceResult = { hops: null, source: "oracle" };
+          distanceCache.set(key, {
+            value: outside,
+            expires: Date.now() + CACHE_TTL_MS,
+          });
+          return outside;
+        }
+        const result: WoTDistanceResult = {
+          hops,
+          mutual: Boolean(body.mutual_follow ?? body.mutual),
+          source: "oracle",
+        };
+        distanceCache.set(key, {
+          value: result,
+          expires: Date.now() + CACHE_TTL_MS,
+        });
+        return result;
+      } catch {
+        tripOracleCircuit();
+        const unavailable = unavailableResult();
+        distanceCache.set(key, {
+          value: unavailable,
+          expires: Date.now() + ORACLE_CIRCUIT_OPEN_MS,
+        });
+        return unavailable;
+      }
+    } finally {
+      releaseOracleSlot();
+    }
+  };
+
+  const promise = run();
+  oracleInFlight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    oracleInFlight.delete(key);
   }
 }
 

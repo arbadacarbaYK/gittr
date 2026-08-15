@@ -34,6 +34,10 @@ import {
   readCachedRepoAnnouncementEventId,
   removeStarReaction,
 } from "@/lib/nostr/repo-stars";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import {
   canManageSettings,
@@ -82,6 +86,7 @@ import {
   GitCommit,
   GitFork,
   GitPullRequest,
+  Github,
   Globe2,
   Layers,
   MessageCircle,
@@ -1391,8 +1396,12 @@ export default function RepoLayoutClient({
     };
   }, [resolvedParams.entity, resolvedParams.repo, refreshOpenIssuePrCounts]);
 
-  const handleWatch = useCallback(() => {
-    if (!pubkey) return;
+  const handleWatch = useCallback(async () => {
+    if (!pubkey) {
+      showToast("Log in with Nostr to watch this repo.", "error");
+      router.push("/login");
+      return;
+    }
     try {
       const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const repoIdentifier =
@@ -1432,89 +1441,105 @@ export default function RepoLayoutClient({
         setIsWatching(true);
       }
 
-      // NIP-51: kind 10018 is a *standard list* — clients publish the full set of `a`
-      // tags each time (replaceable per pubkey+kind), not a relay-level incremental API.
-      if (
-        repoAddress &&
-        publish &&
-        defaultRelays &&
-        defaultRelays.length > 0 &&
-        typeof window !== "undefined" &&
-        window.nostr
-      ) {
-        const nextWatched = isWatching
-          ? watched.filter((r) => r !== repoId)
-          : [...watched, repoId];
-        const watchedRepoAddresses = new Set<string>();
-        const storedRepos = loadStoredRepos();
-        nextWatched.forEach((watchedRepoId) => {
-          const [watchedEntity, watchedRepoName] = watchedRepoId.split("/");
-          if (!watchedEntity || !watchedRepoName) return;
-          const found = findRepoByEntityAndName<StoredRepo>(
-            storedRepos,
-            watchedEntity,
-            watchedRepoName
-          );
-          const watchedOwnerPubkey = found
-            ? getRepoOwnerPubkey(found, watchedEntity)
-            : watchedEntity;
-          if (
-            !watchedOwnerPubkey ||
-            !/^[0-9a-f]{64}$/i.test(watchedOwnerPubkey)
-          ) {
-            return;
-          }
-          const watchedRepoIdentifier =
-            (
-              found as {
-                repositoryName?: string;
-                repo?: string;
-                slug?: string;
-              } | null
-            )?.repositoryName ||
-            (
-              found as {
-                repositoryName?: string;
-                repo?: string;
-                slug?: string;
-              } | null
-            )?.repo ||
-            watchedRepoName;
-          watchedRepoAddresses.add(
-            `30617:${watchedOwnerPubkey}:${watchedRepoIdentifier}`
-          );
-        });
-        if (!isWatching) {
-          watchedRepoAddresses.add(repoAddress);
-        }
-
-        const createdAt = Math.floor(Date.now() / 1000);
-        const unsignedEvent = {
-          kind: KIND_GIT_REPOSITORIES_LIST,
-          created_at: createdAt,
-          tags: Array.from(watchedRepoAddresses).map((address) => [
-            "a",
-            address,
-          ]),
-          content: "",
-          pubkey,
-        };
-        void window.nostr
-          .signEvent(unsignedEvent as UnsignedEvent)
-          .then((signedEvent) => {
-            publish(signedEvent, defaultRelays);
-          })
-          .catch((error) => {
-            console.warn(
-              "[Repo Watch] Failed to publish kind 10018 list:",
-              error
-            );
-          });
-      }
-
       // Notify repo pages to refresh their counters
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("gittr:repos-updated"));
+      }
+
+      // NIP-51: kind 10018 is a *standard list* — clients publish the full set of `a`
+      // tags each time (replaceable per pubkey+kind), not a relay-level incremental API.
+      if (
+        !repoAddress ||
+        !publish ||
+        !defaultRelays ||
+        defaultRelays.length === 0
+      ) {
+        return;
+      }
+
+      const nextWatched = isWatching
+        ? watched.filter((r) => r !== repoId)
+        : [...watched, repoId];
+      const watchedRepoAddresses = new Set<string>();
+      const storedRepos = loadStoredRepos();
+      nextWatched.forEach((watchedRepoId) => {
+        const [watchedEntity, watchedRepoName] = watchedRepoId.split("/");
+        if (!watchedEntity || !watchedRepoName) return;
+        const found = findRepoByEntityAndName<StoredRepo>(
+          storedRepos,
+          watchedEntity,
+          watchedRepoName
+        );
+        const watchedOwnerPubkey = found
+          ? getRepoOwnerPubkey(found, watchedEntity)
+          : watchedEntity;
+        if (
+          !watchedOwnerPubkey ||
+          !/^[0-9a-f]{64}$/i.test(watchedOwnerPubkey)
+        ) {
+          return;
+        }
+        const watchedRepoIdentifier =
+          (
+            found as {
+              repositoryName?: string;
+              repo?: string;
+              slug?: string;
+            } | null
+          )?.repositoryName ||
+          (
+            found as {
+              repositoryName?: string;
+              repo?: string;
+              slug?: string;
+            } | null
+          )?.repo ||
+          watchedRepoName;
+        watchedRepoAddresses.add(
+          `30617:${watchedOwnerPubkey}:${watchedRepoIdentifier}`
+        );
+      });
+      if (!isWatching) {
+        watchedRepoAddresses.add(repoAddress);
+      }
+
+      const createdAt = Math.floor(Date.now() / 1000);
+      const unsignedEvent = {
+        kind: KIND_GIT_REPOSITORIES_LIST,
+        created_at: createdAt,
+        tags: Array.from(watchedRepoAddresses).map((address) => [
+          "a",
+          address,
+        ]),
+        content: "",
+        pubkey,
+      };
+
+      // Same path as Push/Star: wait for Amber bootstrap, then probe on sign.
+      const resolved = await resolveNostrSigner({
+        remoteSigner,
+        waitForRemote: true,
+      });
+      if (!resolved) {
+        showToast(
+          "Watch saved here, but open Amber (or a NIP-07 extension) to publish to relays.",
+          "error"
+        );
+        return;
+      }
+      try {
+        const signedEvent = await resolved.signEvent(
+          unsignedEvent as UnsignedEvent
+        );
+        publish(signedEvent, defaultRelays);
+      } catch (error) {
+        console.warn("[Repo Watch] Failed to publish kind 10018 list:", error);
+        showToast(
+          error instanceof Error
+            ? error.message
+            : "Watch saved here, but could not reach your remote signer. Open Amber and try again.",
+          "error"
+        );
       }
     } catch {}
   }, [
@@ -1526,6 +1551,8 @@ export default function RepoLayoutClient({
     ownerPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
+    router,
   ]);
 
   const mergeNostrStarEvent = useCallback((ev: NostrEvent) => {
@@ -1538,7 +1565,12 @@ export default function RepoLayoutClient({
 
   const handleNostrStar = useCallback(async () => {
     if (!pubkey) {
-      showToast("Log in with Nostr (NIP-07) to star.", "error");
+      showToast("Log in with Nostr to star this repo.", "error");
+      router.push("/login");
+      return;
+    }
+    if (resolvingRepoEventId) {
+      showToast("Still looking up this repo on Nostr relays…", "error");
       return;
     }
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
@@ -1557,26 +1589,18 @@ export default function RepoLayoutClient({
       return;
     }
 
-    const getSigner = async () => {
-      if (
-        typeof window !== "undefined" &&
-        typeof window.nostr?.signEvent === "function"
-      ) {
-        const wn = window.nostr;
-        return {
-          signEvent: (e: Parameters<typeof wn.signEvent>[0]) => wn.signEvent(e),
-        };
-      }
-      if (remoteSigner?.getState?.() === "ready") {
-        return {
-          signEvent: (e: Parameters<typeof remoteSigner.signEvent>[0]) =>
-            remoteSigner.signEvent(e),
-        };
-      }
-      throw new Error(
-        "Connect a Nostr signer (browser extension or remote signer) to star this repo."
-      );
-    };
+    // Same signing path as Push: wait for Amber bootstrap, then probe on sign.
+    const resolved = await resolveNostrSigner({
+      remoteSigner,
+      waitForRemote: true,
+    });
+    if (!resolved) {
+      showToast(NO_SIGNING_METHOD_MESSAGE, "error");
+      return;
+    }
+    const getSigner = async () => ({
+      signEvent: resolved.signEvent,
+    });
     const publishRelays = getAllRelays(defaultRelays);
     const doPublish = (event: NostrEvent) => {
       publish(event, publishRelays);
@@ -1650,15 +1674,18 @@ export default function RepoLayoutClient({
     mergeNostrStarEvent,
     resolvedParams.entity,
     resolvedParams.repo,
+    resolvingRepoEventId,
+    router,
   ]);
 
   const handleFork = useCallback(() => {
-    // Fork functionality - navigate to fork page or show modal
-    // For now, just navigate to new repo page with fork info
-    if (typeof window !== "undefined") {
-      window.location.href = `/new?fork=${resolvedParams.entity}/${resolvedParams.repo}`;
+    if (!pubkey) {
+      showToast("Log in with Nostr to fork this repo.", "error");
+      router.push("/login");
+      return;
     }
-  }, [resolvedParams.entity, resolvedParams.repo]);
+    window.location.href = `/new?fork=${resolvedParams.entity}/${resolvedParams.repo}`;
+  }, [resolvedParams.entity, resolvedParams.repo, pubkey, router]);
 
   useEffect(() => {
     // Set initial window width after mount to prevent hydration mismatch
@@ -1889,7 +1916,6 @@ export default function RepoLayoutClient({
                   <DropdownMenuItem
                     key="nostr-star"
                     title={nostrStarButtonTitle}
-                    disabled={!pubkey || !repoNostrEventId}
                     onClick={() => {
                       void handleNostrStar();
                     }}
@@ -1899,7 +1925,7 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    Star
+                    {resolvingRepoEventId ? "Looking up…" : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </DropdownMenuItem>
                   {sourceStarsDisplay ? (
@@ -1912,7 +1938,7 @@ export default function RepoLayoutClient({
                           window.open(sourceStarsDisplay.href, "_blank");
                       }}
                     >
-                      <Star className="mr-2 h-4 w-4" />
+                      <Github className="mr-2 h-4 w-4" />
                       {sourceStarsDisplay.label}
                       <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
                     </DropdownMenuItem>
@@ -1931,9 +1957,12 @@ export default function RepoLayoutClient({
                   <Button
                     className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
-                    title={WATCH_BUTTON_TITLE}
+                    title={
+                      !pubkey
+                        ? "Log in with Nostr to watch this repo"
+                        : WATCH_BUTTON_TITLE
+                    }
                     onClick={handleWatch}
-                    disabled={!mounted || !pubkey}
                     suppressHydrationWarning
                   >
                     <Eye className="mr-2 h-4 w-4" />{" "}
@@ -1953,8 +1982,8 @@ export default function RepoLayoutClient({
                   <Button
                     className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
+                    title={!pubkey ? "Log in with Nostr to fork this repo" : undefined}
                     onClick={handleFork}
-                    disabled={!mounted || !pubkey}
                     suppressHydrationWarning
                   >
                     <GitFork className="mr-2 h-4 w-4" /> Fork
@@ -1963,13 +1992,16 @@ export default function RepoLayoutClient({
                   <Button
                     className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
                       isNostrStarred ? "hover:bg-[#22262C]" : ""
+                    } ${
+                      !canStarOnNostr && !resolvingRepoEventId
+                        ? "opacity-80"
+                        : ""
                     }`}
                     variant="outline"
                     title={nostrStarButtonTitle}
                     onClick={() => {
                       void handleNostrStar();
                     }}
-                    disabled={!canStarOnNostr}
                     suppressHydrationWarning
                   >
                     <Star
@@ -1977,7 +2009,7 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    Star
+                    {resolvingRepoEventId ? "Looking up…" : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </Button>
                   {sourceStarsDisplay ? (
@@ -1993,7 +2025,7 @@ export default function RepoLayoutClient({
                           variant="outline"
                           type="button"
                         >
-                          <Star className="mr-2 h-4 w-4" />
+                          <Github className="mr-2 h-4 w-4" />
                           {sourceStarsDisplay.label}
                           <Badge className="ml-2">
                             {sourceStarsDisplay.value}
@@ -2008,7 +2040,7 @@ export default function RepoLayoutClient({
                         title={sourceStarsDisplay.title}
                         disabled
                       >
-                        <Star className="mr-2 h-4 w-4" />
+                        <Github className="mr-2 h-4 w-4" />
                         {sourceStarsDisplay.label}
                         <Badge className="ml-2">
                           {sourceStarsDisplay.value}

@@ -43,6 +43,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 function CardSkeleton() {
@@ -199,6 +200,7 @@ function cardLabelsForApp(
 
 export function AppsDirectoryClient() {
   const { subscribe, defaultRelays } = useNostrContext();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<ParsedSoftwareApp[]>([]);
   const [releasesByApp, setReleasesByApp] = useState<
@@ -584,6 +586,11 @@ export function AppsDirectoryClient() {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [topicsFilterOpen, setTopicsFilterOpen] = useState(false);
   const [topicChipQuery, setTopicChipQuery] = useState("");
+
+  useEffect(() => {
+    const fromUrl = searchParams?.get("q")?.trim();
+    if (fromUrl) setQuery(fromUrl);
+  }, [searchParams]);
 
   const filteredApps = useMemo(() => {
     const q = query.trim().toLowerCase();

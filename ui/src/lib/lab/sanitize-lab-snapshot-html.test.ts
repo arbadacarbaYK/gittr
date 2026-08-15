@@ -44,4 +44,12 @@ describe("sanitizeLabSnapshotHtml", () => {
     expect(out).toContain("postMessage");
     expect(out).toMatch(/#gwrap\.graph-wrap/);
   });
+
+  it("strips resize→fitCamera so iframe auto-height cannot reset zoom", () => {
+    const out = sanitizeLabSnapshotHtml(
+      `<html><body><script>window.addEventListener("resize", () => { resize(); fitCamera({ padding: 56 }); });</script></body></html>`
+    );
+    expect(out).toContain("no fitCamera");
+    expect(out).not.toMatch(/resize\(\);\s*fitCamera\(/);
+  });
 });

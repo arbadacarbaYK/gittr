@@ -81,14 +81,22 @@ function stripExternalScripts(html: string): string {
 /**
  * Auto-height + map wheel bridge for sandboxed iframe (origin is typically "null").
  * - Fixed graph height (no 88vh against a multi-thousand-px iframe).
- * - Debounced height posts only (no ResizeObserver loop → map fitCamera spam).
+ * - One-shot height post (no late thrash → window resize → fitCamera zoom reset).
  * - Tell parent when the canvas is hovered so page scroll does not eat zoom.
+ * - Strip snapshot's resize→fitCamera (iframe size changes must not reset camera).
  */
+function stripResizeFitCamera(html: string): string {
+  return html.replace(
+    /window\.addEventListener\(\s*(["'])resize\1\s*,\s*\(\)\s*=>\s*\{\s*resize\(\);\s*fitCamera\(\s*\{\s*padding:\s*56\s*\}\s*\);\s*\}\s*\)\s*;/g,
+    'window.addEventListener("resize", () => { resize(); /* gittr: no fitCamera — iframe auto-height */ });'
+  );
+}
+
 function injectAutoHeightReporter(html: string): string {
   const heightType = JSON.stringify(LAB_SNAPSHOT_HEIGHT_MESSAGE);
   const interactType = JSON.stringify(LAB_SNAPSHOT_MAP_INTERACT_MESSAGE);
   const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}#gwrap.graph-wrap,.graph-wrap#gwrap{height:1100px!important;max-height:1100px!important;min-height:640px!important;}</style>`;
-  const script = `<script id="gittr-lab-autoheight-script">(function(){var lastH=0,mapActive=false;function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(){if(mapActive)return;var n=h();if(n<1)return;if(Math.abs(n-lastH)<4)return;lastH=n;try{parent.postMessage({type:${heightType},height:n},"*")}catch(e){}}function setMap(active){mapActive=!!active;try{parent.postMessage({type:${interactType},active:mapActive},"*")}catch(e){}}function bindMap(){var canvas=document.getElementById("graph");if(!canvas)return false;canvas.addEventListener("pointerenter",function(){setMap(true)});canvas.addEventListener("pointerleave",function(){setMap(false)});canvas.addEventListener("wheel",function(){setMap(true)},{passive:true,capture:true});return true}report();window.addEventListener("load",function(){report();bindMap()||setTimeout(bindMap,500)});[400,1200,3000,7000].forEach(function(ms){setTimeout(function(){report();bindMap()},ms)});})();</script>`;
+  const script = `<script id="gittr-lab-autoheight-script">(function(){var lastH=0,mapActive=false,frozen=false;function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){if(mapActive)return;if(frozen&&!force)return;var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${heightType},height:n},"*")}catch(e){}}function setMap(active){mapActive=!!active;try{parent.postMessage({type:${interactType},active:mapActive},"*")}catch(e){}}function bindMap(){var canvas=document.getElementById("graph");if(!canvas||canvas.dataset.gittrMapBound)return!!canvas;canvas.dataset.gittrMapBound="1";canvas.addEventListener("pointerenter",function(){setMap(true)});canvas.addEventListener("pointerleave",function(){setMap(false)});canvas.addEventListener("wheel",function(e){setMap(true);try{e.preventDefault()}catch(err){}},{passive:false,capture:true});canvas.addEventListener("pointerdown",function(){setMap(true)});return true}report(true);window.addEventListener("load",function(){report(true);bindMap();setTimeout(function(){report(true);frozen=true},900)});setTimeout(function(){bindMap();report(true)},400);setTimeout(function(){frozen=true},2500);})();</script>`;
 
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, `${style}\n${script}\n</body>`);
@@ -116,6 +124,7 @@ export function sanitizeLabSnapshotHtml(input: string): string {
   html = html.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "");
 
   html = neutralizePrivateUrls(html);
+  html = stripResizeFitCamera(html);
 
   // Replace any existing CSP meta so we don't leave a stale script-src 'none'.
   html = html.replace(

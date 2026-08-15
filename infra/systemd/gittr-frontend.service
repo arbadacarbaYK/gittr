@@ -9,12 +9,12 @@ WorkingDirectory=/opt/ngit/ui
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
-# 3.7 Gi hosts: kill/restart Next *before* it wedges (~1.9 Gi RSS was already dead).
-MemoryHigh=1400M
-MemoryMax=1800M
+# 15 Gi hosts: room to breathe; still restart before a runaway process fills the box.
+MemoryHigh=3G
+MemoryMax=4G
 OOMPolicy=stop
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=1536
+Environment=NODE_OPTIONS=--max-old-space-size=3072
 Environment="GIT_NOSTR_BRIDGE_REPOS_DIR=/home/git-nostr/git-nostr-repositories"
 Environment="HOME=/root"
 StandardOutput=journal

@@ -262,7 +262,7 @@ export function enrichRepoLinks(
     const origin = siteOriginFallback(input.siteOrigin);
     additions.push({
       type: "other",
-      url: `${origin}/apps`,
+      url: `${origin}/apps?q=${encodeURIComponent(appId)}`,
       label: `App (${appId})`,
     });
   }

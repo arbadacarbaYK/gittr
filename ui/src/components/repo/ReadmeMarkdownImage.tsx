@@ -175,18 +175,19 @@ export function ReadmeMarkdownImage({
     let cancelled = false;
     (async () => {
       try {
+        // Prefer bridge when we have identity — forge raw may be wrong fork/branch.
         let ok: FetchOk | null = null;
-        if (meta.sourceUrl) {
-          ok = await fetchViaGitFileContent(
-            meta.sourceUrl,
+        if (meta.ownerPubkey && meta.repoName) {
+          ok = await fetchViaNostrBridge(
+            meta.ownerPubkey,
+            meta.repoName,
             meta.repoPath!,
             branch
           );
         }
-        if (!ok && meta.ownerPubkey && meta.repoName) {
-          ok = await fetchViaNostrBridge(
-            meta.ownerPubkey,
-            meta.repoName,
+        if (!ok && meta.sourceUrl) {
+          ok = await fetchViaGitFileContent(
+            meta.sourceUrl,
             meta.repoPath!,
             branch
           );
@@ -237,17 +238,17 @@ export function ReadmeMarkdownImage({
         setApiTried(true);
         try {
           let ok: FetchOk | null = null;
-          if (meta.sourceUrl) {
-            ok = await fetchViaGitFileContent(
-              meta.sourceUrl,
+          if (meta.ownerPubkey && meta.repoName) {
+            ok = await fetchViaNostrBridge(
+              meta.ownerPubkey,
+              meta.repoName,
               meta.repoPath,
               branch
             );
           }
-          if (!ok && meta.ownerPubkey && meta.repoName) {
-            ok = await fetchViaNostrBridge(
-              meta.ownerPubkey,
-              meta.repoName,
+          if (!ok && meta.sourceUrl) {
+            ok = await fetchViaGitFileContent(
+              meta.sourceUrl,
               meta.repoPath,
               branch
             );

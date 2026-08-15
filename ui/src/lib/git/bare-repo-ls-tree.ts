@@ -34,6 +34,7 @@ function shellQuote(s: string): string {
 /**
  * Non-recursive listing of one directory (GitHub-style folder view).
  * path="" → repo root.
+ * Uses `ls-tree -l` for sizes in one pass (no per-blob `cat-file -s`).
  */
 export async function listBareRepoShallow(
   repoPath: string,
@@ -45,14 +46,17 @@ export async function listBareRepoShallow(
   const includeSizes = !!opts?.includeSizes;
   const spec = path ? `${branch}:${path}` : branch;
   const { stdout } = await execAsync(
-    `git --git-dir=${shellQuote(repoPath)} ls-tree ${shellQuote(spec)}`,
+    `git --git-dir=${shellQuote(repoPath)} ls-tree ${
+      includeSizes ? "-l " : ""
+    }${shellQuote(spec)}`,
     { timeout, encoding: "utf8", maxBuffer: 20 * 1024 * 1024 }
   );
 
   const entries: BareTreeEntry[] = [];
   for (const line of stdout.split("\n")) {
     if (!line.trim()) continue;
-    // 100644 blob <hash>\tname   OR  040000 tree <hash>\tname
+    // 100644 blob <hash>\tname
+    // 100644 blob <hash> <size>\tname  (with -l)
     const tab = line.indexOf("\t");
     if (tab < 0) continue;
     const meta = line.slice(0, tab);
@@ -66,19 +70,9 @@ export async function listBareRepoShallow(
       type: isDir ? "dir" : "file",
       path: fullPath,
     };
-    if (!isDir && includeSizes && parts[2]) {
-      try {
-        const { stdout: sizeOut } = await execAsync(
-          `git --git-dir=${shellQuote(repoPath)} cat-file -s ${shellQuote(
-            parts[2]
-          )}`,
-          { timeout: 3000, encoding: "utf8" }
-        );
-        const size = parseInt(sizeOut.trim(), 10);
-        if (!Number.isNaN(size)) entry.size = size;
-      } catch {
-        // ignore size failures
-      }
+    if (!isDir && includeSizes && parts.length >= 4 && parts[3]) {
+      const size = parseInt(parts[3], 10);
+      if (!Number.isNaN(size)) entry.size = size;
     }
     entries.push(entry);
   }
@@ -107,6 +101,59 @@ export async function listBareRepoRecursivePaths(
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+}
+
+/**
+ * Recursive file list with blob sizes via one `ls-tree -r -l` (cheap).
+ * Directory entries are synthesized without sizes.
+ */
+export async function listBareRepoRecursiveWithSizes(
+  repoPath: string,
+  branch: string,
+  opts?: { timeoutMs?: number }
+): Promise<BareTreeEntry[]> {
+  const timeout = opts?.timeoutMs ?? 20_000;
+  const { stdout } = await execAsync(
+    `git --git-dir=${shellQuote(repoPath)} ls-tree -r -l ${shellQuote(branch)}`,
+    { timeout, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
+  );
+
+  const files: BareTreeEntry[] = [];
+  const dirs = new Set<string>();
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const meta = line.slice(0, tab);
+    const filePath = line.slice(tab + 1);
+    if (!filePath || filePath.includes("\0")) continue;
+    const parts = meta.split(/\s+/);
+    // 100644 blob <hash> <size>
+    if (parts[1] !== "blob") continue;
+    const sizeRaw = parts[3];
+    const entry: BareTreeEntry = { type: "file", path: filePath };
+    if (sizeRaw && sizeRaw !== "-") {
+      const size = parseInt(sizeRaw, 10);
+      if (!Number.isNaN(size)) entry.size = size;
+    }
+    files.push(entry);
+    const segs = filePath.split("/");
+    for (let i = 1; i < segs.length; i++) {
+      dirs.add(segs.slice(0, i).join("/"));
+    }
+  }
+
+  const entries: BareTreeEntry[] = [
+    ...Array.from(dirs)
+      .sort()
+      .map((path) => ({ type: "dir" as const, path })),
+    ...files.sort((a, b) => a.path.localeCompare(b.path)),
+  ];
+  entries.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+  return entries;
 }
 
 /**
