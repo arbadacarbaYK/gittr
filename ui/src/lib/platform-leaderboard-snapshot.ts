@@ -52,3 +52,24 @@ export async function loadPlatformLeaderboardSnapshot(): Promise<LeaderboardSnap
     return null;
   }
 }
+
+export async function savePlatformLeaderboardSnapshot(
+  snap: LeaderboardSnapshot
+): Promise<LeaderboardSnapshot> {
+  const out: LeaderboardSnapshot = {
+    at: snap.at || Date.now(),
+    topRepos: snap.topRepos || [],
+    topUsers: snap.topUsers || [],
+    recentRepos: snap.recentRepos || [],
+    recentActivities: snap.recentActivities || [],
+  };
+  await fs.mkdir(path.dirname(PLATFORM_LEADERBOARD_SNAPSHOT_PATH), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
+    JSON.stringify(out),
+    "utf8"
+  );
+  return out;
+}

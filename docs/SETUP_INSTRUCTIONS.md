@@ -65,25 +65,17 @@ PWA: optional; needs HTTPS in production (`ui/public/site.webmanifest`, `sw.js`)
 
 ### Homepage “Most Active” leaderboard (server snapshot)
 
-The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr relay scans no longer block the first paint:
+The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr relay scans run **outside** live Next:
 
-- Cached JSON: **`ui/data/platform-leaderboard-snapshot.json`** (created on the server after the first successful refresh).
-- **Serve immediately** from disk when the file exists; response may include `refreshing: true` while a background relay scan runs.
-- **Disk refresh** when the snapshot is older than **3 hours** (`DISK_REFRESH_AFTER_MS` in the API route).
-- Stale disk older than **7 days** is ignored and a full refresh is forced.
-- After deploy, warm the snapshot once: `curl -sS https://YOUR_DOMAIN/api/stats/platform-leaderboard | head` (first call may take minutes; later calls should be sub-second).
-
-**Hourly refresh (recommended on production):** install the systemd timer so the snapshot updates even when nobody visits the homepage:
+- Cached JSON: **`ui/data/platform-leaderboard-snapshot.json`** (written by standalone `scripts/refresh-platform-leaderboard.mts`).
+- API serves disk/memory only (sub-second). Emergency `?refresh=1` still exists but avoid it on a sick box.
+- After deploy, warm once: `systemctl start gittr-leaderboard-refresh.service` (or wait for the hourly timer).
 
 ```bash
 ./scripts/install-gittr-leaderboard-timer.sh YOUR_SERVER_IP
 ```
 
-This installs `gittr-leaderboard-refresh.timer` (runs every hour) and a oneshot service that calls `http://127.0.0.1:3000/api/stats/platform-leaderboard?refresh=1` on the app host. Unit files live in `infra/systemd/`. Override the URL in `/etc/default/gittr-leaderboard-refresh` if needed:
-
-```bash
-GITTR_LEADERBOARD_URL=http://127.0.0.1:3000/api/stats/platform-leaderboard?refresh=1
-```
+This installs `gittr-leaderboard-refresh.timer` (hourly) and a oneshot that runs `npx tsx /opt/ngit/scripts/refresh-platform-leaderboard.mts` with `WorkingDirectory=/opt/ngit/ui` (`MemoryMax=1200M`). Unit files live in `infra/systemd/`.
 
 Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journalctl -u gittr-leaderboard-refresh.service --since today`.
 
@@ -200,7 +192,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-**Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=2048` so a leaking Next process is restarted before it wedges a ~4 Gi host (symptoms: site slows, then Cloudflare 504 / `:3000` hang at ~2 Gi+ RSS).
+**Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=1536` so a leaking Next process is restarted before it wedges a ~4 Gi host (symptoms: site slows, then Cloudflare 504 / `:3000` hang around ~1.5–2 Gi RSS).
 
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
@@ -215,9 +207,9 @@ User=www-data
 WorkingDirectory=/opt/ngit/ui
 ExecStart=/usr/bin/npm start
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=2048
-MemoryHigh=1800M
-MemoryMax=2500M
+Environment=NODE_OPTIONS=--max-old-space-size=1536
+MemoryHigh=1400M
+MemoryMax=1800M
 OOMPolicy=stop
 Restart=always
 RestartSec=10

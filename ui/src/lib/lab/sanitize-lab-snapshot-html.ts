@@ -17,6 +17,13 @@ const PRIVATE_HOST_RE =
 /** postMessage type from injected reporter → LabDashboardClient */
 export const LAB_SNAPSHOT_HEIGHT_MESSAGE = "gittr-lab-snapshot-height" as const;
 
+/**
+ * Pointer/wheel over the connection-map canvas. Parent locks page scroll so
+ * wheel zooms the map instead of scrolling the tall auto-sized iframe page.
+ */
+export const LAB_SNAPSHOT_MAP_INTERACT_MESSAGE =
+  "gittr-lab-map-interact" as const;
+
 /** Response + meta CSP for /api/lab/snapshot (keep in sync). */
 export const LAB_SNAPSHOT_CSP =
   "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' data:; font-src data: https:; media-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
@@ -71,12 +78,17 @@ function stripExternalScripts(html: string): string {
   );
 }
 
-/** Auto-height bridge for sandboxed iframe (origin is typically "null"). */
+/**
+ * Auto-height + map wheel bridge for sandboxed iframe (origin is typically "null").
+ * - Fixed graph height (no 88vh against a multi-thousand-px iframe).
+ * - Debounced height posts only (no ResizeObserver loop → map fitCamera spam).
+ * - Tell parent when the canvas is hovered so page scroll does not eat zoom.
+ */
 function injectAutoHeightReporter(html: string): string {
-  const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}</style>`;
-  const script = `<script id="gittr-lab-autoheight-script">(function(){function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(){var n=h();if(n<1)return;try{parent.postMessage({type:${JSON.stringify(
-    LAB_SNAPSHOT_HEIGHT_MESSAGE
-  )},height:n},"*")}catch(e){}}report();window.addEventListener("load",report);window.addEventListener("resize",report);if(typeof ResizeObserver!=="undefined"&&document.documentElement){try{new ResizeObserver(report).observe(document.documentElement);if(document.body)new ResizeObserver(report).observe(document.body)}catch(e){}}[250,800,2000,5000].forEach(function(ms){setTimeout(report,ms)});})();</script>`;
+  const heightType = JSON.stringify(LAB_SNAPSHOT_HEIGHT_MESSAGE);
+  const interactType = JSON.stringify(LAB_SNAPSHOT_MAP_INTERACT_MESSAGE);
+  const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}#gwrap.graph-wrap,.graph-wrap#gwrap{height:1100px!important;max-height:1100px!important;min-height:640px!important;}</style>`;
+  const script = `<script id="gittr-lab-autoheight-script">(function(){var lastH=0,mapActive=false;function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(){if(mapActive)return;var n=h();if(n<1)return;if(Math.abs(n-lastH)<4)return;lastH=n;try{parent.postMessage({type:${heightType},height:n},"*")}catch(e){}}function setMap(active){mapActive=!!active;try{parent.postMessage({type:${interactType},active:mapActive},"*")}catch(e){}}function bindMap(){var canvas=document.getElementById("graph");if(!canvas)return false;canvas.addEventListener("pointerenter",function(){setMap(true)});canvas.addEventListener("pointerleave",function(){setMap(false)});canvas.addEventListener("wheel",function(){setMap(true)},{passive:true,capture:true});return true}report();window.addEventListener("load",function(){report();bindMap()||setTimeout(bindMap,500)});[400,1200,3000,7000].forEach(function(ms){setTimeout(function(){report();bindMap()},ms)});})();</script>`;
 
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, `${style}\n${script}\n</body>`);

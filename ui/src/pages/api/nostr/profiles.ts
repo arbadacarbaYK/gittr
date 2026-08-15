@@ -1,3 +1,5 @@
+import { BoundedTtlCache } from "@/lib/utils/bounded-ttl-cache";
+
 import type { NextApiRequest, NextApiResponse } from "next";
 
 /**
@@ -25,11 +27,11 @@ const RELAYS = [
   "wss://relay.noderunners.network",
 ];
 
-const memoryCache = new Map<
-  string,
-  { meta: ProfileMeta | null; fetchedAt: number }
->();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+/** Cap unique pubkey metas — unbounded Map grew under explore/home traffic. */
+const memoryCache = new BoundedTtlCache<ProfileMeta | null>(
+  30 * 60 * 1000,
+  4000
+);
 const MAX_PUBKEYS = 80;
 
 function normalizePubkey(p: string): string | null {
@@ -48,14 +50,21 @@ async function fetchProfilesBatch(
   const pending = new Set(pubkeys);
 
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(() => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearInterval(early);
       try {
         pool.close();
       } catch {
         /* ignore */
       }
       resolve();
-    }, 8000);
+    };
+
+    const timeout = setTimeout(finish, 8000);
 
     try {
       pool.subscribe(
@@ -84,26 +93,13 @@ async function fetchProfilesBatch(
         }
       );
     } catch {
-      clearTimeout(timeout);
-      try {
-        pool.close();
-      } catch {
-        /* ignore */
-      }
-      resolve();
+      finish();
     }
 
     // Resolve early if we got everything
     const early = setInterval(() => {
       if (Object.keys(out).length >= pubkeys.length) {
-        clearInterval(early);
-        clearTimeout(timeout);
-        try {
-          pool.close();
-        } catch {
-          /* ignore */
-        }
-        resolve();
+        finish();
       }
     }, 200);
   });
@@ -139,14 +135,13 @@ export default async function handler(
     return res.status(400).json({ error: "pubkeys required", profiles: {} });
   }
 
-  const now = Date.now();
   const profiles: Record<string, ProfileMeta> = {};
   const missing: string[] = [];
 
   for (const pk of pubkeys) {
     const hit = memoryCache.get(pk);
-    if (hit && now - hit.fetchedAt < CACHE_TTL_MS) {
-      if (hit.meta) profiles[pk] = hit.meta;
+    if (hit !== undefined) {
+      if (hit) profiles[pk] = hit;
     } else {
       missing.push(pk);
     }
@@ -157,7 +152,7 @@ export default async function handler(
       const fetched = await fetchProfilesBatch(missing);
       for (const pk of missing) {
         const meta = fetched[pk] || null;
-        memoryCache.set(pk, { meta, fetchedAt: now });
+        memoryCache.set(pk, meta);
         if (meta) profiles[pk] = meta;
       }
     } catch (e) {

@@ -40,6 +40,8 @@ describe("sanitizeLabSnapshotHtml", () => {
     );
     expect(out).toContain("gittr-lab-autoheight");
     expect(out).toContain("gittr-lab-snapshot-height");
+    expect(out).toContain("gittr-lab-map-interact");
     expect(out).toContain("postMessage");
+    expect(out).toMatch(/#gwrap\.graph-wrap/);
   });
 });

@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
-import { LAB_SNAPSHOT_HEIGHT_MESSAGE } from "@/lib/lab/sanitize-lab-snapshot-html";
+import {
+  LAB_SNAPSHOT_HEIGHT_MESSAGE,
+  LAB_SNAPSHOT_MAP_INTERACT_MESSAGE,
+} from "@/lib/lab/sanitize-lab-snapshot-html";
 import { cn } from "@/lib/utils";
 
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
@@ -13,11 +16,19 @@ const LOCAL_AGENT_REPO_URL =
 
 const MIN_FRAME_PX = 480;
 
+function isLabSnapshotOrigin(origin: string): boolean {
+  return (
+    origin === "null" ||
+    (typeof window !== "undefined" && origin === window.location.origin)
+  );
+}
+
 /**
  * Lab board iframe must be same-origin (`/api/lab/snapshot`).
  * Site CSP is `frame-src 'self' …` — blob: URLs are blocked there.
  * Snapshot HTML is sanitized + CSP-locked on the API.
  * Height comes via postMessage (sandbox has no allow-same-origin).
+ * Map zoom: page scroll is locked while the canvas is hovered.
  */
 export function LabDashboardClient() {
   const [loading, setLoading] = useState(true);
@@ -26,6 +37,8 @@ export function LabDashboardClient() {
   const [frameKey, setFrameKey] = useState(0);
   const [frameHeight, setFrameHeight] = useState(MIN_FRAME_PX);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const mapInteractRef = useRef(false);
+  const bodyOverflowRef = useRef<string | null>(null);
 
   const refreshMeta = useCallback(async () => {
     setLoading(true);
@@ -65,16 +78,39 @@ export function LabDashboardClient() {
   }, [refreshMeta]);
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      // Sandboxed iframe without allow-same-origin → origin is "null".
-      if (event.origin !== "null" && event.origin !== window.location.origin) {
-        return;
+    const unlockPageScroll = () => {
+      mapInteractRef.current = false;
+      if (bodyOverflowRef.current !== null) {
+        document.body.style.overflow = bodyOverflowRef.current;
+        bodyOverflowRef.current = null;
       }
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (!isLabSnapshotOrigin(event.origin)) return;
       const data = event.data as
-        | { type?: string; height?: number }
+        | { type?: string; height?: number; active?: boolean }
         | null
         | undefined;
-      if (!data || data.type !== LAB_SNAPSHOT_HEIGHT_MESSAGE) return;
+      if (!data || typeof data.type !== "string") return;
+
+      if (data.type === LAB_SNAPSHOT_MAP_INTERACT_MESSAGE) {
+        const active = !!data.active;
+        mapInteractRef.current = active;
+        if (active) {
+          if (bodyOverflowRef.current === null) {
+            bodyOverflowRef.current = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+          }
+        } else {
+          unlockPageScroll();
+        }
+        return;
+      }
+
+      if (data.type !== LAB_SNAPSHOT_HEIGHT_MESSAGE) return;
+      // Avoid iframe height thrash while zooming (map listens to window resize → fitCamera).
+      if (mapInteractRef.current) return;
       const next = Math.ceil(Number(data.height) || 0);
       if (!Number.isFinite(next) || next < 1) return;
       setFrameHeight((prev) => {
@@ -82,8 +118,12 @@ export function LabDashboardClient() {
         return Math.abs(clamped - prev) < 2 ? prev : clamped;
       });
     };
+
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      unlockPageScroll();
+    };
   }, []);
 
   const iframeSrc = `/api/lab/snapshot?v=${frameKey}`;

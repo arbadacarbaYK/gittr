@@ -1,61 +1,33 @@
 import {
   PLATFORM_STATS_RELAYS,
-  withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
   type LeaderboardSnapshot,
-  PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
   hasAnyLeaderboardData,
   loadPlatformLeaderboardSnapshot,
-  snapshotMissingTopUsers,
 } from "@/lib/platform-leaderboard-snapshot";
-import {
-  type PlatformRecentActivity,
-  type PlatformRecentRepo,
-  type RepoStats,
-  type UserStats,
-  getLiveRecentReposFromNostr,
-  getRecentPlatformActivitiesFromNostr,
-  getTopReposFromNostr,
-  getTopUsersFromNostr,
-} from "@/lib/stats";
+import { buildAndSavePlatformLeaderboard } from "@/lib/stats/build-platform-leaderboard";
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import path from "path";
 
-import fs from "fs/promises";
-
-/** In-memory cache after a successful relay refresh (short TTL). */
+/** Short in-memory mirror of the disk snapshot (no relay work). */
 const MEMORY_CACHE_MS = 2 * 60 * 1000;
-/** Disk snapshot is served immediately; background refresh if older than this. */
-const DISK_REFRESH_AFTER_MS = 3 * 60 * 60 * 1000;
 
 type LeaderboardSnapshotWritable = LeaderboardSnapshot;
 
 let cache: LeaderboardSnapshotWritable | null = null;
-let refreshInFlight: Promise<void> | null = null;
-let diskLoaded = false;
+let cacheLoadedAt = 0;
 
 export type PlatformLeaderboardResponse = {
-  topRepos: RepoStats[];
-  topUsers: UserStats[];
-  recentRepos: PlatformRecentRepo[];
-  recentActivities: PlatformRecentActivity[];
+  topRepos: LeaderboardSnapshot["topRepos"];
+  topUsers: LeaderboardSnapshot["topUsers"];
+  recentRepos: LeaderboardSnapshot["recentRepos"];
+  recentActivities: LeaderboardSnapshot["recentActivities"];
   cached: boolean;
   refreshing: boolean;
   relayCount: number;
   snapshotAt?: number;
 };
-
-function emptySnapshot(): LeaderboardSnapshotWritable {
-  return {
-    at: 0,
-    topRepos: [],
-    topUsers: [],
-    recentRepos: [],
-    recentActivities: [],
-  };
-}
 
 function cloneSnapshot(snap: LeaderboardSnapshot): LeaderboardSnapshotWritable {
   return {
@@ -67,97 +39,30 @@ function cloneSnapshot(snap: LeaderboardSnapshot): LeaderboardSnapshotWritable {
   };
 }
 
-async function persistDiskSnapshot(snap: LeaderboardSnapshot): Promise<void> {
-  try {
-    await fs.mkdir(path.dirname(PLATFORM_LEADERBOARD_SNAPSHOT_PATH), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
-      JSON.stringify(snap),
-      "utf8"
-    );
-  } catch (e) {
-    console.error("[platform-leaderboard] failed to write disk snapshot", e);
+async function ensureCacheFromDisk(force = false): Promise<void> {
+  const now = Date.now();
+  if (
+    !force &&
+    cache &&
+    hasAnyLeaderboardData(cache) &&
+    now - cacheLoadedAt < MEMORY_CACHE_MS
+  ) {
+    return;
   }
-}
-
-async function ensureCacheFromDisk(): Promise<void> {
-  if (diskLoaded) return;
-  diskLoaded = true;
   const disk = await loadPlatformLeaderboardSnapshot();
   if (disk && hasAnyLeaderboardData(disk)) {
     cache = cloneSnapshot(disk);
+    cacheLoadedAt = now;
   }
 }
 
 /**
- * Refresh relays without clearing the in-memory snapshot first.
- * Guests must keep seeing the last good disk/memory data while refresh runs.
+ * Homepage platform leaderboard.
+ *
+ * Normal GETs are disk/memory only. Heavy Nostr refresh is the standalone
+ * `scripts/refresh-platform-leaderboard.mts` systemd job.
+ * `?refresh=1` remains an emergency in-process rebuild (avoid on a sick box).
  */
-async function refreshLeaderboardCache(): Promise<void> {
-  const working =
-    cache && hasAnyLeaderboardData(cache)
-      ? cloneSnapshot(cache)
-      : emptySnapshot();
-
-  await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
-    working.topRepos = await getTopReposFromNostr(
-      subscribe,
-      PLATFORM_STATS_RELAYS,
-      10
-    );
-    working.at = Date.now();
-    cache = cloneSnapshot(working);
-
-    working.topUsers = await getTopUsersFromNostr(
-      subscribe,
-      PLATFORM_STATS_RELAYS,
-      10
-    );
-    working.at = Date.now();
-    cache = cloneSnapshot(working);
-
-    const [recentRepos, recentActivities] = await Promise.all([
-      getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12),
-      getRecentPlatformActivitiesFromNostr(
-        subscribe,
-        PLATFORM_STATS_RELAYS,
-        12
-      ),
-    ]);
-    working.recentRepos = recentRepos;
-    working.recentActivities = recentActivities;
-    working.at = Date.now();
-    cache = cloneSnapshot(working);
-  });
-
-  if (hasAnyLeaderboardData(working)) {
-    cache = cloneSnapshot(working);
-    await persistDiskSnapshot(working);
-  }
-}
-
-function scheduleBackgroundRefresh(force = false): void {
-  if (refreshInFlight) return;
-  const now = Date.now();
-  const repairUsers = snapshotMissingTopUsers(cache);
-  if (
-    !force &&
-    !repairUsers &&
-    cache &&
-    cache.at > 0 &&
-    now - cache.at < DISK_REFRESH_AFTER_MS
-  ) {
-    return;
-  }
-  refreshInFlight = refreshLeaderboardCache()
-    .catch((e) => console.error("[platform-leaderboard] background refresh", e))
-    .finally(() => {
-      refreshInFlight = null;
-    });
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<PlatformLeaderboardResponse | { error: string }>
@@ -167,50 +72,46 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  await ensureCacheFromDisk();
-
   const forceRefresh = req.query.refresh === "1";
-  const now = Date.now();
-  const memoryFresh = cache && cache.at > 0 && now - cache.at < MEMORY_CACHE_MS;
-  const diskNeedsRefresh =
-    !cache || cache.at === 0 || now - cache.at >= DISK_REFRESH_AFTER_MS;
-
-  const respond = (cached: boolean, refreshing: boolean) => {
-    if (!cache) {
-      return res
-        .status(500)
-        .json({ error: "Failed to load platform leaderboard" });
+  if (forceRefresh) {
+    try {
+      const snap = await buildAndSavePlatformLeaderboard();
+      cache = cloneSnapshot(snap);
+      cacheLoadedAt = Date.now();
+    } catch (e) {
+      console.error("[platform-leaderboard] emergency refresh failed", e);
+      return res.status(503).json({
+        error:
+          e instanceof Error
+            ? e.message
+            : "Leaderboard refresh failed — try systemctl start gittr-leaderboard-refresh.service",
+      });
     }
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=120, stale-while-revalidate=3600"
-    );
-    return res.status(200).json({
-      topRepos: cache.topRepos,
-      topUsers: cache.topUsers,
-      recentRepos: cache.recentRepos,
-      recentActivities: cache.recentActivities,
-      cached,
-      refreshing,
-      relayCount: PLATFORM_STATS_RELAYS.length,
-      snapshotAt: cache.at > 0 ? cache.at : undefined,
-    });
-  };
-
-  const missingTopUsers = snapshotMissingTopUsers(cache);
-
-  if (forceRefresh || diskNeedsRefresh || missingTopUsers) {
-    scheduleBackgroundRefresh(forceRefresh || missingTopUsers);
+  } else {
+    await ensureCacheFromDisk();
   }
 
   if (!cache || !hasAnyLeaderboardData(cache)) {
-    scheduleBackgroundRefresh(true);
-    return respond(false, true);
+    return res.status(503).json({
+      error:
+        "No leaderboard snapshot yet — wait for gittr-leaderboard-refresh.timer or run the oneshot",
+    });
   }
 
-  if (missingTopUsers) {
-    return respond(true, true);
-  }
-
-  return respond(memoryFresh || !diskNeedsRefresh, !!refreshInFlight);
+  const now = Date.now();
+  const memoryFresh = cache.at > 0 && now - cacheLoadedAt < MEMORY_CACHE_MS;
+  res.setHeader(
+    "Cache-Control",
+    "public, max-age=120, stale-while-revalidate=3600"
+  );
+  return res.status(200).json({
+    topRepos: cache.topRepos,
+    topUsers: cache.topUsers,
+    recentRepos: cache.recentRepos,
+    recentActivities: cache.recentActivities,
+    cached: memoryFresh,
+    refreshing: false,
+    relayCount: PLATFORM_STATS_RELAYS.length,
+    snapshotAt: cache.at > 0 ? cache.at : undefined,
+  });
 }
