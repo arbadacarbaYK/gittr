@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bunkerPublishIsThin,
   bunkerRelayPublishOverlap,
   expandBunkerRelays,
   getSessionUriRelays,
@@ -98,8 +99,31 @@ describe("preferUriOpenRelays", () => {
     ).toEqual(["wss://relay.damus.io", "wss://nos.lol"]);
   });
 
-  it("returns empty when nothing is open", () => {
-    expect(preferUriOpenRelays([], ["wss://relay.primal.net"])).toEqual([]);
+  it("returns every OPEN URI relay up to the default cap (not just 2)", () => {
+    expect(
+      preferUriOpenRelays(
+        [
+          "wss://nostr.oxtr.dev",
+          "wss://theforest.nostr1.com",
+          "wss://relay.primal.net",
+          "wss://nos.lol",
+        ],
+        [
+          "wss://nostr.oxtr.dev",
+          "wss://theforest.nostr1.com",
+          "wss://relay.primal.net",
+          "wss://nos.lol",
+          "wss://relay.damus.io",
+          "wss://a.example",
+          "wss://b.example",
+        ]
+      )
+    ).toEqual([
+      "wss://nostr.oxtr.dev",
+      "wss://theforest.nostr1.com",
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+    ]);
   });
 });
 
@@ -140,5 +164,28 @@ describe("bunkerRelayPublishOverlap", () => {
     );
     expect(result.hasOverlap).toBe(false);
     expect(result.overlap).toEqual([]);
+  });
+
+  it("treats 1 of 7 Amber URI relays as a thin publish", () => {
+    const uri = [
+      "wss://nostr.oxtr.dev",
+      "wss://theforest.nostr1.com",
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://relay.damus.io",
+      "wss://a.example",
+      "wss://b.example",
+    ];
+    expect(bunkerPublishIsThin(["wss://nostr.oxtr.dev"], uri)).toBe(true);
+    expect(
+      bunkerPublishIsThin(
+        [
+          "wss://nostr.oxtr.dev",
+          "wss://theforest.nostr1.com",
+          "wss://relay.primal.net",
+        ],
+        uri
+      )
+    ).toBe(false);
   });
 });

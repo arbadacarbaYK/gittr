@@ -4689,7 +4689,7 @@ export function RepoCodePage() {
 
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
-    console.log("🔍 [effectiveSourceUrl] useEffect triggered:", {
+    console.debug("🔍 [effectiveSourceUrl] useEffect triggered:", {
       mounted,
       hasRepoData: !!repoData,
     });
@@ -6621,8 +6621,8 @@ export function RepoCodePage() {
                           if (!eventRepoData.clone) eventRepoData.clone = [];
                           if (!eventRepoData.clone.includes(v)) {
                             eventRepoData.clone.push(v);
-                            console.log(
-                              `✅ [File Fetch] Added clone URL from event tag: ${v} (total: ${eventRepoData.clone.length})`
+                            console.debug(
+                              `[File Fetch] clone tag: ${v} (total: ${eventRepoData.clone.length})`
                             );
                           }
                         }
@@ -7805,7 +7805,7 @@ export function RepoCodePage() {
                 const expectedNoFiles =
                   reason === "no files field in event" ||
                   reason === "files array is empty";
-                console.log(
+                (expectedNoFiles ? console.debug : console.log)(
                   `${
                     expectedNoFiles ? "ℹ️" : "⚠️"
                   } [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${
@@ -8516,15 +8516,8 @@ export function RepoCodePage() {
             // So we need to wait a bit before deciding to fallback
             setTimeout(async () => {
               if (!foundFiles) {
-                console.log(
-                  "⏭️ [File Fetch] No files found in Nostr events from",
-                  relayURL,
-                  "- checked",
-                  events.length,
-                  "events"
-                );
-                console.log(
-                  "⏭️ [File Fetch] This is NORMAL for foreign repos - files are served from git servers, not from events"
+                console.debug(
+                  "[File Fetch] NIP-34 has no embedded files (normal) — loading from git clone/source"
                 );
 
                 // Try multi-source fetching if we have clone URLs

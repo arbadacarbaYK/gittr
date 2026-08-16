@@ -119,9 +119,7 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
  * Damus last-resort only — browsers often fail wss://relay.damus.io under Cloudflare.
  * Do not put nos.lol/Damus ahead of AmberSettings defaults (oxtr / theforest / primal).
  */
-const NIP46_PAIRING_RELAY_FALLBACKS = [
-  "wss://relay.damus.io",
-];
+const NIP46_PAIRING_RELAY_FALLBACKS = ["wss://relay.damus.io"];
 
 /**
  * Amber bunker default relays (AmberSettings order): oxtr, theforest, primal.
@@ -172,10 +170,15 @@ function relayUrlsMatch(a: string, b: string): boolean {
 }
 
 /**
- * Per-relay OPEN budget. Kept short because we open in parallel and take the
- * first success — a hung preferred host must not block Amber for 15s×N.
+ * Per-relay OPEN budget. Opens run in parallel. We wait for several of
+ * Amber's URI relays (not the first socket) so sign_event is not stuck on
+ * one of seven bunker hosts.
  */
 const BUNKER_RELAY_OPEN_BUDGET_MS = 10000;
+/** Publish/subscribe on every OPEN URI relay, not a 1–2 host subset. */
+export const BUNKER_PUBLISH_MAX_RELAYS = 8;
+/** Do not treat a single Amber URI socket as "enough" when the bunker lists more. */
+export const BUNKER_MIN_PREFERRED_OPEN = 3;
 /** Quiet re-warm so Push/Save is not the first cold dial after hydrate. */
 const BUNKER_KEEPALIVE_MS = 45000;
 /**
@@ -221,6 +224,18 @@ export function expandBunkerRelays(relays: string[]): string[] {
   NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
   NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
   return merged.slice(0, 8);
+}
+
+function uniqueNormalizedRelays(urls: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls || []) {
+    const n = normalizeRelayUrl(raw);
+    if (!n.startsWith("wss://") || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
 }
 
 function relayUrlSet(urls: string[]): Set<string> {
@@ -278,7 +293,7 @@ export function getSessionUriRelays(session: {
 export function preferUriOpenRelays(
   openRelays: string[],
   preferredRelays: string[],
-  max = 2
+  max = BUNKER_PUBLISH_MAX_RELAYS
 ): string[] {
   if (!openRelays.length) return [];
   const preferred = relayUrlSet(preferredRelays);
@@ -314,6 +329,16 @@ export function bunkerRelayPublishOverlap(
     uriOnly,
     hasOverlap: overlap.length > 0,
   };
+}
+
+/** True when we published to Amber's list but left most of her relays unused. */
+export function bunkerPublishIsThin(
+  publishedUrls: string[],
+  uriRelays: string[]
+): boolean {
+  const o = bunkerRelayPublishOverlap(publishedUrls, uriRelays);
+  const want = Math.min(BUNKER_MIN_PREFERRED_OPEN, relayUrlSet(uriRelays).size);
+  return o.uriOnly.length > 0 && o.overlap.length < Math.max(want, 1);
 }
 
 export const DEFAULT_REMOTE_SIGNER_LABEL = "gittr.space";
@@ -1441,6 +1466,11 @@ export class RemoteSignerManager {
             "The signing request reached a relay Amber is not watching. Open Amber, confirm it is online on its bunker relays (from the bunker link — not gittr’s forge relays), then try again."
           );
         }
+        if (bunkerPublishIsThin(published, uriRelays)) {
+          throw new Error(
+            `The signing request only reached ${overlap.overlap.length} of ${uriRelays.length} Amber bunker relays. Keep Amber open and unlocked, then try Push again — gittr will retry on more of those relays.`
+          );
+        }
         throw new Error(
           "The remote signer did not respond to the signing request. Open your signer app (e.g. Amber) on your phone, make sure it is online and connected, then try again."
         );
@@ -1852,10 +1882,7 @@ export class RemoteSignerManager {
           relay = await Promise.race([
             this.directPool.ensureRelay(url),
             new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error("ensureRelay timeout")),
-                waitMs
-              )
+              setTimeout(() => reject(new Error("ensureRelay timeout")), waitMs)
             ),
           ]);
           if (await waitOpen(relay)) return true;
@@ -1887,7 +1914,10 @@ export class RemoteSignerManager {
       const leftover = this.getDirectRelayFromPool(url);
       if (leftover?.status === 1) return true;
       if (leftover?.status === 0) {
-        return this.waitForRelayStatusOpen(leftover, Math.max(remaining(), 800));
+        return this.waitForRelayStatusOpen(
+          leftover,
+          Math.max(remaining(), 800)
+        );
       }
       return false;
     }
@@ -2058,9 +2088,8 @@ export class RemoteSignerManager {
    * subscription is dead and trySend discards messages, so requests would
    * vanish and every RPC would "time out" even though Amber is online.
    *
-   * Opens in parallel. Prefers Amber URI relays for the returned publish/sub
-   * set — early-finish only when a preferred URI relay is OPEN (or all dials
-   * complete). Fallback-only OPEN does not stop waiting for URI relays.
+   * Opens in parallel. Waits for several of Amber's URI relays (not the
+   * first OPEN socket). Fallback-only OPEN does not stop waiting for URI relays.
    *
    * @param dialTargets Optional override list (e.g. forced signer defaults on
    *   the last ensureBunkerSocketsOpen attempt). When omitted, uses
@@ -2088,89 +2117,63 @@ export class RemoteSignerManager {
     const preferredNorm = new Set(uriRelays.map(normalizeRelayUrl));
 
     const alreadyOpen = await this.listDirectOpenRelays(targets);
-    // Strict URI ∩ OPEN for reuse — do not settle on fallback-only OPEN here.
+    const alreadyNorm = new Set(alreadyOpen.map(normalizeRelayUrl));
     const preferredAlready =
       preferredNorm.size > 0
-        ? alreadyOpen
-            .map(normalizeRelayUrl)
-            .filter((u) => preferredNorm.has(u))
-            .slice(0, 2)
-        : [];
-    if (preferredAlready.length > 0) {
-      const openUrls = preferredAlready;
-      console.log("[RemoteSigner] Direct transport ready (reuse preferred)", {
-        open: openUrls.length,
-        total: targets.length,
-        openUrls: openUrls.map((u) => normalizeRelayUrl(u)),
-        uriRelays,
-      });
-      try {
-        await this.startSubscription(session, openUrls);
-      } catch (error) {
-        console.warn(
-          "[RemoteSigner] Failed to refresh subscription after transport ensure:",
-          error
-        );
-      }
-      return openUrls;
-    }
-    if (preferredNorm.size === 0 && alreadyOpen.length > 0) {
-      const openUrls = alreadyOpen.slice(0, 2);
-      console.log("[RemoteSigner] Direct transport ready (reuse)", {
-        open: openUrls.length,
-        total: targets.length,
-        openUrls: openUrls.map((u) => normalizeRelayUrl(u)),
-      });
-      try {
-        await this.startSubscription(session, openUrls);
-      } catch (error) {
-        console.warn(
-          "[RemoteSigner] Failed to refresh subscription after transport ensure:",
-          error
-        );
-      }
-      return openUrls;
-    }
+        ? uniqueNormalizedRelays(
+            alreadyOpen.filter((u) => preferredNorm.has(normalizeRelayUrl(u)))
+          )
+        : uniqueNormalizedRelays(alreadyOpen);
+    const wantPreferred =
+      preferredNorm.size === 0
+        ? 1
+        : Math.min(BUNKER_PUBLISH_MAX_RELAYS, preferredNorm.size);
+    const toDial = targets.filter(
+      (t) => !alreadyNorm.has(normalizeRelayUrl(t))
+    );
 
-    const openUrls: string[] = [];
-    const overallMs = BUNKER_RELAY_OPEN_BUDGET_MS + 1500;
-    await new Promise<void>((resolve) => {
-      let pending = targets.length;
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        resolve();
-      };
-      const timer = setTimeout(finish, overallMs);
-      const preferredOpenCount = () =>
-        openUrls.filter((u) => preferredNorm.has(normalizeRelayUrl(u))).length;
-      const onOneDone = () => {
-        pending -= 1;
-        // Finish early only when a preferred URI relay is OPEN, or all dials done.
-        // Fallback-only OPEN must not abort waiting for Amber's URI relays.
-        const havePreferred =
-          preferredNorm.size === 0
-            ? openUrls.length >= 1
-            : preferredOpenCount() >= 1;
-        if (havePreferred || pending <= 0) {
-          clearTimeout(timer);
-          finish();
-        }
-      };
-      for (const url of targets) {
-        void this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS).then(
-          (ok) => {
-            if (ok) {
-              openUrls.push(url);
-            }
-            onOneDone();
+    if (toDial.length > 0) {
+      const openUrls = [...alreadyOpen];
+      const overallMs = BUNKER_RELAY_OPEN_BUDGET_MS + 1500;
+      await new Promise<void>((resolve) => {
+        let pending = toDial.length;
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          resolve();
+        };
+        const timer = setTimeout(finish, overallMs);
+        const preferredOpenCount = () =>
+          openUrls.filter((u) =>
+            preferredNorm.size === 0
+              ? true
+              : preferredNorm.has(normalizeRelayUrl(u))
+          ).length;
+        const onOneDone = () => {
+          pending -= 1;
+          if (preferredOpenCount() >= wantPreferred || pending <= 0) {
+            clearTimeout(timer);
+            finish();
           }
-        );
-      }
-    });
+        };
+        for (const url of toDial) {
+          void this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS).then(
+            (ok) => {
+              if (ok) openUrls.push(url);
+              onOneDone();
+            }
+          );
+        }
+      });
+    }
 
-    const preferredOpen = preferUriOpenRelays(openUrls, uriRelays);
+    const allOpen = await this.listDirectOpenRelays(targets);
+    const preferredOpen = preferUriOpenRelays(
+      allOpen,
+      uriRelays.length > 0 ? uriRelays : allOpen,
+      BUNKER_PUBLISH_MAX_RELAYS
+    );
     if (preferredOpen.length > 0) {
       const usingFallbackOnly =
         preferredNorm.size > 0 &&
@@ -2181,6 +2184,7 @@ export class RemoteSignerManager {
         openUrls: preferredOpen.map((u) => normalizeRelayUrl(u)),
         uriRelays,
         usingFallbackOnly,
+        reused: preferredAlready.length,
       });
       try {
         await this.startSubscription(session, preferredOpen);
@@ -2254,20 +2258,25 @@ export class RemoteSignerManager {
         };
         const timer = setTimeout(() => {
           if (okRelays.length > 0) {
-            finish([...okRelays], true);
+            // Record every OPEN target we published to (not only the first OK).
+            finish(uniqueNormalizedRelays([...publishTargets]), true);
             return;
           }
           console.warn(
             "[RemoteSigner] Direct publish got no OK ack; continuing because bunker sockets were OPEN",
             { eventId: event?.id, relays: publishTargets }
           );
-          finish([...publishTargets], false);
+          finish(uniqueNormalizedRelays([...publishTargets]), false);
         }, timeoutMs);
         try {
           const pub = this.directPool.publish(publishTargets, event);
           pub.on("ok", (relayUrl: string) => {
             okRelays.push(relayUrl);
-            finish([...okRelays], true);
+            if (
+              uniqueNormalizedRelays(okRelays).length >= publishTargets.length
+            ) {
+              finish(uniqueNormalizedRelays([...publishTargets]), true);
+            }
           });
           pub.on("failed", (relayUrl: string) => {
             console.warn("[RemoteSigner] Direct publish failed on", relayUrl);
@@ -2727,11 +2736,59 @@ export class RemoteSignerManager {
             uriRelays,
             overlap: overlap.overlap,
             hasUriOverlap: overlap.hasOverlap,
+            uriOnly: overlap.uriOnly,
           });
+          if (method === "sign_event" && overlap.uriOnly.length > 0) {
+            const extra = overlap.uriOnly;
+            await Promise.all(
+              extra.map((url) =>
+                this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS)
+              )
+            );
+            const extraOpen = await this.listDirectOpenRelays(extra);
+            if (extraOpen.length > 0) {
+              try {
+                await this.startSubscription(
+                  session,
+                  uniqueNormalizedRelays([...published.urls, ...extraOpen])
+                );
+                const extraPub = await this.publishDirectConfirmed(
+                  extraOpen,
+                  requestEvent,
+                  4000
+                );
+                published = {
+                  urls: uniqueNormalizedRelays([
+                    ...published.urls,
+                    ...extraPub.urls,
+                  ]),
+                  acked: published.acked || extraPub.acked,
+                };
+                this.lastPublishMeta = {
+                  method,
+                  urls: published.urls,
+                  acked: published.acked,
+                  uriRelays,
+                };
+                console.log(
+                  "[RemoteSigner] sign_event republished to remaining Amber URI relays",
+                  {
+                    extra: extraOpen,
+                    all: published.urls,
+                  }
+                );
+              } catch (extraErr) {
+                console.warn(
+                  "[RemoteSigner] Could not fan-out sign_event to remaining Amber relays",
+                  extraErr instanceof Error ? extraErr.message : extraErr
+                );
+              }
+            }
+          }
           if (
             method === "sign_event" &&
             uriRelays.length > 0 &&
-            !overlap.hasOverlap
+            !bunkerRelayPublishOverlap(published.urls, uriRelays).hasOverlap
           ) {
             console.warn(
               "[RemoteSigner] sign_event published with no overlap vs Amber URI relays — Amber may not see this request",
