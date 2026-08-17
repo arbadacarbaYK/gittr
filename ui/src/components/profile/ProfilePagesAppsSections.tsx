@@ -12,7 +12,7 @@ import {
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
 
-import { ExternalLink, Globe, Loader2, Smartphone } from "lucide-react";
+import { ExternalLink, Globe, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
 
@@ -87,6 +87,9 @@ export function ProfilePagesAppsSections({
     }
 
     let cancelled = false;
+    setPages([]);
+    setApps([]);
+    onCountsRef.current?.({ pages: 0, apps: 0 });
     setPagesLoading(true);
     setAppsLoading(true);
 
@@ -143,13 +146,14 @@ export function ProfilePagesAppsSections({
   }, [ownerHex]);
 
   useEffect(() => {
+    if (pagesLoading || appsLoading) return;
     onCountsRef.current?.({ pages: pages.length, apps: apps.length });
-  }, [pages.length, apps.length]);
+  }, [pages.length, apps.length, pagesLoading, appsLoading]);
 
   if (!ownerHex) return null;
 
-  const showPages = pagesLoading || pages.length > 0;
-  const showApps = appsLoading || apps.length > 0;
+  const showPages = !pagesLoading && pages.length > 0;
+  const showApps = !appsLoading && apps.length > 0;
   if (!showPages && !showApps) return null;
 
   return (
@@ -162,7 +166,7 @@ export function ProfilePagesAppsSections({
                 className="h-6 w-6 text-[var(--color-accent-primary)]"
                 aria-hidden
               />
-              Pages {pagesLoading ? "" : `(${pages.length})`}
+              Pages ({pages.length})
             </h2>
             <Link
               href="/pages"
@@ -171,15 +175,8 @@ export function ProfilePagesAppsSections({
               Browse all pages
             </Link>
           </div>
-          {pagesLoading && pages.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading pages…
-            </div>
-          ) : (
-            <>
-              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pages.slice(0, visiblePages).map((s) => (
+          <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pages.slice(0, visiblePages).map((s) => (
                   <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
                     <article className="flex h-full min-h-[10rem] flex-col rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
                       <h3 className="line-clamp-2 text-lg font-semibold text-white">
@@ -219,8 +216,6 @@ export function ProfilePagesAppsSections({
                   setVisiblePages((n) => n + REPO_LIST_PAGE_SIZE)
                 }
               />
-            </>
-          )}
         </div>
       ) : null}
 
@@ -232,7 +227,7 @@ export function ProfilePagesAppsSections({
                 className="h-6 w-6 text-[var(--color-accent-primary)]"
                 aria-hidden
               />
-              Apps {appsLoading ? "" : `(${apps.length})`}
+              Apps ({apps.length})
             </h2>
             <Link
               href="/apps"
@@ -241,15 +236,8 @@ export function ProfilePagesAppsSections({
               Browse all apps
             </Link>
           </div>
-          {appsLoading && apps.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading apps…
-            </div>
-          ) : (
-            <>
-              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {apps.slice(0, visibleApps).map((app) => (
+          <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {apps.slice(0, visibleApps).map((app) => (
                   <li key={appDedupKey(app.pubkey, app.appId)}>
                     <article className="flex h-full min-h-[10rem] gap-3 rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
                       {app.icon ? (
@@ -316,8 +304,6 @@ export function ProfilePagesAppsSections({
                   setVisibleApps((n) => n + REPO_LIST_PAGE_SIZE)
                 }
               />
-            </>
-          )}
         </div>
       ) : null}
     </>
