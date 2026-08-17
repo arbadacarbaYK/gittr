@@ -48,7 +48,7 @@ export type ProfileRepoUserRole =
   | "contributor"
   | "forked";
 
-/** Orange forked vs purple owner for the npub that announced this repo. */
+/** Theme-purple forked vs owner for the npub that announced this repo. */
 export function profileAnnouncerRole(repo: {
   forkedFrom?: string | null;
   sourceUrl?: string | null;

@@ -48,6 +48,11 @@ import {
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import {
+  nip39IdentityDisplay,
+  nip39PlatformDisplayName,
+  nip39PlatformProfileUrl,
+} from "@/lib/nostr/nip39-identities";
+import {
   type ClaimedIdentity,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
@@ -56,12 +61,17 @@ import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import {
+  isRealForkAttribution,
+} from "@/lib/repos/fork-attribution";
+import {
   mergeProfileRepoList,
   profileAnnouncerRole,
   profileRepoDisplayRole,
+  profileRepoRowKey,
 } from "@/lib/repos/merge-profile-repos";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
+import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
@@ -2417,6 +2427,57 @@ export default function EntityPage({
     };
   }, [isPubkey, profileHexForFetch]);
 
+  /** Nostr rows often lack forkedFrom — hydrate from forge parent APIs on profile load. */
+  const forkEnrichAttemptedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isPubkey || userRepos.length === 0) return;
+    const toEnrich = userRepos.filter((r) => {
+      const key = profileRepoRowKey(r);
+      if (forkEnrichAttemptedRef.current.has(key)) return false;
+      const src = String(r.sourceUrl || "").trim();
+      if (!src) return false;
+      return !isRealForkAttribution(r.forkedFrom, {
+        sourceUrl: src,
+        clone: r.clone,
+      });
+    });
+    if (toEnrich.length === 0) return;
+
+    for (const r of toEnrich) {
+      forkEnrichAttemptedRef.current.add(profileRepoRowKey(r));
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const persistLocal = Boolean(
+        currentUserPubkey &&
+          profileHexForFetch &&
+          currentUserPubkey.toLowerCase() === profileHexForFetch.toLowerCase()
+      );
+      const enriched = await enrichReposWithForgeForkMeta(userRepos, {
+        persistLocal,
+      });
+      if (cancelled) return;
+      const forkChanged = enriched.some(
+        (r, i) => r.forkedFrom !== userRepos[i]?.forkedFrom
+      );
+      if (!forkChanged) return;
+      setUserRepos((prev) =>
+        mergeProfileRepoList(
+          prev,
+          enriched.map((row) => ({
+            ...row,
+            userRole: profileAnnouncerRole(row),
+          }))
+        )
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPubkey, userRepos, profileHexForFetch, currentUserPubkey]);
+
   // Resolve pubkey from localStorage after mount to prevent hydration errors
   // Use ref to track last processed entity to prevent re-processing
   const lastProcessedEntityRef = useRef<string>("");
@@ -3700,47 +3761,35 @@ export default function EntityPage({
                   <div className="flex flex-wrap gap-2">
                     {userMeta.identities.map(
                       (identity: ClaimedIdentity, idx: number) => {
+                        const platform = identity.platform.trim().toLowerCase();
                         const platformIcon =
-                          identity.platform === "github"
+                          platform === "github"
                             ? "🐙"
-                            : identity.platform === "twitter"
+                            : platform === "gitlab"
+                            ? "🦊"
+                            : platform === "gitea" ||
+                              platform === "codeberg" ||
+                              platform === "forgejo"
+                            ? "🍵"
+                            : platform === "twitter"
                             ? "🐦"
-                            : identity.platform === "telegram"
+                            : platform === "telegram"
                             ? "✈️"
-                            : identity.platform === "mastodon"
+                            : platform === "mastodon"
                             ? "🐘"
                             : "🔗";
-                        const platformUrl =
-                          identity.platform === "github"
-                            ? `https://github.com/${identity.identity}`
-                            : identity.platform === "twitter"
-                            ? `https://x.com/${identity.identity}`
-                            : identity.platform === "telegram"
-                            ? identity.proof
-                              ? `https://t.me/${identity.proof}`
-                              : null
-                            : identity.platform === "mastodon"
-                            ? identity.identity.includes("@")
-                              ? `https://${identity.identity.split("@")[1]}/@${
-                                  identity.identity.split("@")[0]
-                                }`
-                              : null
-                            : null;
-                        const platformName =
-                          identity.platform === "twitter"
-                            ? "X"
-                            : identity.platform === "telegram"
-                            ? "Telegram"
-                            : identity.platform === "mastodon"
-                            ? "Mastodon"
-                            : identity.platform.charAt(0).toUpperCase() +
-                              identity.platform.slice(1);
-                        const identityDisplay =
-                          identity.platform === "telegram"
-                            ? `User ID: ${identity.identity}`
-                            : identity.platform === "mastodon"
-                            ? identity.identity
-                            : `@${identity.identity}`;
+                        const platformUrl = nip39PlatformProfileUrl(
+                          identity.platform,
+                          identity.identity,
+                          identity.proof
+                        );
+                        const platformName = nip39PlatformDisplayName(
+                          identity.platform
+                        );
+                        const identityDisplay = nip39IdentityDisplay(
+                          identity.platform,
+                          identity.identity
+                        );
 
                         return (
                           <a
@@ -4251,7 +4300,7 @@ export default function EntityPage({
                 owner: "border-purple-500/50 bg-purple-900/10",
                 maintainer: "border-blue-500/50 bg-blue-900/10",
                 contributor: "border-green-500/50 bg-green-900/10",
-                forked: "border-orange-500/50 bg-orange-900/10",
+                forked: "border-purple-500/40 bg-purple-900/5",
               };
               const displayRole = profileRepoDisplayRole(
                 repo,
@@ -4309,13 +4358,14 @@ export default function EntityPage({
                         {displayRole && (
                           <span
                             className={`text-xs px-2 py-0.5 rounded ${
-                              displayRole === "owner"
+                              displayRole === "owner" ||
+                              displayRole === "forked"
                                 ? "bg-purple-600/30 text-purple-300"
                                 : displayRole === "maintainer"
                                 ? "bg-blue-600/30 text-blue-300"
                                 : displayRole === "contributor"
                                 ? "bg-green-600/30 text-green-300"
-                                : "bg-orange-600/30 text-orange-300"
+                                : "bg-gray-600/30 text-gray-300"
                             }`}
                           >
                             {displayRole}

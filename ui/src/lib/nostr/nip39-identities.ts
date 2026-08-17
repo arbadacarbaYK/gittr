@@ -109,6 +109,70 @@ export function preferNip39Identities(
   return Array.from(byKey.values());
 }
 
+const FORGE_HOST_BY_PLATFORM: Record<string, string> = {
+  github: "github.com",
+  gitlab: "gitlab.com",
+  gitea: "gitea.com",
+  codeberg: "codeberg.org",
+  forgejo: "forgejo.org",
+};
+
+/** Profile chip label (GitHub → GitHub, twitter → X, …). */
+export function nip39PlatformDisplayName(platform: string): string {
+  const p = platform.trim().toLowerCase();
+  if (p === "twitter") return "X";
+  if (p === "telegram") return "Telegram";
+  if (p === "mastodon") return "Mastodon";
+  if (p === "github") return "GitHub";
+  if (p === "gitlab") return "GitLab";
+  if (p === "gitea") return "Gitea";
+  if (p === "codeberg") return "Codeberg";
+  if (p === "forgejo") return "Forgejo";
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
+}
+
+/** How to show the identity handle on profile chips. */
+export function nip39IdentityDisplay(
+  platform: string,
+  identity: string
+): string {
+  const p = platform.trim().toLowerCase();
+  const id = identity.trim();
+  if (p === "telegram") return `User ID: ${id}`;
+  if (p === "mastodon") return id;
+  return `@${id}`;
+}
+
+/** Best-effort profile URL for known forge/social platforms (NIP-39 `i` tags). */
+export function nip39PlatformProfileUrl(
+  platform: string,
+  identity: string,
+  proof?: string
+): string | null {
+  const p = platform.trim().toLowerCase();
+  const id = identity.trim();
+  if (!id) return null;
+  if (p === "github") return `https://github.com/${id}`;
+  if (p === "gitlab") return `https://gitlab.com/${id}`;
+  if (p === "codeberg") return `https://codeberg.org/${id}`;
+  if (p === "gitea") return `https://gitea.com/${id}`;
+  if (p === "forgejo") return `https://forgejo.org/${id}`;
+  if (p === "twitter") return `https://x.com/${id}`;
+  if (p === "telegram") {
+    return proof?.trim() ? `https://t.me/${proof.trim()}` : null;
+  }
+  if (p === "mastodon") {
+    if (id.includes("@")) {
+      const [user, instance] = id.split("@");
+      if (user && instance) return `https://${instance}/@${user}`;
+    }
+    return null;
+  }
+  const host = FORGE_HOST_BY_PLATFORM[p];
+  if (host) return `https://${host}/${id}`;
+  return null;
+}
+
 /** Unsigned kind 10011 skeleton (caller hashes + signs). */
 export function buildNip39IdentitiesEventUnsigned(
   pubkey: string,

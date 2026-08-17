@@ -127,6 +127,7 @@ Importing a GitHub/GitLab URL is **not** a gittr fork. The imported page URL is 
   - you used gittr **Fork** (`/new?fork=npub/repo`), which stores `forkedFrom` as `/npub…/repo`.
 - Importing your own GitHub original (`gittr`, `gittr-mcp`, …) must **not** copy that URL into `forkedFrom`. Older imports that did are sanitized on load/Push (own URL == `sourceUrl` is dropped).
 - Opening an already-imported GitHub **fork** (e.g. `andronixorigin`) hydrates `forkedFrom` from GitHub `parent`.
+- Profile repo cards also batch-hydrate fork parent from GitHub when Nostr tags lack `forkedFrom` (old imports).
 
 NIP-39 GitHub linking is still only for **contributor** matching, not for these pills.
 

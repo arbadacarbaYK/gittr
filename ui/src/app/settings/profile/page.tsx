@@ -922,6 +922,10 @@ export default function ProfilePage() {
                   >
                     <option value="">Select platform...</option>
                     <option value="github">GitHub</option>
+                    <option value="gitlab">GitLab</option>
+                    <option value="gitea">Gitea</option>
+                    <option value="codeberg">Codeberg</option>
+                    <option value="forgejo">Forgejo</option>
                     <option value="twitter">X</option>
                     <option value="telegram">Telegram</option>
                     <option value="mastodon">Mastodon</option>

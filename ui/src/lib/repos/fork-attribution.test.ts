@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyGithubForkMetaToRepo,
   githubParentForkedFrom,
   isDisplayableForkAttribution,
   isGittrForkPointer,
@@ -162,6 +163,33 @@ describe("resolveStoredForkedFrom", () => {
     ).toBe(
       "/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr"
     );
+  });
+});
+
+describe("applyGithubForkMetaToRepo", () => {
+  it("adds parent when GitHub reports a fork", () => {
+    const row = {
+      sourceUrl: "https://github.com/me/ChicksOnTheBlocks",
+      forkedFrom: undefined as string | undefined,
+    };
+    const out = applyGithubForkMetaToRepo(row, {
+      isFork: true,
+      htmlUrl: row.sourceUrl,
+      parentHtmlUrl: "https://github.com/bitcointurm/Satoshi24",
+    });
+    expect(out.forkedFrom).toBe("https://github.com/bitcointurm/Satoshi24");
+  });
+
+  it("leaves row unchanged when GitHub says not a fork", () => {
+    const row = {
+      sourceUrl: "https://github.com/AndronixApp/AndronixOrigin",
+    };
+    expect(
+      applyGithubForkMetaToRepo(row, {
+        isFork: false,
+        htmlUrl: row.sourceUrl,
+      })
+    ).toBe(row);
   });
 });
 

@@ -4,9 +4,14 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
 import {
+  applyGithubForkMetaToRepo,
+  isRealForkAttribution,
   resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
+import {
+  fetchForgeRepoForkMeta,
+} from "@/lib/repos/forge-fork-meta";
 import { parseGiteaCompatibleRepo } from "@/lib/repos/gitea-forge";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
@@ -282,6 +287,91 @@ export async function fetchGithubRepoMeta(
   }
 }
 
+export type ProfileRepoForkRow = {
+  entity?: string;
+  repo?: string;
+  slug?: string;
+  sourceUrl?: string | null;
+  forkedFrom?: string | null;
+  clone?: unknown;
+  ownerPubkey?: string | null;
+};
+
+/**
+ * Hydrate `forkedFrom` from forge APIs when Nostr tags lack it (old imports).
+ * GitHub, GitLab, Gitea, Forgejo, Codeberg.
+ */
+export async function enrichReposWithForgeForkMeta<
+  T extends ProfileRepoForkRow,
+>(
+  repos: T[],
+  opts?: {
+    /** When true, write discovered fork parent into localStorage for own profile. */
+    persistLocal?: boolean;
+  }
+): Promise<T[]> {
+  const candidates = repos.filter((r) => {
+    const src = String(r.sourceUrl || "").trim();
+    if (!src || !isRefetchableUpstreamSourceUrl(src)) return false;
+    const clone = Array.isArray(r.clone)
+      ? r.clone.map((c) => (c == null ? "" : String(c)))
+      : undefined;
+    return !isRealForkAttribution(r.forkedFrom, {
+      sourceUrl: src,
+      clone,
+    });
+  });
+  if (candidates.length === 0) return repos;
+
+  const metaBySource = new Map<string, Awaited<ReturnType<typeof fetchForgeRepoForkMeta>>>();
+  const batchSize = 4;
+  for (let i = 0; i < candidates.length; i += batchSize) {
+    const batch = candidates.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map(async (r) => {
+        const src = String(r.sourceUrl || "").trim();
+        const key = src.toLowerCase().replace(/\.git$/i, "");
+        if (metaBySource.has(key)) return;
+        metaBySource.set(key, await fetchForgeRepoForkMeta(src));
+      })
+    );
+  }
+
+  let changed = false;
+  const next = repos.map((r) => {
+    const src = String(r.sourceUrl || "").trim();
+    const key = src.toLowerCase().replace(/\.git$/i, "");
+    const meta = metaBySource.get(key);
+    if (!meta) return r;
+    const updated = applyGithubForkMetaToRepo(r, meta);
+    if (updated.forkedFrom !== r.forkedFrom) {
+      changed = true;
+      if (opts?.persistLocal && updated.forkedFrom) {
+        const entity = String(r.entity || "").trim();
+        const repoSlug = String(r.repo || r.slug || "").trim();
+        if (entity && repoSlug) {
+          persistRepoAnnouncementMeta({
+            entity,
+            repo: repoSlug,
+            sourceUrl: src,
+            forkedFrom: updated.forkedFrom,
+            clone: Array.isArray(r.clone)
+              ? r.clone.filter((c): c is string => typeof c === "string")
+              : undefined,
+            ownerPubkey: r.ownerPubkey,
+          });
+        }
+      }
+    }
+    return updated;
+  });
+
+  return changed ? next : repos;
+}
+
+/** @deprecated Use enrichReposWithForgeForkMeta */
+export const enrichReposWithGithubForkMeta = enrichReposWithForgeForkMeta;
+
 /**
  * Resolve GitHub mirror, sync issues/PRs into localStorage, refresh forge metadata.
  * Safe to call from layout on every repo visit.
@@ -352,12 +442,15 @@ export async function hydrateRepoFromGithub(
   // Warm releases bucket (same soft-sync as Releases tab; safe if unused)
   void syncGithubReleasesForRepo(entity, repoSlug, sourceUrl);
 
-  const meta = await fetchGithubRepoMeta(sourceUrl);
+  const meta = sourceUrl.includes("github.com")
+    ? await fetchGithubRepoMeta(sourceUrl)
+    : null;
+  const forkMeta = await fetchForgeRepoForkMeta(sourceUrl);
   if (meta?.pushedAtMs) {
     writeGithubPushedSession(entity, repoSlug, meta.pushedAtMs);
   }
 
-  if (meta) {
+  {
     const repos = loadStoredRepos();
     const idx = repos.findIndex((r) => {
       const found = findRepoByEntityAndName([r], entity, repoSlug);
@@ -365,44 +458,44 @@ export async function hydrateRepoFromGithub(
     });
     if (idx >= 0 && repos[idx]) {
       const existing = repos[idx]!;
-      // Never clobber an owner-set About with GitHub hub metadata on tab visits.
-      // Placeholder / empty About may still be filled from the upstream mirror.
       const existingDesc = existing.description || "";
       const mayFillAbout =
-        !!meta.description &&
+        !!meta?.description &&
         isPlaceholderRepositoryDescription(existingDesc, repoSlug);
-      // Without pushedAtMs, keep the previous timestamp — a Date.now() fallback
-      // made every hydrate look like a change, and the repos-updated dispatch
-      // below re-triggered hydrate listeners in an endless loop (page flicker).
       const existingCreatedAt = (
         existing as StoredRepo & { lastNostrEventCreatedAt?: number }
       ).lastNostrEventCreatedAt;
-      const nextCreatedAt = meta.pushedAtMs
+      const nextCreatedAt = meta?.pushedAtMs
         ? Math.floor(meta.pushedAtMs / 1000)
         : existingCreatedAt;
       const nextForked = resolveStoredForkedFrom({
         existingForkedFrom: existing.forkedFrom,
         sourceUrl,
         clone: existing.clone,
-        githubIsFork: meta.isFork,
-        githubParentHtmlUrl: meta.parentHtmlUrl,
-        githubHtmlUrl: meta.htmlUrl || sourceUrl,
+        githubIsFork: forkMeta?.isFork ?? meta?.isFork,
+        githubParentHtmlUrl: forkMeta?.parentHtmlUrl ?? meta?.parentHtmlUrl,
+        githubHtmlUrl: forkMeta?.htmlUrl ?? meta?.htmlUrl ?? sourceUrl,
       });
       const forkChanged = (existing.forkedFrom || undefined) !== nextForked;
       const changed =
-        existing.stars !== meta.stars ||
-        existing.forks !== meta.forks ||
-        (mayFillAbout && existingDesc !== meta.description) ||
-        existingCreatedAt !== nextCreatedAt ||
+        (meta &&
+          (existing.stars !== meta.stars ||
+            existing.forks !== meta.forks ||
+            (mayFillAbout && existingDesc !== meta.description) ||
+            existingCreatedAt !== nextCreatedAt)) ||
         forkChanged;
       if (changed) {
         const nextRepo: StoredRepo = {
           ...existing,
-          stars: meta.stars,
-          forks: meta.forks,
-          ...(mayFillAbout ? { description: meta.description } : {}),
-          ...(nextCreatedAt !== undefined
-            ? { lastNostrEventCreatedAt: nextCreatedAt }
+          ...(meta
+            ? {
+                stars: meta.stars,
+                forks: meta.forks,
+                ...(mayFillAbout ? { description: meta.description } : {}),
+                ...(nextCreatedAt !== undefined
+                  ? { lastNostrEventCreatedAt: nextCreatedAt }
+                  : {}),
+              }
             : {}),
         };
         if (nextForked) nextRepo.forkedFrom = nextForked;

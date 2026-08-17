@@ -94,6 +94,7 @@ import {
   isDisplayableForkAttribution,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
+import { formatForgeAttributionLabel } from "@/lib/repos/forge-fork-meta";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import { isOpaqueBinaryDataUrl } from "@/lib/repos/opaque-binary-data-url";
 import {
@@ -17922,10 +17923,9 @@ export function RepoCodePage() {
                         className="text-purple-500 hover:underline truncate min-w-0"
                       >
                         <span className="truncate block">
-                          {String(repoData?.forkedFrom || "")
-                            .replace(/^https?:\/\//, "")
-                            .replace(/\.git$/, "")
-                            .replace(/^github\.com\//, "")}
+                          {formatForgeAttributionLabel(
+                            String(repoData?.forkedFrom || "")
+                          )}
                         </span>
                       </a>
                     </>
@@ -22871,31 +22871,24 @@ export function RepoCodePage() {
               // Determine if this is a forge URL or internal gittr fork
               const forkedFrom = String(repoData?.forkedFrom || "");
               if (!forkedFrom) return null;
-              const isGitHubUrl =
+              const isExternalForgeUrl =
                 forkedFrom.startsWith("http://") ||
                 forkedFrom.startsWith("https://");
               // Internal fork format: /entity/repo or entity/repo (no http/https)
               const isInternalFork =
-                !isGitHubUrl &&
+                !isExternalForgeUrl &&
                 (forkedFrom.startsWith("/") ||
                   forkedFrom.match(/^[^\/]+\/[^\/]+$/));
 
               // Parse internal fork format
               let internalForkUrl: string | null = null;
-              let displayText = forkedFrom;
+              const displayText = formatForgeAttributionLabel(forkedFrom);
 
               if (isInternalFork) {
                 // Internal fork: normalize to /entity/repo format
                 internalForkUrl = forkedFrom.startsWith("/")
                   ? forkedFrom
                   : `/${forkedFrom}`;
-                displayText = forkedFrom.replace(/^\//, ""); // Remove leading slash for display
-              } else if (isGitHubUrl) {
-                // External URL: show host/path without scheme
-                displayText = forkedFrom
-                  .replace(/^https?:\/\//, "")
-                  .replace(/\.git$/, "")
-                  .replace(/^github\.com\//, "");
               }
 
               return (

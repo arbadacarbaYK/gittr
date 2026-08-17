@@ -51,7 +51,7 @@ function ownForgeKeys(own?: ForkAttributionOwnRepo | null): Set<string> {
 }
 
 /**
- * Show “Forked from” / orange forked pill only for a foreign parent or a
+ * Show “Forked from” / forked pill only for a foreign parent or a
  * gittr fork pointer — never this repo’s own GitHub URL.
  */
 export function isDisplayableForkAttribution(
@@ -109,6 +109,37 @@ export function githubParentForkedFrom(opts: {
  * Keeps gittr `/npub/repo` pointers. Uses GitHub `parent` when this is a
  * GitHub fork. Clears self-import URLs.
  */
+/** Apply GitHub `fork` + `parent` metadata to a profile/repo row (pure). */
+export function applyGithubForkMetaToRepo<
+  T extends {
+    sourceUrl?: string | null;
+    forkedFrom?: string | null;
+    clone?: unknown;
+  },
+>(
+  repo: T,
+  meta: {
+    isFork?: boolean | null;
+    parentHtmlUrl?: string | null;
+    htmlUrl?: string | null;
+  } | null
+): T {
+  if (!meta || !repo.sourceUrl) return repo;
+  const clone = Array.isArray(repo.clone)
+    ? repo.clone.map((c) => (c == null ? "" : String(c)))
+    : undefined;
+  const nextForked = resolveStoredForkedFrom({
+    existingForkedFrom: repo.forkedFrom,
+    sourceUrl: repo.sourceUrl,
+    clone,
+    githubIsFork: meta.isFork,
+    githubParentHtmlUrl: meta.parentHtmlUrl,
+    githubHtmlUrl: meta.htmlUrl || repo.sourceUrl,
+  });
+  if (!nextForked || nextForked === repo.forkedFrom) return repo;
+  return { ...repo, forkedFrom: nextForked };
+}
+
 export function resolveStoredForkedFrom(opts: {
   existingForkedFrom?: string | null;
   sourceUrl?: string | null;
