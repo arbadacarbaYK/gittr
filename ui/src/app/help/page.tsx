@@ -1007,10 +1007,10 @@ export default function HelpPage() {
                   <strong className="text-white">owner</strong> pill on a
                   profile is “this npub announced the repo,” not “GitHub
                   confirmed.” Importing your own GitHub repo is still{" "}
-                  <strong className="text-white">owner</strong>. The orange{" "}
+                  <strong className="text-white">owner</strong>. The purple{" "}
                   <strong className="text-white">forked</strong> pill is only
-                  for a real GitHub parent (someone else’s repo) or a gittr Fork
-                  — not “this has a GitHub URL.”
+                  for a real upstream parent (someone else’s repo on any
+                  supported forge) or a gittr Fork — not “this has a forge URL.”
                 </li>
                 <li>
                   <strong className="text-white">
@@ -1033,6 +1033,78 @@ export default function HelpPage() {
                   a Release exists on that forge.
                 </li>
               </ul>
+
+              <HelpSubTopic title={<>Three ways gittr talks to forges</>}>
+                <p className="text-sm text-gray-300">
+                  gittr does not treat every git website the same under the hood.
+                  After you import, it refreshes metadata (fork parent, stars,
+                  issues, pull requests, releases) using one of three API
+                  families:
+                </p>
+                <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/50 rounded text-sm text-gray-300 space-y-3">
+                  <div>
+                    <p className="font-semibold text-purple-200">
+                      GitHub API → github.com
+                    </p>
+                    <p className="mt-1 text-gray-400">
+                      Bulk import, OAuth linking, and GitHub-specific metadata.
+                      Uses GitHub&apos;s REST API (
+                      <code className="bg-black/40 px-1 rounded text-xs">
+                        /repos/…
+                      </code>
+                      ).
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-purple-200">
+                      GitLab API → gitlab.com (and similar)
+                    </p>
+                    <p className="mt-1 text-gray-400">
+                      Paste a GitLab clone URL on Create repository. gittr uses
+                      GitLab&apos;s v4 API for fork parent lookup and tab
+                      refresh. Self-hosted GitLab instances with the same API
+                      shape work the same way.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-purple-200">
+                      Gitea / Forgejo API (
+                      <code className="bg-black/40 px-1 rounded text-xs">
+                        /api/v1
+                      </code>
+                      ) → Codeberg, gitea.com, self-hosted Forgejo / Gitea
+                    </p>
+                    <p className="mt-1 text-gray-400">
+                      <strong className="text-gray-300">Forgejo</strong> is
+                      open-source forge software (a community fork of{" "}
+                      <strong className="text-gray-300">Gitea</strong>).{" "}
+                      <strong className="text-gray-300">Codeberg</strong> (
+                      codeberg.org) is a popular public site that{" "}
+                      <em>runs Forgejo</em> — not a separate product. They
+                      share the same URL layout (
+                      <code className="bg-black/40 px-1 rounded text-xs">
+                        host/owner/repo
+                      </code>
+                      ) and the same REST API, so gittr handles Codeberg,
+                      gitea.com, and your own Forgejo/Gitea server with one code
+                      path. Import is always paste-URL +{" "}
+                      <code className="bg-blue-900/50 px-1 rounded text-xs">
+                        git clone
+                      </code>
+                      ; Issues, PRs, Releases, and fork badges then refresh from{" "}
+                      <code className="bg-black/40 px-1 rounded text-xs">
+                        /api/v1
+                      </code>
+                      .
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-gray-400">
+                  In short: GitHub, GitLab, and Gitea/Forgejo are three
+                  different &quot;languages&quot; gittr speaks. You still paste
+                  one clone URL — gittr picks the right API from the hostname.
+                </p>
+              </HelpSubTopic>
 
               <HelpSubTopic title={<>Size limits</>}>
                 <p>
