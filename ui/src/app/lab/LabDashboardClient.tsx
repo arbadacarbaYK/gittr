@@ -223,6 +223,7 @@ export function LabDashboardClient() {
             title="Security lab snapshot"
             className="w-full border-0"
             style={{ height: frameHeight, overflow: "hidden" }}
+            scrolling="no"
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
           />

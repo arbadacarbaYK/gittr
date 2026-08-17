@@ -9,8 +9,11 @@ import {
   PROFILE_REPOS_RELAYS,
   withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
+import { extractForgeSourceFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
+import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
 import { preferRepoDisplayName } from "@/lib/repos/merge-profile-repos";
 import { hexPubkeyToNpub } from "@/lib/stats";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Event } from "nostr-tools";
@@ -27,9 +30,43 @@ export type ProfileRepoRow = {
   syncedFromNostr: boolean;
   lastNostrEventId?: string;
   lastNostrEventCreatedAt?: number;
+  stateEventId?: string;
+  /** Forge upstream from `source` / `forkedFrom` / clone tags */
+  sourceUrl?: string;
+  /** Real fork parent from `forkedFrom` tag (not this repo's own GitHub URL). */
+  forkedFrom?: string;
+  clone?: string[];
   /** false = private (gittr public-read:false on 30617). undefined/true = public. */
   publicRead?: boolean;
 };
+
+function cloneUrlsFromTags(tags: string[][] | undefined): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const tag of tags || []) {
+    if (!Array.isArray(tag) || tag[0] !== "clone") continue;
+    for (const v of nip34TagValuesFromRow(tag)) {
+      const u = v.trim();
+      if (!u || u.includes("localhost") || u.includes("127.0.0.1")) continue;
+      const key = u
+        .replace(/\/+$/, "")
+        .replace(/\.git$/i, "")
+        .toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(u);
+    }
+  }
+  return out;
+}
+
+function forgeSourceFromTags(tags: string[][] | undefined): string | undefined {
+  const raw = extractForgeSourceFromEventTags(tags || []);
+  if (!raw) return undefined;
+  return raw
+    .replace(/\.git$/i, "")
+    .replace(/^git@([^:]+):(.+)$/, "https://$1/$2");
+}
 
 function tagValue(
   tags: string[][] | undefined,
@@ -162,6 +199,32 @@ export default async function handler(
                   )
                 : preferRepoDisplayName(existing?.name, undefined, repoName);
 
+            const announceId =
+              event.kind === KIND_REPOSITORY_NIP34
+                ? event.id || existing?.lastNostrEventId
+                : existing?.lastNostrEventId;
+            const stateId =
+              event.kind === KIND_REPOSITORY_STATE
+                ? event.id || existing?.stateEventId
+                : existing?.stateEventId;
+            const sourceUrl =
+              event.kind === KIND_REPOSITORY_NIP34
+                ? forgeSourceFromTags(event.tags as string[][]) ||
+                  existing?.sourceUrl
+                : existing?.sourceUrl;
+            const forkedFromRaw =
+              event.kind === KIND_REPOSITORY_NIP34
+                ? tagValue(event.tags as string[][], "forkedFrom") ||
+                  existing?.forkedFrom
+                : existing?.forkedFrom;
+            const forkedFrom = sanitizeForkedFromField(forkedFromRaw, {
+              sourceUrl,
+            });
+            const clone =
+              event.kind === KIND_REPOSITORY_NIP34
+                ? cloneUrlsFromTags(event.tags as string[][])
+                : existing?.clone;
+
             byKey.set(key, {
               entity: hexPubkeyToNpub(event.pubkey),
               repo: repoName,
@@ -173,8 +236,15 @@ export default async function handler(
               ownerPubkey: event.pubkey.toLowerCase(),
               lastActivity: ts,
               syncedFromNostr: true,
-              lastNostrEventId: event.id || undefined,
-              lastNostrEventCreatedAt: event.created_at,
+              lastNostrEventId: announceId,
+              lastNostrEventCreatedAt:
+                event.kind === KIND_REPOSITORY_NIP34
+                  ? event.created_at
+                  : existing?.lastNostrEventCreatedAt ?? event.created_at,
+              stateEventId: stateId,
+              sourceUrl,
+              forkedFrom,
+              clone: clone && clone.length > 0 ? clone : existing?.clone,
               publicRead:
                 event.kind === KIND_REPOSITORY_NIP34
                   ? publicRead
@@ -194,6 +264,23 @@ export default async function handler(
             );
             if (existing.publicRead === undefined) {
               existing.publicRead = publicRead;
+            }
+            if (!existing.sourceUrl) {
+              existing.sourceUrl = forgeSourceFromTags(
+                event.tags as string[][]
+              );
+            }
+            if (!existing.forkedFrom) {
+              existing.forkedFrom = sanitizeForkedFromField(
+                tagValue(event.tags as string[][], "forkedFrom"),
+                { sourceUrl: existing.sourceUrl }
+              );
+            }
+            if (!existing.clone || existing.clone.length === 0) {
+              existing.clone = cloneUrlsFromTags(event.tags as string[][]);
+            }
+            if (!existing.lastNostrEventId && event.id) {
+              existing.lastNostrEventId = event.id;
             }
           }
         };

@@ -8,6 +8,7 @@
  * - CSP allows inline scripts but blocks network (connect-src 'none').
  * - Inject height reporter so /lab can grow the iframe (sandbox has no
  *   allow-same-origin, so the parent cannot read scrollHeight directly).
+ * - Keep reporting as snapshot JS fills the projects grid (no height freeze).
  * Pair with iframe sandbox="allow-scripts" (no allow-same-origin).
  */
 
@@ -81,7 +82,8 @@ function stripExternalScripts(html: string): string {
 /**
  * Auto-height + map wheel bridge for sandboxed iframe (origin is typically "null").
  * - Fixed graph height (no 88vh against a multi-thousand-px iframe).
- * - One-shot height post (no late thrash → window resize → fitCamera zoom reset).
+ * - Keep reporting height as the snapshot hydrates (projects grid); parent
+ *   grows only so iframe resize cannot shrink-reset the map camera.
  * - Tell parent when the canvas is hovered so page scroll does not eat zoom.
  * - Strip snapshot's resize→fitCamera (iframe size changes must not reset camera).
  */
@@ -95,8 +97,10 @@ function stripResizeFitCamera(html: string): string {
 function injectAutoHeightReporter(html: string): string {
   const heightType = JSON.stringify(LAB_SNAPSHOT_HEIGHT_MESSAGE);
   const interactType = JSON.stringify(LAB_SNAPSHOT_MAP_INTERACT_MESSAGE);
-  const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}#gwrap.graph-wrap,.graph-wrap#gwrap{height:1100px!important;max-height:1100px!important;min-height:640px!important;}</style>`;
-  const script = `<script id="gittr-lab-autoheight-script">(function(){var lastH=0,mapActive=false,frozen=false;function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){if(mapActive)return;if(frozen&&!force)return;var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${heightType},height:n},"*")}catch(e){}}function setMap(active){mapActive=!!active;try{parent.postMessage({type:${interactType},active:mapActive},"*")}catch(e){}}function bindMap(){var canvas=document.getElementById("graph");if(!canvas||canvas.dataset.gittrMapBound)return!!canvas;canvas.dataset.gittrMapBound="1";canvas.addEventListener("pointerenter",function(){setMap(true)});canvas.addEventListener("pointerleave",function(){setMap(false)});canvas.addEventListener("wheel",function(e){setMap(true);try{e.preventDefault()}catch(err){}},{passive:false,capture:true});canvas.addEventListener("pointerdown",function(){setMap(true)});return true}report(true);window.addEventListener("load",function(){report(true);bindMap();setTimeout(function(){report(true);frozen=true},900)});setTimeout(function(){bindMap();report(true)},400);setTimeout(function(){frozen=true},2500);})();</script>`;
+  // overflow:hidden — no inner iframe scrollbar. Parent grows the frame to
+  // scrollHeight (ResizeObserver) so the gittr page is the only scroller.
+  const style = `<style id="gittr-lab-autoheight">html,body{height:auto!important;min-height:0!important;overflow:hidden!important;scrollbar-width:none!important;}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important;width:0!important;height:0!important;}#gwrap.graph-wrap,.graph-wrap#gwrap{height:1100px!important;max-height:1100px!important;min-height:640px!important;}</style>`;
+  const script = `<script id="gittr-lab-autoheight-script">(function(){var lastH=0,mapActive=false;function h(){try{var d=document.documentElement,b=document.body;return Math.max(d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){if(mapActive)return;var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${heightType},height:n},"*")}catch(e){}}function setMap(active){mapActive=!!active;try{parent.postMessage({type:${interactType},active:mapActive},"*")}catch(e){}}function bindMap(){var canvas=document.getElementById("graph");if(!canvas||canvas.dataset.gittrMapBound)return!!canvas;canvas.dataset.gittrMapBound="1";canvas.addEventListener("pointerenter",function(){setMap(true)});canvas.addEventListener("pointerleave",function(){setMap(false)});canvas.addEventListener("wheel",function(e){setMap(true);try{e.preventDefault()}catch(err){}},{passive:false,capture:true});canvas.addEventListener("pointerdown",function(){setMap(true)});return true}function watchSize(){try{if(window.ResizeObserver){new ResizeObserver(function(){report(false)}).observe(document.documentElement);if(document.body)new ResizeObserver(function(){report(false)}).observe(document.body)}}catch(e){}try{if(window.MutationObserver&&document.body){new MutationObserver(function(){report(false)}).observe(document.body,{childList:true,subtree:true})}}catch(e2){}}report(true);watchSize();window.addEventListener("load",function(){report(true);bindMap();setTimeout(function(){report(true);bindMap()},400);setTimeout(function(){report(true)},2000)});setTimeout(function(){bindMap();report(true)},400);})();</script>`;
 
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, `${style}\n${script}\n</body>`);

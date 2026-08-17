@@ -9,8 +9,8 @@
  * - live: fully live (“Live on Nostr”)
  * - live_with_edits: was live, has local changes not pushed yet
  */
-import { repoHasUnpushedLocalEdits } from "@/lib/repos/unpushed-local-edits";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { repoHasUnpushedLocalEdits } from "../repos/unpushed-local-edits";
+import { findRepoByEntityAndName } from "./repo-finder";
 
 export type RepoStatus =
   | "local"
@@ -19,6 +19,27 @@ export type RepoStatus =
   | "live_soon"
   | "live_with_edits"
   | "push_failed";
+
+/** True when this row already has a kind 30617 id / Nostr hydrate flags. */
+export function repoHasNostrAnnounce(
+  repo:
+    | {
+        nostrEventId?: unknown;
+        lastNostrEventId?: unknown;
+        syncedFromNostr?: unknown;
+        fromNostr?: unknown;
+      }
+    | null
+    | undefined
+): boolean {
+  if (!repo) return false;
+  return !!(
+    repo.nostrEventId ||
+    repo.lastNostrEventId ||
+    repo.syncedFromNostr ||
+    repo.fromNostr
+  );
+}
 
 /** True when the repo is already on Nostr (including transitional / edits). */
 export function isPublishedRepoStatus(status: RepoStatus): boolean {
@@ -110,12 +131,7 @@ export function getRepoStatus(repo: any): RepoStatus {
 
   const bridgeProcessed = repo.bridgeProcessed;
 
-  const hasAnnouncementEventId = !!(
-    repo.nostrEventId ||
-    repo.lastNostrEventId ||
-    repo.syncedFromNostr ||
-    repo.fromNostr
-  );
+  const hasAnnouncementEventId = repoHasNostrAnnounce(repo);
 
   const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
 
@@ -184,9 +200,15 @@ export function getRepoStatus(repo: any): RepoStatus {
   if (repo.status === "live") {
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
-  if (repo.status === "local") return "local";
+  // Stale import stubs often keep status:"local" after a flush. A 30617 id
+  // already returned live above — only honor local when there is no announce.
+  if (repo.status === "local" && !hasAnnouncementEventId) return "local";
 
-  return "local";
+  return hasAnnouncementEventId
+    ? hasUnpushedEdits
+      ? "live_with_edits"
+      : "live"
+    : "local";
 }
 
 /**

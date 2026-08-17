@@ -26,6 +26,8 @@
 
 **Follow-up (Aug 2026)**: Do not treat *all* `KNOWN_GRASP_DOMAINS` URLs as inferred guesses when picking Git Server. If `git.gittr.space` is on the 30617 `clone` tags of a **Nostr-only** repo (normal after Push from gittr), it must win over shakespeare/ngit mirrors. That bump does **not** apply when the event has a GitHub/GitLab/Codeberg `source`. Only strip inferred URLs that are **not** on the event. Never invent gittr if the event never listed it.
 
+**Regression (Aug 2026)**: Preferring gittr for Nostr-only clones must not skip hydrating `source` / Event ID / Refetch. Imported GitHub repos (e.g. andronixorigin) list GitHub on `source` and gittr+ngit on `clone`. After a local flush the Code page must apply the live 30617 even when no `source` was in localStorage yet. My Repositories “Local” on every owned repo was the same gap: stubs without `lastNostrEventId` were not merged with `/api/nostr/profile-repos`.
+
 ## File tree last-commit dates (Aug 2026)
 
 Code browser rows show **last commit message + relative time** for the currently selected tip/branch. Data comes from `GET /api/nostr/repo/tree-last-commits` (one capped `git log --name-only` on the bare mirror — not per-path N+1). Dates track the bridge tip for that branch, which should match GitHub after a clean Refetch → Push.

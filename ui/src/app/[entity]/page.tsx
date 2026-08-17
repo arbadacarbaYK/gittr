@@ -55,7 +55,11 @@ import { useProfileFollowCounts } from "@/lib/nostr/useProfileFollowCounts";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
-import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
+import {
+  mergeProfileRepoList,
+  profileAnnouncerRole,
+  profileRepoDisplayRole,
+} from "@/lib/repos/merge-profile-repos";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
@@ -1134,11 +1138,7 @@ export default function EntityPage({
                 r.ownerPubkey &&
                 r.ownerPubkey.toLowerCase() === targetPubkey
               ) {
-                role = "owner";
-                // If it's a fork (has forkedFrom) and user owns it, mark as forked
-                if (r.forkedFrom) {
-                  role = "forked";
-                }
+                role = profileAnnouncerRole(r);
               } else if (r.contributors && Array.isArray(r.contributors)) {
                 const contributor = r.contributors.find(
                   (c: any) =>
@@ -1149,11 +1149,7 @@ export default function EntityPage({
                     contributor.weight === 100 ||
                     contributor.role === "owner"
                   ) {
-                    role = "owner";
-                    // If it's a fork and user owns it, mark as forked
-                    if (r.forkedFrom) {
-                      role = "forked";
-                    }
+                    role = profileAnnouncerRole(r);
                   } else if (
                     contributor.weight >= 50 ||
                     contributor.role === "maintainer"
@@ -1400,8 +1396,7 @@ export default function EntityPage({
                     r.ownerPubkey &&
                     r.ownerPubkey.toLowerCase() === targetPubkey
                   ) {
-                    role = "owner";
-                    if (r.forkedFrom) role = "forked";
+                    role = profileAnnouncerRole(r);
                   } else if (r.contributors && Array.isArray(r.contributors)) {
                     const contributor = r.contributors.find(
                       (c: any) =>
@@ -1412,8 +1407,7 @@ export default function EntityPage({
                         contributor.weight === 100 ||
                         contributor.role === "owner"
                       ) {
-                        role = "owner";
-                        if (r.forkedFrom) role = "forked";
+                        role = profileAnnouncerRole(r);
                       } else if (
                         contributor.weight >= 50 ||
                         contributor.role === "maintainer"
@@ -2370,6 +2364,9 @@ export default function EntityPage({
             lastNostrEventId?: string;
             lastNostrEventCreatedAt?: number;
             publicRead?: boolean;
+            sourceUrl?: string;
+            forkedFrom?: string;
+            clone?: string[];
           }>;
         };
         if (
@@ -2395,6 +2392,15 @@ export default function EntityPage({
               lastNostrEventId: row.lastNostrEventId,
               syncedFromNostr: true,
               fromNostr: true,
+              sourceUrl: row.sourceUrl,
+              forkedFrom: row.forkedFrom,
+              clone: row.clone,
+              // Kind 30617 author is this profile — not GitHub NIP-39.
+              userRole: profileAnnouncerRole({
+                forkedFrom: row.forkedFrom,
+                sourceUrl: row.sourceUrl,
+                clone: row.clone,
+              }),
               // Preserve private status from relays after localStorage clear
               publicRead: row.publicRead !== false,
             }))
@@ -4247,14 +4253,12 @@ export default function EntityPage({
                 contributor: "border-green-500/50 bg-green-900/10",
                 forked: "border-orange-500/50 bg-orange-900/10",
               };
-              const ownerHex = (repo.ownerPubkey || "").toLowerCase();
-              const profileHex = (profileHexForFetch || "").toLowerCase();
-              const inferredOwner =
-                ownerHex && profileHex && ownerHex === profileHex;
-              const userRole = (repo.userRole ||
-                (inferredOwner
-                  ? "owner"
-                  : "contributor")) as keyof typeof roleColors;
+              const displayRole = profileRepoDisplayRole(
+                repo,
+                profileHexForFetch
+              );
+              const userRole = (displayRole ||
+                "contributor") as keyof typeof roleColors;
               const roleColor = roleColors[userRole] || "border-[#383B42]";
 
               return (
@@ -4302,19 +4306,19 @@ export default function EntityPage({
                         <h3 className="font-semibold text-purple-400 truncate">
                           {repoDisplayName}
                         </h3>
-                        {repo.userRole && (
+                        {displayRole && (
                           <span
                             className={`text-xs px-2 py-0.5 rounded ${
-                              repo.userRole === "owner"
+                              displayRole === "owner"
                                 ? "bg-purple-600/30 text-purple-300"
-                                : repo.userRole === "maintainer"
+                                : displayRole === "maintainer"
                                 ? "bg-blue-600/30 text-blue-300"
-                                : repo.userRole === "contributor"
+                                : displayRole === "contributor"
                                 ? "bg-green-600/30 text-green-300"
                                 : "bg-orange-600/30 text-orange-300"
                             }`}
                           >
-                            {repo.userRole}
+                            {displayRole}
                           </span>
                         )}
                         {/* Status badge - only show for repos owned by current user */}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { extractGithubUrlFromEventTags } from "./extract-forge-url-from-event-tags";
+import {
+  extractForgeSourceFromEventTags,
+  extractGithubUrlFromEventTags,
+} from "./extract-forge-url-from-event-tags";
 
 describe("extractGithubUrlFromEventTags", () => {
   it("prefers source over GRASP-only clone tags", () => {
@@ -56,5 +59,28 @@ describe("extractGithubUrlFromEventTags", () => {
       ["web", "http://127.0.0.1:3000/git/laantungir/minibits_wallet"],
     ]);
     expect(url).toBe("");
+  });
+});
+
+describe("extractForgeSourceFromEventTags", () => {
+  it("ignores a GitHub docs/web link so Nostr-only repos stay unsourced", () => {
+    const url = extractForgeSourceFromEventTags([
+      [
+        "clone",
+        "https://git.gittr.space/npub1abc/notes.git",
+        "https://relay.ngit.dev/npub1abc/notes.git",
+      ],
+      ["web", "https://github.com/someone/notes"],
+      ["link", "docs", "https://github.com/someone/notes#readme", "Docs"],
+    ]);
+    expect(url).toBe("");
+  });
+
+  it("still persists an explicit source tag", () => {
+    const url = extractForgeSourceFromEventTags([
+      ["clone", "https://git.gittr.space/npub1abc/andronixorigin.git"],
+      ["source", "https://github.com/AndronixApp/AndronixOrigin"],
+    ]);
+    expect(url).toBe("https://github.com/AndronixApp/AndronixOrigin");
   });
 });

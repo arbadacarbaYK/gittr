@@ -5,6 +5,8 @@ import {
   bunkerRelayPublishOverlap,
   expandBunkerRelays,
   getSessionUriRelays,
+  nip46PrimaryEncryption,
+  nip46ShouldDualPublish,
   preferUriOpenRelays,
   recoverUriRelaysFromPossiblyExpanded,
 } from "./remoteSigner";
@@ -187,5 +189,26 @@ describe("bunkerRelayPublishOverlap", () => {
         uri
       )
     ).toBe(false);
+  });
+});
+
+describe("nip46 encryption preference", () => {
+  it("sends NIP-04 first for sign_event so Amber can decrypt the prompt", () => {
+    expect(nip46PrimaryEncryption("sign_event")).toBe("nip04");
+    expect(nip46ShouldDualPublish("sign_event")).toBe(true);
+  });
+
+  it("uses the same Amber wrap for encrypt/decrypt RPC", () => {
+    expect(nip46PrimaryEncryption("nip04_encrypt")).toBe("nip04");
+    expect(nip46PrimaryEncryption("nip44_encrypt")).toBe("nip04");
+    expect(nip46ShouldDualPublish("nip04_decrypt")).toBe(true);
+    expect(nip46ShouldDualPublish("nip44_decrypt")).toBe(true);
+  });
+
+  it("keeps NIP-44 primary for connect / get_public_key and still dual-publishes", () => {
+    expect(nip46PrimaryEncryption("connect")).toBe("nip44");
+    expect(nip46PrimaryEncryption("get_public_key")).toBe("nip44");
+    expect(nip46ShouldDualPublish("connect")).toBe(true);
+    expect(nip46ShouldDualPublish("get_public_key")).toBe(true);
   });
 });

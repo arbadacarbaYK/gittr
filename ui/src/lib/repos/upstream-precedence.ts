@@ -5,6 +5,8 @@
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 
+import { parseGiteaCompatibleRepo } from "./gitea-forge";
+
 export {
   allowShrinkToForgeUpstreamTree,
   allowShrinkToSourceUpstreamTree,
@@ -37,17 +39,21 @@ export function hasGithubUpstreamMirror(
   return url.includes("github.com");
 }
 
-/** GitHub / GitLab.com / Codeberg — not GRASP or home http://IP clones. */
+/** GitHub / GitLab.com / Codeberg / Forgejo — not GRASP or home http://IP clones. */
 export function hasForgeUpstreamMirror(
   ...candidates: Array<string | undefined | null>
 ): boolean {
-  const url = resolveUpstreamSourceUrl(...candidates).toLowerCase();
+  const url = resolveUpstreamSourceUrl(...candidates);
   if (!url) return false;
-  return (
-    url.includes("github.com") ||
-    url.includes("gitlab.com") ||
-    url.includes("codeberg.org")
-  );
+  const lower = url.toLowerCase();
+  if (
+    lower.includes("github.com") ||
+    lower.includes("gitlab.com") ||
+    lower.includes("codeberg.org")
+  ) {
+    return true;
+  }
+  return !!parseGiteaCompatibleRepo(url);
 }
 
 export function resolveRepoUpstreamSource(

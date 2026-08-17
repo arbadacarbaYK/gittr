@@ -8,6 +8,8 @@
  */
 import type { ContributorRole } from "@/components/ui/contributors";
 
+import { nip19 } from "nostr-tools";
+
 // Re-export for convenience
 export type { ContributorRole };
 
@@ -123,24 +125,48 @@ export function getUserRole(
 }
 
 /**
+ * Hex pubkey for a repo owner from stored hex or an npub entity slug.
+ */
+export function ownerPubkeyFromEntity(
+  entity: string | null | undefined
+): string | null {
+  const raw = String(entity || "").trim();
+  if (!raw) return null;
+  if (/^[0-9a-f]{64}$/i.test(raw)) return raw.toLowerCase();
+  if (!raw.startsWith("npub")) return null;
+  try {
+    const decoded = nip19.decode(raw);
+    if (decoded.type === "npub" && typeof decoded.data === "string") {
+      return decoded.data.toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
  * Check if user is owner
  */
 export function isOwner(
   userPubkey: string | null | undefined,
   repoContributors: ContributorWithRole[] | undefined,
-  repoOwnerPubkey?: string | null
+  repoOwnerPubkey?: string | null,
+  entity?: string | null
 ): boolean {
   if (!userPubkey) return false;
+  const user = userPubkey.toLowerCase();
 
-  // Check explicit ownerPubkey
-  if (
-    repoOwnerPubkey &&
-    repoOwnerPubkey.toLowerCase() === userPubkey.toLowerCase()
-  ) {
+  const ownerHex =
+    (repoOwnerPubkey && /^[0-9a-f]{64}$/i.test(repoOwnerPubkey)
+      ? repoOwnerPubkey.toLowerCase()
+      : ownerPubkeyFromEntity(repoOwnerPubkey)) ||
+    ownerPubkeyFromEntity(entity);
+
+  if (ownerHex && ownerHex === user) {
     return true;
   }
 
-  // Check contributors
   const role = getUserRole(userPubkey, repoContributors);
   return role === "owner";
 }

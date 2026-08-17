@@ -893,7 +893,7 @@ export function ReposList({
                   className={
                     isLocal &&
                     pubkey &&
-                    isOwner(pubkey, r.contributors, r.ownerPubkey)
+                    isOwner(pubkey, r.contributors, r.ownerPubkey, r.entity)
                       ? "flex flex-col items-start"
                       : "hidden"
                   }

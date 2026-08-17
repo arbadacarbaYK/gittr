@@ -68,6 +68,7 @@ import {
   getRepoStatus,
   getStatusBadgeStyle,
   isPublishedRepoStatus,
+  repoHasNostrAnnounce,
   statusNeedsPushAction,
 } from "@/lib/utils/repo-status";
 
@@ -135,6 +136,8 @@ export default function RepositoriesPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showClearForeignConfirm, setShowClearForeignConfirm] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  /** False until profile-repos / relay EOSE so we do not cache activity stubs as Local. */
+  const [nostrOwnedListReady, setNostrOwnedListReady] = useState(false);
   const [pushingRepos, setPushingRepos] = useState<Set<string>>(new Set());
   const [repairingCloneUrls, setRepairingCloneUrls] = useState(false);
   const [clickedRepo, setClickedRepo] = useState<string | null>(null); // Track which repo is being navigated to
@@ -161,6 +164,10 @@ export default function RepositoriesPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    setNostrOwnedListReady(false);
+  }, [pubkey]);
 
   // Clear clicked repo state when navigation completes
   useEffect(() => {
@@ -1946,6 +1953,7 @@ export default function RepositoriesPage() {
         setTimeout(() => {
           if (typeof window === "undefined") return; // Don't access localStorage during SSR
           setSyncing(false);
+          setNostrOwnedListReady(true);
           const allRepos = JSON.parse(
             localStorage.getItem("gittr_repos") || "[]"
           );
@@ -1984,6 +1992,7 @@ export default function RepositoriesPage() {
     // If relays never EOSE, still refresh UI from whatever landed in LS.
     const eoseFailsafe = window.setTimeout(() => {
       setSyncing(false);
+      setNostrOwnedListReady(true);
       loadRepos();
     }, 8000);
 
@@ -2012,18 +2021,42 @@ export default function RepositoriesPage() {
     void (async () => {
       try {
         const existing = loadStoredRepos();
-        const mine = existing.filter(
-          (r) =>
-            typeof r.ownerPubkey === "string" &&
-            r.ownerPubkey.toLowerCase() === pubkey.toLowerCase()
+        const mine = existing.filter((r) => {
+          const owner = String(r.ownerPubkey || "").toLowerCase();
+          if (owner && owner === pubkey.toLowerCase()) return true;
+          const entity = String((r as { entity?: string }).entity || "");
+          if (entity.startsWith("npub")) {
+            try {
+              const decoded = nip19.decode(entity);
+              if (
+                decoded.type === "npub" &&
+                String(decoded.data).toLowerCase() === pubkey.toLowerCase()
+              ) {
+                return true;
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          return false;
+        });
+        const mineMissingAnnounce = mine.filter(
+          (r) => !repoHasNostrAnnounce(r)
         );
-        // Always help after wipe; if we already have many owned rows, skip.
-        if (mine.length >= 3) return;
+        // Skip only when we already have several owned rows that look published.
+        if (mine.length >= 3 && mineMissingAnnounce.length === 0) {
+          setNostrOwnedListReady(true);
+          return;
+        }
 
         const res = await fetch(
-          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`,
+          { cache: "no-store" }
         );
-        if (!res.ok || cancelled) return;
+        if (!res.ok || cancelled) {
+          if (!cancelled) setNostrOwnedListReady(true);
+          return;
+        }
         const data = (await res.json()) as {
           repos?: Array<{
             entity: string;
@@ -2034,6 +2067,10 @@ export default function RepositoriesPage() {
             lastActivity: number;
             lastNostrEventId?: string;
             lastNostrEventCreatedAt?: number;
+            stateEventId?: string;
+            sourceUrl?: string;
+            forkedFrom?: string;
+            clone?: string[];
             publicRead?: boolean;
           }>;
         };
@@ -2042,6 +2079,7 @@ export default function RepositoriesPage() {
           data.repos.length === 0 ||
           cancelled
         ) {
+          if (!cancelled) setNostrOwnedListReady(true);
           return;
         }
 
@@ -2056,6 +2094,10 @@ export default function RepositoriesPage() {
           updatedAt: row.lastActivity,
           lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
           lastNostrEventId: row.lastNostrEventId,
+          stateEventId: row.stateEventId,
+          sourceUrl: row.sourceUrl,
+          forkedFrom: row.forkedFrom,
+          clone: row.clone,
           syncedFromNostr: true,
           fromNostr: true,
           publicRead: row.publicRead !== false,
@@ -2065,6 +2107,7 @@ export default function RepositoriesPage() {
         const merged = mergeProfileRepoList(base, rows);
         persistReposCatalog(merged as Repo[]);
         if (!cancelled) {
+          setNostrOwnedListReady(true);
           loadRepos();
           console.log(
             `✅ [Repositories] Refilled ${data.repos.length} owned repo(s) from profile-repos API`
@@ -2072,6 +2115,7 @@ export default function RepositoriesPage() {
         }
       } catch (e) {
         console.warn("[Repositories] profile-repos refill failed:", e);
+        if (!cancelled) setNostrOwnedListReady(true);
       }
     })();
 
@@ -2142,11 +2186,12 @@ export default function RepositoriesPage() {
     }
   }, [mounted, publish, defaultRelays]);
 
-  // CRITICAL: Sync repos from activities if they're missing from localStorage
-  // This handles the case where repos were created locally but not synced to localStorage
+  // After Nostr hydrate: only then backfill truly unpublished local creates from activities.
+  // Writing those stubs first is what painted every card Local for ~15s after Flush.
   useEffect(() => {
     if (typeof window === "undefined") return; // Don't access localStorage during SSR
     if (!pubkey) return; // Not logged in = can't sync
+    if (!nostrOwnedListReady) return;
 
     try {
       const allRepos = JSON.parse(
@@ -2575,7 +2620,7 @@ export default function RepositoriesPage() {
     } catch (error) {
       console.error("Failed to sync repos from activities:", error);
     }
-  }, [pubkey, persistReposCatalog, loadRepos]); // CRITICAL: Only run when pubkey changes, NOT when repos.length changes (prevents infinite loop)
+  }, [pubkey, persistReposCatalog, loadRepos, nostrOwnedListReady]); // After Nostr hydrate so activity stubs are not the cache
 
   // Soft client nav remounts this page with mounted=false briefly. Do not swap the
   // whole page for a thin Loading shell (that reads as bare Header + Footer).
@@ -3449,9 +3494,12 @@ export default function RepositoriesPage() {
                   const iconUrl = resolveRepoIcon(r);
 
                   const status = getRepoStatus(r);
+                  const waitingForNostr =
+                    !nostrOwnedListReady && !repoHasNostrAnnounce(r);
                   const needsRepublish = cloneListNeedsRepublish(r.clone);
                   const isLocal =
-                    statusNeedsPushAction(status) || needsRepublish;
+                    !waitingForNostr &&
+                    (statusNeedsPushAction(status) || needsRepublish);
                   const isPushing = pushingRepos.has(`${entity}/${repoForUrl}`);
 
                   const repoKey = `${entity}/${repoForUrl}`;
@@ -3524,17 +3572,19 @@ export default function RepositoriesPage() {
                                   / {entityDisplay}
                                 </span>
                               </div>
-                              {/* Status badge */}
-                              {(() => {
-                                const style = getStatusBadgeStyle(status);
-                                return (
-                                  <span
-                                    className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                                  >
-                                    {style.label}
-                                  </span>
-                                );
-                              })()}
+                              {/* Status badge — hide fake Local until Nostr hydrate finishes */}
+                              {waitingForNostr
+                                ? null
+                                : (() => {
+                                    const style = getStatusBadgeStyle(status);
+                                    return (
+                                      <span
+                                        className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                                      >
+                                        {style.label}
+                                      </span>
+                                    );
+                                  })()}
                               {needsRepublish && (
                                 <span
                                   className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
@@ -3577,7 +3627,12 @@ export default function RepositoriesPage() {
                           {/* Push button for local repos - only visible to owner */}
                           {isLocal &&
                             pubkey &&
-                            isOwner(pubkey, r.contributors, r.ownerPubkey) && (
+                            isOwner(
+                              pubkey,
+                              r.contributors,
+                              r.ownerPubkey,
+                              r.entity
+                            ) && (
                               <Button
                                 size="sm"
                                 variant="outline"

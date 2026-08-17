@@ -120,7 +120,7 @@ export function detectGitForge(sourceUrl: string): DetectedGitForge {
   ) {
     return {
       type: "gitea",
-      label: "Gitea",
+      label: host.includes("forgejo") ? "Forgejo" : "Gitea / Forgejo",
       useGithubApi: false,
       host,
     };

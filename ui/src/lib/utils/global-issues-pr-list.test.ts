@@ -8,10 +8,33 @@ import {
 } from "./global-issues-pr-list";
 
 describe("repoIsFork", () => {
-  it("detects forkedFrom string", () => {
-    expect(repoIsFork({ forkedFrom: "https://github.com/a/b" })).toBe(true);
+  it("detects a real parent URL as a fork", () => {
+    expect(
+      repoIsFork({
+        forkedFrom: "https://github.com/a/b",
+        sourceUrl: "https://github.com/me/b",
+      })
+    ).toBe(true);
     expect(repoIsFork({ forkedFrom: "" })).toBe(false);
     expect(repoIsFork({})).toBe(false);
+  });
+
+  it("does not treat a self-import GitHub URL as a fork", () => {
+    expect(
+      repoIsFork({
+        forkedFrom: "https://github.com/me/gittr",
+        sourceUrl: "https://github.com/me/gittr",
+      })
+    ).toBe(false);
+  });
+
+  it("treats a gittr /npub/repo pointer as a fork", () => {
+    expect(
+      repoIsFork({
+        forkedFrom:
+          "/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr",
+      })
+    ).toBe(true);
   });
 });
 
@@ -23,10 +46,9 @@ describe("filterByAggregateSource", () => {
   ];
 
   it("hides forks for originals", () => {
-    expect(filterByAggregateSource(items, "originals").map((i) => i.id)).toEqual([
-      "1",
-      "3",
-    ]);
+    expect(
+      filterByAggregateSource(items, "originals").map((i) => i.id)
+    ).toEqual(["1", "3"]);
   });
 
   it("keeps only forks", () => {

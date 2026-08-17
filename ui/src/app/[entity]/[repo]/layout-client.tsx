@@ -658,7 +658,8 @@ export default function RepoLayoutClient({
           const userIsOwner = isOwner(
             pubkey,
             foundRepo.contributors,
-            repoOwnerPubkey
+            repoOwnerPubkey,
+            resolvedParams.entity
           );
           const canManage = canManageSettings(
             foundRepo.contributors?.find(
@@ -1507,10 +1508,7 @@ export default function RepoLayoutClient({
       const unsignedEvent = {
         kind: KIND_GIT_REPOSITORIES_LIST,
         created_at: createdAt,
-        tags: Array.from(watchedRepoAddresses).map((address) => [
-          "a",
-          address,
-        ]),
+        tags: Array.from(watchedRepoAddresses).map((address) => ["a", address]),
         content: "",
         pubkey,
       };
@@ -1982,7 +1980,11 @@ export default function RepoLayoutClient({
                   <Button
                     className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
-                    title={!pubkey ? "Log in with Nostr to fork this repo" : undefined}
+                    title={
+                      !pubkey
+                        ? "Log in with Nostr to fork this repo"
+                        : undefined
+                    }
                     onClick={handleFork}
                     suppressHydrationWarning
                   >

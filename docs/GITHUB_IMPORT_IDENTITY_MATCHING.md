@@ -109,7 +109,26 @@ Users link their GitHub identity via **Settings → Profile → Verified Identit
 6. Optionally add a proof (Gist ID / URL proving ownership)
 7. Save — this publishes a **kind 10011** event with `["i", "github:username"]` (profile metadata stays kind 0)
 
-## Important Notes
+## Repo ownership vs GitHub identity
+
+Linking GitHub under **Settings → Profile** (NIP-39) answers: *is this GitHub username the same person as this npub?* That is used when mapping **contributors** after an import.
+
+It does **not** decide gittr **owner**. Whoever is logged in when they import or create the repo is the gittr owner (`ownerPubkey` = their npub). After **Push to Nostr**, the kind 30617 announcement is signed by that npub.
+
+The purple **owner** pill on a profile card means “this profile’s npub announced the repo,” not “GitHub identity is linked.” Repos that only appear from `/api/nostr/profile-repos` (no local `userRole`) are still owned by that npub.
+
+### Import vs fork (badges and “Forked from”)
+
+Importing a GitHub/GitLab URL is **not** a gittr fork. The imported page URL is stored as `sourceUrl` (kind 30617 `source`) so Refetch still works.
+
+- **owner** (purple) — you created or imported this repo. A GitHub URL on the card does **not** make it a fork.
+- **forked** (orange) — this announcement is a real fork of someone else’s work:
+  - GitHub says `fork: true` and `parent.html_url` is a **different** repo, or
+  - you used gittr **Fork** (`/new?fork=npub/repo`), which stores `forkedFrom` as `/npub…/repo`.
+- Importing your own GitHub original (`gittr`, `gittr-mcp`, …) must **not** copy that URL into `forkedFrom`. Older imports that did are sanitized on load/Push (own URL == `sourceUrl` is dropped).
+- Opening an already-imported GitHub **fork** (e.g. `andronixorigin`) hydrates `forkedFrom` from GitHub `parent`.
+
+NIP-39 GitHub linking is still only for **contributor** matching, not for these pills.
 
 ### All Contributors Are Shown
 The system **keeps ALL contributors**, even if they haven't linked their Nostr identity:

@@ -1,9 +1,10 @@
 /**
- * Fetch forge Releases (GitHub / Codeberg / GitLab) for Zapstore-compatible announce.
+ * Fetch forge Releases (GitHub / Codeberg / GitLab / Forgejo) for Zapstore-compatible announce.
  * gittr does not host APKs — only returns public download URLs (+ optional sha256).
  */
+import { parseGiteaCompatibleRepo } from "../repos/gitea-forge";
 
-export type ForgeHost = "github" | "codeberg" | "gitlab";
+export type ForgeHost = "github" | "codeberg" | "gitlab" | "gitea";
 
 export type ForgeReleaseAsset = {
   name: string;
@@ -102,6 +103,7 @@ export function resolveForgeFromSourceUrl(sourceUrl: string):
       owner: string;
       repo: string;
       repositoryUrl: string;
+      origin?: string;
     }
   | {
       ok: false;
@@ -113,7 +115,7 @@ export function resolveForgeFromSourceUrl(sourceUrl: string):
       ok: false,
       code: "missing_source",
       message:
-        "Link a forge remote first (GitHub, Codeberg, or GitLab) on this repository’s source URL.",
+        "Link a forge remote first (GitHub, Codeberg, GitLab, or Forgejo) on this repository’s source URL.",
     };
   }
 
@@ -153,21 +155,34 @@ export function resolveForgeFromSourceUrl(sourceUrl: string):
   }
 
   let forge: ForgeHost | null = null;
+  let origin: string | undefined;
   if (host === "github.com" || host === "www.github.com") forge = "github";
-  else if (host === "codeberg.org" || host === "www.codeberg.org")
-    forge = "codeberg";
   else if (host === "gitlab.com" || host === "www.gitlab.com") forge = "gitlab";
+  else {
+    const gitea = parseGiteaCompatibleRepo(sourceUrl);
+    if (gitea) {
+      forge = gitea.kind === "codeberg" ? "codeberg" : "gitea";
+      origin = gitea.origin;
+    }
+  }
 
   if (!forge) {
     return {
       ok: false,
       code: "unsupported_forge",
       message:
-        "Only GitHub, Codeberg, and GitLab release APIs are supported for announce in v1.",
+        "Only GitHub, Codeberg, GitLab, and Forgejo/Gitea release APIs are supported for announce.",
     };
   }
 
-  return { ok: true, forge, owner, repo, repositoryUrl };
+  return {
+    ok: true,
+    forge,
+    owner,
+    repo,
+    repositoryUrl,
+    ...(origin ? { origin } : {}),
+  };
 }
 
 function githubHeaders(): Record<string, string> {
@@ -310,11 +325,12 @@ async function listGitHubReleases(
     });
 }
 
-async function listCodebergReleases(
+async function listGiteaReleases(
+  origin: string,
   owner: string,
   repo: string
 ): Promise<ForgeRelease[]> {
-  const url = `https://codeberg.org/api/v1/repos/${encodeURIComponent(
+  const url = `${origin.replace(/\/+$/, "")}/api/v1/repos/${encodeURIComponent(
     owner
   )}/${encodeURIComponent(repo)}/releases?limit=50`;
   const res = await fetch(url, {
@@ -324,7 +340,7 @@ async function listCodebergReleases(
     },
   });
   if (!res.ok) {
-    throw new Error(`Codeberg releases API returned ${res.status}`);
+    throw new Error(`Forgejo/Gitea releases API returned ${res.status}`);
   }
   const list = (await res.json()) as Array<{
     tag_name?: string;
@@ -466,8 +482,12 @@ export async function listForgeReleasesForDisplay(options: {
     let releases: ForgeRelease[] = [];
     if (resolved.forge === "github") {
       releases = await listGitHubReleases(resolved.owner, resolved.repo);
-    } else if (resolved.forge === "codeberg") {
-      releases = await listCodebergReleases(resolved.owner, resolved.repo);
+    } else if (resolved.forge === "codeberg" || resolved.forge === "gitea") {
+      releases = await listGiteaReleases(
+        resolved.origin || "https://codeberg.org",
+        resolved.owner,
+        resolved.repo
+      );
     } else {
       releases = await listGitLabReleases(resolved.owner, resolved.repo);
     }
@@ -516,8 +536,12 @@ export async function fetchForgeReleasesForAnnounce(options: {
     let list: ForgeRelease[] = [];
     if (resolved.forge === "github") {
       list = await listGitHubReleases(resolved.owner, resolved.repo);
-    } else if (resolved.forge === "codeberg") {
-      list = await listCodebergReleases(resolved.owner, resolved.repo);
+    } else if (resolved.forge === "codeberg" || resolved.forge === "gitea") {
+      list = await listGiteaReleases(
+        resolved.origin || "https://codeberg.org",
+        resolved.owner,
+        resolved.repo
+      );
     } else {
       list = await listGitLabReleases(resolved.owner, resolved.repo);
     }

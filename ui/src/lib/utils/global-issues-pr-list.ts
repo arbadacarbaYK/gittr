@@ -2,6 +2,7 @@
  * Shared prefs + grouping for global /issues and /pulls aggregate lists.
  * Replaces decorative Visibility / Organization / Sort stubs with real controls.
  */
+import { isRealForkAttribution } from "../repos/fork-attribution";
 
 export type AggregateListSource = "all" | "originals" | "forks";
 export type AggregateListGroup = "flat" | "repo";
@@ -99,17 +100,33 @@ export function repoKeyForAggregateItem(item: {
   return `${item.entity || ""}/${item.repo || ""}`.toLowerCase();
 }
 
-/** True when the stored repo is a fork/import (has forkedFrom). */
-export function repoIsFork(repo: { forkedFrom?: unknown } | null | undefined): boolean {
+/** True when the stored repo is a real fork (foreign parent or gittr /npub/repo). */
+export function repoIsFork(
+  repo:
+    | {
+        forkedFrom?: unknown;
+        sourceUrl?: unknown;
+        clone?: unknown;
+      }
+    | null
+    | undefined
+): boolean {
   if (!repo) return false;
   const f = repo.forkedFrom;
-  if (typeof f === "string") return f.trim().length > 0;
-  return Boolean(f);
+  if (typeof f !== "string") return Boolean(f);
+  const clone = Array.isArray(repo.clone)
+    ? repo.clone.map((c) => (c == null ? "" : String(c)))
+    : undefined;
+  return isRealForkAttribution(f, {
+    sourceUrl: typeof repo.sourceUrl === "string" ? repo.sourceUrl : undefined,
+    clone,
+  });
 }
 
-export function filterByAggregateSource<
-  T extends { isFork?: boolean }
->(items: T[], source: AggregateListSource): T[] {
+export function filterByAggregateSource<T extends { isFork?: boolean }>(
+  items: T[],
+  source: AggregateListSource
+): T[] {
   if (source === "originals") return items.filter((i) => !i.isFork);
   if (source === "forks") return items.filter((i) => !!i.isFork);
   return items;

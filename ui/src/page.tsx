@@ -18,6 +18,7 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { profileAnnouncerRole } from "@/lib/repos/merge-profile-repos";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
 import {
@@ -729,11 +730,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 r.ownerPubkey &&
                 r.ownerPubkey.toLowerCase() === targetPubkey
               ) {
-                role = "owner";
-                // If it's a fork (has forkedFrom) and user owns it, mark as forked
-                if (r.forkedFrom) {
-                  role = "forked";
-                }
+                role = profileAnnouncerRole(r);
               } else if (r.contributors && Array.isArray(r.contributors)) {
                 const contributor = r.contributors.find(
                   (c: any) =>
@@ -744,11 +741,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                     contributor.weight === 100 ||
                     contributor.role === "owner"
                   ) {
-                    role = "owner";
-                    // If it's a fork and user owns it, mark as forked
-                    if (r.forkedFrom) {
-                      role = "forked";
-                    }
+                    role = profileAnnouncerRole(r);
                   } else if (
                     contributor.weight >= 50 ||
                     contributor.role === "maintainer"
@@ -988,8 +981,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                     r.ownerPubkey &&
                     r.ownerPubkey.toLowerCase() === targetPubkey
                   ) {
-                    role = "owner";
-                    if (r.forkedFrom) role = "forked";
+                    role = profileAnnouncerRole(r);
                   } else if (r.contributors && Array.isArray(r.contributors)) {
                     const contributor = r.contributors.find(
                       (c: any) =>
@@ -1000,8 +992,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                         contributor.weight === 100 ||
                         contributor.role === "owner"
                       ) {
-                        role = "owner";
-                        if (r.forkedFrom) role = "forked";
+                        role = profileAnnouncerRole(r);
                       } else if (
                         contributor.weight >= 50 ||
                         contributor.role === "maintainer"

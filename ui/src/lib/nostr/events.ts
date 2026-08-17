@@ -1,6 +1,7 @@
 // Nostr event types and utilities for repositories, issues, PRs
 import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
+import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
 import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
 
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
@@ -416,15 +417,24 @@ export function buildUnsignedRepositoryEvent(
   // Note: We don't have commit history in RepositoryEvent interface, so this is skipped
   // It can be added in push-repo-to-nostr.ts where we have access to commits
 
-  // NIP-34 / gittr: keep forge provenance when present (source wins, then forkedFrom/clone)
+  // NIP-34 / gittr: `source` = forge provenance for refetch.
+  // `forkedFrom` = real parent only (GitHub parent or gittr /npub/repo), never this repo's own URL.
   const forgeUpstream = resolveRepoUpstreamSource(repo);
   if (forgeUpstream) {
     const clean = forgeUpstream.replace(/\.git$/, "");
     tags.push(["source", clean]);
-    tags.push([
-      "forkedFrom",
-      (typeof repo.forkedFrom === "string" && repo.forkedFrom.trim()) || clean,
-    ]);
+  }
+  const forkAttr = sanitizeForkedFromField(
+    typeof repo.forkedFrom === "string" ? repo.forkedFrom : undefined,
+    {
+      sourceUrl:
+        (typeof repo.sourceUrl === "string" && repo.sourceUrl) ||
+        (forgeUpstream ? forgeUpstream.replace(/\.git$/, "") : undefined),
+      clone: Array.isArray(repo.clone) ? repo.clone : undefined,
+    }
+  );
+  if (forkAttr) {
+    tags.push(["forkedFrom", forkAttr]);
   }
 
   // NIP-34: Add link tags if present

@@ -4,6 +4,7 @@
  */
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 
+import { sanitizeForkedFromField } from "../repos/fork-attribution";
 import {
   persistGithubSourceOnRepo,
   queryNostrForGithubSourceUrl,
@@ -436,7 +437,7 @@ export async function pushRepoToNostr(
         }
       }
       // Clear bogus GRASP/mirror forkedFrom left in localStorage
-      if (repo.forkedFrom && !sanitizeForkedFromField(repo.forkedFrom)) {
+      if (repo.forkedFrom && !sanitizeForkedFromField(repo.forkedFrom, repo)) {
         delete (repo as { forkedFrom?: string }).forkedFrom;
       }
       if (upstream) {
@@ -444,9 +445,15 @@ export async function pushRepoToNostr(
         if (!repo.sourceUrl) {
           (repo as { sourceUrl?: string }).sourceUrl = clean;
         }
-        const forkAttr = sanitizeForkedFromField(repo.forkedFrom || clean);
+        const forkAttr = sanitizeForkedFromField(repo.forkedFrom, {
+          sourceUrl:
+            typeof repo.sourceUrl === "string" ? repo.sourceUrl : clean,
+          clone: Array.isArray(repo.clone) ? repo.clone : undefined,
+        });
         if (forkAttr) {
           (repo as { forkedFrom?: string }).forkedFrom = forkAttr;
+        } else {
+          delete (repo as { forkedFrom?: string }).forkedFrom;
         }
         try {
           persistGithubSourceOnRepo(entity, repoSlug, clean);
@@ -2247,20 +2254,28 @@ export async function pushRepoToNostr(
       // NIP-34: Add "t" tag for "personal-fork" if this is a fork (optional)
       // We don't currently track this, but could add it if needed
 
-      // Keep forge provenance on every Push (like public-read). GRASP stays in
-      // clone[]; GitHub/GitLab go on source/forkedFrom so Refetch + sidebar work.
+      // Keep forge provenance on every Push. GRASP stays in clone[]; GitHub/GitLab
+      // go on `source`. `forkedFrom` is only a real parent (not this repo's URL).
       const forgeUpstream =
         resolveRepoUpstreamSource(repo) ||
-        (typeof repo.sourceUrl === "string" ? repo.sourceUrl.trim() : "") ||
-        (typeof repo.forkedFrom === "string" ? repo.forkedFrom.trim() : "");
+        (typeof repo.sourceUrl === "string" ? repo.sourceUrl.trim() : "");
       if (forgeUpstream) {
         const sourceTag = forgeUpstream.replace(/\.git$/, "");
         nip34Tags.push(["source", sourceTag]);
-        nip34Tags.push([
-          "forkedFrom",
-          (typeof repo.forkedFrom === "string" && repo.forkedFrom.trim()) ||
-            sourceTag,
-        ]);
+      }
+      {
+        const forkAttr = sanitizeForkedFromField(
+          typeof repo.forkedFrom === "string" ? repo.forkedFrom : undefined,
+          {
+            sourceUrl:
+              (typeof repo.sourceUrl === "string" && repo.sourceUrl) ||
+              (forgeUpstream ? forgeUpstream.replace(/\.git$/, "") : undefined),
+            clone: Array.isArray(repo.clone) ? repo.clone : undefined,
+          }
+        );
+        if (forkAttr) {
+          nip34Tags.push(["forkedFrom", forkAttr]);
+        }
       }
       if (repo.links && Array.isArray(repo.links)) {
         repo.links.forEach((link: any) => {

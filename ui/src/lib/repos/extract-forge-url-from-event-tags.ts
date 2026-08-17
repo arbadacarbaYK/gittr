@@ -63,36 +63,45 @@ function looksLikeForeignForgeUrl(raw: string): boolean {
   }
 }
 
+export function isForeignForgeUrl(raw: string): boolean {
+  return looksLikeForeignForgeUrl(raw);
+}
+
 /**
  * Prefer an explicit `source` / `forkedFrom` forge URL, then any refetchable
  * forge entry in multi-value `clone` / `web` / `link` tags (NIP-34 often puts
  * GRASP first and GitHub later on the same `clone` row).
+ *
+ * `web` / `link` are for discovery (Refetch). Do **not** use
+ * {@link extractForgeSourceFromEventTags} for persist that can flip Push onto
+ * sync-from-source — a docs link to github.com must not make a Nostr-only repo
+ * look imported.
  */
-export function extractGithubUrlFromEventTags(tags: string[][]): string {
-  const preferOrder = ["source", "forkedFrom", "clone", "web", "link"] as const;
+export function extractGithubUrlFromEventTags(
+  tags: string[][],
+  kinds: readonly string[] = ["source", "forkedFrom", "clone", "web", "link"]
+): string {
   const byKind = new Map<string, string[]>();
+  const allow = new Set(kinds);
   for (const tag of tags) {
     if (!Array.isArray(tag) || !tag[0]) continue;
     const kind = String(tag[0]);
-    if (
-      kind !== "source" &&
-      kind !== "forkedFrom" &&
-      kind !== "clone" &&
-      kind !== "web" &&
-      kind !== "link"
-    ) {
-      continue;
-    }
+    if (!allow.has(kind)) continue;
     const values = nip34TagValuesFromRow(tag);
     if (!values.length) continue;
     const prev = byKind.get(kind) || [];
     byKind.set(kind, prev.concat(values));
   }
-  for (const kind of preferOrder) {
+  for (const kind of kinds) {
     for (const raw of byKind.get(kind) || []) {
       if (!looksLikeForeignForgeUrl(raw)) continue;
       return raw;
     }
   }
   return "";
+}
+
+/** Forge URL safe to persist as `sourceUrl` (Push tip / sync-from-source). */
+export function extractForgeSourceFromEventTags(tags: string[][]): string {
+  return extractGithubUrlFromEventTags(tags, ["source", "forkedFrom", "clone"]);
 }

@@ -76,6 +76,12 @@ type Data = {
   fileCount?: number;
   approximateSizeBytes?: number;
   isPrivate?: boolean; // GitHub repo privacy status
+  /** This GitHub repo's page URL (provenance / sourceUrl). */
+  htmlUrl?: string;
+  /** GitHub `fork` — true only when GitHub lists a parent. */
+  isGithubFork?: boolean;
+  /** GitHub `parent.html_url` when this repo is a fork of someone else's. */
+  parentHtmlUrl?: string;
 };
 
 async function fetchGithubTree(
@@ -471,6 +477,9 @@ export default async function handler(
     let defaultBranch = "main";
     let homepage: string | undefined = undefined; // Only GitHub's homepage field
     let isPrivate = false; // Track if GitHub repo is private
+    let htmlUrl: string | undefined = undefined;
+    let isGithubFork = false;
+    let parentHtmlUrl: string | undefined = undefined;
     if (repoResponse.ok) {
       const repoData: any = await repoResponse.json();
       description = repoData.description || "";
@@ -479,6 +488,18 @@ export default async function handler(
       topics = repoData.topics || [];
       defaultBranch = repoData.default_branch || defaultBranch;
       isPrivate = repoData.private === true; // Preserve GitHub privacy status
+      if (typeof repoData.html_url === "string" && repoData.html_url.trim()) {
+        htmlUrl = repoData.html_url.trim().replace(/\.git$/i, "");
+      }
+      isGithubFork = repoData.fork === true;
+      if (
+        isGithubFork &&
+        repoData.parent &&
+        typeof repoData.parent.html_url === "string" &&
+        repoData.parent.html_url.trim()
+      ) {
+        parentHtmlUrl = repoData.parent.html_url.trim().replace(/\.git$/i, "");
+      }
       // Real website/Pages URL from GitHub only — do not invent owner.github.io/repo
       if (
         repoData.homepage &&
@@ -872,6 +893,9 @@ export default async function handler(
       commits,
       homepage, // GitHub API homepage only (omit when empty — never invent)
       isPrivate, // Preserve GitHub privacy status
+      htmlUrl,
+      isGithubFork,
+      parentHtmlUrl,
     };
 
     // Next.js API routes have a 4MB body limit (after gzip).

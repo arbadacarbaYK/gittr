@@ -35,6 +35,22 @@ describe("sidebarClonesFromAnnouncement", () => {
     });
     expect(out).toEqual([`https://relay.ngit.dev/${npub}/amber-up.git`]);
   });
+
+  it("unions a GitHub source onto announcement GRASP clones", () => {
+    const announced = [
+      `https://relay.ngit.dev/${npub}/andronixorigin.git`,
+      `https://git.gittr.space/${npub}/andronixorigin.git`,
+    ];
+    const out = sidebarClonesFromAnnouncement({
+      announcementClones: announced,
+      mergedClones: announced,
+      forgeSourceUrl: "https://github.com/AndronixApp/AndronixOrigin",
+    });
+    expect(out).toEqual([
+      ...announced,
+      "https://github.com/AndronixApp/AndronixOrigin",
+    ]);
+  });
 });
 
 describe("pickGitServerFromAnnouncementClones", () => {

@@ -65,7 +65,12 @@ import {
   applyDeletionMarkersToRepoData,
   isRepoAnnouncementDeleted,
 } from "@/lib/nostr/repo-deleted";
-import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
+import {
+  REPO_ANNOUNCEMENT_ID_EVENT,
+  type RepoAnnouncementIdDetail,
+  broadcastRepoAnnouncementEventId,
+  readCachedRepoAnnouncementEventId,
+} from "@/lib/nostr/repo-stars";
 import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -114,9 +119,11 @@ import {
   writeUserPickedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
 import {
+  extractForgeSourceFromEventTags,
   extractGithubUrlFromEventTags,
   fetchGithubRepoDescription,
   persistGithubSourceOnRepo,
+  persistRepoAnnouncementMeta,
   persistRepoDescription,
   queryNostrForGithubSourceUrl,
   resolveRepoActivityDisplayMs,
@@ -3688,7 +3695,10 @@ export function RepoCodePage() {
         description: repo.description || "",
         files: resolvedFiles,
         sourceUrl: repo.sourceUrl,
-        forkedFrom: sanitizeForkedFromField(repo.forkedFrom),
+        forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
+          sourceUrl: repo.sourceUrl,
+          clone: (repo as { clone?: string[] }).clone,
+        }),
         entityDisplayName: repo.entityDisplayName,
         name: repo.name,
         createdAt: repo.createdAt,
@@ -3717,7 +3727,10 @@ export function RepoCodePage() {
       } as any);
       // Drop GRASP/mirror URLs wrongly stored as forkedFrom (e.g. shakespeare)
       {
-        const cleanedFork = sanitizeForkedFromField(repo.forkedFrom);
+        const cleanedFork = sanitizeForkedFromField(repo.forkedFrom, {
+          sourceUrl: repo.sourceUrl,
+          clone: (repo as { clone?: string[] }).clone,
+        });
         if (repo.forkedFrom && cleanedFork !== repo.forkedFrom) {
           const idx = repos.findIndex((r) => r === repo);
           if (idx >= 0) {
@@ -4068,7 +4081,10 @@ export function RepoCodePage() {
               readme: d.readme || "",
               files: resolvedFiles, // Preserve fetched files if localStorage has none
               sourceUrl: repo.sourceUrl,
-              forkedFrom: repo.sourceUrl,
+              forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
+                sourceUrl: repo.sourceUrl,
+                clone: (repo as { clone?: string[] }).clone,
+              }),
               entityDisplayName: repo.entityDisplayName,
               name: repo.name,
               createdAt: repo.createdAt,
@@ -4527,8 +4543,15 @@ export function RepoCodePage() {
         resolvedParams.entity,
         resolvedParams.repo
       );
-      const eventId = repo?.lastNostrEventId || repo?.nostrEventId || null;
-      setNostrEventId(eventId);
+      const eventId =
+        repo?.lastNostrEventId ||
+        repo?.nostrEventId ||
+        readCachedRepoAnnouncementEventId(
+          resolvedParams.entity,
+          resolvedParams.repo
+        ) ||
+        null;
+      if (eventId) setNostrEventId(eventId);
 
       // CRITICAL: Check bridge if repo has event ID (was pushed to Nostr)
       // This ensures "live" status only shows if bridge has actually processed the event
@@ -4631,9 +4654,30 @@ export function RepoCodePage() {
       }
     } catch (error) {
       console.error("Failed to load Nostr event ID:", error);
-      setNostrEventId(null);
     }
   }, [resolvedParams.entity, resolvedParams.repo]);
+
+  useEffect(() => {
+    const apply = (id: string) => {
+      if (/^[0-9a-f]{64}$/i.test(id)) setNostrEventId(id.toLowerCase());
+    };
+    const cached = readCachedRepoAnnouncementEventId(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    if (cached) apply(cached);
+    const onId = (ev: Event) => {
+      const d = (ev as CustomEvent<RepoAnnouncementIdDetail>).detail;
+      if (!d?.eventId) return;
+      if (d.entity !== resolvedParams.entity) return;
+      if (d.repo !== resolvedParams.repo && d.repo !== decodedRepo) {
+        return;
+      }
+      apply(d.eventId);
+    };
+    window.addEventListener(REPO_ANNOUNCEMENT_ID_EVENT, onId);
+    return () => window.removeEventListener(REPO_ANNOUNCEMENT_ID_EVENT, onId);
+  }, [resolvedParams.entity, resolvedParams.repo, decodedRepo]);
 
   // Reset fetchStatuses when params change (new repo or entity)
   useEffect(() => {
@@ -6772,6 +6816,42 @@ export function RepoCodePage() {
                   }
                   // Sidebar Links: ["link", type, url, label?] (+ web fallback)
                   eventRepoData.links = parseRepoLinksFromNip34Tags(event.tags);
+                  const forgeFromTags = extractForgeSourceFromEventTags(
+                    event.tags || []
+                  );
+                  if (forgeFromTags) {
+                    const cleanForge = forgeFromTags
+                      .replace(/\.git$/i, "")
+                      .replace(/^git@([^:]+):(.+)$/, "https://$1/$2");
+                    if (!eventRepoData.sourceUrl) {
+                      eventRepoData.sourceUrl = cleanForge;
+                    }
+                  }
+                  if (eventRepoData.lastEventId) {
+                    setNostrEventId(String(eventRepoData.lastEventId));
+                  }
+                  persistRepoAnnouncementMeta({
+                    entity: resolvedParams.entity,
+                    repo: resolvedParams.repo,
+                    lastNostrEventId: eventRepoData.lastEventId,
+                    sourceUrl: eventRepoData.sourceUrl,
+                    forkedFrom: eventRepoData.forkedFrom,
+                    clone: Array.isArray(eventRepoData.clone)
+                      ? eventRepoData.clone
+                      : [],
+                    description: eventRepoData.description,
+                    ownerPubkey: event.pubkey,
+                  });
+                  if (
+                    eventRepoData.sourceUrl &&
+                    isRefetchableUpstreamSourceUrl(eventRepoData.sourceUrl)
+                  ) {
+                    persistGithubSourceOnRepo(
+                      resolvedParams.entity,
+                      resolvedParams.repo,
+                      eventRepoData.sourceUrl
+                    );
+                  }
                 }
                 if (event.content) {
                   const contentTrim = event.content.trim();
@@ -6850,14 +6930,28 @@ export function RepoCodePage() {
                   );
                   if (eventClones.length > 0) {
                     setRepoData((prev: any) => {
-                      if (!prev) return prev;
+                      const base =
+                        prev ||
+                        ({
+                          entity: resolvedParams.entity,
+                          repo: resolvedParams.repo,
+                          name:
+                            eventRepoData.repositoryName || resolvedParams.repo,
+                          readme: "",
+                          files: [],
+                          description: eventRepoData.description || "",
+                          contributors: [],
+                          defaultBranch: eventRepoData.defaultBranch || "main",
+                          ownerPubkey: event.pubkey,
+                        } as StoredRepo);
                       const merged = mergeAnnouncementClonesPreferringEvent(
-                        prev.clone,
+                        base.clone,
                         eventClones,
                         resolvedParams.entity,
                         resolvedParams.repo
                       );
                       if (
+                        prev &&
                         Array.isArray(prev.clone) &&
                         prev.clone.length === merged.length &&
                         prev.clone.every((u: string) => merged.includes(u)) &&
@@ -6867,9 +6961,12 @@ export function RepoCodePage() {
                         return prev;
                       }
                       return {
-                        ...prev,
+                        ...base,
                         clone: merged,
                         announcementClone: eventClones,
+                        lastNostrEventId:
+                          eventRepoData.lastEventId || base.lastNostrEventId,
+                        syncedFromNostr: true,
                       };
                     });
                   }
@@ -7835,209 +7932,169 @@ export function RepoCodePage() {
                   }, allKeys=${allKeys}`
                 );
 
-                if (eventRepoData.sourceUrl || eventRepoData.forkedFrom) {
-                  sourceUrlFromEvent =
-                    eventRepoData.sourceUrl || eventRepoData.forkedFrom;
-                  // CRITICAL: Update effectiveSourceUrl immediately so button text updates
-                  if (
-                    sourceUrlFromEvent &&
-                    isRefetchableUpstreamSourceUrl(sourceUrlFromEvent)
-                  ) {
-                    setEffectiveSourceUrl(sourceUrlFromEvent);
-                  }
-                  // CRITICAL: Only update state if values actually changed (prevents unnecessary re-renders)
-                  setRepoData((prev: any) => {
-                    // Cold visitors often have no localStorage row yet — still hydrate
-                    // sourceUrl / links from the announcement into sidebar state.
-                    const base =
-                      prev ||
-                      ({
-                        entity: resolvedParams.entity,
-                        repo: resolvedParams.repo,
-                        name:
-                          eventRepoData.repositoryName || resolvedParams.repo,
-                        readme: "",
-                        files: [],
-                        description: eventRepoData.description || "",
-                        contributors: [],
-                        defaultBranch: eventRepoData.defaultBranch || "main",
-                        ownerPubkey: event.pubkey,
-                      } as StoredRepo);
-                    const newSourceUrl =
-                      eventRepoData.sourceUrl || base.sourceUrl;
-                    const newForkedFrom =
-                      eventRepoData.forkedFrom || base.forkedFrom;
-                    const newName = eventRepoData.repositoryName || base.name;
-                    const newRepo = eventRepoData.repositoryName || base.repo;
-                    const newClone =
-                      eventRepoData.clone && Array.isArray(eventRepoData.clone)
-                        ? eventRepoData.clone.filter(
-                            (url: string) =>
-                              url &&
-                              !url.includes("localhost") &&
-                              !url.includes("127.0.0.1")
-                          )
-                        : base.clone;
-                    const newRelays = eventRepoData.relays || base.relays;
-                    const newLinks = mergeAnnouncementLinksWithLocal(
-                      base.links,
-                      eventRepoData.links
-                    );
-
-                    const nextDesc = preferOwnedDescription(
-                      base.description,
-                      eventRepoData.description,
-                      resolvedParams.repo
-                    );
-
-                    // Skip update if nothing changed
-                    if (
-                      prev &&
-                      prev.sourceUrl === newSourceUrl &&
-                      prev.forkedFrom === newForkedFrom &&
-                      prev.name === newName &&
-                      prev.repo === newRepo &&
-                      (prev.description || "") === (nextDesc || "") &&
-                      JSON.stringify(prev.clone) === JSON.stringify(newClone) &&
-                      JSON.stringify(prev.relays) ===
-                        JSON.stringify(newRelays) &&
-                      JSON.stringify(prev.links || []) ===
-                        JSON.stringify(newLinks || [])
-                    ) {
-                      return prev;
-                    }
-
-                    console.log(
-                      `✅ [File Fetch] Event has sourceUrl - saving for fallback: sourceUrl=${
-                        eventRepoData.sourceUrl || "none"
-                      }, forkedFrom=${
-                        eventRepoData.forkedFrom || "none"
-                      }, storedForFallback=${sourceUrlFromEvent || "none"}`
-                    );
-                    if (
-                      nextDesc &&
-                      nextDesc !== (base.description || "").trim()
-                    ) {
-                      persistRepoDescription(
-                        resolvedParams.entity,
-                        resolvedParams.repo,
-                        nextDesc,
-                        { force: true }
+                if (
+                  !eventRepoData.sourceUrl &&
+                  eventRepoData?.clone &&
+                  Array.isArray(eventRepoData.clone)
+                ) {
+                  const gitCloneUrl = eventRepoData.clone.find(
+                    (url: string) => {
+                      const u = String(url || "").toLowerCase();
+                      return (
+                        u.includes("github.com") ||
+                        u.includes("gitlab.com") ||
+                        u.includes("codeberg.org")
                       );
                     }
-                    const nextState = {
-                      ...base,
-                      name: newName,
-                      repo: newRepo,
-                      sourceUrl: newSourceUrl,
-                      forkedFrom: newForkedFrom,
-                      clone: newClone,
-                      relays: newRelays,
-                      ...(nextDesc ? { description: nextDesc } : {}),
-                      ...(newLinks ? { links: newLinks } : {}),
-                      lastNostrEventId:
-                        eventRepoData.lastEventId || base.lastNostrEventId,
-                      syncedFromNostr: true,
-                    };
-                    if (newLinks && newLinks.length > 0) {
-                      try {
-                        const stored = loadStoredRepos();
-                        let changed = false;
-                        const next = stored.map((r) => {
-                          const matchesRepo =
-                            r.repo === resolvedParams.repo ||
-                            r.slug === resolvedParams.repo;
-                          const matchesEntity =
-                            r.entity === resolvedParams.entity;
-                          if (!(matchesRepo && matchesEntity)) return r;
-                          changed = true;
-                          return {
-                            ...r,
-                            links: newLinks,
-                            syncedFromNostr: true,
-                          };
-                        });
-                        if (changed) saveStoredRepos(next);
-                      } catch {
-                        /* ignore */
-                      }
+                  );
+                  if (gitCloneUrl) {
+                    let sourceUrl = gitCloneUrl.replace(/\.git$/, "");
+                    const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+                    if (sshMatch) {
+                      const [, host, path] = sshMatch;
+                      sourceUrl = `https://${host}/${path}`;
                     }
-                    return nextState;
-                  });
-                } else {
-                  // If no source tag but clone lists a real forge (GitHub/GitLab/Codeberg),
-                  // use that as sourceUrl for "Refetch from GitHub" etc. Do NOT promote
-                  // GRASP/IP clone hosts into sourceUrl — that blanks meaningful hosting
-                  // and makes Git Server show random grasp IPs.
-                  if (
-                    eventRepoData?.clone &&
-                    Array.isArray(eventRepoData.clone) &&
-                    eventRepoData.clone.length > 0
-                  ) {
-                    const gitCloneUrl = eventRepoData.clone.find(
-                      (url: string) => {
-                        const u = String(url || "").toLowerCase();
-                        return (
-                          u.includes("github.com") ||
-                          u.includes("gitlab.com") ||
-                          u.includes("codeberg.org")
-                        );
-                      }
-                    );
-                    if (gitCloneUrl) {
-                      // Remove .git suffix and convert SSH to HTTPS if needed
-                      let sourceUrl = gitCloneUrl.replace(/\.git$/, "");
-                      const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
-                      if (sshMatch) {
-                        const [, host, path] = sshMatch;
-                        sourceUrl = `https://${host}/${path}`;
-                      }
-                      sourceUrlFromEvent = sourceUrl;
-                      // CRITICAL: Update effectiveSourceUrl immediately so button text updates
-                      setEffectiveSourceUrl(sourceUrl);
-                      // CRITICAL: Only update state if sourceUrl is actually different (prevents unnecessary re-renders)
-                      setRepoData((prev: any) => {
-                        if (!prev) return prev;
-                        // Skip update if sourceUrl is already set to the same value
-                        if (prev.sourceUrl === sourceUrl) {
-                          return prev;
-                        }
-                        console.log(
-                          "✅ [File Fetch] Using forge clone URL as sourceUrl:",
-                          sourceUrl,
-                          {
-                            isGitHub: gitCloneUrl.includes("github.com"),
-                            isGitLab: gitCloneUrl.includes("gitlab.com"),
-                            isCodeberg: gitCloneUrl.includes("codeberg.org"),
-                            previousSourceUrl: prev.sourceUrl || "none",
-                          }
-                        );
-                        return {
-                          ...prev,
-                          sourceUrl: sourceUrl,
-                          clone:
-                            eventRepoData.clone &&
-                            Array.isArray(eventRepoData.clone)
-                              ? eventRepoData.clone.filter(
-                                  (url: string) =>
-                                    url &&
-                                    !url.includes("localhost") &&
-                                    !url.includes("127.0.0.1")
-                                )
-                              : prev.clone,
-                        };
-                      });
-                    } else {
-                      console.log(
-                        "ℹ️ [File Fetch] Event has clone URLs but no GitHub/GitLab/Codeberg forge — keeping GRASP clones for multi-source fetch (not promoting to sourceUrl)"
-                      );
-                    }
-                  } else {
-                    console.log(
-                      "❌ [File Fetch] Event has NO sourceUrl or forkedFrom - cannot fetch from git server"
-                    );
+                    eventRepoData.sourceUrl = sourceUrl;
                   }
                 }
+
+                sourceUrlFromEvent =
+                  eventRepoData.sourceUrl || eventRepoData.forkedFrom;
+                if (
+                  sourceUrlFromEvent &&
+                  isRefetchableUpstreamSourceUrl(sourceUrlFromEvent)
+                ) {
+                  setEffectiveSourceUrl(sourceUrlFromEvent);
+                }
+                // Always hydrate sidebar from the announcement (description, clones,
+                // event id) — not only when a `source` tag exists. After a local
+                // flush that is the only way GitHub / Event ID / Refetch come back.
+                setRepoData((prev: any) => {
+                  const base =
+                    prev ||
+                    ({
+                      entity: resolvedParams.entity,
+                      repo: resolvedParams.repo,
+                      name: eventRepoData.repositoryName || resolvedParams.repo,
+                      readme: "",
+                      files: [],
+                      description: eventRepoData.description || "",
+                      contributors: [],
+                      defaultBranch: eventRepoData.defaultBranch || "main",
+                      ownerPubkey: event.pubkey,
+                    } as StoredRepo);
+                  const newSourceUrl =
+                    eventRepoData.sourceUrl || base.sourceUrl;
+                  const newForkedFrom =
+                    eventRepoData.forkedFrom || base.forkedFrom;
+                  const newName = eventRepoData.repositoryName || base.name;
+                  const newRepo = eventRepoData.repositoryName || base.repo;
+                  const newClone =
+                    eventRepoData.clone && Array.isArray(eventRepoData.clone)
+                      ? eventRepoData.clone.filter(
+                          (url: string) =>
+                            url &&
+                            !url.includes("localhost") &&
+                            !url.includes("127.0.0.1")
+                        )
+                      : base.clone;
+                  const newRelays = eventRepoData.relays || base.relays;
+                  const newLinks = mergeAnnouncementLinksWithLocal(
+                    base.links,
+                    eventRepoData.links
+                  );
+
+                  const nextDesc = preferOwnedDescription(
+                    base.description,
+                    eventRepoData.description,
+                    resolvedParams.repo
+                  );
+
+                  if (
+                    prev &&
+                    prev.sourceUrl === newSourceUrl &&
+                    prev.forkedFrom === newForkedFrom &&
+                    prev.name === newName &&
+                    prev.repo === newRepo &&
+                    (prev.description || "") === (nextDesc || "") &&
+                    JSON.stringify(prev.clone) === JSON.stringify(newClone) &&
+                    JSON.stringify(prev.relays) === JSON.stringify(newRelays) &&
+                    JSON.stringify(prev.links || []) ===
+                      JSON.stringify(newLinks || []) &&
+                    prev.lastNostrEventId ===
+                      (eventRepoData.lastEventId || prev.lastNostrEventId)
+                  ) {
+                    return prev;
+                  }
+
+                  console.log(
+                    `✅ [File Fetch] Hydrating announcement metadata: sourceUrl=${
+                      eventRepoData.sourceUrl || "none"
+                    }, forkedFrom=${
+                      eventRepoData.forkedFrom || "none"
+                    }, clones=${
+                      Array.isArray(newClone) ? newClone.length : 0
+                    }, eventId=${eventRepoData.lastEventId || "none"}`
+                  );
+                  if (
+                    nextDesc &&
+                    nextDesc !== (base.description || "").trim()
+                  ) {
+                    persistRepoDescription(
+                      resolvedParams.entity,
+                      resolvedParams.repo,
+                      nextDesc,
+                      { force: true }
+                    );
+                  }
+                  const nextState = {
+                    ...base,
+                    name: newName,
+                    repo: newRepo,
+                    sourceUrl: newSourceUrl,
+                    forkedFrom: newForkedFrom,
+                    clone: newClone,
+                    announcementClone: Array.isArray(eventRepoData.clone)
+                      ? eventRepoData.clone.filter(
+                          (url: string) =>
+                            url &&
+                            !url.includes("localhost") &&
+                            !url.includes("127.0.0.1")
+                        )
+                      : (base as { announcementClone?: string[] })
+                          .announcementClone,
+                    relays: newRelays,
+                    ...(nextDesc ? { description: nextDesc } : {}),
+                    ...(newLinks ? { links: newLinks } : {}),
+                    lastNostrEventId:
+                      eventRepoData.lastEventId || base.lastNostrEventId,
+                    syncedFromNostr: true,
+                  };
+                  if (newLinks && newLinks.length > 0) {
+                    try {
+                      const stored = loadStoredRepos();
+                      let changed = false;
+                      const next = stored.map((r) => {
+                        const matchesRepo =
+                          r.repo === resolvedParams.repo ||
+                          r.slug === resolvedParams.repo;
+                        const matchesEntity =
+                          r.entity === resolvedParams.entity;
+                        if (!(matchesRepo && matchesEntity)) return r;
+                        changed = true;
+                        return {
+                          ...r,
+                          links: newLinks,
+                          syncedFromNostr: true,
+                        };
+                      });
+                      if (changed) saveStoredRepos(next);
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                  return nextState;
+                });
 
                 // Metadata-only NIP-34 (30617): merge contributors from tags + local import data
                 try {
@@ -16424,6 +16481,14 @@ export function RepoCodePage() {
       mergedClones: Array.isArray((repoData as any)?.clone)
         ? ((repoData as any).clone as string[])
         : [],
+      forgeSourceUrl:
+        (effectiveSourceUrl && String(effectiveSourceUrl).trim()) ||
+        (typeof (repoData as any)?.sourceUrl === "string"
+          ? String((repoData as any).sourceUrl).trim()
+          : "") ||
+        (typeof (repoData as any)?.forkedFrom === "string"
+          ? String((repoData as any).forkedFrom).trim()
+          : ""),
     });
     const eventCloneFromRepo = announcementClones.length > 0;
     if (
@@ -16448,6 +16513,10 @@ export function RepoCodePage() {
             announcementClones: (stored as { announcementClone?: string[] })
               ?.announcementClone,
             mergedClones: sclone,
+            forgeSourceUrl:
+              (stored as { sourceUrl?: string })?.sourceUrl ||
+              (stored as { forkedFrom?: string })?.forkedFrom ||
+              "",
           });
         }
       } catch {
@@ -16605,7 +16674,10 @@ export function RepoCodePage() {
       };
     }
     const fromEvent = pickGitServerFromAnnouncementClones(httpCloneUrls, {
-      hasExternalForgeSource: false,
+      hasExternalForgeSource: !!(
+        (fromSourceRaw && isRefetchableUpstreamSourceUrl(fromSourceRaw)) ||
+        forgeFromClones
+      ),
     });
     if (fromEvent) return fromEvent;
     const fromSourceAsClone =
@@ -17802,7 +17874,10 @@ export function RepoCodePage() {
                       </Tooltip>
                     );
                   })()}
-                  {repoData?.forkedFrom ? (
+                  {isDisplayableForkAttribution(repoData?.forkedFrom, {
+                    sourceUrl: repoData?.sourceUrl,
+                    clone: repoData?.clone,
+                  }) ? (
                     <>
                       <a
                         href={
@@ -17841,13 +17916,13 @@ export function RepoCodePage() {
                         forked
                       </span>
                       <a
-                        href={repoData.forkedFrom}
+                        href={repoData?.forkedFrom || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-purple-500 hover:underline truncate min-w-0"
                       >
                         <span className="truncate block">
-                          {repoData.forkedFrom
+                          {String(repoData?.forkedFrom || "")
                             .replace(/^https?:\/\//, "")
                             .replace(/\.git$/, "")
                             .replace(/^github\.com\//, "")}
@@ -19736,7 +19811,13 @@ export function RepoCodePage() {
                   // CRITICAL: Only show refetch if repo has actually been pushed (has event IDs)
                   // Don't show refetch for newly created repos that haven't been pushed yet
                   const hasBeenPushed = !!(
-                    repo.lastNostrEventId || repo.nostrEventId
+                    repo.lastNostrEventId ||
+                    repo.nostrEventId ||
+                    nostrEventId ||
+                    (repoData as { lastNostrEventId?: string })
+                      ?.lastNostrEventId ||
+                    repo.syncedFromNostr ||
+                    repo.fromNostr
                   );
                   const hasLocalEdits =
                     repo.hasUnpushedEdits ||
@@ -21423,8 +21504,14 @@ export function RepoCodePage() {
                                         // Never promote GRASP/own-mirror clones to forkedFrom
                                         const forkAttr =
                                           sanitizeForkedFromField(
-                                            eventRepoData.forkedFrom
-                                          ) || sanitizeForkedFromField(clean);
+                                            eventRepoData.forkedFrom,
+                                            {
+                                              sourceUrl:
+                                                eventRepoData.sourceUrl ||
+                                                clean,
+                                              clone: eventRepoData.clone,
+                                            }
+                                          );
                                         eventRepoData.forkedFrom = forkAttr;
                                         persistGithubSourceOnRepo(
                                           resolvedParams.entity,
@@ -22776,7 +22863,10 @@ export function RepoCodePage() {
               </li>
             </ul>
           ) : null}
-          {isDisplayableForkAttribution(repoData?.forkedFrom) &&
+          {isDisplayableForkAttribution(repoData?.forkedFrom, {
+            sourceUrl: repoData?.sourceUrl,
+            clone: repoData?.clone,
+          }) &&
             (() => {
               // Determine if this is a forge URL or internal gittr fork
               const forkedFrom = String(repoData?.forkedFrom || "");

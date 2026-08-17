@@ -246,7 +246,7 @@ export default function HelpPage() {
               /pages
             </Link>
             . Owner tools live in the Code sidebar under{" "}
-            <strong className="text-white">Nostr Pages</strong>            . How-to:{" "}
+            <strong className="text-white">Nostr Pages</strong> . How-to:{" "}
             <Link
               href="#publish-pages-apps"
               className="text-purple-400 hover:text-purple-300"
@@ -282,8 +282,8 @@ export default function HelpPage() {
           <li>
             <strong className="text-white">Releases</strong> — The repo{" "}
             <strong className="text-white">Releases</strong> tab shows forge
-            download assets. Creating or announcing a release is{" "}
-            <em>not</em> the same as{" "}
+            download assets. Creating or announcing a release is <em>not</em>{" "}
+            the same as{" "}
             <Link
               href="#push-to-nostr"
               className="text-purple-400 hover:text-purple-300"
@@ -1000,8 +1000,17 @@ export default function HelpPage() {
               <ul className="list-disc list-inside space-y-2 ml-1 mt-3 text-sm">
                 <li>
                   <strong className="text-white">GitHub</strong> — single repo
-                  or bulk import. Link GitHub via NIP-39 under Settings →
-                  Profile when you need identity mapping.
+                  or bulk import. Linking GitHub via NIP-39 under Settings →
+                  Profile matches GitHub usernames to npubs (contributor
+                  pictures). It is not what makes you the gittr owner: importing
+                  while logged in already does that. The purple{" "}
+                  <strong className="text-white">owner</strong> pill on a
+                  profile is “this npub announced the repo,” not “GitHub
+                  confirmed.” Importing your own GitHub repo is still{" "}
+                  <strong className="text-white">owner</strong>. The orange{" "}
+                  <strong className="text-white">forked</strong> pill is only
+                  for a real GitHub parent (someone else’s repo) or a gittr Fork
+                  — not “this has a GitHub URL.”
                 </li>
                 <li>
                   <strong className="text-white">
@@ -1016,7 +1025,12 @@ export default function HelpPage() {
                   </Link>{" "}
                   (Option 1). The server runs a normal public{" "}
                   <code className="bg-blue-900/50 px-1 rounded">git clone</code>
-                  . Bulk import is GitHub-only.
+                  . Bulk import is GitHub-only. Forgejo/Gitea (including
+                  Codeberg and self-hosted) uses the same paste-URL import;
+                  Issues, PRs, and Releases then refresh from{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">/api/v1</code>.
+                  Nostr Pages and app announce work the same as for GitHub once
+                  a Release exists on that forge.
                 </li>
               </ul>
 
@@ -1645,9 +1659,8 @@ export default function HelpPage() {
                       </td>
                       <td className="p-3 align-top">
                         Binary files on GitHub / Codeberg / GitLab (or another
-                        host). gittr&apos;s Releases tab mostly{" "}
-                        <em>lists</em> those links; it does not store the
-                        installers.
+                        host). gittr&apos;s Releases tab mostly <em>lists</em>{" "}
+                        those links; it does not store the installers.
                       </td>
                       <td className="p-3 align-top text-amber-200/90">
                         Download buttons that point at the dead forge break.
@@ -2425,7 +2438,10 @@ export default function HelpPage() {
               <HelpTopic
                 id="security-alerts"
                 title={
-                  <>Dependency notices (CVE) — calm by design, verify before panic</>
+                  <>
+                    Dependency notices (CVE) — calm by design, verify before
+                    panic
+                  </>
                 }
               >
                 <p>
@@ -2501,8 +2517,8 @@ export default function HelpPage() {
                   can open a normal <strong>Issues</strong> entry on that repo
                   (for tracking) and notify you on the{" "}
                   <strong>same channels</strong> you enabled (Nostr and/or
-                  Telegram). That entry is visible on the repo&apos;s Issues
-                  tab like any other issue — we avoid frightening “security
+                  Telegram). That entry is visible on the repo&apos;s Issues tab
+                  like any other issue — we avoid frightening “security
                   incident” branding. A lockfile match still needs{" "}
                   <strong>your</strong> check: whether your code actually uses
                   the affected APIs. All notification toggles (including
@@ -2519,8 +2535,8 @@ export default function HelpPage() {
                 </p>
                 <p className="mt-2">
                   <strong>Your repos only — not watched / starred:</strong>{" "}
-                  Security scans the repos you{" "}
-                  <strong>own</strong> on gittr (your kind{" "}
+                  Security scans the repos you <strong>own</strong> on gittr
+                  (your kind{" "}
                   <code className="bg-gray-800 px-1 rounded text-xs">
                     30617
                   </code>{" "}
@@ -2575,8 +2591,9 @@ export default function HelpPage() {
                   a CVE exists). There is no extra checkbox. These tips are{" "}
                   <strong>not</strong> shown on the Dependencies tab (that tab
                   stays OSV/confirmed only), and we do not open a gittr Issues
-                  entry for them. If the Spoiler feed is unreachable, Dependencies +
-                  normal dependency notices keep working unchanged.
+                  entry for them. If the Spoiler feed is unreachable,
+                  Dependencies + normal dependency notices keep working
+                  unchanged.
                 </p>
                 <p className="mt-2">
                   <strong>One alert per problem — not per scan:</strong> each
@@ -2778,8 +2795,9 @@ export default function HelpPage() {
                         >
                           /apps
                         </Link>
-                        , your profile <strong className="text-white">Apps</strong>{" "}
-                        section, and optionally Zapstore. Download{" "}
+                        , your profile{" "}
+                        <strong className="text-white">Apps</strong> section,
+                        and optionally Zapstore. Download{" "}
                         <code className="bg-black/40 px-1 rounded text-xs">
                           url
                         </code>{" "}
@@ -2816,7 +2834,8 @@ export default function HelpPage() {
                     / Zapstore.
                   </li>
                   <li>
-                    Prefer a <strong className="text-white">new version / tag</strong>{" "}
+                    Prefer a{" "}
+                    <strong className="text-white">new version / tag</strong>{" "}
                     when binaries change. Re-announce the same version only to
                     fix a bad listing.
                   </li>
@@ -2899,8 +2918,8 @@ export default function HelpPage() {
                 MSI/EXE, …) can be linked as extra NIP-82 assets on that
                 version. Files stay on the forge; gittr only announces. The repo{" "}
                 <strong className="text-white">Releases</strong> tab lists all
-                forge download assets (not only APKs). How Releases, forge files,
-                and announces fit together:{" "}
+                forge download assets (not only APKs). How Releases, forge
+                files, and announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"
@@ -2956,9 +2975,9 @@ export default function HelpPage() {
               <p>
                 Create PRs to propose changes. Reviewers can approve, request
                 changes, or merge PRs. Repo owners editing their own Nostr /
-                bridge repos on the Code tab can{" "}
-                <strong>Save changes</strong> locally and use{" "}
-                <strong>Push to Nostr</strong> — they do not need a PR.
+                bridge repos on the Code tab can <strong>Save changes</strong>{" "}
+                locally and use <strong>Push to Nostr</strong> — they do not
+                need a PR.
               </p>
 
               <div className="mt-3 p-3 bg-emerald-900/20 border border-emerald-600/30 rounded">
@@ -2969,16 +2988,16 @@ export default function HelpPage() {
                   <li>
                     <strong>Merge:</strong> applies the PR files and{" "}
                     <strong>pushes the updated tip</strong> to Nostr / the
-                    bridge (same idea as Code-tab Push to Nostr). Other
-                    clients can see the new files after merge. You do{" "}
+                    bridge (same idea as Code-tab Push to Nostr). Other clients
+                    can see the new files after merge. You do{" "}
                     <strong>not</strong> need an extra Push to Nostr afterward
                     when that push succeeds.
                   </li>
                   <li>
                     <strong>Close (without merging):</strong> publishes a NIP-34
-                    closed status event to relays so other git Nostr clients
-                    see it closed. It does <strong>not</strong> change files
-                    and does <strong>not</strong> need Code-tab{" "}
+                    closed status event to relays so other git Nostr clients see
+                    it closed. It does <strong>not</strong> change files and
+                    does <strong>not</strong> need Code-tab{" "}
                     <strong>Push to Nostr</strong> (that is for repo files /
                     tip). Use Close to drop an unwanted PR.
                   </li>

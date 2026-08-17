@@ -3,6 +3,11 @@
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
+import {
+  resolveStoredForkedFrom,
+  sanitizeForkedFromField,
+} from "@/lib/repos/fork-attribution";
+import { parseGiteaCompatibleRepo } from "@/lib/repos/gitea-forge";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
@@ -19,6 +24,10 @@ import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import {
+  syncGiteaIssuesForRepo,
+  syncGiteaPullsForRepo,
+} from "@/lib/utils/sync-gitea-repo-issues-prs";
+import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
 } from "@/lib/utils/sync-github-repo-issues-prs";
@@ -26,7 +35,10 @@ import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases
 
 import { nip19 } from "nostr-tools";
 
-export { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
+export {
+  extractForgeSourceFromEventTags,
+  extractGithubUrlFromEventTags,
+} from "@/lib/repos/extract-forge-url-from-event-tags";
 
 export type GithubRepoMeta = {
   stars: number;
@@ -36,6 +48,9 @@ export type GithubRepoMeta = {
   updatedAtMs: number;
   /** GitHub repository description (sidebar About when mirrored from source). */
   description?: string;
+  isFork?: boolean;
+  parentHtmlUrl?: string;
+  htmlUrl?: string;
 };
 
 export function githubPushedSessionKey(entity: string, repo: string): string {
@@ -194,12 +209,20 @@ export function persistGithubSourceOnRepo(
     );
   }
   const clean = normalized.replace(/\.git$/, "");
-  repos[idx] = {
+  const nextForked = resolveStoredForkedFrom({
+    existingForkedFrom: existing.forkedFrom,
+    sourceUrl: clean,
+    clone: clones,
+    githubHtmlUrl: clean,
+  });
+  const next: StoredRepo = {
     ...existing,
     sourceUrl: clean,
-    forkedFrom: existing.forkedFrom || clean,
     clone: clones,
   };
+  if (nextForked) next.forkedFrom = nextForked;
+  else delete next.forkedFrom;
+  repos[idx] = next;
   saveStoredRepos(repos);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("gittr:repos-updated"));
@@ -224,11 +247,24 @@ export async function fetchGithubRepoMeta(
       pushed_at?: string;
       updated_at?: string;
       description?: string | null;
+      fork?: boolean;
+      html_url?: string;
+      parent?: { html_url?: string };
     };
     const pushedAtMs = j.pushed_at ? new Date(j.pushed_at).getTime() : 0;
     const updatedAtMs = j.updated_at ? new Date(j.updated_at).getTime() : 0;
     const description =
       typeof j.description === "string" ? j.description.trim() : "";
+    const htmlUrl =
+      typeof j.html_url === "string" && j.html_url.trim()
+        ? j.html_url.trim().replace(/\.git$/i, "")
+        : undefined;
+    const parentHtmlUrl =
+      j.fork === true &&
+      typeof j.parent?.html_url === "string" &&
+      j.parent.html_url.trim()
+        ? j.parent.html_url.trim().replace(/\.git$/i, "")
+        : undefined;
     return {
       stars: typeof j.stargazers_count === "number" ? j.stargazers_count : 0,
       forks: typeof j.forks_count === "number" ? j.forks_count : 0,
@@ -237,6 +273,9 @@ export async function fetchGithubRepoMeta(
       pushedAtMs,
       updatedAtMs,
       ...(description ? { description } : {}),
+      ...(typeof j.fork === "boolean" ? { isFork: j.fork } : {}),
+      ...(htmlUrl ? { htmlUrl } : {}),
+      ...(parentHtmlUrl ? { parentHtmlUrl } : {}),
     };
   } catch {
     return null;
@@ -296,10 +335,20 @@ export async function hydrateRepoFromGithub(
 
   writeUpstreamSourceSession(entity, repoSlug, sourceUrl);
 
-  const [issuesOk, pullsOk] = await Promise.all([
-    syncGithubIssuesForRepo(entity, repoSlug, sourceUrl),
-    syncGithubPullsForRepo(entity, repoSlug, sourceUrl),
-  ]);
+  const gitea = parseGiteaCompatibleRepo(sourceUrl);
+  const [issuesOk, pullsOk] = await Promise.all(
+    sourceUrl.includes("github.com")
+      ? [
+          syncGithubIssuesForRepo(entity, repoSlug, sourceUrl),
+          syncGithubPullsForRepo(entity, repoSlug, sourceUrl),
+        ]
+      : gitea
+      ? [
+          syncGiteaIssuesForRepo(entity, repoSlug, sourceUrl),
+          syncGiteaPullsForRepo(entity, repoSlug, sourceUrl),
+        ]
+      : [Promise.resolve(false), Promise.resolve(false)]
+  );
   // Warm releases bucket (same soft-sync as Releases tab; safe if unused)
   void syncGithubReleasesForRepo(entity, repoSlug, sourceUrl);
 
@@ -331,13 +380,23 @@ export async function hydrateRepoFromGithub(
       const nextCreatedAt = meta.pushedAtMs
         ? Math.floor(meta.pushedAtMs / 1000)
         : existingCreatedAt;
+      const nextForked = resolveStoredForkedFrom({
+        existingForkedFrom: existing.forkedFrom,
+        sourceUrl,
+        clone: existing.clone,
+        githubIsFork: meta.isFork,
+        githubParentHtmlUrl: meta.parentHtmlUrl,
+        githubHtmlUrl: meta.htmlUrl || sourceUrl,
+      });
+      const forkChanged = (existing.forkedFrom || undefined) !== nextForked;
       const changed =
         existing.stars !== meta.stars ||
         existing.forks !== meta.forks ||
         (mayFillAbout && existingDesc !== meta.description) ||
-        existingCreatedAt !== nextCreatedAt;
+        existingCreatedAt !== nextCreatedAt ||
+        forkChanged;
       if (changed) {
-        repos[idx] = {
+        const nextRepo: StoredRepo = {
           ...existing,
           stars: meta.stars,
           forks: meta.forks,
@@ -345,7 +404,10 @@ export async function hydrateRepoFromGithub(
           ...(nextCreatedAt !== undefined
             ? { lastNostrEventCreatedAt: nextCreatedAt }
             : {}),
-        } as StoredRepo;
+        };
+        if (nextForked) nextRepo.forkedFrom = nextForked;
+        else delete nextRepo.forkedFrom;
+        repos[idx] = nextRepo;
         saveStoredRepos(repos);
         window.dispatchEvent(new Event("gittr:repos-updated"));
       }
@@ -397,6 +459,116 @@ export function persistRepoDescription(
     return;
   }
   repos[idx] = { ...repos[idx]!, description: trimmed };
+  saveStoredRepos(repos);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("gittr:repos-updated"));
+  }
+}
+
+/** Write live 30617 fields so Event ID / Refetch / My Repositories survive a cache flush. */
+export function persistRepoAnnouncementMeta(opts: {
+  entity: string;
+  repo: string;
+  lastNostrEventId?: string | null;
+  sourceUrl?: string | null;
+  forkedFrom?: string | null;
+  clone?: string[] | null;
+  description?: string | null;
+  ownerPubkey?: string | null;
+}): void {
+  const repos = loadStoredRepos();
+  const idx = repos.findIndex((r) => {
+    const found = findRepoByEntityAndName([r], opts.entity, opts.repo);
+    return found !== undefined;
+  });
+  const eventId =
+    typeof opts.lastNostrEventId === "string" &&
+    /^[0-9a-f]{64}$/i.test(opts.lastNostrEventId)
+      ? opts.lastNostrEventId.toLowerCase()
+      : "";
+  const source =
+    typeof opts.sourceUrl === "string" && opts.sourceUrl.trim()
+      ? opts.sourceUrl.trim()
+      : "";
+  const forkedRaw =
+    typeof opts.forkedFrom === "string" && opts.forkedFrom.trim()
+      ? opts.forkedFrom.trim()
+      : "";
+  const clone = Array.isArray(opts.clone)
+    ? opts.clone.filter((u) => typeof u === "string" && u.trim())
+    : [];
+  const description =
+    typeof opts.description === "string" ? opts.description.trim() : "";
+  const owner =
+    typeof opts.ownerPubkey === "string" &&
+    /^[0-9a-f]{64}$/i.test(opts.ownerPubkey)
+      ? opts.ownerPubkey.toLowerCase()
+      : "";
+
+  const patch: Partial<StoredRepo> = {
+    syncedFromNostr: true,
+    fromNostr: true,
+  };
+  if (eventId) {
+    patch.lastNostrEventId = eventId;
+    patch.nostrEventId = eventId;
+  }
+  if (source) patch.sourceUrl = source;
+  const prevForSanitize = idx >= 0 ? repos[idx] : undefined;
+  const sanitizedFork = sanitizeForkedFromField(
+    forkedRaw || prevForSanitize?.forkedFrom,
+    {
+      sourceUrl: source || prevForSanitize?.sourceUrl,
+      clone: clone.length > 0 ? clone : prevForSanitize?.clone,
+    }
+  );
+  if (sanitizedFork) patch.forkedFrom = sanitizedFork;
+  if (clone.length > 0) patch.clone = clone;
+  if (description) patch.description = description;
+  if (owner) patch.ownerPubkey = owner;
+
+  if (idx < 0 || !repos[idx]) {
+    repos.push({
+      entity: opts.entity,
+      repo: opts.repo,
+      slug: opts.repo,
+      name: opts.repo,
+      createdAt: Date.now(),
+      ...patch,
+    } as StoredRepo);
+  } else {
+    const prev = repos[idx]!;
+    const next: StoredRepo = {
+      ...prev,
+      ...patch,
+      clone: clone.length > 0 ? clone : prev.clone,
+      sourceUrl: source || prev.sourceUrl,
+      description: description || prev.description,
+      lastNostrEventId: eventId || prev.lastNostrEventId,
+      nostrEventId: eventId || prev.nostrEventId,
+      ownerPubkey: owner || prev.ownerPubkey,
+      syncedFromNostr: true,
+      fromNostr: true,
+    };
+    if (sanitizedFork) next.forkedFrom = sanitizedFork;
+    else delete next.forkedFrom;
+    // A live 30617 is not a local-only stub — drop the misleading badge.
+    if ((eventId || next.lastNostrEventId) && next.status === "local") {
+      delete next.status;
+    }
+    const unchanged =
+      prev.lastNostrEventId === next.lastNostrEventId &&
+      prev.nostrEventId === next.nostrEventId &&
+      prev.sourceUrl === next.sourceUrl &&
+      prev.forkedFrom === next.forkedFrom &&
+      prev.description === next.description &&
+      prev.ownerPubkey === next.ownerPubkey &&
+      prev.syncedFromNostr === next.syncedFromNostr &&
+      prev.status === next.status &&
+      JSON.stringify(prev.clone || []) === JSON.stringify(next.clone || []);
+    if (unchanged) return;
+    repos[idx] = next;
+  }
   saveStoredRepos(repos);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("gittr:repos-updated"));

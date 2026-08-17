@@ -16,6 +16,7 @@ import {
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
+import { githubParentForkedFrom } from "@/lib/repos/fork-attribution";
 import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
   dedupeStoredReposByOwnerAndRepoLabel,
@@ -108,6 +109,18 @@ interface GithubRepo {
   topics: string[];
   default_branch: string;
   private: boolean;
+  fork?: boolean;
+}
+
+function forkedFromForGithubImport(
+  repo: GithubRepo,
+  importData?: { isGithubFork?: boolean; parentHtmlUrl?: string }
+): string | undefined {
+  return githubParentForkedFrom({
+    htmlUrl: repo.html_url,
+    isFork: importData?.isGithubFork ?? repo.fork,
+    parentHtmlUrl: importData?.parentHtmlUrl,
+  });
 }
 
 export default function ImportPage() {
@@ -368,7 +381,7 @@ export default function ImportPage() {
                     repo: repoSlug,
                     name: repo.name,
                     sourceUrl: repo.html_url,
-                    forkedFrom: repo.html_url,
+                    forkedFrom: forkedFromForGithubImport(repo, importData),
                     readme: importData.readme,
                     fileCount: fileCount, // Store only count, not full array
                     description: importData.description || repo.description,
@@ -555,7 +568,10 @@ export default function ImportPage() {
                         repoName: rec.name,
                         metadata: {
                           sourceUrl: repo.html_url,
-                          forkedFrom: repo.html_url,
+                          forkedFrom: forkedFromForGithubImport(
+                            repo,
+                            importData
+                          ),
                         },
                       });
                     } catch (error) {
@@ -1307,7 +1323,7 @@ export default function ImportPage() {
             repo: repoSlug,
             name: repo.name,
             sourceUrl: repo.html_url,
-            forkedFrom: repo.html_url,
+            forkedFrom: forkedFromForGithubImport(repo, importData),
             readme: importData.readme,
             fileCount: fileCount, // Store only count, not full array
             description: importData.description || repo.description,
@@ -1509,7 +1525,7 @@ export default function ImportPage() {
                 repoName: rec.name,
                 metadata: {
                   sourceUrl: repo.html_url,
-                  forkedFrom: repo.html_url,
+                  forkedFrom: forkedFromForGithubImport(repo, importData),
                 },
               });
               console.log(`📝 Recorded import activity for ${fullName}`);

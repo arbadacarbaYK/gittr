@@ -80,6 +80,18 @@ export function repositoryUrlToReleasesHref(repository: string): string {
       return `${url.origin}/${owner}/${repo}/releases`;
     }
 
+    if (
+      (host.includes("gitea") ||
+        host.includes("forgejo") ||
+        host.startsWith("git.")) &&
+      segments.length >= 2 &&
+      !/^npub1/i.test(segments[0] || "")
+    ) {
+      const owner = segments[0]!;
+      const repo = segments[1]!.replace(/\.git$/i, "");
+      return `${url.origin}/${owner}/${repo}/releases`;
+    }
+
     return raw.includes("://") ? raw : base;
   } catch {
     return raw;

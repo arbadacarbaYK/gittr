@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
+import { githubParentForkedFrom } from "@/lib/repos/fork-attribution";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import {
   detectGitForge,
@@ -295,8 +296,12 @@ function NewRepoPageContent() {
               name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
               // Always set ownerPubkey for reliable ownership detection
               ownerPubkey: pubkey || undefined,
-              sourceUrl: d.sourceUrl || normalizedUrl,
-              forkedFrom: d.sourceUrl || normalizedUrl,
+              sourceUrl: d.sourceUrl || d.htmlUrl || normalizedUrl,
+              forkedFrom: githubParentForkedFrom({
+                htmlUrl: d.htmlUrl || d.sourceUrl || normalizedUrl,
+                isFork: d.isGithubFork,
+                parentHtmlUrl: d.parentHtmlUrl,
+              }),
               readme: d.readme,
               fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
               description: d.description,
@@ -525,9 +530,7 @@ function NewRepoPageContent() {
           readme: isFork ? forkSource.readme || "" : undefined,
           fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
           // Keep attribution of source
-          forkedFrom: isFork
-            ? forkSource.sourceUrl || `/${forkEntity}/${forkRepo}`
-            : undefined,
+          forkedFrom: isFork ? `/${forkEntity}/${forkRepo}` : undefined,
           sourceUrl: isFork ? forkSource.sourceUrl || undefined : undefined,
           // Carry over description and topics where useful
           description: isFork ? forkSource.description || undefined : undefined,

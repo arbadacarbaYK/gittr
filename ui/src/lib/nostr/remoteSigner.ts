@@ -99,6 +99,10 @@ const STORAGE_KEY = WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION;
 const REQUEST_TIMEOUT_MS = 15000;
 const SIGN_EVENT_TIMEOUT_MS = 120000;
 const CONNECT_TIMEOUT_MS = 25000;
+/** While waiting for Amber, re-sub if bunker sockets drop. */
+const SIGN_LISTEN_REFRESH_MS = 18000;
+/** If no inbound 24133 after publish, republish the same request once. */
+const SIGN_REPUBLISH_IF_SILENT_MS = 35000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 export const DEFAULT_REMOTE_PERMISSIONS = [
@@ -226,6 +230,19 @@ export function expandBunkerRelays(relays: string[]): string[] {
   return merged.slice(0, 8);
 }
 
+function looksLikeSignedNostrEvent(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const ev = result as { id?: unknown; sig?: unknown; pubkey?: unknown };
+  return (
+    typeof ev.id === "string" &&
+    HEX_64_RE.test(ev.id) &&
+    typeof ev.pubkey === "string" &&
+    HEX_64_RE.test(ev.pubkey) &&
+    typeof ev.sig === "string" &&
+    /^[0-9a-f]{128}$/i.test(ev.sig)
+  );
+}
+
 function uniqueNormalizedRelays(urls: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -342,6 +359,38 @@ export function bunkerPublishIsThin(
 }
 
 export const DEFAULT_REMOTE_SIGNER_LABEL = "gittr.space";
+
+/**
+ * Amber bunker still decrypts NIP-04 RPC. NIP-44-only `sign_event` can land
+ * on Amber's relays (publish OK) and never pop a prompt. Prefer NIP-04 for
+ * every Amber-waking RPC; keep NIP-44 primary for connect / get_public_key
+ * (pairing already works).
+ */
+export function nip46PrimaryEncryption(method: string): "nip04" | "nip44" {
+  if (
+    method === "sign_event" ||
+    method === "nip04_encrypt" ||
+    method === "nip04_decrypt" ||
+    method === "nip44_encrypt" ||
+    method === "nip44_decrypt"
+  ) {
+    return "nip04";
+  }
+  return "nip44";
+}
+
+/** Dual-publish the other encryption so older Amber and newer bunkers both see it. */
+export function nip46ShouldDualPublish(method: string): boolean {
+  return (
+    method === "connect" ||
+    method === "get_public_key" ||
+    method === "sign_event" ||
+    method === "nip04_encrypt" ||
+    method === "nip04_decrypt" ||
+    method === "nip44_encrypt" ||
+    method === "nip44_decrypt"
+  );
+}
 
 /**
  * NIP-46 `connect` params — the ONE canonical layout every real signer parses:
@@ -582,24 +631,81 @@ const hexToBytes = (hex: string): Uint8Array => {
   return out;
 };
 
-function encryptForRemoteSigner(
+function encryptNip44ForRemoteSigner(
   clientSecretKey: string,
   remotePubkey: string,
   plaintext: string
-): Promise<string> {
+): string {
+  const conversationKey = nip44v2.getConversationKey(
+    hexToBytes(clientSecretKey),
+    remotePubkey
+  );
+  return nip44v2.encrypt(plaintext, conversationKey);
+}
+
+async function encryptNip46RpcPayload(
+  method: string,
+  clientSecretKey: string,
+  remotePubkey: string,
+  plaintext: string
+): Promise<{
+  primary: string;
+  primaryScheme: "nip04" | "nip44";
+  dual: string | null;
+  dualScheme: "nip04" | "nip44" | null;
+}> {
+  const primaryScheme = nip46PrimaryEncryption(method);
+  let nip44Cipher: string | null = null;
+  let nip04Cipher: string | null = null;
   try {
-    const conversationKey = nip44v2.getConversationKey(
-      hexToBytes(clientSecretKey),
-      remotePubkey
+    nip44Cipher = encryptNip44ForRemoteSigner(
+      clientSecretKey,
+      remotePubkey,
+      plaintext
     );
-    return Promise.resolve(nip44v2.encrypt(plaintext, conversationKey));
   } catch (error) {
-    console.warn(
-      "[RemoteSigner] nip44 encrypt failed, falling back to nip04:",
-      error
-    );
-    return nip04.encrypt(clientSecretKey, remotePubkey, plaintext);
+    console.warn("[RemoteSigner] nip44 encrypt failed:", error);
   }
+  try {
+    nip04Cipher = await nip04.encrypt(clientSecretKey, remotePubkey, plaintext);
+  } catch (error) {
+    console.warn("[RemoteSigner] nip04 encrypt failed:", error);
+  }
+  const primary =
+    primaryScheme === "nip04"
+      ? nip04Cipher || nip44Cipher
+      : nip44Cipher || nip04Cipher;
+  if (!primary) {
+    throw new Error("Could not encrypt the remote-signer request");
+  }
+  const usedPrimary: "nip04" | "nip44" =
+    primary === nip04Cipher && primaryScheme === "nip04"
+      ? "nip04"
+      : primary === nip44Cipher
+      ? "nip44"
+      : "nip04";
+  if (!nip46ShouldDualPublish(method)) {
+    return {
+      primary,
+      primaryScheme: usedPrimary,
+      dual: null,
+      dualScheme: null,
+    };
+  }
+  const dual =
+    usedPrimary === "nip04"
+      ? nip44Cipher && nip44Cipher !== primary
+        ? nip44Cipher
+        : null
+      : nip04Cipher && nip04Cipher !== primary
+      ? nip04Cipher
+      : null;
+  return {
+    primary,
+    primaryScheme: usedPrimary,
+    dual,
+    dualScheme: dual ? (usedPrimary === "nip04" ? "nip44" : "nip04") : null,
+  };
 }
 
 async function decryptFromRemoteSigner(
@@ -796,6 +902,12 @@ export class RemoteSignerManager {
     acked: boolean;
     uriRelays: string[];
   };
+  /** NIP-04 + NIP-44 envelopes for the in-flight sign_event (silent republish). */
+  private lastSignEventEnvelopes: any[] = [];
+  /** Inbound kind 24133 while a sign_event is waiting (listen-path diagnostics). */
+  private inboundDuringWait = 0;
+  /** Dual-publish can replay an already-answered JSON-RPC id onto the next sign. */
+  private completedRpcIds: string[] = [];
 
   constructor(deps: RemoteSignerDeps) {
     this.deps = deps;
@@ -1449,6 +1561,7 @@ export class RemoteSignerManager {
           uriOnly: overlap.uriOnly,
           hasOverlap: overlap.hasOverlap,
           lastAcked: this.lastPublishMeta?.acked,
+          inboundDuringWait: this.inboundDuringWait,
         });
         this.rpcHealthy = false;
         try {
@@ -1709,6 +1822,8 @@ export class RemoteSignerManager {
     this.bunkerWarmInFlight = null;
     this.bunkerDialInFlight = null;
     this.lastPublishMeta = undefined;
+    this.lastSignEventEnvelopes = [];
+    this.completedRpcIds = [];
     this.releaseBunkerHostsFromDirectPool();
     this.stopBunkerKeepalive();
     this.nostrConnectSignerResolved = undefined;
@@ -2041,6 +2156,8 @@ export class RemoteSignerManager {
   private async warmBunkerTransportQuietly() {
     const session = this.session;
     if (!session?.userPubkey) return;
+    // Do not unsub/resub bunker listen while Push is waiting on Amber.
+    if (this.pending.size > 0) return;
     if (this.bunkerWarmInFlight) return this.bunkerWarmInFlight;
     this.bunkerWarmInFlight = (async () => {
       try {
@@ -2186,13 +2303,15 @@ export class RemoteSignerManager {
         usingFallbackOnly,
         reused: preferredAlready.length,
       });
-      try {
-        await this.startSubscription(session, preferredOpen);
-      } catch (error) {
-        console.warn(
-          "[RemoteSigner] Failed to refresh subscription after transport ensure:",
-          error
-        );
+      if (this.pending.size === 0) {
+        try {
+          await this.startSubscription(session, preferredOpen);
+        } catch (error) {
+          console.warn(
+            "[RemoteSigner] Failed to refresh subscription after transport ensure:",
+            error
+          );
+        }
       }
     } else {
       softWarn(
@@ -2383,6 +2502,10 @@ export class RemoteSignerManager {
     session: RemoteSignerSession,
     relaysOverride?: string[]
   ) {
+    // Unsub mid-wait drops Amber's 24133 reply in the gap. Keep the live sub.
+    if (this.pending.size > 0 && this.directUnsubscribe) {
+      return;
+    }
     this.unsubscribe?.();
     this.directUnsubscribe?.();
     this.unsubscribe = undefined;
@@ -2426,6 +2549,7 @@ export class RemoteSignerManager {
       console.log(
         `[RemoteSigner] DirectPool inbound kind=${kind} id=${id} pub=${pub}`
       );
+      if (this.pending.size > 0) this.inboundDuringWait += 1;
       void this.handleIncomingEvent(event);
     };
     sub.on("event", onEvent);
@@ -2437,6 +2561,14 @@ export class RemoteSignerManager {
         // ignore cleanup errors
       }
     };
+  }
+
+  private rememberCompletedRpcId(id?: string) {
+    if (!id || this.completedRpcIds.includes(id)) return;
+    this.completedRpcIds.push(id);
+    if (this.completedRpcIds.length > 32) {
+      this.completedRpcIds.shift();
+    }
   }
 
   private async handleIncomingEvent(event: any) {
@@ -2481,6 +2613,12 @@ export class RemoteSignerManager {
         event.content
       );
       const message = JSON.parse(plaintext);
+      if (
+        typeof message?.id === "string" &&
+        this.completedRpcIds.includes(message.id)
+      ) {
+        return;
+      }
       if (wideNostrConnect) {
         if (!session.secret || message?.result !== session.secret) {
           return;
@@ -2590,6 +2728,18 @@ export class RemoteSignerManager {
         }
       }
       if (!pending) {
+        const pendingSignList = [...this.pending.values()].filter(
+          (p) => p.method === "sign_event"
+        );
+        if (
+          pendingSignList.length === 1 &&
+          !message.error &&
+          looksLikeSignedNostrEvent(message?.result)
+        ) {
+          pending = pendingSignList[0];
+        }
+      }
+      if (!pending) {
         console.debug("[RemoteSigner] Unmatched response payload", {
           id: message?.id,
           hasError: !!message?.error,
@@ -2598,10 +2748,15 @@ export class RemoteSignerManager {
         return;
       }
       if (message?.id && this.pending.has(message.id)) {
+        this.rememberCompletedRpcId(message.id);
         this.pending.delete(message.id);
       } else {
         for (const [pid, p] of this.pending) {
           if (p === pending) {
+            this.rememberCompletedRpcId(pid);
+            if (typeof message?.id === "string") {
+              this.rememberCompletedRpcId(message.id);
+            }
             this.pending.delete(pid);
             break;
           }
@@ -2626,6 +2781,34 @@ export class RemoteSignerManager {
     }
   }
 
+  /**
+   * Keep the NIP-46 response subscription alive while sign_event is pending.
+   * nostr-tools v1 does not auto-reconnect; file-fetch WebSocket churn can
+   * drop bunker sockets after publish. Do not resetDirectPool here.
+   */
+  private async refreshSignEventListenPath(session: RemoteSignerSession) {
+    const uriRelays = getSessionUriRelays(session);
+    const published = this.lastPublishMeta?.urls || [];
+    const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
+    if (targets.length === 0) return;
+    const open = await this.listDirectOpenRelays(targets);
+    const openNorm = new Set(open.map((u) => normalizeRelayUrl(u)));
+    const missing = targets.filter((t) => !openNorm.has(normalizeRelayUrl(t)));
+    await Promise.all(
+      missing
+        .slice(0, 4)
+        .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
+    );
+    const again = await this.listDirectOpenRelays(targets);
+    const preferred = preferUriOpenRelays(again, uriRelays);
+    const listenOn = preferred.length > 0 ? preferred : again;
+    if (listenOn.length === 0) return;
+    // Re-open missing sockets only. Do not unsub the live 24133 listener.
+    if (this.pending.size === 0) {
+      await this.startSubscription(session, listenOn);
+    }
+  }
+
   private async sendRequest(
     session: RemoteSignerSession,
     method: string,
@@ -2647,30 +2830,97 @@ export class RemoteSignerManager {
       method,
       params,
     });
-    const ciphertext = await encryptForRemoteSigner(
+    const encrypted = await encryptNip46RpcPayload(
+      method,
       session.clientSecretKey,
       session.remotePubkey,
       payload
     );
-    const requestEvent: any = {
-      kind: 24133,
-      created_at: Math.floor(Date.now() / 1000),
-      content: ciphertext,
-      tags: [["p", session.remotePubkey]],
-      pubkey: getPublicKey(session.clientSecretKey),
+    const buildRpcEvent = (content: string) => {
+      const event: any = {
+        kind: 24133,
+        created_at: Math.floor(Date.now() / 1000),
+        content,
+        tags: [["p", session.remotePubkey]],
+        pubkey: getPublicKey(session.clientSecretKey),
+      };
+      event.id = getEventHash(event);
+      event.sig = signEvent(event, session.clientSecretKey);
+      return event;
     };
-    requestEvent.id = getEventHash(requestEvent);
-    requestEvent.sig = signEvent(requestEvent, session.clientSecretKey);
-    // Amber may expect NIP-04 during pairing (connect / get_public_key).
-    // Do NOT dual-publish for sign_event — that can show two Amber prompts.
-    const shouldDualPublish =
-      method === "connect" || method === "get_public_key";
+    const requestEvent = buildRpcEvent(encrypted.primary);
+    const dualEvent = encrypted.dual ? buildRpcEvent(encrypted.dual) : null;
+    if (method === "sign_event") {
+      this.lastSignEventEnvelopes = dualEvent
+        ? [requestEvent, dualEvent]
+        : [requestEvent];
+    }
+    console.log("[RemoteSigner] Encrypting RPC", {
+      method,
+      primary: encrypted.primaryScheme,
+      dual: encrypted.dualScheme,
+    });
+    const shouldDualPublish = !!dualEvent;
     return new Promise((resolve, reject) => {
+      let listenRefresh: ReturnType<typeof setInterval> | null = null;
+      let republishedOnce = false;
+      const waitStarted = Date.now();
+      if (method === "sign_event") this.inboundDuringWait = 0;
+      const finishListen = () => {
+        if (listenRefresh) {
+          clearInterval(listenRefresh);
+          listenRefresh = null;
+        }
+      };
       const timeout = setTimeout(() => {
+        finishListen();
         this.pending.delete(id);
         reject(new Error(`Remote signer request ${method} timed out`));
       }, timeoutMs);
-      this.pending.set(id, { method, resolve, reject, timeout });
+      this.pending.set(id, {
+        method,
+        resolve: (value) => {
+          finishListen();
+          resolve(value);
+        },
+        reject: (reason) => {
+          finishListen();
+          reject(reason);
+        },
+        timeout,
+      });
+      if (method === "sign_event") {
+        listenRefresh = setInterval(() => {
+          if (!this.pending.has(id)) {
+            finishListen();
+            return;
+          }
+          void this.refreshSignEventListenPath(session).catch(() => undefined);
+          if (
+            !republishedOnce &&
+            this.inboundDuringWait === 0 &&
+            Date.now() - waitStarted >= SIGN_REPUBLISH_IF_SILENT_MS
+          ) {
+            republishedOnce = true;
+            const urls = this.lastPublishMeta?.urls || [];
+            if (urls.length > 0) {
+              const envelopes =
+                this.lastSignEventEnvelopes.length > 0
+                  ? this.lastSignEventEnvelopes
+                  : [requestEvent];
+              console.warn(
+                "[RemoteSigner] No inbound 24133 after publish — republishing sign_event once",
+                { envelopes: envelopes.length }
+              );
+              for (const ev of envelopes) {
+                void this.publishDirectConfirmed(urls, ev, 4000).catch(
+                  () => undefined
+                );
+              }
+            }
+          }
+        }, SIGN_LISTEN_REFRESH_MS);
+      }
       // Publish only after pending handler is registered; otherwise a fast signer
       // response can arrive before we track `id`, causing dropped acks/timeouts.
       void (async () => {
@@ -2799,68 +3049,45 @@ export class RemoteSignerManager {
               }
             );
           }
-          if (shouldDualPublish) {
-            // Amber compatibility: publish a second envelope using explicit
-            // NIP-04 encryption (same request id) in case signer is not
-            // accepting our NIP-44 envelope for this connection.
+          if (shouldDualPublish && dualEvent) {
+            // Same JSON-RPC id, other encryption (NIP-04 vs NIP-44).
             try {
-              const nip04Ciphertext = await nip04.encrypt(
-                session.clientSecretKey,
-                session.remotePubkey,
-                payload
+              const okFallback = await this.publishDirectConfirmed(
+                publishTargets.length > 0
+                  ? publishTargets
+                  : uriRelays.length > 0
+                  ? uriRelays
+                  : session.relays,
+                dualEvent,
+                6000
               );
-              if (!nip04Ciphertext || nip04Ciphertext === ciphertext) return;
-              const fallbackEvent: any = {
-                kind: 24133,
-                created_at: Math.floor(Date.now() / 1000),
-                content: nip04Ciphertext,
-                tags: [["p", session.remotePubkey]],
-                pubkey: getPublicKey(session.clientSecretKey),
-              };
-              fallbackEvent.id = getEventHash(fallbackEvent);
-              fallbackEvent.sig = signEvent(
-                fallbackEvent,
-                session.clientSecretKey
+              console.log("[RemoteSigner] Published fallback via direct pool", {
+                eventId: dualEvent.id,
+                method,
+                scheme: encrypted.dualScheme,
+                relays: okFallback.urls,
+                acked: okFallback.acked,
+              });
+            } catch (fallbackErr) {
+              console.warn(
+                "[RemoteSigner] Fallback publish not acknowledged:",
+                fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
               );
-              try {
-                const okFallback = await this.publishDirectConfirmed(
-                  publishTargets.length > 0
-                    ? publishTargets
-                    : uriRelays.length > 0
-                    ? uriRelays
-                    : session.relays,
-                  fallbackEvent,
-                  6000
-                );
-                console.log(
-                  "[RemoteSigner] Published fallback via direct pool",
-                  {
-                    eventId: fallbackEvent.id,
-                    method,
-                    relays: okFallback.urls,
-                    acked: okFallback.acked,
-                  }
-                );
-              } catch (fallbackErr) {
-                console.warn(
-                  "[RemoteSigner] NIP-04 fallback publish not acknowledged:",
-                  fallbackErr instanceof Error
-                    ? fallbackErr.message
-                    : fallbackErr
-                );
-              }
-            } catch {
-              // Ignore fallback path failures and rely on primary envelope.
             }
           }
         } catch (error) {
           clearTimeout(timeout);
+          const pending = this.pending.get(id);
           this.pending.delete(id);
-          reject(
+          const err =
             error instanceof Error
               ? error
-              : new Error(String(error ?? "Publish failed"))
-          );
+              : new Error(String(error ?? "Publish failed"));
+          if (pending) pending.reject(err);
+          else {
+            finishListen();
+            reject(err);
+          }
         }
       })();
     });

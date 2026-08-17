@@ -2,17 +2,101 @@
  * Merge profile repository lists from localStorage and /api/nostr/profile-repos.
  * Network rows are often sparse (slug + timestamps); never wipe richer local fields.
  */
+import { nip19 } from "nostr-tools";
+
+import {
+  isRealForkAttribution,
+  sanitizeForkedFromField,
+} from "./fork-attribution";
+
+function ownerHexForProfileKey(r: {
+  ownerPubkey?: string;
+  entity?: string;
+}): string {
+  const hex = String(r.ownerPubkey || "").toLowerCase();
+  if (/^[0-9a-f]{64}$/.test(hex)) return hex;
+  const entity = String(r.entity || "").trim();
+  if (entity.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(entity);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data.toLowerCase();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return entity.toLowerCase();
+}
 
 export function profileRepoRowKey(r: {
   ownerPubkey?: string;
+  entity?: string;
   repo?: string;
   slug?: string;
 }): string {
-  return `${(r.ownerPubkey || "").toLowerCase()}/${(
+  return `${ownerHexForProfileKey(r)}/${(
     r.repo ||
     r.slug ||
     ""
   ).toLowerCase()}`;
+}
+
+export type ProfileRepoUserRole =
+  | "owner"
+  | "maintainer"
+  | "contributor"
+  | "forked";
+
+/** Orange forked vs purple owner for the npub that announced this repo. */
+export function profileAnnouncerRole(repo: {
+  forkedFrom?: string | null;
+  sourceUrl?: string | null;
+  clone?: unknown;
+}): "owner" | "forked" {
+  const clone = Array.isArray(repo.clone)
+    ? repo.clone.map((c) => (c == null ? "" : String(c)))
+    : undefined;
+  return isRealForkAttribution(repo.forkedFrom, {
+    sourceUrl: repo.sourceUrl,
+    clone,
+  })
+    ? "forked"
+    : "owner";
+}
+
+/**
+ * Badge/border role on a profile repo card.
+ * If this profile announced the repo, owner vs forked follows real `forkedFrom`
+ * (not a stale stored pill, and not “has any GitHub URL”). Otherwise stored
+ * maintainer/contributor wins; matching ownerPubkey without a role is owner.
+ */
+export function profileRepoDisplayRole(
+  repo: {
+    userRole?: string | null;
+    ownerPubkey?: string | null;
+    forkedFrom?: string | null;
+    sourceUrl?: string | null;
+    clone?: unknown;
+  },
+  profileHex: string | null | undefined
+): ProfileRepoUserRole | undefined {
+  const ownerHex = String(repo.ownerPubkey || "").toLowerCase();
+  const profile = String(profileHex || "").toLowerCase();
+  if (
+    /^[0-9a-f]{64}$/.test(ownerHex) &&
+    /^[0-9a-f]{64}$/.test(profile) &&
+    ownerHex === profile
+  ) {
+    return profileAnnouncerRole(repo);
+  }
+  const stored = String(repo.userRole || "")
+    .trim()
+    .toLowerCase();
+  if (stored === "maintainer" || stored === "contributor") {
+    return stored;
+  }
+  return undefined;
 }
 
 export function profileRepoLatestMs(r: {
@@ -91,16 +175,51 @@ export function mergeProfileRepoFields(base: any, other: any): any {
     contributors,
     logoUrl: base.logoUrl || other.logoUrl,
     sourceUrl: base.sourceUrl || other.sourceUrl,
-    forkedFrom: base.forkedFrom || other.forkedFrom,
+    forkedFrom:
+      sanitizeForkedFromField(base.forkedFrom, {
+        sourceUrl: base.sourceUrl || other.sourceUrl,
+        clone:
+          Array.isArray(base.clone) && base.clone.length > 0
+            ? base.clone
+            : other.clone,
+      }) ||
+      sanitizeForkedFromField(other.forkedFrom, {
+        sourceUrl: base.sourceUrl || other.sourceUrl,
+        clone:
+          Array.isArray(base.clone) && base.clone.length > 0
+            ? base.clone
+            : other.clone,
+      }),
     publicRead,
-    // Keep the newer activity clock when present
+    syncedFromNostr: !!(base.syncedFromNostr || other.syncedFromNostr),
+    fromNostr: !!(base.fromNostr || other.fromNostr),
+    lastNostrEventId: base.lastNostrEventId || other.lastNostrEventId,
+    nostrEventId: base.nostrEventId || other.nostrEventId,
+    ownerPubkey: base.ownerPubkey || other.ownerPubkey,
+    entity: base.entity || other.entity,
+    clone:
+      Array.isArray(base.clone) && base.clone.length > 0
+        ? base.clone
+        : other.clone,
     updatedAt:
       Math.max(Number(base.updatedAt) || 0, Number(other.updatedAt) || 0) ||
       base.updatedAt ||
       other.updatedAt,
     lastNostrEventCreatedAt:
       base.lastNostrEventCreatedAt ?? other.lastNostrEventCreatedAt,
-    lastNostrEventId: base.lastNostrEventId || other.lastNostrEventId,
+    ...(base.lastNostrEventId ||
+    other.lastNostrEventId ||
+    base.syncedFromNostr ||
+    other.syncedFromNostr
+      ? {
+          status:
+            base.status === "local"
+              ? other.status === "local"
+                ? undefined
+                : other.status
+              : base.status,
+        }
+      : {}),
   };
 }
 

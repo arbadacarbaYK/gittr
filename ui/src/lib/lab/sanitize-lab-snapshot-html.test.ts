@@ -43,6 +43,9 @@ describe("sanitizeLabSnapshotHtml", () => {
     expect(out).toContain("gittr-lab-map-interact");
     expect(out).toContain("postMessage");
     expect(out).toMatch(/#gwrap\.graph-wrap/);
+    expect(out).toMatch(/overflow:hidden!important/);
+    expect(out).toContain("ResizeObserver");
+    expect(out).not.toMatch(/frozen=true/);
   });
 
   it("strips resize→fitCamera so iframe auto-height cannot reset zoom", () => {

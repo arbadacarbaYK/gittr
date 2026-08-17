@@ -69,7 +69,7 @@ flowchart TB
 
 **Addressing:** repos are Nostr identities (`npub` / hex) + repo name on relays; git blobs live on **`git.gittr.space`** (or another `clone` host). Sites on **`pages.gittr.space`**; Pages/media blobs on **`blossom.gittr.space`**. Prefer publishing to **`wss://relay.gittr.space`** plus other relays. Agents resolve via MCP; humans via the UI or `git clone` / `nostr://`.
 
-Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nostr mirror or a path off a centralized host—not a skin on top of another forge’s login.
+Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nostr mirror or a path off a centralized host—not a skin on top of another forge’s login. The repo sidebar **Git Server** stays that GitHub/GitLab/Codeberg URL; gittr/ngit mirrors stay in the clone list. Clearing browser storage does not turn published repos into “Local” — the live Nostr announcement is the source of truth.
 
 ## Use it for
 
@@ -163,7 +163,7 @@ Corrections welcome.
 
 ## Features include
 
-Repos: create, import (incl. bulk), fork, browse/edit files, blame, diffs, releases, tags. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram — prefs on kind 30078 `gittr/notifications`, recipient-scoped delivery). **Security (opt-in):** Dependencies tab OSV audit; optional CVE alerts via Settings → Notifications → Security (`CVE_BOT_ENABLED`) — same toggle also gets private early (pre-CVE) Spoiler Alert DMs, not shown on Dependencies. Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
+Repos: create, import (incl. bulk GitHub, or paste GitLab/Codeberg/Forgejo URL), fork, browse/edit files, blame, diffs, releases, tags. **Import** copies a forge repo onto your npub (you are **owner**); **Fork** on gittr is a separate repo with a “forked from” parent. A GitHub URL on an import is provenance, not a fork badge. Collaboration: issues (bounties), PRs, projects, discussions, notifications (Nostr/Telegram — prefs on kind 30078 `gittr/notifications`, recipient-scoped delivery). **Security (opt-in):** Dependencies tab OSV audit; optional CVE alerts via Settings → Notifications → Security (`CVE_BOT_ENABLED`) — same toggle also gets private early (pre-CVE) Spoiler Alert DMs, not shown on Dependencies. Payments: repo zaps, issue bounties, optional `push_cost_sats` paywall on GUI + SSH push. Dev UX: fuzzy finder, code search, permalinks, HTTPS/SSH clone, SSH keys in Settings → SSH Keys, themes, PWA. Discovery: explore, profiles, stars, sponsors.
 
 Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md), [NIPS_AND_EVENT_KINDS.md](docs/NIPS_AND_EVENT_KINDS.md)).
 
@@ -183,6 +183,7 @@ Details and edge cases: [docs/](docs/) (especially [FILE_FETCHING_INSIGHTS.md](d
 
 - **Big files** sit on git servers (bridge, GitHub, GitLab, …); Nostr events hold `clone` / `source` URLs and small embedded bits (e.g. README).
 - **Browser** keeps keys, settings, and repo metadata in `localStorage` (encrypted where applicable). The hosted API processes payments and git proxies; it does not store your Nostr/Lightning secrets.
+- **Amber (phone signer):** Push asks Amber to approve a signature. If the phone never pops up, the request did not decrypt — not a git-file problem. Keep Amber open/unlocked and retry; details: [NIP46_REMOTE_SIGNER_INTEGRATION.md](docs/NIP46_REMOTE_SIGNER_INTEGRATION.md).
 - **Server-only** (production `/opt/ngit/data/`): notification consent + CVE bot pending/dedup JSON — never deploy these from a laptop; see [SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md).
 - **Fetch order**: embedded → published `clone[]`/`source` (non-GRASP before GRASP) → bridge / `GET /api/git/repo-files` → forge APIs; well-known GRASP mirrors inferred only after Nostr EOSE if still no clones. Full flow: [docs/FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md). Home Freebox/NAS clones must be reachable from the **gittr server**, not only your browser.
 
