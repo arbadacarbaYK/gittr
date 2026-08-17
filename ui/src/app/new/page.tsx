@@ -666,11 +666,15 @@ function NewRepoPageContent() {
           📥 Option 1: Import single repository
         </h2>
         <p className="text-sm text-gray-300 mb-3">
-          Clone one repository from GitHub, GitLab, Codeberg, or any custom Git
-          server.
+          One repo at a time. <strong className="text-gray-200">GitHub:</strong>{" "}
+          short <code className="bg-gray-800 px-1 rounded">owner/repo</code> or
+          full URL. <strong className="text-gray-200">GitLab, Codeberg, Gitea,</strong>{" "}
+          Forgejo, or other hosts: full clone URL only (
+          <code className="bg-gray-800 px-1 rounded">https://…</code> or{" "}
+          <code className="bg-gray-800 px-1 rounded">git@…</code>).
         </p>
         <label className="block text-sm font-medium mb-2">
-          Repository URL or GitHub name
+          Repository link
         </label>
         <input
           className="w-full border p-2 text-black"
@@ -694,27 +698,20 @@ function NewRepoPageContent() {
               setUrl(`https://${value}`);
             }
           }}
-          placeholder="owner/repo (GitHub) or full URL"
+          placeholder="arbadacarbaYK/gittr · https://codeberg.org/owner/repo · https://gitlab.com/group/repo"
         />
         <p className="text-xs mt-1 text-gray-400">
-          <strong>Easiest:</strong> Just enter{" "}
-          <code className="bg-gray-800 px-1 rounded">owner/repo</code> for
-          GitHub (e.g.,{" "}
-          <code className="bg-gray-800 px-1 rounded">arbadacarbaYK/gittr</code>
-          ).
-          <br />
-          <strong>Full URLs:</strong>{" "}
+          Examples:{" "}
+          <code className="bg-gray-800 px-1 rounded">owner/repo</code> (GitHub
+          only),{" "}
           <code className="bg-gray-800 px-1 rounded">
-            https://github.com/owner/repo
+            https://codeberg.org/owner/repo
           </code>
-          ,
+          ,{" "}
           <code className="bg-gray-800 px-1 rounded">
-            git@git.btclock.dev:btclock/webui.git
+            git@host:owner/repo.git
           </code>
-          ,
-          <code className="bg-gray-800 px-1 rounded">
-            https://git.btclock.dev/btclock/webui.git
-          </code>
+          . For many GitHub repos, use Option 3 below.
         </p>
         <button
           className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
@@ -772,9 +769,8 @@ function NewRepoPageContent() {
           You can import many selected repos in one go, or only a few.
         </p>
         <p className="text-sm text-amber-200/90 mb-3">
-          <strong>GitHub only.</strong> GitLab, Codeberg, Gitea, and self-hosted
-          forges are not supported here — use Option 1 above with a full
-          repository URL (one repo at a time).
+          <strong>GitHub only.</strong> GitLab, Codeberg, Gitea, Forgejo →
+          Option 1 with a full URL (one repo each).
         </p>
         <button
           className="border px-4 py-2 inline-block bg-purple-600 hover:bg-purple-700 text-white rounded"
