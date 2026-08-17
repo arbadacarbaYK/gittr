@@ -643,8 +643,22 @@ export function persistRepoAnnouncementMeta(opts: {
       syncedFromNostr: true,
       fromNostr: true,
     };
-    if (sanitizedFork) next.forkedFrom = sanitizedFork;
-    else delete next.forkedFrom;
+    if (sanitizedFork) {
+      next.forkedFrom = sanitizedFork;
+    } else if (forkedRaw) {
+      // Event explicitly carried a forkedFrom tag that did not survive sanitize.
+      delete next.forkedFrom;
+    } else if (prev.forkedFrom) {
+      // Tag-less 30617 must not wipe a GitHub-hydrated fork parent.
+      const kept = sanitizeForkedFromField(prev.forkedFrom, {
+        sourceUrl: source || prev.sourceUrl,
+        clone: clone.length > 0 ? clone : prev.clone,
+      });
+      if (kept) next.forkedFrom = kept;
+      else delete next.forkedFrom;
+    } else {
+      delete next.forkedFrom;
+    }
     // A live 30617 is not a local-only stub — drop the misleading badge.
     if ((eventId || next.lastNostrEventId) && next.status === "local") {
       delete next.status;

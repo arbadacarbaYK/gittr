@@ -152,6 +152,17 @@ describe("resolveStoredForkedFrom", () => {
     ).toBe("https://github.com/AndronixApp/AndronixOrigin");
   });
 
+  it("keeps a foreign GitHub parent when GitHub reports not-a-fork", () => {
+    expect(
+      resolveStoredForkedFrom({
+        existingForkedFrom: "https://github.com/bitcointurm/Satoshi24",
+        sourceUrl: "https://github.com/me/ChicksOnTheBlocks",
+        githubIsFork: false,
+        githubHtmlUrl: "https://github.com/me/ChicksOnTheBlocks",
+      })
+    ).toBe("https://github.com/bitcointurm/Satoshi24");
+  });
+
   it("keeps a gittr fork pointer even when a GitHub source exists", () => {
     expect(
       resolveStoredForkedFrom({

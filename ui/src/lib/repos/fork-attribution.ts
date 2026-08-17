@@ -166,12 +166,8 @@ export function resolveStoredForkedFrom(opts: {
     );
   }
   if (opts.githubIsFork === false) {
-    const existing = sanitizeForkedFromField(opts.existingForkedFrom, own);
-    if (existing && normalizeForgeSourceKey(existing)) {
-      // GitHub says this is not a fork — drop leftover self/import forge URLs.
-      return undefined;
-    }
-    return existing;
+    // Keep a real foreign parent; sanitize already drops self-import URLs.
+    return sanitizeForkedFromField(opts.existingForkedFrom, own);
   }
   return sanitizeForkedFromField(opts.existingForkedFrom, own);
 }

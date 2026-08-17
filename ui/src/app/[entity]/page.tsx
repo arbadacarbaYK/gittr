@@ -133,6 +133,65 @@ function decodeNpubToHex(entity: string): string | null {
   return null;
 }
 
+/** localStorage check — avoids starting anon Nostr sync when cache already has repos. */
+function cachedReposOwnedByPubkey(targetPubkey: string): boolean {
+  const normalizedTarget = targetPubkey.toLowerCase();
+  const targetPrefix = normalizedTarget.slice(0, 8);
+  try {
+    const repos = JSON.parse(
+      localStorage.getItem("gittr_repos") || "[]"
+    ) as Array<{
+      ownerPubkey?: string;
+      entity?: string;
+      contributors?: Array<{ pubkey?: string }>;
+    }>;
+    return repos.some((repo) => {
+      if (!repo) return false;
+      const ownerPubkey = repo.ownerPubkey;
+      if (
+        ownerPubkey &&
+        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+        ownerPubkey.toLowerCase() === normalizedTarget
+      ) {
+        return true;
+      }
+      if (repo.contributors && Array.isArray(repo.contributors)) {
+        const match = repo.contributors.find(
+          (c) =>
+            c.pubkey &&
+            /^[0-9a-f]{64}$/i.test(c.pubkey) &&
+            c.pubkey.toLowerCase() === normalizedTarget
+        );
+        if (match) return true;
+      }
+      if (repo.entity) {
+        if (repo.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(repo.entity);
+            if (
+              decoded.type === "npub" &&
+              (decoded.data as string).toLowerCase() === normalizedTarget
+            ) {
+              return true;
+            }
+          } catch {
+            return false;
+          }
+        }
+        if (/^[0-9a-f]{64}$/i.test(repo.entity)) {
+          if (repo.entity.toLowerCase() === normalizedTarget) return true;
+        }
+        if (/^[0-9a-f]{8}$/i.test(repo.entity)) {
+          if (repo.entity.toLowerCase() === targetPrefix) return true;
+        }
+      }
+      return false;
+    });
+  } catch {
+    return false;
+  }
+}
+
 // Parse NIP-34 repository announcement format (minimal fields needed for lists)
 function parseNIP34Repository(event: any): any {
   const repoData: any = {
@@ -635,55 +694,7 @@ export default function EntityPage({
 
     if (!targetPubkey) return;
     const normalizedTarget = targetPubkey.toLowerCase();
-    const targetPrefix = normalizedTarget.slice(0, 8);
-    const hasReposForProfile = userRepos.some((repo) => {
-      if (!repo) return false;
-
-      const ownerPubkey = repo.ownerPubkey;
-      if (
-        ownerPubkey &&
-        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
-        ownerPubkey.toLowerCase() === normalizedTarget
-      ) {
-        return true;
-      }
-
-      if (repo.contributors && Array.isArray(repo.contributors)) {
-        const matchingContributor = repo.contributors.find(
-          (c: any) =>
-            c.pubkey &&
-            /^[0-9a-f]{64}$/i.test(c.pubkey) &&
-            c.pubkey.toLowerCase() === normalizedTarget
-        );
-        if (matchingContributor) return true;
-      }
-
-      if (repo.entity) {
-        if (repo.entity.startsWith("npub")) {
-          try {
-            const decoded = nip19.decode(repo.entity);
-            if (decoded.type === "npub") {
-              const decodedPubkey = (decoded.data as string).toLowerCase();
-              if (decodedPubkey === normalizedTarget) return true;
-            }
-          } catch {
-            return false;
-          }
-        }
-
-        if (/^[0-9a-f]{64}$/i.test(repo.entity)) {
-          if (repo.entity.toLowerCase() === normalizedTarget) return true;
-        }
-
-        if (/^[0-9a-f]{8}$/i.test(repo.entity)) {
-          if (repo.entity.toLowerCase() === targetPrefix) return true;
-        }
-      }
-
-      return false;
-    });
-
-    if (hasReposForProfile) return;
+    if (cachedReposOwnedByPubkey(normalizedTarget)) return;
     if (anonRepoSyncRef.current) return;
 
     anonRepoSyncRef.current = true;
@@ -806,7 +817,6 @@ export default function EntityPage({
         const cacheKey = `gittr_profile_repo_sync_${targetPubkey}`;
         sessionStorage.setItem(cacheKey, Date.now().toString());
       }
-      setReposReloadToken((n) => n + 1);
     }, 8000);
 
     return () => {
@@ -815,12 +825,27 @@ export default function EntityPage({
       if (unsub) unsub();
     };
   }, [
-    userRepos.length,
     subscribe,
     defaultRelays,
     pubkeyForMetadata,
     fullPubkeyForMeta,
   ]);
+
+  const forkEnrichKey = useMemo(() => {
+    if (!isPubkey) return "";
+    return userRepos
+      .filter((r) => {
+        const src = String(r.sourceUrl || "").trim();
+        if (!src) return false;
+        return !isRealForkAttribution(r.forkedFrom, {
+          sourceUrl: src,
+          clone: r.clone,
+        });
+      })
+      .map((r) => profileRepoRowKey(r))
+      .sort()
+      .join(",");
+  }, [isPubkey, userRepos]);
 
   // Debug: Log metadata state and check for identities
   useEffect(() => {
@@ -2430,7 +2455,7 @@ export default function EntityPage({
   /** Nostr rows often lack forkedFrom — hydrate from forge parent APIs on profile load. */
   const forkEnrichAttemptedRef = useRef(new Set<string>());
   useEffect(() => {
-    if (!isPubkey || userRepos.length === 0) return;
+    if (!isPubkey || !forkEnrichKey) return;
     const toEnrich = userRepos.filter((r) => {
       const key = profileRepoRowKey(r);
       if (forkEnrichAttemptedRef.current.has(key)) return false;
@@ -2449,13 +2474,8 @@ export default function EntityPage({
 
     let cancelled = false;
     void (async () => {
-      const persistLocal = Boolean(
-        currentUserPubkey &&
-          profileHexForFetch &&
-          currentUserPubkey.toLowerCase() === profileHexForFetch.toLowerCase()
-      );
       const enriched = await enrichReposWithForgeForkMeta(userRepos, {
-        persistLocal,
+        persistLocal: false,
       });
       if (cancelled) return;
       const forkChanged = enriched.some(
@@ -2476,7 +2496,7 @@ export default function EntityPage({
     return () => {
       cancelled = true;
     };
-  }, [isPubkey, userRepos, profileHexForFetch, currentUserPubkey]);
+  }, [isPubkey, forkEnrichKey, userRepos, profileHexForFetch]);
 
   // Resolve pubkey from localStorage after mount to prevent hydration errors
   // Use ref to track last processed entity to prevent re-processing

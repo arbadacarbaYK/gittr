@@ -92,6 +92,7 @@ import {
 } from "@/lib/repos/enrich-repo-links";
 import {
   isDisplayableForkAttribution,
+  resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
 import { formatForgeAttributionLabel } from "@/lib/repos/forge-fork-meta";
@@ -4641,6 +4642,9 @@ export function RepoCodePage() {
                         "";
                   return {
                     ...updatedRepo,
+                    forkedFrom:
+                      (updatedRepo as { forkedFrom?: string }).forkedFrom ??
+                      (prev as { forkedFrom?: string })?.forkedFrom,
                     files: filesToPreserve,
                     publicRead: publicRead,
                     readme,
@@ -7986,10 +7990,6 @@ export function RepoCodePage() {
                     } as StoredRepo);
                   const newSourceUrl =
                     eventRepoData.sourceUrl || base.sourceUrl;
-                  const newForkedFrom =
-                    eventRepoData.forkedFrom || base.forkedFrom;
-                  const newName = eventRepoData.repositoryName || base.name;
-                  const newRepo = eventRepoData.repositoryName || base.repo;
                   const newClone =
                     eventRepoData.clone && Array.isArray(eventRepoData.clone)
                       ? eventRepoData.clone.filter(
@@ -7999,6 +7999,15 @@ export function RepoCodePage() {
                             !url.includes("127.0.0.1")
                         )
                       : base.clone;
+                  const newForkedFrom = resolveStoredForkedFrom({
+                    existingForkedFrom:
+                      base.forkedFrom ?? eventRepoData.forkedFrom,
+                    sourceUrl: newSourceUrl,
+                    clone: newClone,
+                    githubHtmlUrl: newSourceUrl,
+                  });
+                  const newName = eventRepoData.repositoryName || base.name;
+                  const newRepo = eventRepoData.repositoryName || base.repo;
                   const newRelays = eventRepoData.relays || base.relays;
                   const newLinks = mergeAnnouncementLinksWithLocal(
                     base.links,
@@ -13837,10 +13846,20 @@ export function RepoCodePage() {
         );
         const desc =
           typeof rec?.description === "string" ? rec.description.trim() : "";
-        if (desc) {
-          setRepoData((prev) =>
-            prev?.description === desc ? prev : { ...prev!, description: desc }
-          );
+        const forkSanitized = sanitizeForkedFromField(rec?.forkedFrom, {
+          sourceUrl: rec?.sourceUrl,
+          clone: Array.isArray(rec?.clone) ? rec.clone : undefined,
+        });
+        if (desc || forkSanitized) {
+          setRepoData((prev) => {
+            if (!prev) return prev;
+            const nextDesc = desc || prev.description;
+            const nextFork = forkSanitized ?? prev.forkedFrom;
+            if (prev.description === nextDesc && prev.forkedFrom === nextFork) {
+              return prev;
+            }
+            return { ...prev, description: nextDesc, forkedFrom: nextFork };
+          });
         }
       } catch {
         /* ignore */
