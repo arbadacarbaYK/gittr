@@ -49,6 +49,8 @@ import {
   clearForeignReposFromStorage,
   clearOwnReposFromStorage,
   loadStoredRepos,
+  previewForeignReposFlush,
+  previewOwnReposFlush,
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
@@ -160,6 +162,19 @@ export default function RepositoriesPage() {
     },
     [pubkey]
   );
+
+  const foreignFlushPreview = useMemo(() => {
+    if (!mounted || !pubkey) return null;
+    return previewForeignReposFlush(pubkey, {
+      preserveUnpushedEdits: true,
+      preserveWithMetadata: false,
+    });
+  }, [mounted, pubkey, repos]);
+
+  const ownFlushPreview = useMemo(() => {
+    if (!mounted || !pubkey) return null;
+    return previewOwnReposFlush(pubkey);
+  }, [mounted, pubkey, repos]);
 
   useEffect(() => {
     setMounted(true);
@@ -978,21 +993,16 @@ export default function RepositoriesPage() {
     };
   }, [loadRepos, pubkey]);
 
-  // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
-  // This allows users to see repos from all users, not just their own
-  // PERFORMANCE: Reduced limit from 10k to 500 to prevent slowdown, but still get all repos (no time limit)
+  // Sync this user's own repos from Nostr. Do NOT ingest everyone else's 30617s
+  // into gittr_repos here — that refill undoes "Flush others" and the popup
+  // counts never match the cards (Explore is the place for other people's repos).
   useEffect(() => {
     if (typeof window === "undefined") return; // Don't run during SSR
     if (!mounted) return; // Wait for client-side mount
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
+    if (!pubkey) return;
 
     setSyncing(true);
-
-    // Query Nostr for ALL repositories (no time limit - we need all non-deleted repos)
-    // Also query user's own repos to ensure they're included
-    // PERFORMANCE: Reduced limit from 10k to 500 for public repos to prevent slowdown
-    // Relays will handle pagination/limits if needed
-    // CRITICAL: No since parameter = get ALL repos (no time limit) - we need all non-deleted repos
 
     // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
     // Map: repoKey (pubkey + d tag) -> array of events
@@ -1004,22 +1014,10 @@ export default function RepositoriesPage() {
     const unsub = subscribe(
       [
         {
-          kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr and NIP-34
-          limit: 500, // PERFORMANCE: Reduced from 10k to 500 for public repos
-          // No since parameter = get ALL repos (no time limit) - we need all non-deleted repos
-          // No authors filter = get ALL public repos from all users
-          // This is the "Nostr cloud" - repos are stored on relays, not locally
+          kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+          authors: [pubkey],
+          limit: 2000,
         },
-        ...(pubkey
-          ? [
-              {
-                kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr and NIP-34
-                authors: [pubkey], // Also get user's own repos (for private repos in future)
-                limit: 2000, // User's own repos - increased to support users with many repos
-                // No since parameter = get all user's repos (no time limit)
-              },
-            ]
-          : []),
       ],
       defaultRelays,
       (event, isAfterEose, relayURL) => {
@@ -1056,6 +1054,12 @@ export default function RepositoriesPage() {
           (event.kind as number) === KIND_REPOSITORY_NIP34
         ) {
           if (isPublisherBlocklisted(event.pubkey)) return;
+          if (
+            pubkey &&
+            String(event.pubkey).toLowerCase() !== pubkey.toLowerCase()
+          ) {
+            return;
+          }
           try {
             let repoData: any;
             if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
@@ -2010,7 +2014,7 @@ export default function RepositoriesPage() {
     loadRepos,
     scheduleUiReloadFromNostr,
     persistReposCatalog,
-  ]); // Note: pubkey optional - syncs ALL repos even when not logged in
+  ]); // Own-author only — foreign 30617s belong on Explore, not this catalog.
 
   // After Clear Local / empty cache: refill *my* repos via server profile-repos API
   // (more reliable than waiting on browser EOSE alone).
@@ -2643,8 +2647,18 @@ export default function RepositoriesPage() {
               className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
               title="Flush only your own repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Unpushed local-only work is lost. Other people’s cached repos stay."
             >
-              <span className="sm:hidden">Flush my repos</span>
-              <span className="hidden sm:inline">Flush my own repos cache</span>
+              <span className="sm:hidden">
+                Flush my repos
+                {ownFlushPreview && ownFlushPreview.clearedRepos > 0
+                  ? ` (${ownFlushPreview.clearedRepos})`
+                  : ""}
+              </span>
+              <span className="hidden sm:inline">
+                Flush my own repos cache
+                {ownFlushPreview && ownFlushPreview.clearedRepos > 0
+                  ? ` (${ownFlushPreview.clearedRepos})`
+                  : ""}
+              </span>
             </button>
           )}
 
@@ -2654,9 +2668,17 @@ export default function RepositoriesPage() {
               className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
               title="Flush other people’s repos from this browser’s cache (Explore/import leftovers). Your own repos stay. Safe anytime — they can be re-fetched from Nostr."
             >
-              <span className="sm:hidden">Flush others</span>
+              <span className="sm:hidden">
+                Flush others
+                {foreignFlushPreview && foreignFlushPreview.clearedRepos > 0
+                  ? ` (${foreignFlushPreview.clearedRepos})`
+                  : ""}
+              </span>
               <span className="hidden sm:inline">
                 Flush others&apos; repos cache
+                {foreignFlushPreview && foreignFlushPreview.clearedRepos > 0
+                  ? ` (${foreignFlushPreview.clearedRepos})`
+                  : ""}
               </span>
             </button>
           )}
@@ -2687,6 +2709,26 @@ export default function RepositoriesPage() {
                       </li>
                       <li>Explore leftovers from other people&apos;s repos</li>
                     </ul>
+                    {foreignFlushPreview && (
+                      <p className="text-sm text-yellow-100 mt-3">
+                        This will remove{" "}
+                        <strong>{foreignFlushPreview.clearedRepos}</strong>{" "}
+                        other people&apos;s repo
+                        {foreignFlushPreview.clearedRepos === 1 ? "" : "s"}
+                        {foreignFlushPreview.duplicateRowsCollapsed > 0
+                          ? ` (plus ${foreignFlushPreview.duplicateRowsCollapsed} duplicate cache rows of the same repos)`
+                          : ""}
+                        {foreignFlushPreview.clearedKeys > 0
+                          ? ` and ${foreignFlushPreview.clearedKeys} related file/issue cache entries`
+                          : ""}
+                        . Your {foreignFlushPreview.keptOwnRepos} repo
+                        {foreignFlushPreview.keptOwnRepos === 1 ? "" : "s"} stay
+                        {foreignFlushPreview.keptOwnRepos === 1 ? "s" : ""}.
+                        {foreignFlushPreview.keptForeignLocal > 0
+                          ? ` ${foreignFlushPreview.keptForeignLocal} other-people repo(s) with unpushed local edits are kept.`
+                          : ""}
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
@@ -2756,7 +2798,27 @@ export default function RepositoriesPage() {
                         setShowClearForeignConfirm(false);
 
                         alert(
-                          `✅ Others' repos cache flushed!\n\n• Removed ${result.clearedRepos} other people's repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} of your repos\n\nThey can be re-fetched from Nostr anytime.`
+                          [
+                            "✅ Others' repos cache flushed!",
+                            "",
+                            `• Removed ${
+                              result.clearedRepos
+                            } other people's repo${
+                              result.clearedRepos === 1 ? "" : "s"
+                            }`,
+                            result.duplicateRowsCollapsed > 0
+                              ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
+                              : "",
+                            `• Removed ${result.clearedKeys} related file/issue cache entries`,
+                            `• Kept ${result.keptOwnRepos} of your repos`,
+                            result.keptForeignLocal > 0
+                              ? `• Kept ${result.keptForeignLocal} other-people repo(s) with unpushed local edits`
+                              : "",
+                            "",
+                            "This page will not refill other people's repos. Opening them in Explore downloads a fresh copy.",
+                          ]
+                            .filter(Boolean)
+                            .join("\n")
                         );
 
                         reposCatalogRef.current = null;
@@ -2809,6 +2871,21 @@ export default function RepositoriesPage() {
                         Nostr)
                       </li>
                     </ul>
+                    {ownFlushPreview && (
+                      <p className="text-sm text-yellow-100 mt-3">
+                        This will remove{" "}
+                        <strong>{ownFlushPreview.clearedRepos}</strong> of your
+                        repo
+                        {ownFlushPreview.clearedRepos === 1 ? "" : "s"}
+                        {ownFlushPreview.duplicateRowsCollapsed > 0
+                          ? ` (plus ${ownFlushPreview.duplicateRowsCollapsed} duplicate cache rows)`
+                          : ""}
+                        {ownFlushPreview.clearedKeys > 0
+                          ? ` and ${ownFlushPreview.clearedKeys} related file/issue cache entries`
+                          : ""}
+                        . Already-pushed ones re-fetch from Nostr after reload.
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
@@ -2886,7 +2963,24 @@ export default function RepositoriesPage() {
                         setShowClearConfirm(false);
 
                         alert(
-                          `✅ My own repos cache flushed!\n\n• Removed ${result.clearedRepos} of your repos\n• Removed ${result.clearedKeys} related cache keys\n• Kept ${result.keptRepos} other people's repos in cache\n\nAlready-pushed repos will re-fetch from Nostr.`
+                          [
+                            "✅ My own repos cache flushed!",
+                            "",
+                            `• Removed ${result.clearedRepos} of your repo${
+                              result.clearedRepos === 1 ? "" : "s"
+                            }`,
+                            result.duplicateRowsCollapsed > 0
+                              ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
+                              : "",
+                            `• Removed ${result.clearedKeys} related file/issue cache entries`,
+                            `• Kept ${result.keptRepos} other people's repo${
+                              result.keptRepos === 1 ? "" : "s"
+                            } in cache`,
+                            "",
+                            "Already-pushed repos will re-fetch from Nostr. Unpushed local-only work is gone.",
+                          ]
+                            .filter(Boolean)
+                            .join("\n")
                         );
 
                         reposCatalogRef.current = null;

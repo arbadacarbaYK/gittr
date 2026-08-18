@@ -22,6 +22,10 @@ import {
   rememberOverrideBlob,
   resolveOverridesMap,
 } from "./overrides-idb";
+import {
+  classifyForeignReposForFlush,
+  classifyOwnReposForFlush,
+} from "./repo-cache-flush";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -196,61 +200,161 @@ export const isRepoOwnedByPubkey = (
   return false;
 };
 
-export const clearForeignReposFromStorage = (
+export type RepoCacheFlushStats = {
+  /** Unique other-people / own repos actually dropped (matches cards, not duplicate rows). */
+  clearedRepos: number;
+  /** File/issue/PR/override localStorage keys deleted. */
+  clearedKeys: number;
+  /** Unique rows that remain in the catalog after the flush. */
+  keptRepos: number;
+  /** Unique repos owned by the signed-in pubkey that remain. */
+  keptOwnRepos: number;
+  /** Unique other-people repos kept because of unpushed local edits. */
+  keptForeignLocal: number;
+  /** Extra catalog rows collapsed because they were the same repo listed twice. */
+  duplicateRowsCollapsed: number;
+};
+
+const emptyFlushStats = (): RepoCacheFlushStats => ({
+  clearedRepos: 0,
+  clearedKeys: 0,
+  keptRepos: 0,
+  keptOwnRepos: 0,
+  keptForeignLocal: 0,
+  duplicateRowsCollapsed: 0,
+});
+
+function readCatalogRowsForFlush(): StoredRepo[] {
+  return parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
+}
+
+function planForeignReposFlush(
   pubkey: string,
   options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
 ): {
-  clearedRepos: number;
-  clearedKeys: number;
-  keptRepos: number;
-} => {
-  if (typeof window === "undefined" || !pubkey) {
-    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
-  }
-
+  unique: StoredRepo[];
+  keptRepos: StoredRepo[];
+  foreignRepos: StoredRepo[];
+  keptOwnRepos: number;
+  keptForeignLocal: number;
+  duplicateRowsCollapsed: number;
+  metadataPatterns: Set<string>;
+} | null {
+  if (typeof window === "undefined" || !pubkey) return null;
   const preserveUnpushedEdits = options?.preserveUnpushedEdits ?? true;
   const preserveWithMetadata = options?.preserveWithMetadata ?? false;
-  const allRepos = JSON.parse(
-    localStorage.getItem("gittr_repos") || "[]"
-  ) as StoredRepo[];
-
-  if (!Array.isArray(allRepos)) {
-    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
-  }
-
   const metadataPatterns = preserveWithMetadata
     ? collectMetadataPatterns()
     : new Set<string>();
-
-  const keptRepos = allRepos.filter((repo) => {
-    if (isRepoOwnedByPubkey(repo, pubkey)) return true;
-    if (preserveUnpushedEdits && hasLocalChanges(repo)) return true;
-    if (preserveWithMetadata) {
+  const raw = readCatalogRowsForFlush();
+  const classified = classifyForeignReposForFlush(
+    raw,
+    (repo) => isRepoOwnedByPubkey(repo, pubkey),
+    { preserveUnpushedEdits }
+  );
+  let keptRepos = classified.keptRepos;
+  if (preserveWithMetadata) {
+    const extraKept = classified.foreignRepos.filter((repo) => {
       const entity = repo.entity || repo.slug?.split("/")[0] || "";
       const repoName =
         repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "";
-      if (entity && repoName) {
-        const pattern = getRepoStorageKey(
-          "gittr_test",
-          entity,
-          repoName
-        ).replace("gittr_test__", "");
-        if (metadataPatterns.has(pattern)) return true;
-      }
+      if (!entity || !repoName) return false;
+      const pattern = getRepoStorageKey("gittr_test", entity, repoName).replace(
+        "gittr_test__",
+        ""
+      );
+      return metadataPatterns.has(pattern);
+    });
+    if (extraKept.length > 0) {
+      keptRepos = [...keptRepos, ...extraKept];
     }
-    return false;
-  });
+  }
+  const foreignRepos = classified.unique.filter(
+    (repo) => !keptRepos.includes(repo)
+  );
+  const keptOwnRepos = keptRepos.filter((repo) =>
+    isRepoOwnedByPubkey(repo, pubkey)
+  ).length;
+  const keptForeignLocal = keptRepos.length - keptOwnRepos;
+  return {
+    unique: classified.unique,
+    keptRepos,
+    foreignRepos,
+    keptOwnRepos,
+    keptForeignLocal,
+    duplicateRowsCollapsed: classified.duplicateRowsCollapsed,
+    metadataPatterns,
+  };
+}
 
-  const foreignRepos = allRepos.filter((repo) => !keptRepos.includes(repo));
+function planOwnReposFlush(pubkey: string): {
+  unique: StoredRepo[];
+  ownRepos: StoredRepo[];
+  keptRepos: StoredRepo[];
+  duplicateRowsCollapsed: number;
+} | null {
+  if (typeof window === "undefined" || !pubkey) return null;
+  const raw = readCatalogRowsForFlush();
+  const classified = classifyOwnReposForFlush(raw, (repo) =>
+    isRepoOwnedByPubkey(repo, pubkey)
+  );
+  return {
+    unique: classified.unique,
+    ownRepos: classified.ownRepos,
+    keptRepos: classified.keptRepos,
+    duplicateRowsCollapsed: classified.duplicateRowsCollapsed,
+  };
+}
 
-  localStorage.setItem("gittr_repos", JSON.stringify(keptRepos));
+/** Dry-run of flush others — same numbers the confirm modal and alert will use. */
+export const previewForeignReposFlush = (
+  pubkey: string,
+  options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
+): RepoCacheFlushStats => {
+  const plan = planForeignReposFlush(pubkey, options);
+  if (!plan) return emptyFlushStats();
+  const keptRepoPatterns = buildRepoKeyPatterns(plan.keptRepos);
+  plan.metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+  return {
+    clearedRepos: plan.foreignRepos.length,
+    clearedKeys: listRepoStorageKeysExceptPatterns(keptRepoPatterns).length,
+    keptRepos: plan.keptRepos.length,
+    keptOwnRepos: plan.keptOwnRepos,
+    keptForeignLocal: plan.keptForeignLocal,
+    duplicateRowsCollapsed: plan.duplicateRowsCollapsed,
+  };
+};
 
-  const keptRepoPatterns = buildRepoKeyPatterns(keptRepos);
-  metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+/** Dry-run of flush my own repos. */
+export const previewOwnReposFlush = (pubkey: string): RepoCacheFlushStats => {
+  const plan = planOwnReposFlush(pubkey);
+  if (!plan) return emptyFlushStats();
+  return {
+    clearedRepos: plan.ownRepos.length,
+    clearedKeys: listStorageKeysForPatterns(buildRepoKeyPatterns(plan.ownRepos))
+      .length,
+    keptRepos: plan.keptRepos.length,
+    keptOwnRepos: 0,
+    keptForeignLocal: plan.keptRepos.length,
+    duplicateRowsCollapsed: plan.duplicateRowsCollapsed,
+  };
+};
+
+export const clearForeignReposFromStorage = (
+  pubkey: string,
+  options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
+): RepoCacheFlushStats => {
+  const plan = planForeignReposFlush(pubkey, options);
+  if (!plan) return emptyFlushStats();
+
+  localStorage.setItem("gittr_repos", JSON.stringify(plan.keptRepos));
+
+  const keptRepoPatterns = buildRepoKeyPatterns(plan.keptRepos);
+  plan.metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
   const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
   // Drop IndexedDB override blobs for flushed foreign repos (async, best-effort)
-  for (const repo of foreignRepos) {
+  for (const repo of plan.foreignRepos) {
     const entity = repo.entity || "";
     const name = repo.repo || repo.slug || repo.name || "";
     if (entity && name) {
@@ -259,9 +363,12 @@ export const clearForeignReposFromStorage = (
   }
 
   return {
-    clearedRepos: foreignRepos.length,
+    clearedRepos: plan.foreignRepos.length,
     clearedKeys: keysToRemove.length,
-    keptRepos: keptRepos.length,
+    keptRepos: plan.keptRepos.length,
+    keptOwnRepos: plan.keptOwnRepos,
+    keptForeignLocal: plan.keptForeignLocal,
+    duplicateRowsCollapsed: plan.duplicateRowsCollapsed,
   };
 };
 
@@ -271,34 +378,16 @@ export const clearForeignReposFromStorage = (
  */
 export const clearOwnReposFromStorage = (
   pubkey: string
-): {
-  clearedRepos: number;
-  clearedKeys: number;
-  keptRepos: number;
-} => {
-  if (typeof window === "undefined" || !pubkey) {
-    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
-  }
+): RepoCacheFlushStats => {
+  const plan = planOwnReposFlush(pubkey);
+  if (!plan) return emptyFlushStats();
 
-  const allRepos = JSON.parse(
-    localStorage.getItem("gittr_repos") || "[]"
-  ) as StoredRepo[];
+  localStorage.setItem("gittr_repos", JSON.stringify(plan.keptRepos));
 
-  if (!Array.isArray(allRepos)) {
-    return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
-  }
-
-  const ownRepos = allRepos.filter((repo) => isRepoOwnedByPubkey(repo, pubkey));
-  const keptRepos = allRepos.filter(
-    (repo) => !isRepoOwnedByPubkey(repo, pubkey)
-  );
-
-  localStorage.setItem("gittr_repos", JSON.stringify(keptRepos));
-
-  const ownPatterns = buildRepoKeyPatterns(ownRepos);
+  const ownPatterns = buildRepoKeyPatterns(plan.ownRepos);
   const keysToRemove = removeStorageKeysForPatterns(ownPatterns);
 
-  for (const repo of ownRepos) {
+  for (const repo of plan.ownRepos) {
     const entity = repo.entity || "";
     const name = repo.repo || repo.slug || repo.name || "";
     if (entity && name) {
@@ -307,9 +396,12 @@ export const clearOwnReposFromStorage = (
   }
 
   return {
-    clearedRepos: ownRepos.length,
+    clearedRepos: plan.ownRepos.length,
     clearedKeys: keysToRemove.length,
-    keptRepos: keptRepos.length,
+    keptRepos: plan.keptRepos.length,
+    keptOwnRepos: 0,
+    keptForeignLocal: plan.keptRepos.length,
+    duplicateRowsCollapsed: plan.duplicateRowsCollapsed,
   };
 };
 
@@ -438,7 +530,7 @@ const collectMetadataPatterns = (): Set<string> => {
   return metadataPatterns;
 };
 
-const removeRepoStorageKeysExceptPatterns = (
+const listRepoStorageKeysExceptPatterns = (
   allowedPatterns: string[]
 ): string[] => {
   const keysToRemove: string[] = [];
@@ -460,12 +552,10 @@ const removeRepoStorageKeysExceptPatterns = (
       keysToRemove.push(key);
     }
   }
-
-  keysToRemove.forEach((key) => localStorage.removeItem(key));
   return keysToRemove;
 };
 
-const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
+const listStorageKeysForPatterns = (patterns: string[]): string[] => {
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -483,7 +573,19 @@ const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
       keysToRemove.push(key);
     }
   }
+  return keysToRemove;
+};
 
+const removeRepoStorageKeysExceptPatterns = (
+  allowedPatterns: string[]
+): string[] => {
+  const keysToRemove = listRepoStorageKeysExceptPatterns(allowedPatterns);
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+  return keysToRemove;
+};
+
+const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
+  const keysToRemove = listStorageKeysForPatterns(patterns);
   keysToRemove.forEach((key) => localStorage.removeItem(key));
   return keysToRemove;
 };
