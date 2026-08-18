@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  collectBlockedRelayPoolUrls,
   filterBunkerBlockedRelays,
   isBunkerMainPoolBlocked,
   listBunkerMainPoolBlockedHosts,
@@ -52,5 +53,16 @@ describe("bunker-main-pool-guard", () => {
     expect(
       filterBunkerBlockedRelays(["wss://relay.primal.net", "wss://nos.lol/"])
     ).toEqual([]);
+  });
+
+  it("matches pool keys that differ only by trailing slash or case", () => {
+    setBunkerMainPoolBlockedHosts(["wss://relay.primal.net", "wss://nos.lol"]);
+    expect(
+      collectBlockedRelayPoolUrls([
+        "wss://relay.primal.net/",
+        "wss://relay.gittr.space",
+        "WSS://NOS.LOL",
+      ])
+    ).toEqual(["wss://relay.primal.net/", "WSS://NOS.LOL"]);
   });
 });

@@ -35,3 +35,14 @@ export function filterBunkerBlockedRelays(relays: string[]): string[] {
   if (!relays?.length || blockedHosts.size === 0) return relays || [];
   return relays.filter((url) => !isBunkerMainPoolBlocked(url));
 }
+
+/**
+ * nostr-relaypool keys `relayByUrl` by the exact string passed to addOrGetRelay
+ * (env URLs often have a trailing slash; our bunker list strips it).
+ * Closing the wrong key leaves the main-pool socket alive and Amber's
+ * dedicated pool cannot OPEN the same host.
+ */
+export function collectBlockedRelayPoolUrls(poolUrls: string[]): string[] {
+  if (!poolUrls?.length || blockedHosts.size === 0) return [];
+  return poolUrls.filter((url) => isBunkerMainPoolBlocked(url));
+}

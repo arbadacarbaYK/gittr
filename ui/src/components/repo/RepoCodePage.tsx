@@ -74,6 +74,7 @@ import {
 import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
 import {
   NO_SIGNING_METHOD_MESSAGE,
+  hasStoredRemoteSignerSession,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import {
@@ -21968,12 +21969,23 @@ export function RepoCodePage() {
                                     try {
                                       await remoteSigner?.ensureRpcHealthy?.();
                                     } catch (warmErr) {
-                                      console.warn(
-                                        "[Push] Remote signer warm before paywall:",
+                                      const warmMsg =
                                         warmErr instanceof Error
                                           ? warmErr.message
-                                          : warmErr
+                                          : String(warmErr);
+                                      console.warn(
+                                        "[Push] Remote signer warm before paywall:",
+                                        warmMsg
                                       );
+                                      if (
+                                        hasStoredRemoteSignerSession() &&
+                                        !signer.privateKey
+                                      ) {
+                                        pushGenerationRef.current += 1;
+                                        setIsPushing(false);
+                                        alert(warmMsg);
+                                        return;
+                                      }
                                     }
                                     const privateKey = signer.privateKey;
 

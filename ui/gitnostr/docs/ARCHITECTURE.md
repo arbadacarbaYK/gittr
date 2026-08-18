@@ -19,15 +19,16 @@ With **[gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhft
 
 | Client | What you use | How it reaches the server |
 | --- | --- | --- |
-| **Web forge (gittr)** | Browser + NIP-07 (or nsec) | **Relays** for issues/PRs/repo events; **SSH/HTTPS** for `git push`/`pull`; **Next.js** routes read `repositoryDir` for Code/Commits tabs. Publish SSH keys in **Settings → SSH Keys** (kind **52**, same as `gn`). |
+| **Web forge (gittr)** | Browser + NIP-07 / Amber / nsec | **Relays** for issues/PRs/repo events; **HTTPS** (and optional **SSH**) for git bytes; Next.js reads `repositoryDir` for Code/Commits. Kind **52** SSH keys: **Settings → SSH Keys** *or* `gn ssh-key add`. |
 | **CLI operator (`gn`)** | `git-nostr-cli` | Publishes kind **30617** (repo), **52** (SSH key), permission events to **relays** → bridge applies them. Then `git clone git@host:npub/repo.git`. |
-| **Normal git** | OpenSSH + `git` | `git@git.gittr.space:<npub>/repo.git` (or your host) → **`git-nostr-ssh`** → ACL check → `git` on bare repo. |
+| **Normal git (SSH)** | OpenSSH + `git` | `git@git.gittr.space:<npub>/repo.git` → **`git-nostr-ssh`**. Website is not in this path after the key exists. |
+| **gittr-mcp (agents)** | HTTPS + local nsec | Same bare repos via **HTTPS + Nostr auth headers** (`pushToBridge`). **No SSH, no Amber.** Announces with kinds **30617** / **30618**. |
 | **`git-remote-nostr`** | [ngit-cli](https://github.com/DanConwayDev/ngit-cli) helper | `git clone nostr://<npub>/<repo>` when the repo is **mirrored on your bridge** (same bare repo as SSH). Interop transport, not a separate hook. |
 | **HTTPS git** | `git` + HTTPS remote | Clone/push against nginx-fronted bare repo (same disk as bridge). |
 
 **Publish path (all clients):** signed Nostr events → relays → bridge (and optionally **`POST /api/event`**) → SQLite + disk + `authorized_keys`.
 
-**Git bytes path:** `git` → SSH or HTTPS → **`git-nostr-ssh`** (or HTTP git) → bare repo on disk.
+**Git bytes path:** `git` → SSH **or** HTTPS → **`git-nostr-ssh`** (or HTTP git / MCP) → bare repo on disk. MCP never opens SSH.
 
 ## Diagram
 

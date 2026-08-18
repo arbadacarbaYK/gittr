@@ -4,6 +4,26 @@ SSH for gittr.space uses **[gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6
 
 **SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 
+### SSH vs website vs MCP (they are not the same path)
+
+Three doors into the **same** git host (`git.gittr.space`). The website is **not** sitting inside SSH.
+
+| Door | Who uses it | How git objects move | How the repo shows up on Nostr |
+| --- | --- | --- | --- |
+| **SSH** (`git@git.gittr.space:…`) | You on a laptop, like GitHub | `git clone` / `git push` → `git-nostr-ssh` → bare repo | Separate: kind **30617** / **30618** (see below) |
+| **HTTPS** | Browsers, **gittr-mcp**, CI | Same bare repo over HTTPS + Nostr auth headers | Same events |
+| **Website** | Humans clicking around | Convenience UI on top of HTTPS/Nostr | **Push to Nostr** / Settings → SSH Keys, signed with **NIP-07**, **NIP-46 remote (Amber / bunker)**, or nsec |
+
+**MCP already does the SSH jobs without SSH.** An agent with gittr-mcp uses HTTPS (`pushToBridge`, `createRepo`, `mergePullRequest`) and signs NIP-34 with a local `nsec`. It does **not** open an SSH session and does **not** need Settings → SSH Keys. That is the same end state as “git push + Push to Nostr”, different transport.
+
+The website only *looks* required because older examples below used it as the easy human path:
+
+1. **One-time SSH key** (only if you want `git@…` from a terminal): Settings → SSH Keys, **or** `gn ssh-key add`, **or** any client that publishes kind **52**. After that, clone/push never touch the website.
+2. **Create / announce a repo:** website **or** `gn repo create` **or** MCP `createRepo`.
+3. **Publish discovery events after a git push:** website **Push to Nostr** **or** MCP `publishRepoAnnouncement` / `publishRepoState` **or** `gn`.
+
+Amber / NIP-46 is only involved when **you** signed those Nostr events in the browser (Settings or Push to Nostr). A NIP-07 extension is the other in-browser option. MCP/`gn` sign with a local `nsec` instead — no remote signer, no extension.
+
 **SSH vs Code tab:** `git clone` / `git pull` over SSH or HTTPS talk to the **bridge bare repo** (`git.gittr.space`). The website Code tab loads the tree from that same mirror **and** from published NIP-34 `clone[]` / `source` URLs (forge first, then GRASP). File timestamps and tip fidelity details: [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md). Push tip bugs / clone sidebar: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
 
 **SSH host:** always use **`git.gittr.space`** (not `gittr.space`). Example: `git clone git@git.gittr.space:<npub>/<repo>.git`.
@@ -16,7 +36,7 @@ Pick **one** way to publish your public key (all publish kind **52** for the sam
 
 1. **`gn`** (no UI): `git-nostr-cli` → `./bin/gn ssh-key add ~/.ssh/id_ed25519.pub` — see [gitnostr SSH guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=SSH_GIT_GUIDE.md&branch=main)
 2. **Any Nostr client** that can sign kind 52
-3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only). The page loads kind **52** from your relays (not only this browser’s cache). If GitHub is connected, public keys from `api.github.com/users/<you>/keys` are offered as fill-in suggestions.
+3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only). The page **signs kind 52** with whatever you logged in with: **NIP-07** browser extension, **NIP-46 remote signer** (Amber, bunker, …), or nsec. Then it publishes to relays and POSTs the event to the bridge so you do not wait. The list loads kind **52** from your relays (not only this browser’s cache). If GitHub is connected, public keys from `api.github.com/users/<you>/keys` are offered as fill-in suggestions.
 
 **Kind 52 + git relays:** Many git-oriented relays (e.g. `relay.ngit.dev`, `gitnostr.com`) **reject** bare kind-52 events (“must reference an accepted repository”). Clone auth still works because Settings **POSTs the event to the bridge**. The Settings list also always queries general relays (`relay.damus.io`, `nos.lol`) so keys do not look “missing” when only git relays are configured.
 
@@ -60,8 +80,7 @@ If one username fails in your local SSH config, try the other. Both map to the s
 Create a new repository and push your local files:
 
 ```bash
-# 1. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 1. Create the repo (pick one: website Create repository, `gn repo create`, or MCP createRepo)
 
 # 2. Clone the empty repository
 git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -75,8 +94,7 @@ git add .
 git commit -m "Initial commit: Add files from local source"
 git push origin main
 
-# 5. Publish to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ### 1.2 From GitHub to Nostr Using Gittr
@@ -88,8 +106,7 @@ Import a GitHub repository to Nostr:
 git clone https://github.com/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Create the repo (website, `gn repo create`, or MCP createRepo)
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -97,8 +114,7 @@ git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 # 4. Push to gittr
 git push gittr main
 
-# 5. Publish to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ### 1.3 From a Git Server
@@ -110,8 +126,7 @@ Import from any Git server (GitLab, self-hosted, etc.):
 git clone https://git.example.com/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Create the repo (website, `gn repo create`, or MCP createRepo)
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -119,8 +134,7 @@ git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 # 4. Push to gittr
 git push gittr main
 
-# 5. Publish to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ### 1.4 From Codeberg
@@ -132,8 +146,7 @@ Import from Codeberg:
 git clone https://codeberg.org/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Create the repo (website, `gn repo create`, or MCP createRepo)
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -141,8 +154,7 @@ git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 # 4. Push to gittr
 git push gittr main
 
-# 5. Publish to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ## Workflow 2: Delete or Add Files in Existing Repos via SSH
@@ -193,8 +205,7 @@ git merge github/main --allow-unrelated-histories
 # 4. Push to gittr
 git push origin main
 
-# 5. Publish updated state to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish updated state to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ### 2.3 From a Git Server
@@ -216,8 +227,7 @@ git merge source/main --allow-unrelated-histories
 # 4. Push to gittr
 git push origin main
 
-# 5. Publish updated state to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish updated state to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ### 2.4 From Codeberg
@@ -239,28 +249,32 @@ git merge codeberg/main --allow-unrelated-histories
 # 4. Push to gittr
 git push origin main
 
-# 5. Publish updated state to Nostr (via web UI)
-# Go to the repository page and click "Push to Nostr"
+# 5. Publish updated state to Nostr (website Push to Nostr, MCP, or gn)
 ```
 
 ## Publishing to Nostr (NIP-34 Events)
 
-When you push via `git push`, your code goes to the git-nostr-bridge server. To make your repository discoverable by other Nostr clients, you need to publish NIP-34 events:
+When you `git push` over SSH (or MCP `pushToBridge` over HTTPS), the **git objects** land on the bridge. Making the repo visible to other Nostr clients is a **separate** announce:
 
-1. Go to your repository page on gittr.space
-2. Click **"Push to Nostr"**
-3. Confirm the prompt in your NIP-07 wallet
+Pick **one**:
+
+1. **Website:** repo page → **Push to Nostr**. Approve the signature however you logged in:
+   - **NIP-07** browser extension, or
+   - **NIP-46 remote signer** (Amber on your phone, bunker, … — same Amber flow as pairing), or
+   - nsec in the browser (not recommended)
+2. **MCP:** `createRepo` / `publishRepoAnnouncement` + `publishRepoState` (local `nsec`, no SSH, no Amber / NIP-46)
+3. **CLI:** `gn repo create` / equivalent `gn` publish (local `nsec`)
 
 This publishes:
 - **Announcement event** (kind 30617) - Announces your repository
 - **State event** (kind 30618) - Contains current repository state (branches, commits, etc.)
 
 **Important**: 
-- `git push` updates the repository on the bridge server
-- "Push to Nostr" publishes NIP-34 events to Nostr relays **and** (on gittr) tries to mirror Git objects to `git.gittr.space`
+- `git push` / MCP `pushToBridge` update the repository on the bridge server
+- Announcing publishes NIP-34 events to Nostr relays **and** (on gittr) tries to mirror Git objects to `git.gittr.space`
 - For **imports**, the original forge (GitHub/GitLab/Codeberg) stays the `source`; the bridge is a mirror, not the only home of the objects. Other GRASP hosts in `clone[]` are extra links/mirrors.
 - Both announce + a working git host are needed for full functionality: bridge/GRASP for git operations, Nostr events for discovery
-- Publishing to Nostr always requires a signer approval (NIP-07 extension or local nsec signer)
+- Publishing to Nostr always requires **a signer**. On the website that is **NIP-07**, **NIP-46 remote (Amber / bunker)**, or nsec. MCP/`gn` use a local `nsec`. The website is not the only signer.
 
 ## Push Paywall Flow (Optional Per Repository)
 
@@ -350,12 +364,12 @@ NIP-34-style clone URLs use **npub**. On disk the bridge stores **hex** and shou
 **What's stored in localStorage**:
 - ✅ **SSH Public Keys**: Safe - public keys are meant to be public
 - ✅ **Repositories, settings, UI preferences**: Low risk
-- ⚠️ **Nostr Private Keys (nsec)**: **STORED AS PLAINTEXT** - Accessible via browser dev tools (if using nsec login instead of NIP-07)
+- ⚠️ **Nostr Private Keys (nsec)**: **STORED AS PLAINTEXT** if you logged in with nsec in the browser. NIP-07 and NIP-46 remote signers do **not** put the nsec in localStorage.
 
 **What's NOT stored in localStorage**:
 - ❌ **SSH Private Keys**: **NEVER stored** - Only downloaded once and saved to `~/.ssh/` on your local machine
 
 **Best Practices**:
-- ✅ **Use NIP-07 Extension** (recommended): Nostr private keys stay in the extension, never in localStorage
+- ✅ **NIP-07 extension or NIP-46 remote signer (Amber / bunker)** (recommended): Nostr private keys stay on the extension or the phone/bunker, never in localStorage
 - ✅ **SSH Private Keys**: Never stored in browser - only in `~/.ssh/` on your local machine
-- ⚠️ **Nostr Private Keys**: If you must use nsec login, use a dedicated browser profile
+- ⚠️ **nsec in the browser**: If you must, use a dedicated browser profile — MCP/`gn` can keep the nsec in a keys file on the machine running the agent instead

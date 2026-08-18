@@ -812,9 +812,13 @@ export default function HelpPage() {
                   commit, push)
                 </li>
                 <li>
-                  <strong>Bulk import:</strong> Lists repos from a GitHub
-                  user/org for you to pick; nothing imports until you confirm.
-                  You can import several chosen repos in one click.
+                  <strong>MCP or gn:</strong> Agents use{" "}
+                  <code className="bg-gray-800 px-1 rounded">createRepo</code>{" "}
+                  (HTTPS + nsec, no SSH). Operators can use{" "}
+                  <code className="bg-gray-800 px-1 rounded">
+                    gn repo create
+                  </code>
+                  . Same git host as the website.
                 </li>
               </ul>
               <p className="text-sm text-gray-400 mb-3">
@@ -829,18 +833,33 @@ export default function HelpPage() {
                   📖 Complete Workflow for Empty Repositories
                 </p>
                 <p className="text-sm text-gray-300 mb-2">
-                  After creating an empty repository via web UI:
+                  After creating an empty repository (website, MCP{" "}
+                  <code className="bg-gray-800 px-1 rounded">createRepo</code>,
+                  or <code className="bg-gray-800 px-1 rounded">gn</code>
+                  ):
                 </p>
                 <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside ml-2">
                   <li>
-                    Set up SSH keys in <strong>Settings → SSH Keys</strong> (if
-                    not already done)
+                    Pick a git door: <strong>SSH</strong> (laptop, like GitHub)
+                    or <strong>HTTPS / MCP</strong> (agents — no SSH key)
+                  </li>
+                  <li>
+                    For SSH only: publish your public key once (
+                    <strong>Settings → SSH Keys</strong>, or{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      gn ssh-key add
+                    </code>
+                    ). The website is not in the SSH path after that.
                   </li>
                   <li>
                     Clone:{" "}
                     <code className="bg-gray-800 px-1 rounded">
                       git clone
-                      git@git.gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git
+                      git@git.gittr.space:&lt;your-npub&gt;/&lt;repo-name&gt;.git
+                    </code>{" "}
+                    or HTTPS{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      https://git.gittr.space/&lt;hex&gt;/&lt;repo&gt;.git
                     </code>
                   </li>
                   <li>
@@ -1036,9 +1055,9 @@ export default function HelpPage() {
 
               <HelpSubTopic title={<>Three ways gittr talks to forges</>}>
                 <p className="text-sm text-gray-300">
-                  gittr does not treat every git website the same under the hood.
-                  After you import, it refreshes metadata (fork parent, stars,
-                  issues, pull requests, releases) using one of three API
+                  gittr does not treat every git website the same under the
+                  hood. After you import, it refreshes metadata (fork parent,
+                  stars, issues, pull requests, releases) using one of three API
                   families:
                 </p>
                 <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/50 rounded text-sm text-gray-300 space-y-3">
@@ -1080,8 +1099,8 @@ export default function HelpPage() {
                       <strong className="text-gray-300">Gitea</strong>).{" "}
                       <strong className="text-gray-300">Codeberg</strong> (
                       codeberg.org) is a popular public site that{" "}
-                      <em>runs Forgejo</em> — not a separate product. They
-                      share the same URL layout (
+                      <em>runs Forgejo</em> — not a separate product. They share
+                      the same URL layout (
                       <code className="bg-black/40 px-1 rounded text-xs">
                         host/owner/repo
                       </code>
@@ -1217,8 +1236,12 @@ export default function HelpPage() {
                     git clone git@git.gittr.space:npub1.../repo-name.git
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
-                    Requires SSH keys (Settings → SSH Keys). Works out of the
-                    box with any Git client.
+                    For laptop Git, like GitHub. Publish your public key once
+                    (Settings → SSH Keys, or{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      gn ssh-key add
+                    </code>
+                    ). After that, clone/push never go through the website.
                   </p>
                 </div>
 
@@ -1231,9 +1254,9 @@ export default function HelpPage() {
                     https://git.gittr.space/&lt;owner-pubkey&gt;/repo-name.git
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
-                    Read-only clones from our public mirrors (git.gittr.space,
-                    gitnostr.com, relay.ngit.dev, ngit-relay.nostrver.se, ...).
-                    Great for CI/CD or quick testing.
+                    Same bare repo as SSH. Public clones work over HTTPS.{" "}
+                    <strong>gittr-mcp</strong> pushes over HTTPS + a local nsec
+                    (no SSH, no Amber). Authenticated HTTPS is not read-only.
                   </p>
                 </div>
 
@@ -1410,9 +1433,12 @@ export default function HelpPage() {
                 <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-2">
                   <p className="font-semibold text-white">Publishing</p>
                   <p className="text-sm text-gray-200">
-                    Use <strong>Push to Nostr</strong> on the Code tab. That
-                    publishes the NIP‑34 announcement to your relays and, on
-                    gittr, tries to mirror the Git repo to{" "}
+                    Use <strong>Push to Nostr</strong> on the Code tab. Approve
+                    with whatever you logged in with:{" "}
+                    <strong>NIP-07</strong> extension,{" "}
+                    <strong>NIP-46 remote signer</strong> (Amber / bunker), or
+                    nsec. That publishes the NIP‑34 announcement to your relays
+                    and, on gittr, tries to mirror the Git repo to{" "}
                     <code className="bg-black/40 px-1 rounded">
                       git.gittr.space
                     </code>{" "}
@@ -1468,7 +1494,21 @@ export default function HelpPage() {
             <HelpTopic id="push-to-nostr" title={<>Push to Nostr</>}>
               <p>
                 After making local changes, click <strong>Push to Nostr</strong>{" "}
-                on the Code tab (sidebar) to publish updates.
+                on the Code tab (sidebar). Sign with{" "}
+                <strong>NIP-07</strong>, <strong>Amber / NIP-46</strong> remote
+                signer, or nsec — same login as Settings. Or use{" "}
+                <strong>gittr-mcp</strong>{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  publishRepoAnnouncement
+                </code>{" "}
+                / <code className="bg-gray-800 px-1 rounded">createRepo</code>{" "}
+                (same events, local nsec, no SSH).
+              </p>
+              <p className="mt-2 text-sm text-gray-400">
+                Amber must stay open/unlocked on your phone. Push first opens
+                sockets to Amber&apos;s bunker relays; if that fails, nothing is
+                published. Hard-refresh once if a previous page load left those
+                relays stuck, then try Push again.
               </p>
               <p className="mt-2 text-sm text-gray-400">
                 That does two different things — and it does{" "}
@@ -1915,8 +1955,38 @@ export default function HelpPage() {
 
             <HelpTopic id="ssh-keys" title={<>SSH Keys</>}>
               <p>
-                Manage your SSH keys in Settings → SSH Keys. You'll need these
-                for Git operations over SSH.
+                SSH keys are only for laptop{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  git@git.gittr.space
+                </code>
+                . They are Nostr kind <strong>52</strong> events the bridge
+                copies into{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  authorized_keys
+                </code>
+                . The website is <strong>not</strong> in the SSH path after the
+                key is registered.
+              </p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm text-gray-300">
+                <li>
+                  <strong>Optional UI:</strong> Settings → SSH Keys. Kind 52 is
+                  signed with NIP-07, Amber / NIP-46 (bunker), or nsec — not
+                  only a browser extension.
+                </li>
+                <li>
+                  <strong>CLI, no UI:</strong>{" "}
+                  <code className="bg-gray-800 px-1 rounded">
+                    gn ssh-key add ~/.ssh/id_ed25519.pub
+                  </code>
+                </li>
+                <li>
+                  <strong>Agents:</strong> gittr-mcp uses HTTPS + nsec instead —
+                  skip SSH entirely
+                </li>
+              </ul>
+              <p className="mt-2 text-sm text-gray-400">
+                Push to Nostr, issues, and PRs in the browser use your Nostr
+                key, not SSH.
               </p>
             </HelpTopic>
 

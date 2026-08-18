@@ -24,13 +24,17 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import {
+  collectBlockedRelayPoolUrls,
   filterBunkerBlockedRelays,
   isBunkerMainPoolBlocked,
+  setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 import { getDefaultRelayUrls } from "./relay-env";
 import {
   RemoteSignerManager,
+  expandBunkerRelays,
+  getSessionUriRelays,
   loadStoredRemoteSignerSession,
 } from "./remoteSigner";
 import {
@@ -92,6 +96,38 @@ export const useNostrContext = () => {
 };
 
 const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Drop bunker transport hosts from the main relaypool before discovery dials
+  // them — module-level RelayPool(defaultRelays) connects at import time.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = loadStoredRemoteSignerSession();
+    if (!stored?.userPubkey) return;
+    const uriRelays = getSessionUriRelays(stored);
+    const bunkerHosts = expandBunkerRelays(
+      uriRelays.length > 0 ? uriRelays : stored.relays || []
+    );
+    if (bunkerHosts.length === 0) return;
+    setBunkerMainPoolBlockedHosts(bunkerHosts);
+    // Close by the pool's real keys (trailing slash / case), not our
+    // normalized bunker list — otherwise removeRelay is a no-op.
+    const poolKeys = collectBlockedRelayPoolUrls(
+      relayPool.getRelayStatuses().map(([url]) => url)
+    );
+    for (const url of poolKeys) {
+      try {
+        relayPool.removeRelay(url);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (poolKeys.length > 0) {
+      console.log(
+        `[NostrContext] Freed ${poolKeys.length} main-pool socket(s) for Amber bunker transport`,
+        poolKeys
+      );
+    }
+  }, []);
+
   const addRelay = useCallback((url: string) => {
     try {
       if (isBunkerMainPoolBlocked(url)) {
@@ -123,7 +159,20 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   const removeRelay = useCallback((url: string) => {
-    relayPool.removeRelay(url);
+    const want = url.trim().toLowerCase().replace(/\/+$/, "");
+    const keys = new Set<string>([url]);
+    for (const [poolUrl] of relayPool.getRelayStatuses()) {
+      if (poolUrl.trim().toLowerCase().replace(/\/+$/, "") === want) {
+        keys.add(poolUrl);
+      }
+    }
+    for (const key of keys) {
+      try {
+        relayPool.removeRelay(key);
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   const relayPoolSubscribe = useCallback(
@@ -241,6 +290,11 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setRemoteSigner(remoteSignerRef.current);
 
     setRemoteSignerInitialized(true);
+    // Hydrate + bunker dial in this parent effect, before child file-fetch
+    // subscribes steal browser WebSocket slots.
+    void remoteSignerRef.current.ensureBootstrapped().catch((error) => {
+      console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+    });
   }, [addRelay, removeRelay]);
 
   // Bootstrap remote signer from storage and restore pubkey if session exists

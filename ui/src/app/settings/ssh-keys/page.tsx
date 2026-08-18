@@ -984,35 +984,26 @@ export default function SSHKeysPage() {
                   <li>
                     <strong>Web UI operations</strong> (Push to Nostr, PRs,
                     Issues) publish <strong>NIP‑34 events</strong> via your
-                    Nostr key (NIP‑07 or nsec).{" "}
+                    Nostr key (NIP‑07 / Amber or nsec).{" "}
                     <strong>No SSH key required.</strong>
                   </li>
                   <li>
-                    <strong>Command-line Git operations</strong> (
+                    <strong>
+                      <code className="bg-yellow-900/50 px-1 rounded">
+                        git@git.gittr.space
+                      </code>{" "}
+                      (SSH)
+                    </strong>{" "}
+                    needs a kind‑52 key once (this page, or{" "}
                     <code className="bg-yellow-900/50 px-1 rounded">
-                      git clone
+                      gn ssh-key add
                     </code>
-                    ,{" "}
-                    <code className="bg-yellow-900/50 px-1 rounded">
-                      git push
-                    </code>
-                    ,{" "}
-                    <code className="bg-yellow-900/50 px-1 rounded">
-                      git pull
-                    </code>
-                    ) talk to the git bridge (e.g.{" "}
-                    <code className="bg-yellow-900/50 px-1 rounded">
-                      git.gittr.space
-                    </code>
-                    ) and <strong>do require an SSH key</strong>.
+                    ). After that, clone/push never go through this website.
                   </li>
                   <li>
-                    SSH keys are{" "}
-                    <strong>
-                      only needed if you want to interact with gittr from your
-                      terminal/CI
-                    </strong>
-                    .
+                    <strong>gittr-mcp / HTTPS git</strong> uses Nostr auth
+                    headers, <strong>not SSH</strong>. Agents can skip this
+                    page.
                   </li>
                   <li>
                     If you stay in the browser and let us publish NIP‑34 events

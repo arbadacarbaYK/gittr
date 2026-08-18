@@ -13,7 +13,10 @@ import { nip44 as nip44v2 } from "nostr-tools-v2";
 
 import { isGraspServer } from "../utils/grasp-servers";
 
-import { setBunkerMainPoolBlockedHosts } from "./bunker-main-pool-guard";
+import {
+  isBunkerMainPoolBlocked,
+  setBunkerMainPoolBlockedHosts,
+} from "./bunker-main-pool-guard";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 
 type PublishFn = (event: any, relays: string[]) => void;
@@ -174,11 +177,12 @@ function relayUrlsMatch(a: string, b: string): boolean {
 }
 
 /**
- * Per-relay OPEN budget. Opens run in parallel. We wait for several of
- * Amber's URI relays (not the first socket) so sign_event is not stuck on
- * one of seven bunker hosts.
+ * Per-relay OPEN budget. Opens run in parallel. Proceed as soon as one
+ * bunker socket is OPEN so Push is not blocked waiting for all URI hosts.
  */
-const BUNKER_RELAY_OPEN_BUDGET_MS = 10000;
+const BUNKER_RELAY_OPEN_BUDGET_MS = 15000;
+/** First OPEN socket is enough to unblock Push; keepalive fills the rest. */
+const BUNKER_PROCEED_WHEN_OPEN = 1;
 /** Publish/subscribe on every OPEN URI relay, not a 1–2 host subset. */
 export const BUNKER_PUBLISH_MAX_RELAYS = 8;
 /** Do not treat a single Amber URI socket as "enough" when the bunker lists more. */
@@ -1094,8 +1098,6 @@ export class RemoteSignerManager {
       this.applyNip07Adapter();
       // "idle" + adapter = logged in for browsing; signing will probe Amber.
       this.notifyState("idle");
-      // Warm bunker WebSockets in the background (no Amber popup). Push/Save
-      // should not be the first cold dial after a page load.
       this.scheduleBackgroundBunkerWarm();
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
@@ -1678,7 +1680,7 @@ export class RemoteSignerManager {
       );
       console.error(
         "[RemoteSigner] Bunker relay statuses after warm-up:",
-        statuses
+        JSON.stringify(statuses)
       );
       throw new Error(
         "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
@@ -1767,8 +1769,7 @@ export class RemoteSignerManager {
       this.claimBunkerHostsForDirectPool(
         uriRelays.length > 0 ? uriRelays : expanded
       );
-      // Let browser tear down freed main-pool sockets before we dial.
-      await new Promise((r) => setTimeout(r, 400));
+      await this.waitForMainPoolBunkerSlotsClear();
 
       const preferOpen = (open: string[]) =>
         preferUriOpenRelays(open, uriRelays);
@@ -1784,29 +1785,73 @@ export class RemoteSignerManager {
       // app relaypool — duplicate sockets to the same hosts starve Amber transport.
       open = await this.ensureDirectTransport(session, undefined, { quiet });
       if (open.length === 0) {
-        softWarn(
-          "[RemoteSigner] No bunker relays open after warm-up; resetting direct pool and retrying"
-        );
-        this.freeMainPoolBunkerCollisions(expanded);
-        await new Promise((r) => setTimeout(r, 400));
-        this.resetDirectPool();
-        open = await this.ensureDirectTransport(session, undefined, { quiet });
+        const dialTargets = this.buildBunkerTransportTargets(session);
+        const snap = await this.snapshotDirectRelayStatuses(dialTargets);
+        const anyConnecting = Object.values(snap).some((s) => s === 0);
+        if (anyConnecting) {
+          softWarn(
+            "[RemoteSigner] Bunker sockets still CONNECTING — waiting instead of resetDirectPool",
+            snap
+          );
+          await new Promise((r) => setTimeout(r, 8000));
+          open = preferOpen(await this.listDirectOpenRelays(dialTargets));
+          if (open.length > 0) return open;
+        } else {
+          softWarn(
+            "[RemoteSigner] No bunker relays open after warm-up; resetting direct pool and retrying"
+          );
+          this.freeMainPoolBunkerCollisions(expanded);
+          await this.waitForMainPoolBunkerSlotsClear();
+          this.resetDirectPool();
+          open = await this.ensureDirectTransport(session, undefined, {
+            quiet,
+          });
+        }
       }
       if (open.length === 0) {
         const forced = [
           ...NIP46_SIGNER_DEFAULT_RELAYS,
           ...NIP46_PAIRING_RELAY_FALLBACKS,
         ].filter((u) => u.startsWith("wss://") && !isGraspServer(u));
-        softWarn(
-          "[RemoteSigner] Still no bunker sockets — dialing signer default relays (not persisted)",
-          forced
+        const snap = await this.snapshotDirectRelayStatuses(
+          this.buildBunkerTransportTargets(session)
         );
-        // Do NOT overwrite uriRelays / session.relays with defaults.
-        this.claimBunkerHostsForDirectPool([...uriRelays, ...forced]);
-        await new Promise((r) => setTimeout(r, 600));
-        this.resetDirectPool();
-        // Pass forced list so this attempt actually dials defaults (not only URI).
-        open = await this.ensureDirectTransport(session, forced, { quiet });
+        const stillConnecting = Object.values(snap).some((s) => s === 0);
+        if (stillConnecting) {
+          softWarn(
+            "[RemoteSigner] Defaults skipped — in-flight bunker sockets still CONNECTING",
+            snap
+          );
+          await new Promise((r) => setTimeout(r, 8000));
+          open = preferOpen(
+            await this.listDirectOpenRelays(
+              this.buildBunkerTransportTargets(session)
+            )
+          );
+        } else {
+          softWarn(
+            "[RemoteSigner] Still no bunker sockets — dialing signer default relays (not persisted)",
+            forced
+          );
+          // Do NOT overwrite uriRelays / session.relays with defaults.
+          this.claimBunkerHostsForDirectPool([...uriRelays, ...forced]);
+          await this.waitForMainPoolBunkerSlotsClear();
+          this.resetDirectPool();
+          // Pass forced list so this attempt actually dials defaults (not only URI).
+          open = await this.ensureDirectTransport(session, forced, { quiet });
+        }
+      }
+      if (open.length === 0 && uriRelays.length > 0) {
+        softWarn(
+          "[RemoteSigner] Parallel bunker dial failed — trying Amber URI relays serially",
+          uriRelays
+        );
+        for (const url of uriRelays) {
+          if (await this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS)) {
+            open = preferOpen([url]);
+            break;
+          }
+        }
       }
       return open;
     })().finally(() => {
@@ -1991,20 +2036,35 @@ export class RemoteSignerManager {
       let relay = this.getDirectRelayFromPool(url);
       if (relay) {
         if (await waitOpen(relay)) return true;
-      } else {
-        const waitMs = Math.max(remaining(), 800);
+        if (relay.status === 0) {
+          return this.waitForRelayStatusOpen(
+            relay,
+            Math.max(remaining(), 2000)
+          );
+        }
+        // CLOSED/CLOSING cache entry — SimplePool returns it without reconnecting.
+        this.dropDirectRelay(url);
+        relay = null;
+      }
+      if (!relay) {
+        // Do not spend the whole OPEN budget on Promise.race — if ensureRelay
+        // is still CONNECTING after this, keep waiting the remainder.
+        const firstWait = Math.min(8000, Math.max(remaining(), 800));
         try {
           relay = await Promise.race([
             this.directPool.ensureRelay(url),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("ensureRelay timeout")), waitMs)
+              setTimeout(
+                () => reject(new Error("ensureRelay timeout")),
+                firstWait
+              )
             ),
           ]);
           if (await waitOpen(relay)) return true;
         } catch (error) {
           // Race lost — ensureRelay may still be connecting in _conn. Wait it out.
           const inFlight = this.getDirectRelayFromPool(url);
-          if (inFlight?.status === 0 && remaining() > 0) {
+          if (inFlight?.status === 0) {
             if (await this.waitForRelayStatusOpen(inFlight, remaining())) {
               return true;
             }
@@ -2024,17 +2084,14 @@ export class RemoteSignerManager {
       );
     }
 
-    // One clean retry — only now drop a stuck socket (need meaningful budget left).
+    // One clean retry — never drop a CONNECTING socket to start over.
+    const leftover = this.getDirectRelayFromPool(url);
+    if (leftover?.status === 1) return true;
+    if (leftover?.status === 0) {
+      return this.waitForRelayStatusOpen(leftover, Math.max(remaining(), 800));
+    }
     if (remaining() < 1500) {
-      const leftover = this.getDirectRelayFromPool(url);
-      if (leftover?.status === 1) return true;
-      if (leftover?.status === 0) {
-        return this.waitForRelayStatusOpen(
-          leftover,
-          Math.max(remaining(), 800)
-        );
-      }
-      return false;
+      return leftover?.status === 1;
     }
     try {
       this.dropDirectRelay(url);
@@ -2106,25 +2163,29 @@ export class RemoteSignerManager {
     }
   }
 
-  /** Idle warm of bunker WebSockets — no Amber connect/sign popup. */
+  /** Wait until main-pool bunker sockets are gone (or CLOSED) before dialing. */
+  private async waitForMainPoolBunkerSlotsClear(timeoutMs = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const leftovers = (this.deps.getRelayStatuses?.() || []).filter(
+        ([url, status]) => isBunkerMainPoolBlocked(url) && status !== 3
+      );
+      if (leftovers.length === 0) return;
+      for (const [url] of leftovers) {
+        try {
+          this.deps.removeRelay?.(url);
+        } catch {
+          /* ignore */
+        }
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /** Open bunker WebSockets immediately — no Amber popup. File-fetch must not win the first dial. */
   private scheduleBackgroundBunkerWarm() {
     if (typeof window === "undefined" || !this.session?.userPubkey) return;
-    const run = () => {
-      void this.warmBunkerTransportQuietly();
-    };
-    const idle = (
-      window as Window & {
-        requestIdleCallback?: (
-          cb: () => void,
-          opts?: { timeout: number }
-        ) => number;
-      }
-    ).requestIdleCallback;
-    if (typeof idle === "function") {
-      idle(run, { timeout: 4000 });
-    } else {
-      setTimeout(run, 1200);
-    }
+    void this.warmBunkerTransportQuietly();
     this.startBunkerKeepalive();
   }
 
@@ -2241,10 +2302,7 @@ export class RemoteSignerManager {
             alreadyOpen.filter((u) => preferredNorm.has(normalizeRelayUrl(u)))
           )
         : uniqueNormalizedRelays(alreadyOpen);
-    const wantPreferred =
-      preferredNorm.size === 0
-        ? 1
-        : Math.min(BUNKER_PUBLISH_MAX_RELAYS, preferredNorm.size);
+    const wantPreferred = BUNKER_PROCEED_WHEN_OPEN;
     const toDial = targets.filter(
       (t) => !alreadyNorm.has(normalizeRelayUrl(t))
     );

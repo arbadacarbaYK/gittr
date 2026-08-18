@@ -26,6 +26,8 @@
 - [ ] Smoke: site loads, bridge logs show relays, `git ls-remote` works
 - [ ] Backups + log access configured
 
+**GitHub vs live Hetzner:** gittr.space serves the Hetzner build. GitHub `main` is a separate copy (Code tab, clones, agents). After a live deploy of uncommitted files, **commit and `git push origin main`** so GitHub matches Hetzner. Leaving production-only diffs in the working tree is what makes the next session look like “old GitHub / mystery local changes.”
+
 ---
 
 ## Relay event kinds
