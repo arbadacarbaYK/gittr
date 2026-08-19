@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
@@ -30,9 +30,14 @@ import {
   type AggregateListGroup,
   type AggregateListSort,
   type AggregateListSource,
+  collapseAllRepoKeys,
   filterByAggregateSource,
+  groupAggregateItemsByRepo,
+  hasPersistedCollapsedRepoKeys,
+  isRepoGroupCollapsed,
   loadAggregateListPrefs,
   loadCollapsedRepoKeys,
+  repoGroupKeys,
   repoIsFork,
   saveAggregateListPrefs,
   saveCollapsedRepoKeys,
@@ -223,16 +228,20 @@ export default function PullsPage({}) {
   const [listSource, setListSource] = useState<AggregateListSource>("all");
   const [listGroup, setListGroup] = useState<AggregateListGroup>("repo");
   const [listSort, setListSort] = useState<AggregateListSort>("updated");
-  const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(
-    () => new Set()
+  const [collapsedRepos, setCollapsedRepos] = useState<Set<string> | null>(
+    null
   );
+  const [collapsePrefsLoaded, setCollapsePrefsLoaded] = useState(false);
 
   useEffect(() => {
     const prefs = loadAggregateListPrefs("pulls");
     setListSource(prefs.source);
     setListGroup(prefs.group);
     setListSort(prefs.sort);
-    setCollapsedRepos(loadCollapsedRepoKeys("pulls"));
+    if (hasPersistedCollapsedRepoKeys("pulls")) {
+      setCollapsedRepos(loadCollapsedRepoKeys("pulls"));
+    }
+    setCollapsePrefsLoaded(true);
   }, []);
 
 
@@ -736,16 +745,41 @@ export default function PullsPage({}) {
     return sortListItems(sourced, listSort);
   }, [prsForTypedList, prStatus, listSource, listSort]);
 
-  const toggleRepoCollapsed = useCallback((key: string) => {
-    setCollapsedRepos((prev) => {
-      const next = new Set(prev);
-      const k = key.toLowerCase();
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      saveCollapsedRepoKeys("pulls", next);
-      return next;
-    });
-  }, []);
+  const prGroups = useMemo(
+    () =>
+      listGroup === "repo" ? groupAggregateItemsByRepo(filteredPRs) : null,
+    [filteredPRs, listGroup]
+  );
+
+  const allRepoGroupKeys = useMemo(
+    () => (prGroups ? repoGroupKeys(prGroups) : []),
+    [prGroups]
+  );
+
+  useEffect(() => {
+    if (!collapsePrefsLoaded) return;
+    if (hasPersistedCollapsedRepoKeys("pulls")) return;
+    if (listGroup !== "repo" || !prGroups?.length) return;
+    setCollapsedRepos(collapseAllRepoKeys(prGroups.map((g) => g.key)));
+  }, [collapsePrefsLoaded, prGroups, listGroup]);
+
+  const toggleRepoCollapsed = useCallback(
+    (key: string) => {
+      startTransition(() => {
+        setCollapsedRepos((prev) => {
+          const next = new Set(
+            prev ?? collapseAllRepoKeys(allRepoGroupKeys)
+          );
+          const k = key.toLowerCase();
+          if (next.has(k)) next.delete(k);
+          else next.add(k);
+          saveCollapsedRepoKeys("pulls", next);
+          return next;
+        });
+      });
+    },
+    [allRepoGroupKeys]
+  );
 
   const handleListSource = useCallback((v: AggregateListSource) => {
     setListSource(v);
@@ -909,65 +943,219 @@ export default function PullsPage({}) {
                     ? "No open pull requests."
                     : "No closed pull requests."}
                 </li>
-              ) : (
-                filteredPRs.flatMap((item, idx) => {
-                  const repoKey = `${item.entity}/${item.repo}`.toLowerCase();
-                  const prev = idx > 0 ? filteredPRs[idx - 1] : null;
-                  const prevKey = prev
-                    ? `${prev.entity}/${prev.repo}`.toLowerCase()
-                    : null;
-                  const isNewGroup =
-                    listGroup === "repo" && repoKey !== prevKey;
-                  const nodes: React.ReactNode[] = [];
-                  if (isNewGroup) {
-                    const entityPubkey = resolveEntityToPubkey(item.entity);
-                    const displayName = getEntityDisplayName(
-                      entityPubkey,
-                      entityMetadata,
-                      item.entity
-                    );
-                    const groupCount = filteredPRs.filter(
-                      (p) =>
-                        `${p.entity}/${p.repo}`.toLowerCase() === repoKey
-                    ).length;
-                    const collapsed = collapsedRepos.has(repoKey);
-                    nodes.push(
-                      <li
-                        key={`group-${repoKey}`}
-                        className="bg-[#12151a] px-3 py-2"
+              ) : prGroups ? (
+                prGroups.flatMap((group) => {
+                  const collapsed = isRepoGroupCollapsed(
+                    group.key,
+                    collapsedRepos
+                  );
+                  const entityPubkey = resolveEntityToPubkey(group.entity);
+                  const displayName = getEntityDisplayName(
+                    entityPubkey,
+                    entityMetadata,
+                    group.entity
+                  );
+                  const header = (
+                    <li
+                      key={`group-${group.key}`}
+                      className="bg-[#12151a] px-3 py-2"
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 text-left text-sm font-medium text-zinc-200 hover:text-purple-300"
+                        onClick={() => toggleRepoCollapsed(group.key)}
+                        aria-expanded={!collapsed}
                       >
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 text-left text-sm font-medium text-zinc-200 hover:text-purple-300"
-                          onClick={() => toggleRepoCollapsed(repoKey)}
-                          aria-expanded={!collapsed}
+                        {collapsed ? (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-500" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
+                        )}
+                        <Link
+                          href={`/${group.entity}/${group.repo}`}
+                          className="truncate hover:text-purple-400"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {collapsed ? (
-                            <ChevronRight className="h-4 w-4 shrink-0 text-zinc-500" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" />
-                          )}
-                          <Link
-                            href={`/${item.entity}/${item.repo}`}
-                            className="truncate hover:text-purple-400"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {displayName}/{item.repo}
-                          </Link>
-                          <span className="ml-auto shrink-0 text-xs text-zinc-500">
-                            {groupCount}
-                            {item.isFork ? " · fork" : ""}
+                          {displayName}/{group.repo}
+                        </Link>
+                        <span className="ml-auto shrink-0 text-xs text-zinc-500">
+                          {group.items.length}
+                          {group.items.some((i) => i.isFork) ? " · fork" : ""}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                  if (collapsed) return [header];
+                  return [
+                    header,
+                    ...group.items.map((item) => (
+                      <li
+                        key={`${item.id}-${item.entity}-${item.repo}`}
+                        className="text-gray-400 grid grid-cols-8 p-2 text-sm hover:bg-[#171B21]"
+                      >
+                        <div className="col-span-8 sm:col-span-6">
+                          <div className="sm:flex items-center text-lg font-medium">
+                            <span className="flex">
+                              {prStatus === "open" ? (
+                                <GitPullRequest className="h-5 w-5 mr-2 mt-1 text-green-600" />
+                              ) : (
+                                <GitMerge className="h-5 w-5 mr-2 mt-1 text-purple-600" />
+                              )}
+                            </span>
+
+                            <Link
+                              className="text-zinc-200 hover:text-purple-500 pl-7"
+                              href={`/${item.entity}/${item.repo}/pulls/${
+                                item.id?.startsWith("pr-")
+                                  ? item.number
+                                  : item.id
+                              }`}
+                            >
+                              {item.title}
+                              {item.needsNostrRepublish ? (
+                                <span
+                                  className="ml-2 align-middle text-[10px] uppercase tracking-wide text-amber-300 border border-amber-600/50 rounded px-1 py-0.5"
+                                  title="Repository has local changes; push to Nostr so others see the latest."
+                                >
+                                  Repush
+                                </span>
+                              ) : null}
+                              {item.sourcePrStillOpen ? (
+                                <span
+                                  className="ml-2 text-[10px] text-amber-400/95"
+                                  title="Merged in gittr; GitHub still shows this PR open."
+                                >
+                                  · upstream open
+                                </span>
+                              ) : null}
+                            </Link>
+                            {normalizePrListStatus(item.status) === "open" &&
+                              (item.reviewApprovals ||
+                                item.reviewChangeRequests ||
+                                item.requiredApprovals) && (
+                                <span
+                                  className={`ml-2 px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${
+                                    (item.reviewChangeRequests ?? 0) > 0
+                                      ? "bg-red-900/40 text-red-400"
+                                      : (item.reviewApprovals ?? 0) >=
+                                        (item.requiredApprovals || 1)
+                                      ? "bg-green-900/40 text-green-400"
+                                      : "bg-yellow-900/40 text-yellow-400"
+                                  }`}
+                                >
+                                  {(item.reviewChangeRequests ?? 0) > 0 ? (
+                                    <>
+                                      ⚠️ {item.reviewChangeRequests} change{" "}
+                                      {(item.reviewChangeRequests ?? 0) === 1
+                                        ? "request"
+                                        : "requests"}
+                                    </>
+                                  ) : (item.reviewApprovals ?? 0) > 0 ? (
+                                    <>
+                                      ✓ {item.reviewApprovals}/
+                                      {item.requiredApprovals || 1} approved
+                                    </>
+                                  ) : (
+                                    <>
+                                      ⏳ {item.requiredApprovals || 1} approval
+                                      {(item.requiredApprovals || 1) === 1
+                                        ? ""
+                                        : "s"}{" "}
+                                      required
+                                    </>
+                                  )}
+                                </span>
+                              )}
+                            {item.linkedIssueBountyAmount && (
+                              <span className="ml-2 px-2 py-0.5 bg-yellow-900/40 text-yellow-400 rounded text-xs font-medium flex items-center gap-1">
+                                💰 {item.linkedIssueBountyAmount} sats
+                                {item.linkedIssueBountyStatus === "paid" && (
+                                  <span className="text-green-400">●</span>
+                                )}
+                                {item.linkedIssueBountyStatus === "released" && (
+                                  <span className="text-purple-400">✓</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <div className="ml-7 text-zinc-400 flex items-center gap-2">
+                            #{item.number} opened {item.date} by{" "}
+                            <Link
+                              className="hover:text-purple-500 flex items-center gap-1 group"
+                              href={`/${item.author}`}
+                              title={(() => {
+                                if (item.author && item.author.length === 64) {
+                                  try {
+                                    const npub = nip19.npubEncode(item.author);
+                                    return `npub: ${npub}`;
+                                  } catch {
+                                    return `pubkey: ${item.author}`;
+                                  }
+                                }
+                                return `pubkey: ${item.author}`;
+                              })()}
+                            >
+                              <Avatar className="h-4 w-4 ring-1 ring-gray-500">
+                                {(() => {
+                                  const meta = authorMetadata[item.author];
+                                  const picture = meta?.picture;
+                                  return picture &&
+                                    picture.startsWith("http") ? (
+                                    <AvatarImage src={picture} />
+                                  ) : null;
+                                })()}
+                                <AvatarFallback className="bg-gray-700 text-white text-[10px]">
+                                  {(() => {
+                                    const meta = authorMetadata[item.author];
+                                    const name =
+                                      meta?.display_name ||
+                                      meta?.name ||
+                                      item.author.slice(0, 8);
+                                    return name.slice(0, 2).toUpperCase();
+                                  })()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>
+                                {(() => {
+                                  const meta = authorMetadata[item.author];
+                                  return (
+                                    meta?.display_name ||
+                                    meta?.name ||
+                                    item.author.slice(0, 8) + "..."
+                                  );
+                                })()}
+                              </span>
+                            </Link>
+                          </div>
+                        </div>
+
+                        <div className="hidden sm:flex col-span-2 text-zinc-400 justify-between pt-2 text-right pr-3 no-wrap">
+                          <span className="ml-2 flex hover:text-purple-500 cursor-pointer font-medium">
+                            {item.linkedPR ? (
+                              <>
+                                <GitMerge className="h-5 w-5 mr-2" />
+                                {item.linkedPR}
+                              </>
+                            ) : null}
                           </span>
-                        </button>
+                          <span className="ml-2 "></span>
+                          <span className="ml-2 flex hover:text-purple-500 cursor-pointer font-medium">
+                            {item.comments ? (
+                              <>
+                                <MessageSquare className="h-5 w-5 mr-2" />
+                                {item.comments}
+                              </>
+                            ) : null}
+                          </span>
+                        </div>
                       </li>
-                    );
-                  }
-                  if (listGroup === "repo" && collapsedRepos.has(repoKey)) {
-                    return nodes;
-                  }
-                  nodes.push(
+                    )),
+                  ];
+                })
+              ) : (
+                filteredPRs.map((item) => (
                   <li
-                    key={`${item.id} ${item.entity}`}
+                    key={`${item.id}-${item.entity}-${item.repo}`}
                     className="text-gray-400 grid grid-cols-8 p-2 text-sm hover:bg-[#171B21]"
                   >
                     <div className="col-span-8 sm:col-span-6">
@@ -1155,9 +1343,7 @@ export default function PullsPage({}) {
                       </span>
                     </div>
                   </li>
-                  );
-                  return nodes;
-                })
+                ))
               )}
             </ul>
           </div>

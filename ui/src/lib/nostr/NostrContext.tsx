@@ -68,8 +68,31 @@ declare global {
 }
 
 // NEXT_PUBLIC_NOSTR_RELAYS — see getDefaultRelayUrls() in relay-env.ts
+/** Block Amber bunker hosts before the first main-pool dial (module import). */
+function createMainRelayPool(): RelayPool {
+  let initialRelays = getDefaultRelayUrls();
+  if (typeof window !== "undefined") {
+    try {
+      const stored = loadStoredRemoteSignerSession();
+      if (stored?.userPubkey) {
+        const uriRelays = getSessionUriRelays(stored);
+        const bunkerHosts = expandBunkerRelays(
+          uriRelays.length > 0 ? uriRelays : stored.relays || []
+        );
+        if (bunkerHosts.length > 0) {
+          setBunkerMainPoolBlockedHosts(bunkerHosts);
+          initialRelays = filterBunkerBlockedRelays(initialRelays);
+        }
+      }
+    } catch {
+      /* fall back to full default relay list */
+    }
+  }
+  return new RelayPool(initialRelays);
+}
+
+const relayPool = createMainRelayPool();
 const defaultRelays = getDefaultRelayUrls();
-const relayPool = new RelayPool(defaultRelays);
 
 const NostrContext = createContext<{
   subscribe?: typeof relayPool.subscribe;
@@ -96,8 +119,8 @@ export const useNostrContext = () => {
 };
 
 const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Drop bunker transport hosts from the main relaypool before discovery dials
-  // them — module-level RelayPool(defaultRelays) connects at import time.
+  // Belt-and-suspenders: close any bunker hosts that slipped into the main pool
+  // (createMainRelayPool already filters them on import when Amber is paired).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = loadStoredRemoteSignerSession();

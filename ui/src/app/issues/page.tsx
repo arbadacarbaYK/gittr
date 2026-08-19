@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
@@ -29,10 +29,14 @@ import {
   type AggregateListGroup,
   type AggregateListSort,
   type AggregateListSource,
+  collapseAllRepoKeys,
   filterByAggregateSource,
   groupAggregateItemsByRepo,
+  hasPersistedCollapsedRepoKeys,
+  isRepoGroupCollapsed,
   loadAggregateListPrefs,
   loadCollapsedRepoKeys,
+  repoGroupKeys,
   repoIsFork,
   saveAggregateListPrefs,
   saveCollapsedRepoKeys,
@@ -314,16 +318,20 @@ export default function IssuesPage({}) {
   const [listSource, setListSource] = useState<AggregateListSource>("all");
   const [listGroup, setListGroup] = useState<AggregateListGroup>("repo");
   const [listSort, setListSort] = useState<AggregateListSort>("updated");
-  const [collapsedRepos, setCollapsedRepos] = useState<Set<string>>(
-    () => new Set()
+  const [collapsedRepos, setCollapsedRepos] = useState<Set<string> | null>(
+    null
   );
+  const [collapsePrefsLoaded, setCollapsePrefsLoaded] = useState(false);
 
   useEffect(() => {
     const prefs = loadAggregateListPrefs("issues");
     setListSource(prefs.source);
     setListGroup(prefs.group);
     setListSort(prefs.sort);
-    setCollapsedRepos(loadCollapsedRepoKeys("issues"));
+    if (hasPersistedCollapsedRepoKeys("issues")) {
+      setCollapsedRepos(loadCollapsedRepoKeys("issues"));
+    }
+    setCollapsePrefsLoaded(true);
   }, []);
 
   // Load issues from repos owned by the logged-in user only
@@ -835,16 +843,35 @@ export default function IssuesPage({}) {
     [filteredIssues, listGroup]
   );
 
-  const toggleRepoCollapsed = useCallback((key: string) => {
-    setCollapsedRepos((prev) => {
-      const next = new Set(prev);
-      const k = key.toLowerCase();
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      saveCollapsedRepoKeys("issues", next);
-      return next;
-    });
-  }, []);
+  const allRepoGroupKeys = useMemo(
+    () => (issueGroups ? repoGroupKeys(issueGroups) : []),
+    [issueGroups]
+  );
+
+  useEffect(() => {
+    if (!collapsePrefsLoaded) return;
+    if (hasPersistedCollapsedRepoKeys("issues")) return;
+    if (listGroup !== "repo" || !issueGroups?.length) return;
+    setCollapsedRepos(collapseAllRepoKeys(issueGroups.map((g) => g.key)));
+  }, [collapsePrefsLoaded, issueGroups, listGroup]);
+
+  const toggleRepoCollapsed = useCallback(
+    (key: string) => {
+      startTransition(() => {
+        setCollapsedRepos((prev) => {
+          const next = new Set(
+            prev ?? collapseAllRepoKeys(allRepoGroupKeys)
+          );
+          const k = key.toLowerCase();
+          if (next.has(k)) next.delete(k);
+          else next.add(k);
+          saveCollapsedRepoKeys("issues", next);
+          return next;
+        });
+      });
+    },
+    [allRepoGroupKeys]
+  );
 
   const handleListSource = useCallback((v: AggregateListSource) => {
     setListSource(v);
@@ -1010,7 +1037,10 @@ export default function IssuesPage({}) {
                 </li>
               ) : issueGroups ? (
                 issueGroups.flatMap((group) => {
-                  const collapsed = collapsedRepos.has(group.key);
+                  const collapsed = isRepoGroupCollapsed(
+                    group.key,
+                    collapsedRepos
+                  );
                   const entityPubkey = resolveEntityToPubkey(group.entity);
                   const displayName = getEntityDisplayName(
                     entityPubkey,

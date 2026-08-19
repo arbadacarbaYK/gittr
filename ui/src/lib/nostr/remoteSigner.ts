@@ -189,6 +189,10 @@ export const BUNKER_PUBLISH_MAX_RELAYS = 8;
 export const BUNKER_MIN_PREFERRED_OPEN = 3;
 /** Quiet re-warm so Push/Save is not the first cold dial after hydrate. */
 const BUNKER_KEEPALIVE_MS = 45000;
+/** When the tab is in the background, warm less often but do not go fully cold. */
+const BUNKER_KEEPALIVE_HIDDEN_MS = 180000;
+/** After the tab was hidden this long, force a reconnect on visibility. */
+const BUNKER_VISIBILITY_STALE_MS = 60_000;
 /**
  * Relays embedded in nostrconnect QR — must NOT include GRASP/git relays (they reject kind 24133).
  * Use signer-friendly WSS relays that overlap Amber's bunker defaults.
@@ -897,6 +901,10 @@ export class RemoteSignerManager {
   private healthProbeInFlight: Promise<void> | null = null;
   private bunkerWarmInFlight: Promise<void> | null = null;
   private bunkerKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  private bunkerVisibilityHandler: (() => void) | null = null;
+  private bunkerOnlineHandler: (() => void) | null = null;
+  private lastBunkerWarmAt = 0;
+  private lastHiddenKeepaliveAt = 0;
   /** Shared dial so background warm and Push cannot resetDirectPool mid-flight. */
   private bunkerDialInFlight: Promise<string[]> | null = null;
   /** Last direct-pool publish targets — used for sign_event timeout diagnostics. */
@@ -1686,6 +1694,8 @@ export class RemoteSignerManager {
         "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
       );
     }
+    this.lastBunkerWarmAt = Date.now();
+    this.attachBunkerTransportRecovery();
     try {
       await this.startSubscription(session, open);
     } catch (error) {
@@ -1871,6 +1881,9 @@ export class RemoteSignerManager {
     this.completedRpcIds = [];
     this.releaseBunkerHostsFromDirectPool();
     this.stopBunkerKeepalive();
+    this.detachBunkerTransportRecovery();
+    this.lastBunkerWarmAt = 0;
+    this.lastHiddenKeepaliveAt = 0;
     this.nostrConnectSignerResolved = undefined;
     this.session = null;
     persistRemoteSignerSession(null);
@@ -2164,7 +2177,7 @@ export class RemoteSignerManager {
   }
 
   /** Wait until main-pool bunker sockets are gone (or CLOSED) before dialing. */
-  private async waitForMainPoolBunkerSlotsClear(timeoutMs = 3000) {
+  private async waitForMainPoolBunkerSlotsClear(timeoutMs = 8000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const leftovers = (this.deps.getRelayStatuses?.() || []).filter(
@@ -2185,8 +2198,56 @@ export class RemoteSignerManager {
   /** Open bunker WebSockets immediately — no Amber popup. File-fetch must not win the first dial. */
   private scheduleBackgroundBunkerWarm() {
     if (typeof window === "undefined" || !this.session?.userPubkey) return;
+    this.attachBunkerTransportRecovery();
     void this.warmBunkerTransportQuietly();
     this.startBunkerKeepalive();
+  }
+
+  private attachBunkerTransportRecovery() {
+    if (typeof document !== "undefined" && !this.bunkerVisibilityHandler) {
+      this.bunkerVisibilityHandler = () => {
+        if (document.visibilityState !== "visible") return;
+        if (!this.session?.userPubkey) return;
+        const staleMs = Date.now() - this.lastBunkerWarmAt;
+        if (
+          staleMs >= BUNKER_VISIBILITY_STALE_MS ||
+          this.lastBunkerWarmAt === 0
+        ) {
+          console.log(
+            "[RemoteSigner] Tab visible — reconnecting bunker transport"
+          );
+          void this.warmBunkerTransportQuietly();
+        }
+      };
+      document.addEventListener(
+        "visibilitychange",
+        this.bunkerVisibilityHandler
+      );
+    }
+    if (typeof window !== "undefined" && !this.bunkerOnlineHandler) {
+      this.bunkerOnlineHandler = () => {
+        if (!this.session?.userPubkey) return;
+        console.log(
+          "[RemoteSigner] Network online — reconnecting bunker transport"
+        );
+        void this.warmBunkerTransportQuietly();
+      };
+      window.addEventListener("online", this.bunkerOnlineHandler);
+    }
+  }
+
+  private detachBunkerTransportRecovery() {
+    if (this.bunkerVisibilityHandler && typeof document !== "undefined") {
+      document.removeEventListener(
+        "visibilitychange",
+        this.bunkerVisibilityHandler
+      );
+      this.bunkerVisibilityHandler = null;
+    }
+    if (this.bunkerOnlineHandler && typeof window !== "undefined") {
+      window.removeEventListener("online", this.bunkerOnlineHandler);
+      this.bunkerOnlineHandler = null;
+    }
   }
 
   private startBunkerKeepalive() {
@@ -2201,7 +2262,11 @@ export class RemoteSignerManager {
         typeof document !== "undefined" &&
         document.visibilityState === "hidden"
       ) {
-        return;
+        const now = Date.now();
+        if (now - this.lastHiddenKeepaliveAt < BUNKER_KEEPALIVE_HIDDEN_MS) {
+          return;
+        }
+        this.lastHiddenKeepaliveAt = now;
       }
       void this.warmBunkerTransportQuietly();
     }, BUNKER_KEEPALIVE_MS);
@@ -2229,6 +2294,7 @@ export class RemoteSignerManager {
           console.log("[RemoteSigner] Background bunker warm ready", {
             open: open.map((u) => normalizeRelayUrl(u)),
           });
+          this.lastBunkerWarmAt = Date.now();
           try {
             await this.startSubscription(session, open);
           } catch {

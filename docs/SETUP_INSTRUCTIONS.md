@@ -118,7 +118,7 @@ The aggregate Issues and Pulls pages use real menus (not decorative GitHub place
 - **Group** — Group by repository (collapsible sections) or Flat list
 - **Sort** — Recently updated / Newest / Oldest
 
-Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo** so fork noise can be collapsed.
+Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo**; on first visit every repo section starts **collapsed** (expand/collapse choices are remembered afterward).
 
 ### Profile repo list (logged-out visitors)
 

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  collapseAllRepoKeys,
   filterByAggregateSource,
   groupAggregateItemsByRepo,
+  hasPersistedCollapsedRepoKeys,
+  isRepoGroupCollapsed,
   repoIsFork,
   repoKeyForAggregateItem,
 } from "./global-issues-pr-list";
@@ -75,5 +78,24 @@ describe("repoKeyForAggregateItem", () => {
     expect(repoKeyForAggregateItem({ entity: "Npub", repo: "Wok" })).toBe(
       "npub/wok"
     );
+  });
+});
+
+describe("collapse helpers", () => {
+  it("treats null collapsed state as all collapsed by default", () => {
+    expect(isRepoGroupCollapsed("npub/a", null)).toBe(true);
+    expect(isRepoGroupCollapsed("npub/a", new Set())).toBe(false);
+    expect(isRepoGroupCollapsed("npub/a", new Set(["npub/a"]))).toBe(true);
+  });
+
+  it("collapseAllRepoKeys lowercases keys", () => {
+    expect(Array.from(collapseAllRepoKeys(["Npub/A", "npub/b"]))).toEqual([
+      "npub/a",
+      "npub/b",
+    ]);
+  });
+
+  it("hasPersistedCollapsedRepoKeys is false without localStorage", () => {
+    expect(hasPersistedCollapsedRepoKeys("issues")).toBe(false);
   });
 });

@@ -81,6 +81,13 @@ export function saveAggregateListPrefs(
   if (prefs.sort) writeJson(storageKey(kind, "sort"), prefs.sort);
 }
 
+export function hasPersistedCollapsedRepoKeys(
+  kind: "issues" | "pulls"
+): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(storageKey(kind, "collapsed")) !== null;
+}
+
 export function loadCollapsedRepoKeys(kind: "issues" | "pulls"): Set<string> {
   const arr = readJson<string[]>(storageKey(kind, "collapsed"), []);
   return new Set(Array.isArray(arr) ? arr.map((k) => k.toLowerCase()) : []);
@@ -91,6 +98,23 @@ export function saveCollapsedRepoKeys(
   keys: Set<string>
 ): void {
   writeJson(storageKey(kind, "collapsed"), Array.from(keys));
+}
+
+/** Collapse every repo section (stored as lowercase entity/repo keys). */
+export function collapseAllRepoKeys(keys: Iterable<string>): Set<string> {
+  const next = new Set<string>();
+  for (const key of keys) next.add(key.toLowerCase());
+  return next;
+}
+
+/** `null` collapsed state means "use default" (all collapsed on first visit). */
+export function isRepoGroupCollapsed(
+  repoKey: string,
+  collapsedRepos: Set<string> | null,
+  defaultCollapsed = true
+): boolean {
+  if (collapsedRepos === null) return defaultCollapsed;
+  return collapsedRepos.has(repoKey.toLowerCase());
 }
 
 export function repoKeyForAggregateItem(item: {
@@ -154,11 +178,16 @@ export function groupAggregateItemsByRepo<
     }
     g.items.push(item);
   }
-  return Array.from(map.values()).sort((a, b) => {
+  const groups = Array.from(map.values());
+  return groups.sort((a, b) => {
     const an = `${a.entity}/${a.repo}`.toLowerCase();
     const bn = `${b.entity}/${b.repo}`.toLowerCase();
     return an.localeCompare(bn);
   });
+}
+
+export function repoGroupKeys(groups: AggregateRepoGroup<unknown>[]): string[] {
+  return groups.map((g) => g.key);
 }
 
 export function sourceMenuLabel(source: AggregateListSource): string {
