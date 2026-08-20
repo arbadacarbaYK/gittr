@@ -1,9 +1,12 @@
 /**
  * Local delete tombstones (`gittr_deleted_repos`) hide repos on My Repos /
- * Explore / Profile after Settings → Delete or "Flush my own repos".
+ * Explore / Profile after Settings → Delete (intentional hide).
  *
- * A new live 30617 must be *newer than deletedAt* to clear a tombstone.
- * Older announcements still on relays must not undo a local flush.
+ * "Flush my own repos cache" clears the browser catalog *and* lifts this
+ * owner's tombstones so Nostr / profile-repos can refill.
+ *
+ * A new live 30617 must be *newer than deletedAt* to clear a tombstone after
+ * an intentional delete. Older announcements still on relays must not undo it.
  * Explicit user recreate / re-import / publish clears without a time check.
  */
 import { nip19 } from "nostr-tools";
@@ -190,6 +193,51 @@ export function clearDeletedRepoTombstones(opts: {
       }
 
       return false;
+    });
+
+    if (nextDeleted.length !== deletedRepos.length) {
+      localStorage.setItem("gittr_deleted_repos", JSON.stringify(nextDeleted));
+      return deletedRepos.length - nextDeleted.length;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 0;
+}
+
+/**
+ * Drop every tombstone owned by this pubkey (npub / hex / ownerPubkey field).
+ * Used by "flush my own repos cache" so Nostr can refill the catalog.
+ */
+export function clearDeletedRepoTombstonesForOwner(ownerPubkey: string): number {
+  if (typeof window === "undefined") return 0;
+  const owner = (ownerPubkey || "").trim().toLowerCase();
+  if (!owner || !/^[0-9a-f]{64}$/i.test(owner)) return 0;
+
+  try {
+    const deletedRepos = readTombstones();
+    if (deletedRepos.length === 0) return 0;
+
+    const nextDeleted = deletedRepos.filter((d) => {
+      const dOwner = (d.ownerPubkey || "").trim().toLowerCase();
+      if (dOwner && dOwner === owner) return false;
+
+      const dEntity = (d.entity || "").trim().toLowerCase();
+      if (dEntity === owner) return false;
+      if (dEntity.startsWith("npub")) {
+        try {
+          const decoded = nip19.decode(d.entity!);
+          if (
+            decoded.type === "npub" &&
+            String(decoded.data).toLowerCase() === owner
+          ) {
+            return false;
+          }
+        } catch {
+          /* keep */
+        }
+      }
+      return true;
     });
 
     if (nextDeleted.length !== deletedRepos.length) {

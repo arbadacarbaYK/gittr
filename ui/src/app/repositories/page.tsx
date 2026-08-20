@@ -43,6 +43,7 @@ import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
 import {
   clearDeletedRepoTombstones,
+  clearDeletedRepoTombstonesForOwner,
   isDeletedRepoTombstoned,
 } from "@/lib/repos/deleted-repo-tombstones";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
@@ -1398,8 +1399,9 @@ export default function RepositoriesPage() {
               return false;
             });
 
-            // Local tombstone from a prior Delete/flush — only a *newer* 30617
-            // (created after deletedAt) may reopen. Older relay events stay hidden.
+            // Local tombstone from intentional Delete — only a *newer* 30617
+            // (created after deletedAt) may reopen. Cache flush lifts owner
+            // tombstones separately so Nostr can refill.
             if (isDeleted) {
               const announcedAtMs =
                 typeof event.created_at === "number"
@@ -2685,7 +2687,7 @@ export default function RepositoriesPage() {
             <button
               onClick={() => setShowClearConfirm(true)}
               className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
-              title="Flush only your own repos from this browser’s cache (not from Nostr). They stay hidden until you publish a newer 30617 after the flush — old announcements on relays will not bring them back. Unpushed local-only work is lost. Other people’s cached repos stay."
+              title="Flush only your own repos from this browser’s cache (not from Nostr). After reload, Nostr sync / profile-repos refill your list. Also clears local hide markers from a previous flush so refill is not blocked. Unpushed local-only work is lost. Other people’s cached repos stay."
             >
               <span className="sm:hidden">
                 Flush my repos
@@ -2951,10 +2953,15 @@ export default function RepositoriesPage() {
                     <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
                       <li>
                         After push already happened — safe way to refresh your
-                        own list
+                        own list from Nostr
                       </li>
                       <li>
                         After import when you want a clean refetch from relays
+                      </li>
+                      <li>
+                        If the list is empty after an older flush that left
+                        hide markers — flush again (even at 0) to lift them and
+                        let Nostr refill
                       </li>
                       <li>
                         If your own repos look stale (use &quot;Flush
@@ -3017,7 +3024,7 @@ export default function RepositoriesPage() {
                               result.keptRepos === 1 ? "" : "s"
                             } in cache`,
                             "",
-                            "These repos stay hidden until you publish a newer 30617 after this flush. Old announcements still on relays will not bring them back. Unpushed local-only work is gone.",
+                            "Local hide markers for your repos were cleared. After reload, Nostr will refill your list from relays. Unpushed local-only work is gone.",
                           ]
                             .filter(Boolean)
                             .join("\n")
@@ -3109,7 +3116,26 @@ export default function RepositoriesPage() {
             }
 
             return false;
-          }).length === 0 && <p>No repositories yet.</p>}
+          }).length === 0 && (
+            <div className="space-y-3">
+              <p>No repositories yet.</p>
+              {pubkey && (
+                <button
+                  type="button"
+                  className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-3 py-1.5 rounded text-sm"
+                  onClick={() => {
+                    const lifted = clearDeletedRepoTombstonesForOwner(pubkey);
+                    console.log(
+                      `♻️ [Repositories] Cleared ${lifted} local hide tombstone(s) for owner — reloading for Nostr refill`
+                    );
+                    window.location.assign("/repositories");
+                  }}
+                >
+                  Restore list from Nostr
+                </button>
+              )}
+            </div>
+          )}
         {!showReposLoading &&
           (() => {
             // Load list of locally-deleted repos (user deleted them, don't show)

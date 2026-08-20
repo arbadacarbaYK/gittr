@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addDeletedRepoTombstones,
   clearDeletedRepoTombstones,
+  clearDeletedRepoTombstonesForOwner,
   isDeletedRepoTombstoned,
 } from "./deleted-repo-tombstones";
 
@@ -129,6 +130,49 @@ describe("clearDeletedRepoTombstones", () => {
       announcedAtMs: flushedAt + 120_000,
     });
     expect(removed).toBe(1);
+  });
+});
+
+describe("clearDeletedRepoTombstonesForOwner", () => {
+  it("removes all tombstones for the owner pubkey", () => {
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([
+        {
+          entity: ENTITY,
+          repo: "gittr-mcp",
+          deletedAt: 1,
+          ownerPubkey: OWNER,
+        },
+        {
+          entity: ENTITY,
+          repo: "tides",
+          deletedAt: 1,
+          ownerPubkey: OWNER,
+        },
+        {
+          entity: "npub1other",
+          repo: "someone-else",
+          deletedAt: 1,
+          ownerPubkey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      ])
+    );
+    const removed = clearDeletedRepoTombstonesForOwner(OWNER);
+    expect(removed).toBe(2);
+    const left = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    );
+    expect(left).toHaveLength(1);
+    expect(left[0].repo).toBe("someone-else");
+  });
+
+  it("matches npub entity without ownerPubkey field", () => {
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([{ entity: ENTITY, repo: "only-npub", deletedAt: 1 }])
+    );
+    expect(clearDeletedRepoTombstonesForOwner(OWNER)).toBe(1);
   });
 });
 

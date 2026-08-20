@@ -23,8 +23,7 @@ import {
   resolveOverridesMap,
 } from "./overrides-idb";
 import {
-  addDeletedRepoTombstones,
-  clearDeletedRepoTombstones,
+  clearDeletedRepoTombstonesForOwner,
 } from "./deleted-repo-tombstones";
 import {
   classifyForeignReposForFlush,
@@ -379,24 +378,22 @@ export const clearForeignReposFromStorage = (
 /**
  * Remove only the signed-in user's own repos (and their file/issue/PR caches)
  * from this browser. Other people's cached repos stay.
+ *
+ * This is a *cache* flush — Nostr sync / profile-repos may refill the catalog.
+ * Hide-tombstones for this owner are cleared so refill is not blocked.
+ * Intentional Settings → Delete still uses tombstones; flush lifts them for a
+ * clean re-sync (flush is the nuclear cache reset).
  */
 export const clearOwnReposFromStorage = (
   pubkey: string
 ): RepoCacheFlushStats => {
   const plan = planOwnReposFlush(pubkey);
+  // Lift own hide list even when the catalog is already empty (stuck after a
+  // prior flush that wrote tombstones).
+  clearDeletedRepoTombstonesForOwner(pubkey);
   if (!plan) return emptyFlushStats();
 
   localStorage.setItem("gittr_repos", JSON.stringify(plan.keptRepos));
-
-  // Mark flushed repos as locally deleted so the Nostr sync on /repositories
-  // does not immediately pull them back into the browser cache.
-  addDeletedRepoTombstones(
-    plan.ownRepos.map((repo) => ({
-      entity: repo.entity,
-      repo: repo.repo || repo.slug || repo.name || undefined,
-      ownerPubkey: repo.ownerPubkey,
-    }))
-  );
 
   const ownPatterns = buildRepoKeyPatterns(plan.ownRepos);
   const keysToRemove = removeStorageKeysForPatterns(ownPatterns);
