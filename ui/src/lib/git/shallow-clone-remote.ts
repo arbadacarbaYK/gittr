@@ -1,7 +1,7 @@
 import { sanitizeRepoTreePath } from "./bare-repo-ls-tree";
 import { httpBodyIsBinary } from "./file-bytes-look-like-text";
 
-import { exec, execFile } from "child_process";
+import { exec } from "child_process";
 import * as fs from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
@@ -224,14 +224,11 @@ export async function cloneShallowAndReadFile(
       `git -C ${JSON.stringify(tempDir)} show ${JSON.stringify(spec)}`,
       {
         timeout: SHOW_TIMEOUT_MS,
-        encoding: "buffer",
         maxBuffer: MAX_FILE_BYTES + 1024,
-      } as Parameters<typeof execAsync>[1]
+        encoding: "latin1",
+      }
     );
-    const buf = Buffer.isBuffer(stdout)
-      ? stdout
-      : Buffer.from(stdout as string | Uint8Array);
-    const bytes = new Uint8Array(buf);
+    const bytes = Buffer.from(stdout, "latin1");
     if (bytes.length > MAX_FILE_BYTES) {
       fs.rmSync(tempDir, { recursive: true, force: true });
       return null;
