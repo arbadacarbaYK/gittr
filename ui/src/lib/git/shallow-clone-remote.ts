@@ -1,7 +1,7 @@
 import { sanitizeRepoTreePath } from "./bare-repo-ls-tree";
 import { httpBodyIsBinary } from "./file-bytes-look-like-text";
 
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import * as fs from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
