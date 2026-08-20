@@ -85,7 +85,9 @@ describe("addDeletedRepoTombstones", () => {
   it("adds new tombstones and skips duplicates", () => {
     localStorage.setItem(
       "gittr_deleted_repos",
-      JSON.stringify([{ entity: ENTITY, repo: "existing", deletedAt: 1 }])
+      JSON.stringify([
+        { entity: ENTITY, repo: "existing", deletedAt: 1 },
+      ])
     );
     const added = addDeletedRepoTombstones([
       { entity: ENTITY, repo: "existing" },

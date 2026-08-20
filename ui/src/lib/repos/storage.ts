@@ -1,3 +1,4 @@
+import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
 import {
   getRepoStorageKey,
   normalizeEntityForStorage,
@@ -12,10 +13,6 @@ import { nip19 } from "nostr-tools";
 
 import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
 import {
-  addDeletedRepoTombstones,
-  clearDeletedRepoTombstones,
-} from "./deleted-repo-tombstones";
-import {
   forgetOverrideBlob,
   idbDeleteRepoOverrides,
   idbPutOverride,
@@ -26,10 +23,13 @@ import {
   resolveOverridesMap,
 } from "./overrides-idb";
 import {
+  addDeletedRepoTombstones,
+  clearDeletedRepoTombstones,
+} from "./deleted-repo-tombstones";
+import {
   classifyForeignReposForFlush,
   classifyOwnReposForFlush,
 } from "./repo-cache-flush";
-import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
 
 type JsonRecord = Record<string, unknown>;
 
