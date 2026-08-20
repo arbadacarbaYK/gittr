@@ -313,8 +313,8 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setRemoteSigner(remoteSignerRef.current);
 
     setRemoteSignerInitialized(true);
-    // Hydrate + bunker dial in this parent effect, before child file-fetch
-    // subscribes steal browser WebSocket slots.
+    // Hydrate + await short URI-first bunker warm in this parent effect, before
+    // child file-fetch HTTP storms steal browser WebSocket slots.
     void remoteSignerRef.current.ensureBootstrapped().catch((error) => {
       console.error("[NostrContext] Failed to bootstrap remote signer:", error);
     });

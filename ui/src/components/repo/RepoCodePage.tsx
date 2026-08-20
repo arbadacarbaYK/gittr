@@ -5503,6 +5503,19 @@ export function RepoCodePage() {
 
     // Check if repo has clone URLs in localStorage - if so, try multi-source fetch immediately
     (async () => {
+      // Amber paired: yield briefly so URI-first bunker warm can OPEN before this
+      // page's parallel GitHub/GRASP HTTP storm starves directPool WebSockets.
+      if (hasStoredRemoteSignerSession() && remoteSigner?.ensureBootstrapped) {
+        try {
+          await Promise.race([
+            remoteSigner.ensureBootstrapped(),
+            new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+          ]);
+        } catch {
+          /* browse continues; Push will hard-fail with a clear error */
+        }
+      }
+
       const initialRepoData = repoDataRef.current;
       const initialCloneUrls: string[] = [];
       if (initialRepoData?.clone && Array.isArray(initialRepoData.clone)) {
