@@ -1,5 +1,7 @@
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { httpBodyIsBinary } from "@/lib/git/file-bytes-look-like-text";
+import { cloneShallowAndReadFile } from "@/lib/git/shallow-clone-remote";
 import { isAbsurdRepoPath } from "@/lib/repos/repo-path-sanity";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
@@ -128,6 +130,41 @@ export default async function handler(
     hasUserToken: !!userToken,
     hasPlatformToken: !!process.env.GITHUB_PLATFORM_TOKEN,
   });
+
+  const branchName: string = Array.isArray(branch)
+    ? branch[0] || "main"
+    : typeof branch === "string"
+    ? branch
+    : "main";
+  const filePathStr: string = Array.isArray(filePath)
+    ? filePath[0] || ""
+    : typeof filePath === "string"
+    ? filePath
+    : "";
+
+  const respondFromShallowClone = async (): Promise<boolean> => {
+    const rateLimitResult = await rateLimiters.gitFetch(req as any);
+    if (rateLimitResult) {
+      res.status(429).json(JSON.parse(await rateLimitResult.text()));
+      return true;
+    }
+    console.log(
+      `🔍 [Git API] Shallow-clone fallback for ${sourceUrl} ${filePathStr}`
+    );
+    const shown = await cloneShallowAndReadFile(
+      sourceUrl,
+      branchName,
+      filePathStr
+    );
+    if (!shown) return false;
+    res.status(200).json({
+      content: shown.content,
+      isBinary: shown.isBinary,
+      path: filePathStr,
+      branch: branchName,
+    });
+    return true;
+  };
 
   try {
     // Parse sourceUrl to determine if it's GitHub, GitLab, or Codeberg
@@ -923,6 +960,9 @@ export default async function handler(
           console.warn(`⚠️ [Git API] Self-hosted fetch failed:`, e?.message);
         }
       }
+      if (await respondFromShallowClone()) {
+        return;
+      }
       return res.status(lastStatus === 404 ? 404 : 502).json({
         error: "Failed to fetch file from self-hosted git server",
         status: lastStatus,
@@ -1037,9 +1077,13 @@ export default async function handler(
         });
       }
 
+      if (await respondFromShallowClone()) {
+        return;
+      }
+
       return res.status(400).json({
         error:
-          "Unsupported git server. Only GitHub, GitLab, Codeberg, self-hosted (Gitea-style raw), and GRASP servers are supported.",
+          "Unsupported git server. Only GitHub, GitLab, Codeberg, self-hosted (Gitea-style raw), GRASP servers, and cloneable HTTPS remotes are supported.",
         sourceUrl,
       });
     }

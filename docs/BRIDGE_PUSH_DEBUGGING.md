@@ -22,7 +22,7 @@
 
 **Cause**: The on-disk tree really is that one file (not a wipe). The 3s file-fetch timeout inferred default GRASP clone URLs and **unsubscribed** before `nos.lol` / shakespeare delivered the announcement, so the sidebar preferred inferred `git.gittr.space`.
 
-**Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays.
+**Fix**: Keep the Nostr subscription after timeout/EOSE (up to 20s), prefer announcement clone tags over inferred defaults in `repoData.clone` and Git Server sidebar, include `wss://nos.lol` in NIP-34 discovery relays. **Do not infer GRASP at the 3s timeout** while the 30617 is still unknown — that invented `git.gittr.space` for clone-only remotes (e.g. `friendly-machines.com`) before the event arrived. Infer only after a 30617 with empty `clone[]`, or as a 20s last resort if no announcement was seen.
 
 **Follow-up (Aug 2026)**: Do not treat *all* `KNOWN_GRASP_DOMAINS` URLs as inferred guesses when picking Git Server. If `git.gittr.space` is on the 30617 `clone` tags of a **Nostr-only** repo (normal after Push from gittr), it must win over shakespeare/ngit mirrors. That bump does **not** apply when the event has a GitHub/GitLab/Codeberg `source`. Only strip inferred URLs that are **not** on the event. Never invent gittr if the event never listed it.
 

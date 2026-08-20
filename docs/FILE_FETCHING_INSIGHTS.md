@@ -5,7 +5,7 @@ How the UI loads repo trees and file content. Implementation lives in:
 - `ui/src/lib/utils/git-source-fetcher.ts` — classify clones, list trees, GRASP / self-hosted shallow clone
 - `ui/src/components/repo/RepoCodePage.tsx` — Code tab orchestration (route `page.tsx` is a thin wrapper)
 - `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`, `tree-last-commits.ts`, `sync-from-source.ts`
-- `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` for any reachable HTTP(S) remote
+- `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` for listing; `file-content` also `git show` when forge raw URLs are missing (`ui/src/lib/git/shallow-clone-remote.ts`)
 - `ui/src/lib/git/bare-repo-tree-last-commits.ts` — batched last-commit dates for the Code file list
 - `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar “Clone URL (event)” filter (keeps pushable GRASP mirrors)
 
@@ -26,15 +26,15 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
    - Per URL: bridge `GET /api/nostr/repo/files`, or forge / **`GET /api/git/repo-files?sourceUrl=…`**
 5. **GRASP** (`nostr-git`, known GRASP host + `/npub1…/repo`): empty tree or 404 → shallow clone via `repo-files`, then optional `POST /api/nostr/repo/clone` + bridge retry
 6. **Self-hosted** (including **non-GRASP** hosts that reuse a `/npub1…/repo` path, e.g. home Freebox): **`repo-files` only** — do **not** skip as “not GRASP”
-7. Well-known GRASP mirrors are **inferred after Nostr EOSE *or* the 3s timeout** if `clone[]` is still empty (`appendInferredGraspCloneUrls` / `buildGraspHttpsCloneCandidates`) — never guessed before the announcement query starts
-8. **Bridge-only success still fills the sidebar** — if files come from `GET /api/nostr/repo/files` while the 30617 event was slow/missing, merge event clones (when known) or inferred GRASP HTTPS URLs into `repoData.clone` / localStorage so Clone URL is not blank
+7. Well-known GRASP mirrors are **inferred only after a matching kind 30617 arrived with empty `clone[]`** (metadata-only repos). The 3s timeout does **not** invent `git.gittr.space` / ngit while the announcement is still in flight. Last-resort inference is only when the 20s subscription ends and no 30617 was seen (`shouldInferGraspCloneUrls`). Never guessed before the announcement query starts. Published `clone` tags (including self-hosted HTTPS such as `https://host/git/repo.git`) are used as-is — they are **not** copied onto `source`.
+8. **Bridge-only success still fills the sidebar** — if files come from `GET /api/nostr/repo/files` while the 30617 event was slow/missing, merge event clones (when known) into `repoData.clone`. Do not invent GRASP URLs for the sidebar until the announcement is confirmed empty.
 9. Repo event queries always include NIP-34 discovery relays (`relay.ngit.dev`, shakespeare, nostrhub, gittr) even when they are not in the viewer’s social relay list — many batch-imported / ngit-published repos announce only there
 
 **Single file**
 
 1. Embedded in event / local cache  
 2. Bridge `GET /api/nostr/repo/file-content`  
-3. Upstream `GET /api/git/file-content?sourceUrl=…`  
+3. Upstream `GET /api/git/file-content?sourceUrl=…` (forges, Gitea-style raw, then **shallow `git clone` + `git show`** for other public HTTPS remotes announced on `clone`)  
 4. Binary → base64 / data URL in the browser  
 
 **Refetch content hydrate** (after `/api/import` returns metadata-only files)

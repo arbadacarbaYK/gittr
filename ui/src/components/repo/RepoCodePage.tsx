@@ -91,12 +91,17 @@ import {
   removeAutoNostrPagesLinks,
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
+import { formatForgeAttributionLabel } from "@/lib/repos/forge-fork-meta";
 import {
   isDisplayableForkAttribution,
   resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
-import { formatForgeAttributionLabel } from "@/lib/repos/forge-fork-meta";
+import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
+import {
+  type AnnouncementCloneStatus,
+  shouldInferGraspCloneUrls,
+} from "@/lib/repos/infer-grasp-clones";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import { isOpaqueBinaryDataUrl } from "@/lib/repos/opaque-binary-data-url";
 import {
@@ -603,13 +608,12 @@ function appendInferredGraspCloneUrls(
 }
 
 /**
- * Build clone URLs to show in the sidebar when the live announcement is slow/missing
- * but we already know entity/repo (e.g. bridge served the tree). Prefer event clones,
- * then inferred GRASP HTTPS paths including git.gittr.space.
+ * Build clone URLs to show in the sidebar from known sources. Do not invent
+ * GRASP paths here — that races real announcement clone tags.
  */
 function discoverableCloneUrlsForSidebar(
-  entity: string,
-  repo: string,
+  _entity: string,
+  _repo: string,
   ...sources: Array<string[] | undefined | null>
 ): string[] {
   const out: string[] = [];
@@ -626,9 +630,6 @@ function discoverableCloneUrlsForSidebar(
         out.push(url);
       }
     }
-  }
-  if (out.length === 0 && entity && repo) {
-    appendInferredGraspCloneUrls(out, entity, repo);
   }
   return out;
 }
@@ -749,6 +750,9 @@ export function RepoCodePage() {
   /** Prevents duplicate setRepoData storms when the same tree is applied repeatedly. */
   const lastAppliedFileTreeKeyRef = useRef<string>("");
   const MAX_AUTO_FILE_FETCH_RETRIES = 2;
+  /** unknown until a matching kind 30617 is parsed for this repo page. */
+  const nip34AnnouncementCloneStatusRef =
+    useRef<AnnouncementCloneStatus>("unknown");
 
   const getFileFetchRetryCount = useCallback((repoKeyWithBranch: string) => {
     return fileFetchRetryCountRef.current[repoKeyWithBranch] || 0;
@@ -838,8 +842,8 @@ export function RepoCodePage() {
     null
   );
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
-  /** Bumps when file tree is persisted so safeFiles re-reads gittr_files. */
-  const [filesTreeBump, setFilesTreeBump] = useState(0);
+  /** Bumps when announcement clone tags arrive after a failed fetch. */
+  const [announcementFetchTick, setAnnouncementFetchTick] = useState(0);
   // Prefer persisted gittr_files (post bridge / multi-source fetch) over embedded
   // repoData.files so the tree and README match what was actually saved locally.
   const filesTreeVersionKey = useMemo(() => {
@@ -4272,6 +4276,7 @@ export function RepoCodePage() {
       upstreamContentLoadedKeyRef.current = "";
       eoseProcessedRef.current.clear(); // Reset EOSE tracking when repo changes
       lastAppliedFileTreeKeyRef.current = "";
+      nip34AnnouncementCloneStatusRef.current = "unknown";
     };
   }, [resolvedParams.entity, resolvedParams.repo]);
 
@@ -4693,6 +4698,7 @@ export function RepoCodePage() {
     fileFetchRetryCountRef.current = {};
     bridgeFetchDoneKeyRef.current = "";
     upstreamContentLoadedKeyRef.current = "";
+    nip34AnnouncementCloneStatusRef.current = "unknown";
   }, [resolvedParams.entity, resolvedParams.repo]);
 
   const applyEffectiveSourceUrl = useCallback(
@@ -5469,6 +5475,78 @@ export function RepoCodePage() {
       const initialCloneUrls: string[] = [];
       if (initialRepoData?.clone && Array.isArray(initialRepoData.clone)) {
         initialCloneUrls.push(...initialRepoData.clone);
+      }
+
+      // Server relay query when browser Nostr is slow (e.g. LiE on friendly-machines).
+      if (
+        ownerPubkey &&
+        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+        typeof window !== "undefined"
+      ) {
+        try {
+          const hints = await fetchRepoCloneHintsFromProfile(
+            ownerPubkey,
+            resolvedParams.repo
+          );
+          if (hints) {
+            if (hints.clone.length > 0) {
+              nip34AnnouncementCloneStatusRef.current = "present";
+              for (const url of hints.clone) {
+                if (
+                  url &&
+                  !url.includes("localhost") &&
+                  !url.includes("127.0.0.1") &&
+                  !initialCloneUrls.includes(url)
+                ) {
+                  initialCloneUrls.push(url);
+                }
+              }
+              console.log(
+                `✅ [File Fetch] profile-repos: ${hints.clone.length} announcement clone URL(s)`,
+                hints.clone
+              );
+            }
+            if (hints.sourceUrl) {
+              addUpstreamSourceToCloneUrls(initialCloneUrls, hints.sourceUrl);
+              applyEffectiveSourceUrl(hints.sourceUrl);
+            }
+            setRepoData((prev: any) => {
+              const base =
+                prev ||
+                ({
+                  entity: resolvedParams.entity,
+                  repo: resolvedParams.repo,
+                  name: resolvedParams.repo,
+                  readme: "",
+                  files: [],
+                  description: "",
+                  contributors: [],
+                  defaultBranch: "main",
+                  ownerPubkey,
+                } as StoredRepo);
+              const mergedClone = mergeAnnouncementClonesPreferringEvent(
+                base.clone,
+                hints.clone,
+                resolvedParams.entity,
+                resolvedParams.repo
+              );
+              return {
+                ...base,
+                clone: mergedClone,
+                announcementClone: hints.clone,
+                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                lastNostrEventId:
+                  hints.lastNostrEventId || base.lastNostrEventId,
+                syncedFromNostr: true,
+              };
+            });
+          }
+        } catch (e) {
+          console.warn(
+            "⚠️ [File Fetch] profile-repos clone hydrate failed:",
+            e
+          );
+        }
       }
 
       // Also check localStorage for clone URLs (client-side only)
@@ -6935,6 +7013,7 @@ export function RepoCodePage() {
                       !url.includes("127.0.0.1")
                   );
                   if (eventClones.length > 0) {
+                    nip34AnnouncementCloneStatusRef.current = "present";
                     setRepoData((prev: any) => {
                       const base =
                         prev ||
@@ -6975,7 +7054,20 @@ export function RepoCodePage() {
                         syncedFromNostr: true,
                       };
                     });
+                    const hasFilesNow = !!(
+                      Array.isArray(repoDataRef.current?.files) &&
+                      repoDataRef.current.files.length > 0
+                    );
+                    if (!hasFilesNow) {
+                      fileFetchAttemptedRef.current = "";
+                      fileFetchInProgressRef.current = false;
+                      setAnnouncementFetchTick((t) => t + 1);
+                    }
                   }
+                } else if (
+                  nip34AnnouncementCloneStatusRef.current !== "present"
+                ) {
+                  nip34AnnouncementCloneStatusRef.current = "empty";
                 }
               } else {
                 // KIND_REPOSITORY (51) - files should be in JSON content
@@ -8833,9 +8925,14 @@ export function RepoCodePage() {
                   }
                 }
 
-                // After Nostr EOSE: only now guess well-known GRASP paths if the
-                // announcement still has no clone tags (metadata-only repos).
-                if (cloneUrls.length === 0) {
+                // After Nostr EOSE: guess well-known GRASP paths only when the
+                // announcement arrived and still has no clone tags.
+                if (
+                  shouldInferGraspCloneUrls({
+                    collectedCloneCount: cloneUrls.length,
+                    announcementStatus: nip34AnnouncementCloneStatusRef.current,
+                  })
+                ) {
                   appendInferredGraspCloneUrls(
                     cloneUrls,
                     resolvedParams.entity,
@@ -9462,9 +9559,36 @@ export function RepoCodePage() {
           }
         );
 
-        // Safety: eventually close the metadata subscription
+        // Safety: eventually close the metadata subscription. Last-resort GRASP
+        // inference only if we still never saw a 30617 (native gittr / empty relays).
         setTimeout(() => {
           if (unsub) unsub();
+          const live = repoDataRef.current as { clone?: string[] } | null;
+          const existing = Array.isArray(live?.clone) ? live.clone.length : 0;
+          if (
+            shouldInferGraspCloneUrls({
+              collectedCloneCount: existing,
+              announcementStatus: nip34AnnouncementCloneStatusRef.current,
+              allowLastResort: true,
+            })
+          ) {
+            const inferred: string[] = [];
+            appendInferredGraspCloneUrls(
+              inferred,
+              resolvedParams.entity,
+              resolvedParams.repo
+            );
+            if (inferred.length > 0) {
+              setRepoData((prev: any) =>
+                prev
+                  ? {
+                      ...prev,
+                      clone: mergeDiscoverableCloneUrls(prev.clone, inferred),
+                    }
+                  : prev
+              );
+            }
+          }
         }, 20000);
         // Timeout after 3 seconds as a final fallback (reduced from 15s - should rarely trigger since we start fetching immediately)
         // CRITICAL: Do NOT unsub here — announcements often arrive after the bridge
@@ -9571,9 +9695,14 @@ export function RepoCodePage() {
               eventRepoData?.forkedFrom;
             addUpstreamSourceToCloneUrls(cloneUrls, upstreamForTimeout);
 
-            // Timeout often fires before EOSE from ngit relays — still infer GRASP
-            // clone paths so the sidebar is not blank when the bridge has files.
-            if (cloneUrls.length === 0) {
+            // Do not invent GRASP while the 30617 is still in flight — that
+            // races real clone tags (self-hosted git remotes, etc.).
+            if (
+              shouldInferGraspCloneUrls({
+                collectedCloneCount: cloneUrls.length,
+                announcementStatus: nip34AnnouncementCloneStatusRef.current,
+              })
+            ) {
               appendInferredGraspCloneUrls(
                 cloneUrls,
                 resolvedParams.entity,
@@ -12185,7 +12314,14 @@ export function RepoCodePage() {
         fileFetchInProgressRef.current = false;
       }
     })();
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    announcementFetchTick,
+    (repoData as { announcementClone?: string[] })?.announcementClone?.join(
+      "|"
+    ) ?? "",
+  ]);
 
   // Extract URL params with state to prevent infinite loops
   const [urlParams, setUrlParams] = useState<{
@@ -14597,7 +14733,21 @@ export function RepoCodePage() {
           );
 
           const sourceUrlForFetch =
-            effectiveSourceUrl || repoData?.sourceUrl || null;
+            effectiveSourceUrl ||
+            repoData?.sourceUrl ||
+            (Array.isArray((repoData as any)?.announcementClone)
+              ? (repoData as any).announcementClone.find(
+                  (u: string) =>
+                    typeof u === "string" && isRefetchableUpstreamSourceUrl(u)
+                )
+              : null) ||
+            (Array.isArray((repoData as any)?.clone)
+              ? (repoData as any).clone.find(
+                  (u: string) =>
+                    typeof u === "string" && isRefetchableUpstreamSourceUrl(u)
+                )
+              : null) ||
+            null;
 
           if (
             sourceUrlForFetch &&
