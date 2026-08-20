@@ -4,6 +4,7 @@ import {
   type ReactNode,
   startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -13505,7 +13506,7 @@ export function RepoCodePage() {
     [currentPath]
   );
 
-  const items = useMemo(() => {
+  const items = useMemo<{ type: string; path: string; size?: number }[]>(() => {
     // Prefer per-folder shallow listing when browsing huge trees
     const listingKey = currentPath || "";
     const overlay = folderListings[listingKey];
@@ -13575,9 +13576,16 @@ export function RepoCodePage() {
     });
   }, [safeFiles, currentPath, deletedPaths, folderListings]);
 
+  // Defer the heavy tree and README rendering so the header/tab chrome stays
+  // responsive while the file list and markdown catch up.
+  const deferredItems = useDeferredValue(items);
+  const deferredSafeFiles = useDeferredValue(safeFiles);
+  const deferredCurrentFolderReadme = useDeferredValue(currentFolderReadme);
+  const deferredRepoReadme = useDeferredValue(repoData?.readme || "");
+
   const treeRowPathsKey = useMemo(
-    () => items.map((i) => i.path).join("\n"),
-    [items]
+    () => deferredItems.map((i) => i.path).join("\n"),
+    [deferredItems]
   );
 
   const [treeLastCommits, setTreeLastCommits] = useState<
@@ -13589,7 +13597,7 @@ export function RepoCodePage() {
 
   // Last commit date/message for each row — keyed to selected tip/branch
   useEffect(() => {
-    if (!mounted || items.length === 0) {
+    if (!mounted || deferredItems.length === 0) {
       setTreeLastCommits({});
       return;
     }
@@ -13649,7 +13657,7 @@ export function RepoCodePage() {
   }, [
     mounted,
     treeRowPathsKey,
-    items.length,
+    deferredItems.length,
     currentPath,
     selectedBranch,
     repoOwnerPubkey,
@@ -18408,10 +18416,10 @@ export function RepoCodePage() {
                   </div>
                 );
               })()}
-            {mounted && items.length > 0 && (
+            {mounted && deferredItems.length > 0 && (
               <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
                 <ul className="divide-y dark:divide-lightgray">
-                  {items.map((it) => {
+                  {deferredItems.map((it) => {
                     const last = treeLastCommits[it.path];
                     return (
                       <li
@@ -18630,62 +18638,67 @@ export function RepoCodePage() {
                 </ul>
               </div>
             )}
-            {mounted && items.length === 0 && repoData && hashtreeOnlyEmpty && (
-              <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
-                <p className="text-sm text-gray-300">
-                  This repo is hosted on{" "}
-                  <span className="text-white font-medium">Iris Hashtree</span>,
-                  not a classic HTTPS git server. gittr cannot list those files
-                  in the Code browser yet.
-                </p>
-                {hashtreeOnlyEmpty.browseUrl && (
-                  <a
-                    href={hashtreeOnlyEmpty.browseUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-                  >
-                    Open in Iris Git
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                )}
-                {hashtreeOnlyEmpty.htree && (
-                  <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
-                    <p className="text-xs text-gray-400">
-                      Clone with Iris{" "}
-                      <code className="text-gray-300">git-remote-htree</code>:
-                    </p>
-                    <div className="flex items-start gap-2">
-                      <code className="flex-1 text-xs text-green-400 break-all">
-                        git clone {hashtreeOnlyEmpty.htree}
-                      </code>
-                      <button
-                        type="button"
-                        className="shrink-0 p-1.5 text-gray-400 hover:text-white"
-                        title="Copy clone command"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard?.writeText(
-                              `git clone ${hashtreeOnlyEmpty.htree}`
-                            );
-                            const { showToast } = await import(
-                              "@/components/ui/toast"
-                            );
-                            showToast("Copied clone command", "success");
-                          } catch {
-                            /* ignore */
-                          }
-                        }}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
             {mounted &&
-              items.length === 0 &&
+              deferredItems.length === 0 &&
+              repoData &&
+              hashtreeOnlyEmpty && (
+                <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
+                  <p className="text-sm text-gray-300">
+                    This repo is hosted on{" "}
+                    <span className="text-white font-medium">
+                      Iris Hashtree
+                    </span>
+                    , not a classic HTTPS git server. gittr cannot list those
+                    files in the Code browser yet.
+                  </p>
+                  {hashtreeOnlyEmpty.browseUrl && (
+                    <a
+                      href={hashtreeOnlyEmpty.browseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                    >
+                      Open in Iris Git
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  {hashtreeOnlyEmpty.htree && (
+                    <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
+                      <p className="text-xs text-gray-400">
+                        Clone with Iris{" "}
+                        <code className="text-gray-300">git-remote-htree</code>:
+                      </p>
+                      <div className="flex items-start gap-2">
+                        <code className="flex-1 text-xs text-green-400 break-all">
+                          git clone {hashtreeOnlyEmpty.htree}
+                        </code>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1.5 text-gray-400 hover:text-white"
+                          title="Copy clone command"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard?.writeText(
+                                `git clone ${hashtreeOnlyEmpty.htree}`
+                              );
+                              const { showToast } = await import(
+                                "@/components/ui/toast"
+                              );
+                              showToast("Copied clone command", "success");
+                            } catch {
+                              /* ignore */
+                            }
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            {mounted &&
+              deferredItems.length === 0 &&
               repoData &&
               !hashtreeOnlyEmpty && (
                 <div className="border p-4 text-center text-gray-400">
@@ -18695,18 +18708,18 @@ export function RepoCodePage() {
             {mounted &&
               !selectedFile &&
               !fileContent &&
-              safeFiles.length > 0 &&
-              (currentFolderReadme ||
-                (!currentPath && repoData?.readme) ||
+              deferredSafeFiles.length > 0 &&
+              (deferredCurrentFolderReadme ||
+                (!currentPath && deferredRepoReadme) ||
                 loadingFolderReadme) && (
                 <div className="mt-4 rounded-md border dark:border-[#383B42]">
                   <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
                     <List className="text-gray-400 ml-2 h-4 w-4" />{" "}
                     <span className="text-gray-400">
                       {loadingFolderReadme &&
-                      !currentFolderReadme &&
-                      !(!currentPath && repoData?.readme) &&
-                      !safeFiles.some((f: { path?: string }) =>
+                      !deferredCurrentFolderReadme &&
+                      !(!currentPath && deferredRepoReadme) &&
+                      !deferredSafeFiles.some((f: { path?: string }) =>
                         /^(readme\.md|readme)$/i.test(String(f?.path || ""))
                       )
                         ? "Loading README..."
@@ -18720,8 +18733,8 @@ export function RepoCodePage() {
                   >
                     <RepoFolderReadmeMarkdown
                       markdown={
-                        currentFolderReadme ||
-                        (!currentPath ? repoData?.readme : "") ||
+                        deferredCurrentFolderReadme ||
+                        (!currentPath ? deferredRepoReadme : "") ||
                         ""
                       }
                       headingComponents={readmeHeadingComponents}

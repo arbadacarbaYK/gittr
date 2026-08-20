@@ -1,6 +1,13 @@
 "use client";
 
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import {
+  use,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { ProfilePagesAppsSections } from "@/components/profile/ProfilePagesAppsSections";
 import { Button } from "@/components/ui/button";
@@ -166,6 +173,9 @@ export default function EntityPage({
     );
   }, [resolvedParams.entity]);
   const [userRepos, setUserRepos] = useState<any[]>([]);
+  // Defer the repo grid so header / navigation clicks stay responsive while the
+  // list is being merged/rendered.
+  const deferredUserRepos = useDeferredValue(userRepos);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -2386,10 +2396,11 @@ export default function EntityPage({
     isNostrProfileMirrorWebsite(website, fullPubkeyForMeta);
 
   // Precompute owner metadata for the visible repo grid so we don't call
-  // getUserMetadata once per repo on every render.
+  // getUserMetadata once per repo on every render. Use the deferred list so
+  // this heavy work is scheduled at lower priority and doesn't block header clicks.
   const ownerMetaMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof getUserMetadata>>();
-    const visible = userRepos.slice(0, visibleRepoCount);
+    const visible = deferredUserRepos.slice(0, visibleRepoCount);
     for (const repo of visible) {
       const ownerPubkey =
         repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
@@ -2400,7 +2411,7 @@ export default function EntityPage({
       }
     }
     return map;
-  }, [userRepos, visibleRepoCount, metadataMap]);
+  }, [deferredUserRepos, visibleRepoCount, metadataMap]);
 
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey =
@@ -3563,7 +3574,7 @@ export default function EntityPage({
             Repositories ({userRepos.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {userRepos.slice(0, visibleRepoCount).map((repo: any) => {
+            {deferredUserRepos.slice(0, visibleRepoCount).map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
               // For display, use original name (repo.name)
               const repoForUrl = repo.repo || repo.slug;
