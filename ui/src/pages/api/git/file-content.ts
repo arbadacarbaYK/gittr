@@ -1034,24 +1034,33 @@ export default async function handler(
                 if (bridgeResponse.ok) {
                   const bridgeData = await bridgeResponse.json();
                   return res.status(200).json(bridgeData);
-                } else {
-                  const errorText = await bridgeResponse.text().catch(() => "");
-                  console.error(
-                    `❌ [Git API] Bridge API failed: ${
-                      bridgeResponse.status
-                    } - ${errorText.substring(0, 200)}`
-                  );
-                  return res.status(bridgeResponse.status).json({
-                    error: "Failed to fetch file from GRASP server via bridge",
-                    status: bridgeResponse.status,
-                    details: errorText.substring(0, 200),
-                  });
                 }
+                const errorText = await bridgeResponse.text().catch(() => "");
+                console.error(
+                  `❌ [Git API] Bridge API failed: ${
+                    bridgeResponse.status
+                  } - ${errorText.substring(0, 200)}`
+                );
+                // Fall back to shallow clone for GRASP URLs when the bridge
+                // can't serve the file (e.g. repo name with dots, mirror not
+                // created yet, or bridge error). This keeps file opens working
+                // even when the local bridge is out of sync with allowed names.
+                if (await respondFromShallowClone()) {
+                  return;
+                }
+                return res.status(bridgeResponse.status).json({
+                  error: "Failed to fetch file from GRASP server via bridge",
+                  status: bridgeResponse.status,
+                  details: errorText.substring(0, 200),
+                });
               } catch (bridgeError: any) {
                 console.error(
                   `❌ [Git API] Error calling bridge API:`,
                   bridgeError.message
                 );
+                if (await respondFromShallowClone()) {
+                  return;
+                }
                 return res.status(500).json({
                   error: "Failed to fetch file from GRASP server",
                   details: bridgeError.message,

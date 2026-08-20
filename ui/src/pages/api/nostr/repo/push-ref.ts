@@ -184,7 +184,7 @@ export default async function handler(
     return res.status(400).json({
       error: "Invalid repository name",
       details:
-        "Repo names must match the bridge rules (no spaces, slashes, or dots).",
+        "Repo names must match the bridge rules (no spaces, slashes, or traversal).",
     });
   }
 

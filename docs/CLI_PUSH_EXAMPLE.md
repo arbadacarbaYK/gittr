@@ -12,7 +12,7 @@ Developers working locally can use gittr's bridge API to push their repositories
    - `X-Nostr-Auth-Event: <base64(JSON.stringify(signedEvent))>` (**required** — server verifies the real Nostr signature and challenge)
    - Optional legacy: `Authorization: Nostr <base64({pubkey,sig,created_at})>` (alone is **not** enough)
 
-Repo names must match the bridge rules (no spaces, slashes, or dots), e.g. `my-repo`.
+Repo names must match the bridge rules (no spaces, slashes, or traversal), e.g. `my-repo` or `rely.nyves.nl`.
 
 For a ready-made implementation (Node.js), use [gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main-mcp): `pushToBridge({ ownerPubkey, repo, branch, files, privkey })` handles challenge and auth automatically.
 

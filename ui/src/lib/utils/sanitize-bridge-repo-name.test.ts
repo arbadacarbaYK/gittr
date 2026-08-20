@@ -20,7 +20,12 @@ describe("sanitizeBridgeRepoName", () => {
     expect(sanitizeBridgeRepoName("a/b")).toBe("");
     expect(sanitizeBridgeRepoName("/etc/passwd")).toBe("");
     expect(sanitizeBridgeRepoName("a\\b")).toBe("");
-    expect(sanitizeBridgeRepoName("foo.bar")).toBe("");
+    expect(sanitizeBridgeRepoName("foo.bar")).toBe("foo.bar");
+    expect(sanitizeBridgeRepoName("rely.nyves.nl")).toBe("rely.nyves.nl");
+    expect(sanitizeBridgeRepoName("rely.nyves.nl.git")).toBe("rely.nyves.nl");
+    expect(sanitizeBridgeRepoName("foo..bar")).toBe("");
+    expect(sanitizeBridgeRepoName(".foo")).toBe(".foo");
+    expect(sanitizeBridgeRepoName("foo.")).toBe("foo.");
     expect(sanitizeBridgeRepoName("a b")).toBe("");
     expect(sanitizeBridgeRepoName("Venue%20Scheduler")).toBe("");
     expect(sanitizeBridgeRepoName("%2e%2e%2fx")).toBe("");

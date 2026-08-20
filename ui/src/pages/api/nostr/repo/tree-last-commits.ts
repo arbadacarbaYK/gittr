@@ -157,7 +157,11 @@ export default async function handler(
   const reposDir = await resolveReposDir();
   const resolvedRepo = resolveBridgeRepoPath(reposDir, ownerPubkey, repoName);
   if (!resolvedRepo) {
-    return res.status(400).json({ error: "Invalid repository name" });
+    return res.status(400).json({
+      error: "Invalid repository name",
+      details:
+        "Repo names must match the bridge rules (no spaces, slashes, or traversal).",
+    });
   }
   const { repoPath } = resolvedRepo;
   if (!existsSync(repoPath)) {

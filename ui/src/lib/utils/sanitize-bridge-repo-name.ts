@@ -2,8 +2,9 @@ import { basename, resolve, sep } from "path";
 
 /**
  * Normalize + validate repo name for git-nostr-bridge on-disk paths.
- * Aligns with Go bridge IsValidRepoName (no space, `/`, or `.`) and blocks
+ * Aligns with Go bridge IsValidRepoName (no space, `/`, or `\`) and blocks
  * path traversal / absolute segments that would escape ownerPubkey/.
+ * Dots are allowed in repo names (e.g. rely.nyves.nl).
  *
  * Query/body may still carry URL encoding (e.g. my%2Drepo).
  */
@@ -24,12 +25,13 @@ export function sanitizeBridgeRepoName(raw: string): string {
   }
   if (!s) return "";
 
-  // Reject path separators, traversal, controls, NUL, and Go-invalid chars.
+  // Reject path separators, traversal, controls, NUL, and spaces.
+  // Dots are allowed in repo names (e.g. rely.nyves.nl), but we strip the
+  // .git suffix above and still block path traversal ("..") and separators.
   if (
     /[\0\x01-\x1f\\/]/.test(s) ||
     s.includes("..") ||
     s.includes(" ") ||
-    s.includes(".") ||
     basename(s) !== s
   ) {
     return "";
