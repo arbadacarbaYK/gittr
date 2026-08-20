@@ -252,6 +252,9 @@ export default function RepoReleasesPage({
     );
   }, [buildNostrReleaseRows]);
 
+  const remountMergedReleasesRef = useRef(remountMergedReleases);
+  remountMergedReleasesRef.current = remountMergedReleases;
+
   const reloadRepoReleasesFromStorage = useCallback(() => {
     try {
       const fromBucket = readRepoReleasesFromLocalStorage(
@@ -433,7 +436,7 @@ export default function RepoReleasesPage({
       const { ids, relayHints } = assetIdsAndRelayHintsFromRelease(parsed);
       const missing = ids.filter((id) => !nostrAssetsByIdRef.current.has(id));
       if (missing.length === 0) {
-        remountMergedReleases();
+        remountMergedReleasesRef.current();
         return;
       }
       const assetRelays = Array.from(
@@ -452,7 +455,7 @@ export default function RepoReleasesPage({
               changed = true;
             }
           }
-          if (changed) remountMergedReleases();
+          if (changed) remountMergedReleasesRef.current();
         },
         12000
       );
@@ -490,7 +493,7 @@ export default function RepoReleasesPage({
           return;
         }
         setNostrReleasesSeen(true);
-        remountMergedReleases();
+        remountMergedReleasesRef.current();
         requestAssets(event);
       },
       400
@@ -516,13 +519,14 @@ export default function RepoReleasesPage({
         }
       }
     };
+    // Intentionally omit remountMergedReleases — use ref so callback identity
+    // changes do not wipe in-flight Nostr release events.
   }, [
     subscribe,
     ownerPubkeyHex,
     resolvedParams.repo,
     announcedAppId,
     defaultRelays,
-    remountMergedReleases,
   ]);
 
   useEffect(() => {
