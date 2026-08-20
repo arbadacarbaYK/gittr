@@ -123,6 +123,7 @@ export function addDeletedRepoTombstones(
       if (idx >= 0) {
         // Re-flush refreshes deletedAt so older relay 30617s stay hidden.
         const prev = existing[idx];
+        if (!prev) continue;
         existing[idx] = {
           ...prev,
           entity: entity || prev.entity,
