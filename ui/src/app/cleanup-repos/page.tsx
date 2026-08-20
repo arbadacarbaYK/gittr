@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { addDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 
 import { useRouter } from "next/navigation";
 
@@ -38,6 +39,11 @@ export default function CleanupReposPage() {
       localStorage.setItem("gittr_repos", JSON.stringify(filtered));
       setRepos(filtered);
       setDeleted([...deleted, `${entity}/${repoName}`]);
+
+      // Mark as locally deleted so Nostr sync doesn't immediately pull it back.
+      addDeletedRepoTombstones([
+        { entity, repo: repoName, ownerPubkey: undefined },
+      ]);
 
       // Clean all possible localStorage keys related to this repo
       const keyVariations = [

@@ -18638,65 +18638,60 @@ export function RepoCodePage() {
                 </ul>
               </div>
             )}
-            {mounted &&
-              deferredItems.length === 0 &&
-              repoData &&
-              hashtreeOnlyEmpty && (
-                <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
-                  <p className="text-sm text-gray-300">
-                    This repo is hosted on{" "}
-                    <span className="text-white font-medium">
-                      Iris Hashtree
-                    </span>
-                    , not a classic HTTPS git server. gittr cannot list those
-                    files in the Code browser yet.
-                  </p>
-                  {hashtreeOnlyEmpty.browseUrl && (
-                    <a
-                      href={hashtreeOnlyEmpty.browseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-                    >
-                      Open in Iris Git
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                  {hashtreeOnlyEmpty.htree && (
-                    <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
-                      <p className="text-xs text-gray-400">
-                        Clone with Iris{" "}
-                        <code className="text-gray-300">git-remote-htree</code>:
-                      </p>
-                      <div className="flex items-start gap-2">
-                        <code className="flex-1 text-xs text-green-400 break-all">
-                          git clone {hashtreeOnlyEmpty.htree}
-                        </code>
-                        <button
-                          type="button"
-                          className="shrink-0 p-1.5 text-gray-400 hover:text-white"
-                          title="Copy clone command"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard?.writeText(
-                                `git clone ${hashtreeOnlyEmpty.htree}`
-                              );
-                              const { showToast } = await import(
-                                "@/components/ui/toast"
-                              );
-                              showToast("Copied clone command", "success");
-                            } catch {
-                              /* ignore */
-                            }
-                          }}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+            {mounted && deferredItems.length === 0 && repoData && hashtreeOnlyEmpty && (
+              <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
+                <p className="text-sm text-gray-300">
+                  This repo is hosted on{" "}
+                  <span className="text-white font-medium">Iris Hashtree</span>,
+                  not a classic HTTPS git server. gittr cannot list those files
+                  in the Code browser yet.
+                </p>
+                {hashtreeOnlyEmpty.browseUrl && (
+                  <a
+                    href={hashtreeOnlyEmpty.browseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                  >
+                    Open in Iris Git
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+                {hashtreeOnlyEmpty.htree && (
+                  <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
+                    <p className="text-xs text-gray-400">
+                      Clone with Iris{" "}
+                      <code className="text-gray-300">git-remote-htree</code>:
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <code className="flex-1 text-xs text-green-400 break-all">
+                        git clone {hashtreeOnlyEmpty.htree}
+                      </code>
+                      <button
+                        type="button"
+                        className="shrink-0 p-1.5 text-gray-400 hover:text-white"
+                        title="Copy clone command"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard?.writeText(
+                              `git clone ${hashtreeOnlyEmpty.htree}`
+                            );
+                            const { showToast } = await import(
+                              "@/components/ui/toast"
+                            );
+                            showToast("Copied clone command", "success");
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
+            )}
             {mounted &&
               deferredItems.length === 0 &&
               repoData &&

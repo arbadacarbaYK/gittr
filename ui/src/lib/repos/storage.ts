@@ -1,4 +1,3 @@
-import { shouldDropFlatBasenameForNestedUpload } from "@/lib/repos/select-display-file-tree";
 import {
   getRepoStorageKey,
   normalizeEntityForStorage,
@@ -13,6 +12,10 @@ import { nip19 } from "nostr-tools";
 
 import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
 import {
+  addDeletedRepoTombstones,
+  clearDeletedRepoTombstones,
+} from "./deleted-repo-tombstones";
+import {
   forgetOverrideBlob,
   idbDeleteRepoOverrides,
   idbPutOverride,
@@ -26,6 +29,7 @@ import {
   classifyForeignReposForFlush,
   classifyOwnReposForFlush,
 } from "./repo-cache-flush";
+import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -383,6 +387,16 @@ export const clearOwnReposFromStorage = (
   if (!plan) return emptyFlushStats();
 
   localStorage.setItem("gittr_repos", JSON.stringify(plan.keptRepos));
+
+  // Mark flushed repos as locally deleted so the Nostr sync on /repositories
+  // does not immediately pull them back into the browser cache.
+  addDeletedRepoTombstones(
+    plan.ownRepos.map((repo) => ({
+      entity: repo.entity,
+      repo: repo.repo || repo.slug || repo.name || undefined,
+      ownerPubkey: repo.ownerPubkey,
+    }))
+  );
 
   const ownPatterns = buildRepoKeyPatterns(plan.ownRepos);
   const keysToRemove = removeStorageKeysForPatterns(ownPatterns);
@@ -948,8 +962,6 @@ export const loadDeletedRepos = (): Array<{
     }
   );
 };
-
-export { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
 
 /** Appended to quota / localStorage alerts so users know where to trim cached repos */
 export const LOCAL_STORAGE_REPOS_MANAGE_HINT =

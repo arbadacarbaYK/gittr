@@ -13,6 +13,49 @@ export type DeletedRepoTombstone = {
   deletedAt?: number;
 };
 
+export function addDeletedRepoTombstones(
+  repos: Array<{ entity?: string; repo?: string; ownerPubkey?: string }>
+): number {
+  if (typeof window === "undefined" || !repos || repos.length === 0) return 0;
+  try {
+    const existing = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    ) as DeletedRepoTombstone[];
+    if (!Array.isArray(existing)) return 0;
+
+    const now = Date.now();
+    const keySet = new Set(
+      existing.map(
+        (d) =>
+          `${(d.entity || "").toLowerCase()}/${(d.repo || "").toLowerCase()}`
+      )
+    );
+    let added = 0;
+    for (const repo of repos) {
+      const entity = (repo.entity || "").trim().toLowerCase();
+      const repoName = (repo.repo || "").trim().toLowerCase();
+      if (!repoName) continue;
+      const key = `${entity}/${repoName}`;
+      if (keySet.has(key)) continue;
+      keySet.add(key);
+      existing.push({
+        entity: repo.entity,
+        repo: repo.repo,
+        ownerPubkey: repo.ownerPubkey,
+        deletedAt: now,
+      });
+      added++;
+    }
+
+    if (added > 0) {
+      localStorage.setItem("gittr_deleted_repos", JSON.stringify(existing));
+    }
+    return added;
+  } catch {
+    return 0;
+  }
+}
+
 export function clearDeletedRepoTombstones(opts: {
   repo: string;
   entity?: string;

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { clearDeletedRepoTombstones } from "./deleted-repo-tombstones";
+import {
+  addDeletedRepoTombstones,
+  clearDeletedRepoTombstones,
+} from "./deleted-repo-tombstones";
 
 const OWNER =
   "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c";
@@ -75,5 +78,49 @@ describe("clearDeletedRepoTombstones", () => {
       ownerPubkey: OWNER,
     });
     expect(removed).toBe(1);
+  });
+});
+
+describe("addDeletedRepoTombstones", () => {
+  it("adds new tombstones and skips duplicates", () => {
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([{ entity: ENTITY, repo: "existing", deletedAt: 1 }])
+    );
+    const added = addDeletedRepoTombstones([
+      { entity: ENTITY, repo: "existing" },
+      { entity: ENTITY, repo: "new-repo" },
+      { entity: "other", repo: "new-repo" },
+    ]);
+    expect(added).toBe(2);
+    const stored = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    );
+    expect(stored).toHaveLength(3);
+    expect(stored.map((d: any) => d.repo)).toContain("new-repo");
+    expect(stored.map((d: any) => d.entity)).toContain(ENTITY);
+  });
+
+  it("is case-insensitive for duplicates", () => {
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([{ entity: ENTITY, repo: "Repo-Name", deletedAt: 1 }])
+    );
+    const added = addDeletedRepoTombstones([
+      { entity: ENTITY, repo: "repo-name" },
+    ]);
+    expect(added).toBe(0);
+  });
+
+  it("keeps existing tombstones when adding none", () => {
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([{ entity: ENTITY, repo: "keep", deletedAt: 1 }])
+    );
+    expect(addDeletedRepoTombstones([])).toBe(0);
+    const stored = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    );
+    expect(stored).toHaveLength(1);
   });
 });

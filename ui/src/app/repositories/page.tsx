@@ -2645,7 +2645,7 @@ export default function RepositoriesPage() {
             <button
               onClick={() => setShowClearConfirm(true)}
               className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
-              title="Flush only your own repos from this browser’s cache (not from Nostr). Safe after you’ve already pushed — they re-fetch from relays. Unpushed local-only work is lost. Other people’s cached repos stay."
+              title="Flush only your own repos from this browser’s cache (not from Nostr). They are marked locally deleted so the Nostr sync stops re-adding them; publish a fresh 30617 if you want one back. Unpushed local-only work is lost. Other people’s cached repos stay."
             >
               <span className="sm:hidden">
                 Flush my repos
@@ -2977,7 +2977,7 @@ export default function RepositoriesPage() {
                               result.keptRepos === 1 ? "" : "s"
                             } in cache`,
                             "",
-                            "Already-pushed repos will re-fetch from Nostr. Unpushed local-only work is gone.",
+                            "These repos are marked locally deleted so they stop re-appearing from Nostr sync. Publish a fresh 30617 announcement if you want one back. Unpushed local-only work is gone.",
                           ]
                             .filter(Boolean)
                             .join("\n")
