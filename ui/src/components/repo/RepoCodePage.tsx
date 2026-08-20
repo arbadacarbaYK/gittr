@@ -842,6 +842,8 @@ export function RepoCodePage() {
     null
   );
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
+  /** Bumps when file tree is persisted so safeFiles re-reads gittr_files. */
+  const [filesTreeBump, setFilesTreeBump] = useState(0);
   /** Bumps when announcement clone tags arrive after a failed fetch. */
   const [announcementFetchTick, setAnnouncementFetchTick] = useState(0);
   // Prefer persisted gittr_files (post bridge / multi-source fetch) over embedded
