@@ -282,8 +282,12 @@ export default function HelpPage() {
           <li>
             <strong className="text-white">Releases</strong> — The repo{" "}
             <strong className="text-white">Releases</strong> tab shows forge
-            download assets. Creating or announcing a release is <em>not</em>{" "}
-            the same as{" "}
+            download assets when a GitHub/Codeberg/GitLab source is linked, and
+            also NIP-82 / Blossom releases from Nostr (same family as{" "}
+            <Link href="/apps" className="text-purple-400 hover:text-purple-300">
+              /apps
+            </Link>
+            ). Creating or announcing a release is <em>not</em> the same as{" "}
             <Link
               href="#push-to-nostr"
               className="text-purple-400 hover:text-purple-300"
@@ -2873,7 +2877,10 @@ export default function HelpPage() {
                         <code className="bg-black/40 px-1 rounded text-xs">
                           source
                         </code>{" "}
-                        URL.
+                        URL. The same tab also lists{" "}
+                        <strong className="text-white">NIP-82 / Blossom</strong>{" "}
+                        releases from Nostr for GRASP-only repos (no forge
+                        required to <em>read</em>).
                       </td>
                     </tr>
                     <tr>

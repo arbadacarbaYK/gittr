@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,24 @@ import { RepoAppAnnouncePanel } from "@/components/ui/repo-app-announce-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  KIND_SOFTWARE_ASSET,
+  KIND_SOFTWARE_RELEASE,
+  type NostrEventLike,
+  type ParsedSoftwareAsset,
+} from "@/lib/nostr/nip82-software";
+import {
+  type RepoReleaseListItem,
+  assetIdsAndRelayHintsFromRelease,
+  mapSoftwareReleaseToRepoRelease,
+  mergeForgeAndNostrReleases,
+  parseAssetsById,
+  parseMatchingRepoReleases,
+} from "@/lib/nostr/nip82-repo-releases";
+import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
+import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useMetadata from "@/lib/nostr/useMetadata";
 import useSession from "@/lib/nostr/useSession";
@@ -46,23 +61,10 @@ type ReleaseAsset = {
   url?: string;
   size?: number;
   contentType?: string;
+  sha256?: string;
 };
 
-type Release = {
-  name: string;
-  tag_name: string;
-  body?: string;
-  published_at?: string;
-  html_url?: string; // Only set if explicitly provided, not auto-generated
-  author?: {
-    login: string;
-    avatar_url?: string; // GitHub avatar (for imported releases)
-    pubkey?: string; // Nostr pubkey (for native releases)
-    picture?: string; // Nostr picture (for native releases)
-  };
-  assets?: ReleaseAsset[];
-  prerelease?: boolean;
-};
+type Release = RepoReleaseListItem;
 
 function slugify(text: string): string {
   return text
@@ -95,6 +97,13 @@ export default function RepoReleasesPage({
   const userMetadata = useMetadata();
   const ownerSlug = useMemo(() => slugify(userName || ""), [userName]);
   const [syncingReleases, setSyncingReleases] = useState(false);
+  const [loadingNostrReleases, setLoadingNostrReleases] = useState(false);
+  const [nostrReleasesSeen, setNostrReleasesSeen] = useState(false);
+  const forgeReleasesRef = useRef<Release[]>([]);
+  const nostrReleaseEventsRef = useRef<NostrEventLike[]>([]);
+  const nostrAssetsByIdRef = useRef<Map<string, ParsedSoftwareAsset>>(
+    new Map()
+  );
 
   // Get metadata for release authors (Nostr pubkeys)
   const releaseAuthorPubkeys = useMemo(
@@ -107,6 +116,7 @@ export default function RepoReleasesPage({
   const [hasWrite, setHasWrite] = useState(false);
   const [isOwnerSession, setIsOwnerSession] = useState(false);
   const [ownerPubkeyHex, setOwnerPubkeyHex] = useState("");
+  const [announcedAppId, setAnnouncedAppId] = useState<string | undefined>();
   const [repoSummary, setRepoSummary] = useState("");
   const [announceTag, setAnnounceTag] = useState<string | null>(null);
 
@@ -131,11 +141,36 @@ export default function RepoReleasesPage({
         resolvedParams.entity,
         resolvedParams.repo
       );
+      let ownerHex = "";
+      if (rec) {
+        const repoOwnerPubkey = getRepoOwnerPubkey(rec, resolvedParams.entity);
+        ownerHex = (repoOwnerPubkey || "").toLowerCase();
+        setRepoSummary(String(rec.description || "").slice(0, 280));
+        const announced = (rec as StoredRepo & { announcedAppId?: string })
+          .announcedAppId;
+        setAnnouncedAppId(
+          typeof announced === "string" && announced.trim()
+            ? announced.trim()
+            : undefined
+        );
+      } else {
+        setRepoSummary("");
+        setAnnouncedAppId(undefined);
+      }
+      if (!ownerHex && resolvedParams.entity?.startsWith("npub")) {
+        try {
+          const decoded = nip19.decode(resolvedParams.entity);
+          if (decoded.type === "npub") {
+            ownerHex = String(decoded.data).toLowerCase();
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      setOwnerPubkeyHex(ownerHex);
+
       if (rec && currentUserPubkey) {
         const repoOwnerPubkey = getRepoOwnerPubkey(rec, resolvedParams.entity);
-        const ownerHex = (repoOwnerPubkey || "").toLowerCase();
-        setOwnerPubkeyHex(ownerHex);
-        setRepoSummary(String(rec.description || "").slice(0, 280));
         const userHasWrite = hasWriteAccess(
           currentUserPubkey,
           rec.contributors,
@@ -151,15 +186,20 @@ export default function RepoReleasesPage({
         );
       } else {
         setHasWrite(false);
-        setIsOwnerSession(false);
-        setOwnerPubkeyHex("");
-        setRepoSummary("");
+        setIsOwnerSession(
+          Boolean(
+            ownerHex &&
+              currentUserPubkey &&
+              currentUserPubkey.toLowerCase() === ownerHex
+          )
+        );
       }
     } catch {
       setHasWrite(false);
       setIsOwnerSession(false);
       setOwnerPubkeyHex("");
       setRepoSummary("");
+      setAnnouncedAppId(undefined);
     }
   }, [resolvedParams.entity, resolvedParams.repo, currentUserPubkey]);
 
@@ -180,6 +220,37 @@ export default function RepoReleasesPage({
   const [assets, setAssets] = useState<ReleaseAsset[]>([]);
   const [assetName, setAssetName] = useState("");
   const [assetPlatform, setAssetPlatform] = useState("linux");
+
+  const buildNostrReleaseRows = useCallback((): Release[] => {
+    if (!ownerPubkeyHex || !/^[0-9a-f]{64}$/.test(ownerPubkeyHex)) return [];
+    const matched = parseMatchingRepoReleases(nostrReleaseEventsRef.current, {
+      ownerPubkeyHex,
+      repoName: resolvedParams.repo,
+      announcedAppId,
+    });
+    // Newest replaceable snapshot per version+channel
+    const byKey = new Map<string, (typeof matched)[0]>();
+    for (const r of matched) {
+      const key = `${r.version.toLowerCase()}::${r.channel}`;
+      const prev = byKey.get(key);
+      if (!prev || r.createdAt > prev.createdAt) byKey.set(key, r);
+    }
+    return Array.from(byKey.values()).map((rel) => {
+      const assets = rel.assetEventIds
+        .map((id) => nostrAssetsByIdRef.current.get(id))
+        .filter((a): a is ParsedSoftwareAsset => !!a);
+      return mapSoftwareReleaseToRepoRelease(rel, assets);
+    });
+  }, [ownerPubkeyHex, resolvedParams.repo, announcedAppId]);
+
+  const remountMergedReleases = useCallback(() => {
+    setReleases(
+      mergeForgeAndNostrReleases(
+        forgeReleasesRef.current,
+        buildNostrReleaseRows()
+      )
+    );
+  }, [buildNostrReleaseRows]);
 
   const reloadRepoReleasesFromStorage = useCallback(() => {
     try {
@@ -210,9 +281,13 @@ export default function RepoReleasesPage({
             ? (r as Release & { tag?: string }).tag!
             : "");
         if (!tag) continue;
-        byTag.set(tag.toLowerCase(), { ...r, tag_name: tag });
+        byTag.set(tag.toLowerCase(), { ...r, tag_name: tag, source: "local" });
       }
-      setReleases(Array.from(byTag.values()));
+      const localRows = Array.from(byTag.values());
+      forgeReleasesRef.current = localRows;
+      setReleases(
+        mergeForgeAndNostrReleases(localRows, buildNostrReleaseRows())
+      );
 
       if (rec) {
         setTags(
@@ -252,7 +327,11 @@ export default function RepoReleasesPage({
     } catch {
       /* keep prior state */
     }
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    buildNostrReleaseRows,
+  ]);
 
   useEffect(() => {
     reloadRepoReleasesFromStorage();
@@ -293,11 +372,14 @@ export default function RepoReleasesPage({
           );
           if (!cancelled) {
             if (merged && merged.length > 0) {
+              const forgeRows = merged.map((r) => ({
+                ...r,
+                tag_name: r.tag_name,
+                source: "forge" as const,
+              }));
+              forgeReleasesRef.current = forgeRows;
               setReleases(
-                merged.map((r) => ({
-                  ...r,
-                  tag_name: r.tag_name,
-                }))
+                mergeForgeAndNostrReleases(forgeRows, buildNostrReleaseRows())
               );
               setSourceUrl(url);
             } else {
@@ -320,6 +402,127 @@ export default function RepoReleasesPage({
     subscribe,
     defaultRelays,
     reloadRepoReleasesFromStorage,
+    buildNostrReleaseRows,
+  ]);
+
+  // NIP-82 / Blossom releases (kind 30063 + 3063) — works without a forge sourceUrl.
+  useEffect(() => {
+    if (!subscribe || !ownerPubkeyHex || !/^[0-9a-f]{64}$/.test(ownerPubkeyHex)) {
+      return;
+    }
+    let cancelled = false;
+    setLoadingNostrReleases(true);
+    setNostrReleasesSeen(false);
+    nostrReleaseEventsRef.current = [];
+    nostrAssetsByIdRef.current = new Map();
+
+    const relays = [
+      ...relaysForSoftwareCatalog(defaultRelays || []),
+      "wss://relay.ngit.dev",
+    ];
+    const uniqueRelays = Array.from(new Set(relays.filter(Boolean)));
+    const assetUnsubs: Array<() => void> = [];
+
+    const requestAssets = (releaseEv: NostrEventLike) => {
+      const parsed = parseMatchingRepoReleases([releaseEv], {
+        ownerPubkeyHex,
+        repoName: resolvedParams.repo,
+        announcedAppId,
+      })[0];
+      if (!parsed) return;
+      const { ids, relayHints } = assetIdsAndRelayHintsFromRelease(parsed);
+      const missing = ids.filter((id) => !nostrAssetsByIdRef.current.has(id));
+      if (missing.length === 0) {
+        remountMergedReleases();
+        return;
+      }
+      const assetRelays = Array.from(
+        new Set([...uniqueRelays, ...relayHints])
+      );
+      const unsubAssets = subscribe(
+        [{ kinds: [KIND_SOFTWARE_ASSET], ids: missing }],
+        assetRelays,
+        (event: NostrEventLike) => {
+          if (cancelled) return;
+          const parsedAssets = parseAssetsById([event]);
+          let changed = false;
+          for (const [id, asset] of parsedAssets) {
+            if (!nostrAssetsByIdRef.current.has(id)) {
+              nostrAssetsByIdRef.current.set(id, asset);
+              changed = true;
+            }
+          }
+          if (changed) remountMergedReleases();
+        },
+        12000
+      );
+      assetUnsubs.push(unsubAssets);
+    };
+
+    const unsubReleases = subscribe(
+      [
+        {
+          kinds: [KIND_SOFTWARE_RELEASE],
+          authors: [ownerPubkeyHex],
+          limit: 200,
+        },
+      ],
+      uniqueRelays,
+      (event: NostrEventLike) => {
+        if (cancelled) return;
+        const matched = parseMatchingRepoReleases([event], {
+          ownerPubkeyHex,
+          repoName: resolvedParams.repo,
+          announcedAppId,
+        });
+        if (matched.length === 0) return;
+        const prev = nostrReleaseEventsRef.current.find((e) => e.id === event.id);
+        if (!prev) {
+          nostrReleaseEventsRef.current = [
+            ...nostrReleaseEventsRef.current,
+            event,
+          ];
+        } else if (event.created_at >= prev.created_at) {
+          nostrReleaseEventsRef.current = nostrReleaseEventsRef.current.map(
+            (e) => (e.id === event.id ? event : e)
+          );
+        } else {
+          return;
+        }
+        setNostrReleasesSeen(true);
+        remountMergedReleases();
+        requestAssets(event);
+      },
+      400
+    );
+
+    const doneTimer = setTimeout(() => {
+      if (!cancelled) setLoadingNostrReleases(false);
+    }, 14000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(doneTimer);
+      try {
+        unsubReleases();
+      } catch {
+        /* ignore */
+      }
+      for (const u of assetUnsubs) {
+        try {
+          u();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, [
+    subscribe,
+    ownerPubkeyHex,
+    resolvedParams.repo,
+    announcedAppId,
+    defaultRelays,
+    remountMergedReleases,
   ]);
 
   useEffect(() => {
@@ -750,7 +953,31 @@ export default function RepoReleasesPage({
       ) : null}
 
       {releases.length === 0 ? (
-        <p className="text-gray-400 mt-4">No releases yet.</p>
+        <div className="mt-4 space-y-2 text-gray-400">
+          {syncingReleases || loadingNostrReleases ? (
+            <p>Loading releases from forge / Nostr…</p>
+          ) : (
+            <>
+              <p>No releases yet.</p>
+              <p className="text-sm text-gray-500">
+                Forge Releases appear when this repo has a GitHub / Codeberg /
+                GitLab source. Blossom / Zapstore (NIP-82) releases are loaded
+                from Nostr even without a forge link
+                {nostrReleasesSeen
+                  ? " (events seen — assets may still be resolving)."
+                  : "."}{" "}
+                Browse installable apps at{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>
+                .
+              </p>
+            </>
+          )}
+        </div>
       ) : (
         <ul className="mt-4 space-y-4">
           {releases.map((r, i) => {
@@ -819,6 +1046,11 @@ export default function RepoReleasesPage({
                   ) : null}
                   <div className="font-semibold">{r.name || r.tag_name}</div>
                   <span className="text-gray-400">({r.tag_name})</span>
+                  {r.source === "nostr" ? (
+                    <span className="inline-block px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">
+                      Nostr
+                    </span>
+                  ) : null}
                 </div>
                 <div className="text-gray-400 text-sm mt-1">
                   {r.published_at ? formatDateTime24h(r.published_at) : ""}

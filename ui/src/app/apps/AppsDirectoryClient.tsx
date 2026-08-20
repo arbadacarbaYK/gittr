@@ -10,6 +10,7 @@ import {
   parseGitHubRepoSpec,
   repositoryUrlToReleasesHref,
 } from "@/lib/nostr/nip82-repository-links";
+import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
@@ -213,6 +214,8 @@ export function AppsDirectoryClient() {
   const [assetsById, setAssetsById] = useState<
     Map<string, ParsedSoftwareAsset>
   >(() => new Map());
+  /** After asset-id subscribe window, stop spinning on unresolved e-tags. */
+  const [assetFetchSettled, setAssetFetchSettled] = useState(false);
 
   const rawAppEventsRef = useRef<NostrEventLike[]>([]);
   /** NIP-09 kind 5 — hide app/release/asset events by id (repo NIP-34 unchanged). */
@@ -403,16 +406,19 @@ export function AppsDirectoryClient() {
   }, [githubRepoKeys.join(",")]);
 
   const requestAssetBatch = useCallback(
-    (ids: string[]) => {
+    (ids: string[], extraRelays: string[] = []) => {
       if (!subscribe || ids.length === 0) return;
       const missing = ids.filter((id) => !assetsRef.current.has(id));
       if (missing.length === 0) return;
+      const relayList = Array.from(
+        new Set([...relays, ...extraRelays].filter(Boolean))
+      );
       const chunkSize = 350;
       for (let i = 0; i < missing.length; i += chunkSize) {
         const chunk = missing.slice(i, i + chunkSize);
         const unsub = subscribe(
           [{ kinds: [KIND_SOFTWARE_ASSET], ids: chunk }],
-          relays,
+          relayList,
           (event: NostrEventLike) => {
             const a = parseSoftwareAsset(event);
             if (!a) return;
@@ -445,6 +451,7 @@ export function AppsDirectoryClient() {
     setReleasesByApp(new Map());
     setReleasesByAppId(new Map());
     setAssetsById(new Map());
+    setAssetFetchSettled(false);
     setLoading(true);
     setLoadError(null);
 
@@ -563,16 +570,23 @@ export function AppsDirectoryClient() {
 
   useEffect(() => {
     if (!subscribe || apps.length === 0) return;
+    setAssetFetchSettled(false);
     const ids = new Set<string>();
+    const hintRelays = new Set<string>();
     for (const app of apps) {
       const list = releasesForApp(app);
       const best = pickLatestMainRelease(list);
       if (!best) continue;
-      for (const id of best.assetEventIds) {
+      const { ids: assetIds, relayHints } =
+        assetIdsAndRelayHintsFromRelease(best);
+      for (const id of assetIds) {
         if (id) ids.add(id);
       }
+      for (const h of relayHints) hintRelays.add(h);
     }
-    requestAssetBatch(Array.from(ids));
+    requestAssetBatch(Array.from(ids), Array.from(hintRelays));
+    const settleTimer = setTimeout(() => setAssetFetchSettled(true), 14000);
+    return () => clearTimeout(settleTimer);
   }, [
     subscribe,
     apps,
@@ -1061,18 +1075,33 @@ export function AppsDirectoryClient() {
                               APK (hash only)
                             </span>
                           ) : latest && latest.assetEventIds.length > 0 ? (
-                            <span
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                }),
-                                "cursor-wait opacity-80"
-                              )}
-                            >
-                              <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
-                              Resolving assets…
-                            </span>
+                            assetFetchSettled ? (
+                              <span
+                                className={cn(
+                                  buttonVariants({
+                                    size: "sm",
+                                    variant: "outline",
+                                  }),
+                                  "cursor-default opacity-80"
+                                )}
+                                title="Kind 3063 asset events were not found on the catalog relay set. Try again later or open the publisher’s Blossom / Zapstore listing."
+                              >
+                                Assets not on catalog relays
+                              </span>
+                            ) : (
+                              <span
+                                className={cn(
+                                  buttonVariants({
+                                    size: "sm",
+                                    variant: "outline",
+                                  }),
+                                  "cursor-wait opacity-80"
+                                )}
+                              >
+                                <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
+                                Resolving assets…
+                              </span>
+                            )
                           ) : (
                             <span
                               className="text-xs text-gray-500"

@@ -7,6 +7,7 @@ export const RELAY_ZAPSTORE = "wss://relay.zapstore.dev";
 export const SOFTWARE_CATALOG_RELAYS = [
   RELAY_ZAPSTORE,
   "wss://nos.lol",
+  "wss://relay.ngit.dev",
   "wss://relay.damus.io",
   "wss://relay.gittr.space",
 ] as const;
