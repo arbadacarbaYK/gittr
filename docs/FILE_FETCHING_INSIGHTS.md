@@ -166,7 +166,7 @@ Not limited to github.com. **Nostr-only** repos (no `source`/`forkedFrom`) keep 
 
 **Crawler path nests:** Empty folders must not render the **root** README with a nested `basePath` (that rewrote relative `src/…` links into deeper `?path=` URLs). `isAbsurdRepoPath` / `sanitizeRepoNavPath` reject deep/`src/…/src/…` loops in markdown hrefs, Code navigation, and file-content APIs.
 
-`no files field in event` is **normal** (NIP-34 metadata only). `forge-releases` with `no_releases`/`no_apk` returns **200** + `ok:false` (not a red Network 404) when the repo has no Zapstore APK release.
+`no files field in event` is **normal** (NIP-34 metadata only). `forge-releases` with `no_releases`/`no_apk` returns **200** + `ok:false` (not a red Network 404) when the repo has no Zapstore APK release. The repo **Releases** tab also lists **NIP-82** (kinds `30063`/`3063`, including Blossom URLs) for GRASP-only repos — that path is separate from Code-tab file fetch and does not change clone/`repo-files` order.
 
 ## Regression tests (run these — smoke alone is not enough)
 
