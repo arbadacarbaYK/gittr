@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { ReadmeMarkdownImage } from "@/components/repo/ReadmeMarkdownImage";
+import { RepoFolderReadmeMarkdown } from "@/components/repo/RepoFolderReadmeMarkdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
@@ -1575,13 +1576,21 @@ export function RepoCodePage() {
     selectedBranchRef.current = selectedBranch;
   }, [selectedBranch]);
   const headingScrollRef = useRef<string>("");
-  const readmeHeadingComponents = createMarkdownHeadingComponents(
-    createHeadingIdFactory(),
-    headingScrollRef
+  const readmeHeadingComponents = useMemo(
+    () =>
+      createMarkdownHeadingComponents(
+        createHeadingIdFactory(),
+        headingScrollRef
+      ),
+    []
   );
-  const fileHeadingComponents = createMarkdownHeadingComponents(
-    createHeadingIdFactory(),
-    headingScrollRef
+  const fileHeadingComponents = useMemo(
+    () =>
+      createMarkdownHeadingComponents(
+        createHeadingIdFactory(),
+        headingScrollRef
+      ),
+    []
   );
   useEffect(() => {
     let ownerPubkey = repoOwnerPubkey || entityPubkey;
@@ -1894,6 +1903,26 @@ export function RepoCodePage() {
       // ignore
     }
   }, [postSourceRefetchHintKey]);
+
+  const repoFromStorageForChrome = useMemo(() => {
+    if (!mounted) return undefined;
+    try {
+      return findRepoByEntityAndName(
+        loadStoredRepos(),
+        resolvedParams.entity,
+        decodedRepo
+      );
+    } catch {
+      return undefined;
+    }
+  }, [
+    mounted,
+    resolvedParams.entity,
+    decodedRepo,
+    repoData?.hasUnpushedEdits,
+    repoData?.lastNostrEventId,
+    (repoData as { status?: string } | null)?.status,
+  ]);
 
   // Owner / write-access contributor: keep Repository status open so Push is obvious.
   useEffect(() => {
@@ -7060,9 +7089,10 @@ export function RepoCodePage() {
                       Array.isArray(repoDataRef.current?.files) &&
                       repoDataRef.current.files.length > 0
                     );
-                    if (!hasFilesNow) {
+                    // Clone tags are already merged into repoData. Do not abort an
+                    // in-flight fetch or re-run the whole pipeline (that freezes chrome).
+                    if (!hasFilesNow && !fileFetchInProgressRef.current) {
                       fileFetchAttemptedRef.current = "";
-                      fileFetchInProgressRef.current = false;
                       setAnnouncementFetchTick((t) => t + 1);
                     }
                   }
@@ -12316,14 +12346,7 @@ export function RepoCodePage() {
         fileFetchInProgressRef.current = false;
       }
     })();
-  }, [
-    resolvedParams.entity,
-    resolvedParams.repo,
-    announcementFetchTick,
-    (repoData as { announcementClone?: string[] })?.announcementClone?.join(
-      "|"
-    ) ?? "",
-  ]);
+  }, [resolvedParams.entity, resolvedParams.repo, announcementFetchTick]);
 
   // Extract URL params with state to prevent infinite loops
   const [urlParams, setUrlParams] = useState<{
@@ -13552,6 +13575,11 @@ export function RepoCodePage() {
     });
   }, [safeFiles, currentPath, deletedPaths, folderListings]);
 
+  const treeRowPathsKey = useMemo(
+    () => items.map((i) => i.path).join("\n"),
+    [items]
+  );
+
   const [treeLastCommits, setTreeLastCommits] = useState<
     Record<
       string,
@@ -13620,7 +13648,8 @@ export function RepoCodePage() {
     };
   }, [
     mounted,
-    items,
+    treeRowPathsKey,
+    items.length,
     currentPath,
     selectedBranch,
     repoOwnerPubkey,
@@ -18689,51 +18718,38 @@ export function RepoCodePage() {
                     ref={readmePreviewRef}
                     className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:inline"
                   >
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={markdownRehypePlugins}
-                      components={{
-                        ...readmeHeadingComponents,
-                        ...markdownProseCodeSafeComponents,
-                        img: ({ node, ...props }) => {
-                          const branch =
-                            selectedBranch || repoData?.defaultBranch || "main";
-                          const forgeSourceUrl =
-                            effectiveSourceUrl || repoData?.sourceUrl || null;
-                          const cloneUrls = Array.isArray(
-                            (repoData as { clone?: string[] } | null)?.clone
-                          )
-                            ? (repoData as { clone: string[] }).clone
-                            : null;
-                          const ownerPk =
-                            repoOwnerPubkey ||
-                            entityPubkey ||
-                            (repoData as { ownerPubkey?: string } | null)
-                              ?.ownerPubkey ||
-                            null;
-                          return (
-                            <div className="my-4 overflow-x-auto">
-                              <ReadmeMarkdownImage
-                                src={props.src || ""}
-                                alt={props.alt || ""}
-                                branch={branch}
-                                forgeSourceUrl={forgeSourceUrl}
-                                cloneUrls={cloneUrls}
-                                ownerPubkey={ownerPk}
-                                repoName={decodedRepo}
-                                entity={resolvedParams.entity}
-                              />
-                            </div>
-                          );
-                        },
-                        a: readmeMarkdownAnchor,
-                        code: MarkdownCode,
-                      }}
-                    >
-                      {currentFolderReadme ||
+                    <RepoFolderReadmeMarkdown
+                      markdown={
+                        currentFolderReadme ||
                         (!currentPath ? repoData?.readme : "") ||
-                        ""}
-                    </ReactMarkdown>
+                        ""
+                      }
+                      headingComponents={readmeHeadingComponents}
+                      proseCodeSafeComponents={markdownProseCodeSafeComponents}
+                      markdownAnchor={readmeMarkdownAnchor}
+                      branch={
+                        selectedBranch || repoData?.defaultBranch || "main"
+                      }
+                      forgeSourceUrl={
+                        effectiveSourceUrl || repoData?.sourceUrl || null
+                      }
+                      cloneUrls={
+                        Array.isArray(
+                          (repoData as { clone?: string[] } | null)?.clone
+                        )
+                          ? (repoData as { clone: string[] }).clone
+                          : null
+                      }
+                      ownerPubkey={
+                        repoOwnerPubkey ||
+                        entityPubkey ||
+                        (repoData as { ownerPubkey?: string } | null)
+                          ?.ownerPubkey ||
+                        null
+                      }
+                      repoName={decodedRepo}
+                      entity={resolvedParams.entity}
+                    />
                   </article>
                 </div>
               )}
@@ -19777,15 +19793,7 @@ export function RepoCodePage() {
                   );
                 };
                 try {
-                  // CRITICAL: Use repoData state if available (most up-to-date), otherwise load from localStorage
-                  // This ensures status updates immediately after bridge check completes
-                  const repos = loadStoredRepos();
-                  const repoFromStorage = findRepoByEntityAndName(
-                    repos,
-                    resolvedParams.entity,
-                    decodedRepo
-                  );
-                  // Prefer repoData state over localStorage (it's updated after bridge checks)
+                  const repoFromStorage = repoFromStorageForChrome;
                   const repo = mergeRepoStateWithStorage(
                     repoData,
                     repoFromStorage
