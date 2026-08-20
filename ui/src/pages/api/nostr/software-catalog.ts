@@ -21,6 +21,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 const CATALOG_RELAYS = [
   RELAY_ZAPSTORE,
   "wss://nos.lol",
+  "wss://relay.ngit.dev",
   "wss://relay.damus.io",
   "wss://relay.gittr.space",
 ];
