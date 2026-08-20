@@ -410,7 +410,7 @@ export default function RepoReleasesPage({
 
   // NIP-82 / Blossom releases (kind 30063 + 3063) — works without a forge sourceUrl.
   useEffect(() => {
-    if (!subscribe || !ownerPubkeyHex || !/^[0-9a-f]{64}$/.test(ownerPubkeyHex)) {
+    if (!ownerPubkeyHex || !/^[0-9a-f]{64}$/.test(ownerPubkeyHex)) {
       return;
     }
     let cancelled = false;
@@ -419,6 +419,32 @@ export default function RepoReleasesPage({
     nostrReleaseEventsRef.current = [];
     nostrAssetsByIdRef.current = new Map();
 
+    const ingestReleaseRaw = (event: NostrEventLike) => {
+      if (cancelled) return;
+      const matched = parseMatchingRepoReleases([event], {
+        ownerPubkeyHex,
+        repoName: resolvedParams.repo,
+        announcedAppId,
+      });
+      if (matched.length === 0) return;
+      const prev = nostrReleaseEventsRef.current.find((e) => e.id === event.id);
+      if (!prev) {
+        nostrReleaseEventsRef.current = [
+          ...nostrReleaseEventsRef.current,
+          event,
+        ];
+      } else if (event.created_at >= prev.created_at) {
+        nostrReleaseEventsRef.current = nostrReleaseEventsRef.current.map(
+          (e) => (e.id === event.id ? event : e)
+        );
+      } else {
+        return;
+      }
+      setNostrReleasesSeen(true);
+      remountMergedReleasesRef.current();
+      return matched[0];
+    };
+
     const relays = [
       ...relaysForSoftwareCatalog(defaultRelays || []),
       "wss://relay.ngit.dev",
@@ -426,19 +452,14 @@ export default function RepoReleasesPage({
     const uniqueRelays = Array.from(new Set(relays.filter(Boolean)));
     const assetUnsubs: Array<() => void> = [];
 
-    const requestAssets = (releaseEv: NostrEventLike) => {
-      const parsed = parseMatchingRepoReleases([releaseEv], {
-        ownerPubkeyHex,
-        repoName: resolvedParams.repo,
-        announcedAppId,
-      })[0];
-      if (!parsed) return;
+    const requestAssets = (parsed: NonNullable<ReturnType<typeof parseMatchingRepoReleases>[0]>) => {
       const { ids, relayHints } = assetIdsAndRelayHintsFromRelease(parsed);
       const missing = ids.filter((id) => !nostrAssetsByIdRef.current.has(id));
       if (missing.length === 0) {
         remountMergedReleasesRef.current();
         return;
       }
+      if (!subscribe) return;
       const assetRelays = Array.from(
         new Set([...uniqueRelays, ...relayHints])
       );
@@ -462,42 +483,61 @@ export default function RepoReleasesPage({
       assetUnsubs.push(unsubAssets);
     };
 
-    const unsubReleases = subscribe(
-      [
-        {
-          kinds: [KIND_SOFTWARE_RELEASE],
-          authors: [ownerPubkeyHex],
-          limit: 200,
-        },
-      ],
-      uniqueRelays,
-      (event: NostrEventLike) => {
-        if (cancelled) return;
-        const matched = parseMatchingRepoReleases([event], {
-          ownerPubkeyHex,
-          repoName: resolvedParams.repo,
-          announcedAppId,
-        });
-        if (matched.length === 0) return;
-        const prev = nostrReleaseEventsRef.current.find((e) => e.id === event.id);
-        if (!prev) {
-          nostrReleaseEventsRef.current = [
-            ...nostrReleaseEventsRef.current,
-            event,
-          ];
-        } else if (event.created_at >= prev.created_at) {
-          nostrReleaseEventsRef.current = nostrReleaseEventsRef.current.map(
-            (e) => (e.id === event.id ? event : e)
-          );
-        } else {
-          return;
+    // Server catalog is more reliable than browser WS for GRASP publishers.
+    void (async () => {
+      try {
+        const res = await fetch("/api/nostr/software-catalog");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          releasesByApp?: Record<
+            string,
+            Array<{ raw?: NostrEventLike; pubkey?: string; appId?: string }>
+          >;
+          releasesByAppId?: Record<
+            string,
+            Array<{ raw?: NostrEventLike; pubkey?: string; appId?: string }>
+          >;
+        };
+        const buckets = [
+          ...Object.values(data.releasesByApp || {}),
+          ...Object.values(data.releasesByAppId || {}),
+        ];
+        for (const list of buckets) {
+          for (const row of list) {
+            const raw = row.raw;
+            if (!raw || raw.kind !== KIND_SOFTWARE_RELEASE) continue;
+            if (
+              typeof raw.pubkey === "string" &&
+              raw.pubkey.toLowerCase() !== ownerPubkeyHex
+            ) {
+              continue;
+            }
+            const parsed = ingestReleaseRaw(raw);
+            if (parsed) requestAssets(parsed);
+          }
         }
-        setNostrReleasesSeen(true);
-        remountMergedReleasesRef.current();
-        requestAssets(event);
-      },
-      400
-    );
+      } catch (e) {
+        console.warn("[Releases] software-catalog hydrate failed:", e);
+      }
+    })();
+
+    const unsubReleases = subscribe
+      ? subscribe(
+          [
+            {
+              kinds: [KIND_SOFTWARE_RELEASE],
+              authors: [ownerPubkeyHex],
+              limit: 200,
+            },
+          ],
+          uniqueRelays,
+          (event: NostrEventLike) => {
+            const parsed = ingestReleaseRaw(event);
+            if (parsed) requestAssets(parsed);
+          },
+          400
+        )
+      : () => {};
 
     const doneTimer = setTimeout(() => {
       if (!cancelled) setLoadingNostrReleases(false);
@@ -519,8 +559,6 @@ export default function RepoReleasesPage({
         }
       }
     };
-    // Intentionally omit remountMergedReleases — use ref so callback identity
-    // changes do not wipe in-flight Nostr release events.
   }, [
     subscribe,
     ownerPubkeyHex,
