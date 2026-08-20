@@ -1828,11 +1828,19 @@ function ExplorePageContent() {
             }
 
             if (isDeleted) {
-              clearDeletedRepoTombstones({
+              const announcedAtMs =
+                typeof event.created_at === "number"
+                  ? event.created_at * 1000
+                  : undefined;
+              const cleared = clearDeletedRepoTombstones({
                 entity,
                 repo: repoData.repositoryName,
                 ownerPubkey: event.pubkey,
+                announcedAtMs,
               });
+              if (cleared === 0) {
+                return;
+              }
             }
 
             // Check if this repo already exists (match by ownerPubkey first, then entity)

@@ -41,7 +41,10 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
-import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
+import {
+  clearDeletedRepoTombstones,
+  isDeletedRepoTombstoned,
+} from "@/lib/repos/deleted-repo-tombstones";
 import { mergeProfileRepoList } from "@/lib/repos/merge-profile-repos";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
@@ -1395,16 +1398,27 @@ export default function RepositoriesPage() {
               return false;
             });
 
-            // Local tombstone from a prior Delete — but a live non-deleted 30617
-            // means the owner reopened under the same name. Clear and accept.
+            // Local tombstone from a prior Delete/flush — only a *newer* 30617
+            // (created after deletedAt) may reopen. Older relay events stay hidden.
             if (isDeleted) {
+              const announcedAtMs =
+                typeof event.created_at === "number"
+                  ? event.created_at * 1000
+                  : undefined;
               const cleared = clearDeletedRepoTombstones({
                 entity,
                 repo: repoData.repositoryName,
                 ownerPubkey: event.pubkey,
+                announcedAtMs,
               });
+              if (cleared === 0) {
+                console.log(
+                  `⏭️ [Sync] Keeping flush/delete tombstone for ${repoKey} (announcement not newer than local hide)`
+                );
+                return;
+              }
               console.log(
-                `♻️ [Sync] Live announcement for previously deleted ${repoKey} — cleared ${cleared} tombstone(s), accepting`
+                `♻️ [Sync] Live announcement newer than tombstone for ${repoKey} — cleared ${cleared}, accepting`
               );
             }
 
@@ -2087,7 +2101,28 @@ export default function RepositoriesPage() {
           return;
         }
 
-        const rows = data.repos.map((row) => ({
+        const rows = data.repos
+          .filter((row) => {
+            const announcedAtMs =
+              typeof row.lastNostrEventCreatedAt === "number"
+                ? row.lastNostrEventCreatedAt * 1000
+                : typeof row.lastActivity === "number"
+                  ? row.lastActivity
+                  : undefined;
+            // Flush/delete tombstones must survive profile-repos refill of old 30617s.
+            if (
+              isDeletedRepoTombstoned({
+                entity: row.entity,
+                repo: row.repo,
+                ownerPubkey: row.ownerPubkey,
+                announcedAtMs,
+              })
+            ) {
+              return false;
+            }
+            return true;
+          })
+          .map((row) => ({
           slug: row.repo,
           entity: row.entity,
           repo: row.repo,
@@ -2107,6 +2142,11 @@ export default function RepositoriesPage() {
           publicRead: row.publicRead !== false,
         }));
 
+        if (rows.length === 0) {
+          if (!cancelled) setNostrOwnedListReady(true);
+          return;
+        }
+
         const base = reposCatalogRef.current ?? (loadStoredRepos() as any[]);
         const merged = mergeProfileRepoList(base, rows);
         persistReposCatalog(merged as Repo[]);
@@ -2114,7 +2154,7 @@ export default function RepositoriesPage() {
           setNostrOwnedListReady(true);
           loadRepos();
           console.log(
-            `✅ [Repositories] Refilled ${data.repos.length} owned repo(s) from profile-repos API`
+            `✅ [Repositories] Refilled ${rows.length} owned repo(s) from profile-repos API (${data.repos.length - rows.length} hidden by local flush/delete)`
           );
         }
       } catch (e) {
@@ -2645,7 +2685,7 @@ export default function RepositoriesPage() {
             <button
               onClick={() => setShowClearConfirm(true)}
               className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
-              title="Flush only your own repos from this browser’s cache (not from Nostr). They are marked locally deleted so the Nostr sync stops re-adding them; publish a fresh 30617 if you want one back. Unpushed local-only work is lost. Other people’s cached repos stay."
+              title="Flush only your own repos from this browser’s cache (not from Nostr). They stay hidden until you publish a newer 30617 after the flush — old announcements on relays will not bring them back. Unpushed local-only work is lost. Other people’s cached repos stay."
             >
               <span className="sm:hidden">
                 Flush my repos
@@ -2977,7 +3017,7 @@ export default function RepositoriesPage() {
                               result.keptRepos === 1 ? "" : "s"
                             } in cache`,
                             "",
-                            "These repos are marked locally deleted so they stop re-appearing from Nostr sync. Publish a fresh 30617 announcement if you want one back. Unpushed local-only work is gone.",
+                            "These repos stay hidden until you publish a newer 30617 after this flush. Old announcements still on relays will not bring them back. Unpushed local-only work is gone.",
                           ]
                             .filter(Boolean)
                             .join("\n")

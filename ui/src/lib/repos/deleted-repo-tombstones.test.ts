@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addDeletedRepoTombstones,
   clearDeletedRepoTombstones,
+  isDeletedRepoTombstoned,
 } from "./deleted-repo-tombstones";
 
 const OWNER =
@@ -79,10 +80,60 @@ describe("clearDeletedRepoTombstones", () => {
     });
     expect(removed).toBe(1);
   });
+
+  it("keeps tombstone when relay announcement is older than flush", () => {
+    const flushedAt = Date.now();
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([
+        {
+          entity: ENTITY,
+          repo: "gittr-mcp",
+          deletedAt: flushedAt,
+          ownerPubkey: OWNER,
+        },
+      ])
+    );
+    const removed = clearDeletedRepoTombstones({
+      entity: ENTITY,
+      repo: "gittr-mcp",
+      ownerPubkey: OWNER,
+      announcedAtMs: flushedAt - 60_000,
+    });
+    expect(removed).toBe(0);
+    expect(isDeletedRepoTombstoned({
+      entity: ENTITY,
+      repo: "gittr-mcp",
+      ownerPubkey: OWNER,
+      announcedAtMs: flushedAt - 60_000,
+    })).toBe(true);
+  });
+
+  it("clears tombstone when relay announcement is newer than flush", () => {
+    const flushedAt = Date.now() - 60_000;
+    localStorage.setItem(
+      "gittr_deleted_repos",
+      JSON.stringify([
+        {
+          entity: ENTITY,
+          repo: "gittr-mcp",
+          deletedAt: flushedAt,
+          ownerPubkey: OWNER,
+        },
+      ])
+    );
+    const removed = clearDeletedRepoTombstones({
+      entity: ENTITY,
+      repo: "gittr-mcp",
+      ownerPubkey: OWNER,
+      announcedAtMs: flushedAt + 120_000,
+    });
+    expect(removed).toBe(1);
+  });
 });
 
 describe("addDeletedRepoTombstones", () => {
-  it("adds new tombstones and skips duplicates", () => {
+  it("adds new tombstones and skips duplicates by refreshing deletedAt", () => {
     localStorage.setItem(
       "gittr_deleted_repos",
       JSON.stringify([
@@ -94,16 +145,19 @@ describe("addDeletedRepoTombstones", () => {
       { entity: ENTITY, repo: "new-repo" },
       { entity: "other", repo: "new-repo" },
     ]);
-    expect(added).toBe(2);
+    // existing refreshed + 2 new
+    expect(added).toBe(3);
     const stored = JSON.parse(
       localStorage.getItem("gittr_deleted_repos") || "[]"
     );
     expect(stored).toHaveLength(3);
-    expect(stored.map((d: any) => d.repo)).toContain("new-repo");
-    expect(stored.map((d: any) => d.entity)).toContain(ENTITY);
+    const existing = stored.find(
+      (d: any) => d.repo === "existing" && d.entity === ENTITY
+    );
+    expect(existing.deletedAt).toBeGreaterThan(1);
   });
 
-  it("is case-insensitive for duplicates", () => {
+  it("is case-insensitive for duplicates and refreshes deletedAt", () => {
     localStorage.setItem(
       "gittr_deleted_repos",
       JSON.stringify([{ entity: ENTITY, repo: "Repo-Name", deletedAt: 1 }])
@@ -111,7 +165,12 @@ describe("addDeletedRepoTombstones", () => {
     const added = addDeletedRepoTombstones([
       { entity: ENTITY, repo: "repo-name" },
     ]);
-    expect(added).toBe(0);
+    expect(added).toBe(1);
+    const stored = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    );
+    expect(stored).toHaveLength(1);
+    expect(stored[0].deletedAt).toBeGreaterThan(1);
   });
 
   it("keeps existing tombstones when adding none", () => {

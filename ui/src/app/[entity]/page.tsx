@@ -1238,21 +1238,21 @@ export default function EntityPage({
               // Skip if marked as deleted/archived on Nostr
               if (r.deleted === true || r.archived === true) return false;
 
-              // Local tombstone: hide unless this is a live reopen (clear & show)
+              // Local tombstone: hide unless announcement is newer than flush/delete
               if (isRepoDeleted(r)) {
-                const looksLive = !!(
-                  r.syncedFromNostr ||
-                  r.fromNostr ||
-                  r.nostrEventId ||
-                  r.lastNostrEventId
-                );
-                if (looksLive) {
-                  clearDeletedRepoTombstones({
-                    entity: r.entity,
-                    repo: r.repo || r.slug || "",
-                    ownerPubkey: r.ownerPubkey,
-                  });
-                } else {
+                const announcedAtMs =
+                  typeof r.lastNostrEventCreatedAt === "number"
+                    ? r.lastNostrEventCreatedAt > 1e12
+                      ? r.lastNostrEventCreatedAt
+                      : r.lastNostrEventCreatedAt * 1000
+                    : undefined;
+                const cleared = clearDeletedRepoTombstones({
+                  entity: r.entity,
+                  repo: r.repo || r.slug || "",
+                  ownerPubkey: r.ownerPubkey,
+                  announcedAtMs,
+                });
+                if (cleared === 0) {
                   return false;
                 }
               }
@@ -1379,23 +1379,21 @@ export default function EntityPage({
           // Skip if marked as deleted/archived on Nostr
           if (r.deleted === true || r.archived === true) return false;
 
-          // Local tombstone: hide unless this is a live reopen (clear & show)
+          // Local tombstone: hide unless announcement is newer than flush/delete
           if (isRepoDeleted(r)) {
-            const looksLive = !!(
-              r.syncedFromNostr ||
-              r.fromNostr ||
-              r.nostrEventId ||
-              r.lastNostrEventId ||
-              r.stateEventId ||
-              r.lastStateEventId
-            );
-            if (looksLive) {
-              clearDeletedRepoTombstones({
-                entity: r.entity,
-                repo: r.repo || r.slug || "",
-                ownerPubkey: r.ownerPubkey,
-              });
-            } else {
+            const announcedAtMs =
+              typeof r.lastNostrEventCreatedAt === "number"
+                ? r.lastNostrEventCreatedAt > 1e12
+                  ? r.lastNostrEventCreatedAt
+                  : r.lastNostrEventCreatedAt * 1000
+                : undefined;
+            const cleared = clearDeletedRepoTombstones({
+              entity: r.entity,
+              repo: r.repo || r.slug || "",
+              ownerPubkey: r.ownerPubkey,
+              announcedAtMs,
+            });
+            if (cleared === 0) {
               return false;
             }
           }
