@@ -228,7 +228,7 @@ export async function cloneShallowAndReadFile(
         encoding: "latin1",
       }
     );
-    const bytes = Buffer.from(stdout, "latin1");
+    const bytes = new Uint8Array(Buffer.from(stdout, "latin1"));
     if (bytes.length > MAX_FILE_BYTES) {
       fs.rmSync(tempDir, { recursive: true, force: true });
       return null;
