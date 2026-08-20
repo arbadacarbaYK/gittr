@@ -9,7 +9,6 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import {
   type NostrActivityCounts,
-  backfillActivities,
   buildCalendarYearTimelineRows,
   countActivitiesFromNostr,
   getContributionGraph,
@@ -35,23 +34,19 @@ import {
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
-  KIND_REPOSITORY,
-  KIND_REPOSITORY_NIP34,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
-import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
-import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
-import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
-import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
 import {
   nip39IdentityDisplay,
   nip39PlatformDisplayName,
   nip39PlatformProfileUrl,
 } from "@/lib/nostr/nip39-identities";
+import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import {
   type ClaimedIdentity,
   useContributorMetadata,
@@ -60,30 +55,22 @@ import { useProfileFollowCounts } from "@/lib/nostr/useProfileFollowCounts";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
-import {
-  isRealForkAttribution,
-} from "@/lib/repos/fork-attribution";
+import { isRealForkAttribution } from "@/lib/repos/fork-attribution";
 import {
   mergeProfileRepoList,
   profileAnnouncerRole,
   profileRepoDisplayRole,
   profileRepoRowKey,
 } from "@/lib/repos/merge-profile-repos";
-import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
-  getEntityDisplayName,
-  getEntityPicture,
   getRepoOwnerPubkey,
   getUserMetadata,
-  resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { getGraspServers } from "@/lib/utils/grasp-servers";
-import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import {
   isNostrProfileMirrorWebsite,
   nostrProfileViewerUrl,
@@ -133,157 +120,6 @@ function decodeNpubToHex(entity: string): string | null {
   return null;
 }
 
-/** localStorage check — avoids starting anon Nostr sync when cache already has repos. */
-function cachedReposOwnedByPubkey(targetPubkey: string): boolean {
-  const normalizedTarget = targetPubkey.toLowerCase();
-  const targetPrefix = normalizedTarget.slice(0, 8);
-  try {
-    const repos = JSON.parse(
-      localStorage.getItem("gittr_repos") || "[]"
-    ) as Array<{
-      ownerPubkey?: string;
-      entity?: string;
-      contributors?: Array<{ pubkey?: string }>;
-    }>;
-    return repos.some((repo) => {
-      if (!repo) return false;
-      const ownerPubkey = repo.ownerPubkey;
-      if (
-        ownerPubkey &&
-        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
-        ownerPubkey.toLowerCase() === normalizedTarget
-      ) {
-        return true;
-      }
-      if (repo.contributors && Array.isArray(repo.contributors)) {
-        const match = repo.contributors.find(
-          (c) =>
-            c.pubkey &&
-            /^[0-9a-f]{64}$/i.test(c.pubkey) &&
-            c.pubkey.toLowerCase() === normalizedTarget
-        );
-        if (match) return true;
-      }
-      if (repo.entity) {
-        if (repo.entity.startsWith("npub")) {
-          try {
-            const decoded = nip19.decode(repo.entity);
-            if (
-              decoded.type === "npub" &&
-              (decoded.data as string).toLowerCase() === normalizedTarget
-            ) {
-              return true;
-            }
-          } catch {
-            return false;
-          }
-        }
-        if (/^[0-9a-f]{64}$/i.test(repo.entity)) {
-          if (repo.entity.toLowerCase() === normalizedTarget) return true;
-        }
-        if (/^[0-9a-f]{8}$/i.test(repo.entity)) {
-          if (repo.entity.toLowerCase() === targetPrefix) return true;
-        }
-      }
-      return false;
-    });
-  } catch {
-    return false;
-  }
-}
-
-// Parse NIP-34 repository announcement format (minimal fields needed for lists)
-function parseNIP34Repository(event: any): any {
-  const repoData: any = {
-    repositoryName: "",
-    name: "",
-    description: "",
-    clone: [],
-    relays: [],
-    topics: [],
-  };
-
-  if (!event.tags || !Array.isArray(event.tags)) {
-    return repoData;
-  }
-
-  for (const tag of event.tags) {
-    if (!Array.isArray(tag) || tag.length < 2) continue;
-
-    const tagName = tag[0];
-    const tagValue = tag[1];
-
-    switch (tagName) {
-      case "d":
-        repoData.repositoryName = tagValue;
-        break;
-      case "name":
-        repoData.name = tagValue;
-        break;
-      case "description":
-        repoData.description = tagValue;
-        break;
-      case "clone":
-        for (const v of nip34TagValuesFromRow(tag)) {
-          if (v && !repoData.clone.includes(v)) repoData.clone.push(v);
-        }
-        break;
-      case "relays":
-        for (const raw of nip34TagValuesFromRow(tag)) {
-          const parts = raw.includes(",")
-            ? raw
-                .split(",")
-                .map((r: string) => r.trim())
-                .filter((r: string) => r.length > 0)
-            : [raw];
-          for (const tagValue of parts) {
-            const normalized =
-              tagValue.startsWith("wss://") || tagValue.startsWith("ws://")
-                ? tagValue
-                : `wss://${tagValue}`;
-            if (!repoData.relays.includes(normalized)) {
-              repoData.relays.push(normalized);
-            }
-          }
-        }
-        break;
-      case "t":
-        if (tagValue) repoData.topics.push(tagValue);
-        break;
-      case "public-read":
-        if (tagValue) {
-          repoData.publicRead = tagValue.toLowerCase() !== "false";
-        }
-        break;
-      case "public-write":
-        if (tagValue) {
-          repoData.publicWrite = tagValue.toLowerCase() === "true";
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  const links = parseRepoLinksFromNip34Tags(event.tags);
-  if (links.length > 0) repoData.links = links;
-
-  if (!repoData.repositoryName && repoData.name) {
-    repoData.repositoryName = repoData.name;
-  }
-  if (repoData.publicRead === undefined) {
-    repoData.publicRead = true;
-  }
-  if (repoData.publicWrite === undefined) {
-    repoData.publicWrite = false;
-  }
-
-  // gittr soft-delete: content JSON and/or deleted/archived tags
-  applyDeletionMarkersToRepoData(repoData, event);
-
-  return repoData;
-}
-
 export default function EntityPage({
   params,
 }: {
@@ -293,7 +129,6 @@ export default function EntityPage({
   // CRITICAL: All hooks must be called at the top level, before any conditional returns
   const router = useRouter();
   const redirectedRef = useRef(false);
-  const anonRepoSyncRef = useRef(false);
   // Sync from the URL — never start false then flip in useEffect (that paints
   // Header + empty main + Footer for a frame: the "bare themed flash").
   const isPubkey = useMemo(() => {
@@ -679,157 +514,6 @@ export default function EntityPage({
       window.removeEventListener("gittr:repo-imported", bumpReposReload);
     };
   }, []);
-
-  // Fetch this profile's repos from relays when the local cache is empty (all visitors)
-  useEffect(() => {
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
-
-    const targetPubkey =
-      (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)
-        ? pubkeyForMetadata
-        : null) ||
-      (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)
-        ? fullPubkeyForMeta
-        : null);
-
-    if (!targetPubkey) return;
-    const normalizedTarget = targetPubkey.toLowerCase();
-    if (cachedReposOwnedByPubkey(normalizedTarget)) return;
-    if (anonRepoSyncRef.current) return;
-
-    anonRepoSyncRef.current = true;
-    const activeRelays = defaultRelays.filter(Boolean);
-
-    const upsertRepo = (event: any, repoData: any) => {
-      const existingRepos = JSON.parse(
-        localStorage.getItem("gittr_repos") || "[]"
-      ) as any[];
-      const repoName = repoData.repositoryName || repoData.name || "";
-      const ownerPubkey = event.pubkey;
-
-      if (!repoName || !ownerPubkey) return;
-      // Foreign clients sometimes announce storage paths ("<hex>/name") as
-      // the d tag — those can never resolve on gittr, so don't list them.
-      if (!isRenderableRepoName(repoName)) return;
-
-      const existingIndex = existingRepos.findIndex((r: any) => {
-        const rOwner =
-          r.ownerPubkey ||
-          (r.entity
-            ? (() => {
-                try {
-                  const decoded = nip19.decode(r.entity);
-                  return decoded.type === "npub" ? decoded.data : null;
-                } catch {
-                  return null;
-                }
-              })()
-            : null);
-        return (
-          rOwner &&
-          rOwner.toLowerCase() === ownerPubkey.toLowerCase() &&
-          (r.repo === repoName ||
-            r.slug === repoName ||
-            r.slug === `${r.entity}/${repoName}`)
-        );
-      });
-
-      const repoEntry: any = {
-        slug: repoName,
-        entity: ownerPubkey
-          ? (() => {
-              try {
-                return nip19.npubEncode(ownerPubkey);
-              } catch {
-                return ownerPubkey.slice(0, 8);
-              }
-            })()
-          : undefined,
-        repo: repoName,
-        name: repoData.name || repoName,
-        description: repoData.description || "",
-        createdAt: event.created_at * 1000,
-        updatedAt: Date.now(),
-        ownerPubkey: ownerPubkey,
-        lastNostrEventId: event.id,
-        lastNostrEventCreatedAt: event.created_at,
-        syncedFromNostr: true,
-        clone: repoData.clone || [],
-        relays: repoData.relays || [],
-        topics: repoData.topics || [],
-      };
-
-      if (existingIndex >= 0) {
-        const existing = existingRepos[existingIndex];
-        const existingLatest = existing.lastNostrEventCreatedAt || 0;
-        if (event.created_at > existingLatest) {
-          existingRepos[existingIndex] = {
-            ...existing,
-            ...repoEntry,
-          };
-          localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
-          window.dispatchEvent(new Event("gittr:repos-updated"));
-        }
-      } else {
-        existingRepos.push(repoEntry);
-        localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
-        window.dispatchEvent(new Event("gittr:repos-updated"));
-      }
-    };
-
-    const unsub = subscribe(
-      [
-        {
-          kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
-          authors: [targetPubkey],
-          limit: 5000,
-        },
-      ],
-      activeRelays,
-      (event: any) => {
-        try {
-          let repoData: any;
-          if (event.kind === KIND_REPOSITORY_NIP34) {
-            repoData = parseNIP34Repository(event);
-          } else {
-            try {
-              repoData = JSON.parse(event.content);
-            } catch (parseError) {
-              console.warn(
-                `[Profile] Failed to parse repo event content as JSON:`,
-                parseError
-              );
-              return;
-            }
-          }
-
-          if (!repoData) return;
-          upsertRepo(event, repoData);
-        } catch (err) {
-          console.error("❌ [Profile] Failed to sync repos from Nostr:", err);
-        }
-      }
-    );
-
-    const resetTimer = setTimeout(() => {
-      anonRepoSyncRef.current = false;
-      if (typeof window !== "undefined") {
-        const cacheKey = `gittr_profile_repo_sync_${targetPubkey}`;
-        sessionStorage.setItem(cacheKey, Date.now().toString());
-      }
-    }, 8000);
-
-    return () => {
-      anonRepoSyncRef.current = false;
-      clearTimeout(resetTimer);
-      if (unsub) unsub();
-    };
-  }, [
-    subscribe,
-    defaultRelays,
-    pubkeyForMetadata,
-    fullPubkeyForMeta,
-  ]);
 
   const forkEnrichKey = useMemo(() => {
     if (!isPubkey) return "";
@@ -2167,83 +1851,79 @@ export default function EntityPage({
             setTimeout(runProfileNostrActivity, 2000);
           }
 
-          // CRITICAL: Sync activities from multiple sources to get complete picture (for timeline graph)
-          // 1. Run backfill if not done (ensures all repos have creation activities)
-          // 2. Sync commits from bridge (real git commits)
-          // 3. Sync issues/PRs from Nostr (kind 1621/1618 events)
-          const backfillKey = "gittr_activities_backfilled";
-          const backfillLastRun = localStorage.getItem(backfillKey);
+          // CRITICAL: Sync activities from multiple sources for the timeline graph.
+          // 1. Sync commits from bridge (real git commits) — deferred + capped on profile
+          // 2. Sync issues/PRs from Nostr (kind 1621/1618 events)
+          // NOTE: backfillActivities is intentionally not run on the profile page; it scans
+          // the entire localStorage repo cache on the main thread and belongs on the home
+          // / repositories page instead.
           const now = Date.now();
-          const BACKFILL_INTERVAL = 24 * 60 * 60 * 1000; // Run backfill once per day
-
-          // Run backfill if not done or if it's been more than 24 hours
-          if (
-            !backfillLastRun ||
-            now - parseInt(backfillLastRun, 10) > BACKFILL_INTERVAL
-          ) {
-            console.log(
-              "🔄 [Profile] Running backfill to ensure all repos have activities..."
-            );
-            if (!isLowMemoryDevice) {
-              backfillActivities();
-            }
-          }
-
-          // Sync commits from bridge (every 5 minutes)
           const syncKey = `gittr_commits_synced_${fullPubkey}`;
           const lastSync = localStorage.getItem(syncKey);
           const SYNC_INTERVAL = 5 * 60 * 1000; // Sync every 5 minutes
 
           if (!lastSync || now - parseInt(lastSync, 10) > SYNC_INTERVAL) {
-            // Sync commits from bridge in background (don't block UI)
+            // Sync commits from bridge in background (don't block UI). On the profile
+            // page we only sync a small slice — the full list is handled on home/repos.
             if (isLowMemoryDevice) {
               return;
             }
-            syncUserCommitsFromBridge(fullPubkey, deduplicatedRepos)
-              .then((syncedCount) => {
-                // Also sync issues/PRs from Nostr
-                const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
+            const reposToSync = deduplicatedRepos.slice(0, 5);
+            const runSync = () => {
+              syncUserCommitsFromBridge(fullPubkey, reposToSync)
+                .then((syncedCount) => {
+                  // Also sync issues/PRs from Nostr
+                  const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
 
-                if (syncedCount > 0 || issuesPRsSynced > 0) {
-                  // Update activities after sync
-                  const updatedActivities = getUserActivities(fullPubkey);
-                  const updatedCounts = getUserActivityCounts(fullPubkey);
-                  const updatedGraph = mergeReposIntoContributionGraph(
-                    getContributionGraph(fullPubkey),
-                    deduplicatedRepos
-                  );
+                  if (syncedCount > 0 || issuesPRsSynced > 0) {
+                    // Update activities after sync
+                    const updatedActivities = getUserActivities(fullPubkey);
+                    const updatedCounts = getUserActivityCounts(fullPubkey);
+                    const updatedGraph = mergeReposIntoContributionGraph(
+                      getContributionGraph(fullPubkey),
+                      deduplicatedRepos
+                    );
 
-                  setActivityCounts(updatedCounts);
-                  setContributionGraph(updatedGraph);
+                    setActivityCounts(updatedCounts);
+                    setContributionGraph(updatedGraph);
 
-                  // Update user stats with new activity count
-                  setUserStats((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          activityCount: updatedActivities.length,
-                          commitCount: updatedActivities.filter(
-                            (a: any) => a.type === "commit_created"
-                          ).length,
-                          lastActivity:
-                            updatedActivities.length > 0
-                              ? Math.max(
-                                  ...updatedActivities.map(
-                                    (a: any) => a.timestamp
+                    // Update user stats with new activity count
+                    setUserStats((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            activityCount: updatedActivities.length,
+                            commitCount: updatedActivities.filter(
+                              (a: any) => a.type === "commit_created"
+                            ).length,
+                            lastActivity:
+                              updatedActivities.length > 0
+                                ? Math.max(
+                                    ...updatedActivities.map(
+                                      (a: any) => a.timestamp
+                                    )
                                   )
-                                )
-                              : prev.lastActivity || 0,
-                        }
-                      : null
-                  );
-                }
+                                : prev.lastActivity || 0,
+                          }
+                        : null
+                    );
+                  }
 
-                // Mark as synced
-                localStorage.setItem(syncKey, now.toString());
-              })
-              .catch((error) => {
-                console.error("Failed to sync activities:", error);
-              });
+                  // Mark as synced
+                  localStorage.setItem(syncKey, now.toString());
+                })
+                .catch((error) => {
+                  console.error("Failed to sync activities:", error);
+                });
+            };
+            if (
+              typeof window !== "undefined" &&
+              "requestIdleCallback" in window
+            ) {
+              window.requestIdleCallback(runSync, { timeout: 2000 });
+            } else {
+              setTimeout(runSync, 100);
+            }
           } else {
             // Even if commits are synced, check for new issues/PRs (they update more frequently)
             if (isLowMemoryDevice) {
@@ -2291,16 +1971,6 @@ export default function EntityPage({
             allActivityTypes: activities.map((a) => a.type),
             filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
           });
-
-          // If no activities found, try triggering backfill
-          if (activities.length === 0) {
-            console.warn(
-              "No activities found - you may need to run backfillActivities()"
-            );
-            console.log(
-              "To backfill, run in console: localStorage.removeItem('gittr_activities_backfilled'); location.reload();"
-            );
-          }
 
           // CRITICAL: Use actual filtered repo count instead of counting from activities
           // This ensures deleted repos are excluded
@@ -2662,8 +2332,8 @@ export default function EntityPage({
 
   // Use getEntityDisplayName for consistent display name resolution
   // CRITICAL: Never show full npub string or shortened pubkey - always prefer username or show npub
+  // userMeta already centralizes the metadata lookup (with own-profile fallback), so trust it here.
   const displayName = useMemo(() => {
-    // Priority 1: Use metadata from userMeta (already normalized via getUserMetadata)
     if (
       userMeta?.name &&
       userMeta.name.trim().length > 0 &&
@@ -2682,34 +2352,8 @@ export default function EntityPage({
       return userMeta.display_name;
     }
 
-    // Priority 2: Try direct lookup using getUserMetadata (same as settings/profile page)
-    if (pubkeyForMetadata) {
-      const fallbackMeta = getUserMetadata(
-        pubkeyForMetadata.toLowerCase(),
-        metadataMap
-      );
-      if (
-        fallbackMeta?.name &&
-        fallbackMeta.name.trim().length > 0 &&
-        fallbackMeta.name !== "Anonymous Nostrich" &&
-        !fallbackMeta.name.startsWith("npub") &&
-        !/^[0-9a-f]{8,64}$/i.test(fallbackMeta.name)
-      ) {
-        return fallbackMeta.name;
-      }
-      if (
-        fallbackMeta?.display_name &&
-        fallbackMeta.display_name.trim().length > 0 &&
-        !fallbackMeta.display_name.startsWith("npub") &&
-        !/^[0-9a-f]{8,64}$/i.test(fallbackMeta.display_name)
-      ) {
-        return fallbackMeta.display_name;
-      }
-    }
-
-    // Priority 3: If we have npub, show shortened npub (not pubkey prefix)
+    // If we have npub, show shortened npub (not pubkey prefix)
     if (resolvedParams.entity.startsWith("npub")) {
-      // Show first 16 chars of npub: "npub1xxxxxxxx…"
       return resolvedParams.entity.substring(0, 16) + "...";
     }
 
@@ -2717,140 +2361,46 @@ export default function EntityPage({
     return resolvedParams.entity.length === 8
       ? resolvedParams.entity
       : resolvedParams.entity.slice(0, 8);
-  }, [userMeta, fullPubkeyForMeta, metadataMap, resolvedParams.entity]);
+  }, [userMeta, resolvedParams.entity]);
 
-  // CRITICAL: Get all metadata fields from userMeta (which uses centralized getUserMetadata function)
-  // If userMeta is empty, try direct lookup as fallback (same logic as settings/profile page)
-  // CRITICAL: When viewing own profile, also try currentUserPubkey as fallback to ensure metadata is found
-  const isOwnProfileCheck =
-    currentUserPubkey &&
-    pubkeyForMetadata &&
-    /^[0-9a-f]{64}$/i.test(pubkeyForMetadata) &&
-    currentUserPubkey.toLowerCase() === pubkeyForMetadata.toLowerCase();
-
-  const picture =
-    userMeta?.picture ||
-    (pubkeyForMetadata
-      ? getUserMetadata(pubkeyForMetadata.toLowerCase(), metadataMap)?.picture
-      : null) ||
-    (isOwnProfileCheck && currentUserPubkey
-      ? getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap)?.picture
-      : null) ||
-    null;
+  // Derive visual metadata directly from userMeta. userMeta already performs the
+  // centralized lookup (including own-profile fallback), so no extra getUserMetadata
+  // calls are needed here.
+  const picture = useMemo(() => userMeta?.picture || null, [userMeta]);
 
   // Reset when kind-0 picture URL changes (dead Blossom hosts must not stick empty)
   useEffect(() => {
     setPictureLoadFailed(false);
   }, [picture]);
 
-  // CRITICAL: Banner lookup - unified for own and foreign profiles
-  // userMeta already uses getUserMetadata which handles all lookup strategies
-  // So we just need to check userMeta first, then try direct lookup as fallback
-  const banner =
-    userMeta?.banner ||
-    (() => {
-      // Fallback: Try direct lookup from metadataMap using pubkeyForMetadata (validated 64-char pubkey)
-      if (pubkeyForMetadata) {
-        const meta = getUserMetadata(
-          pubkeyForMetadata.toLowerCase(),
-          metadataMap
-        );
-        if (meta?.banner) {
-          console.log(
-            `✅ [Banner] Found via direct lookup: ${meta.banner.substring(
-              0,
-              50
-            )}...`
-          );
-          return meta.banner;
-        }
-      }
+  const banner = useMemo(() => userMeta?.banner, [userMeta]);
 
-      // Additional fallback: Try currentUserPubkey if viewing own profile
-      if (
-        isOwnProfileCheck &&
-        currentUserPubkey &&
-        /^[0-9a-f]{64}$/i.test(currentUserPubkey)
-      ) {
-        const meta = getUserMetadata(
-          currentUserPubkey.toLowerCase(),
-          metadataMap
-        );
-        if (meta?.banner) {
-          console.log(
-            `✅ [Banner] Found via currentUserPubkey: ${meta.banner.substring(
-              0,
-              50
-            )}...`
-          );
-          return meta.banner;
-        }
-      }
-
-      console.log(
-        `⚠️ [Banner] NOT FOUND - userMeta.banner: ${
-          userMeta?.banner || "undefined"
-        }, pubkeyForMetadata: ${
-          pubkeyForMetadata ? pubkeyForMetadata.slice(0, 8) + "..." : "null"
-        }`
-      );
-      return undefined;
-    })();
-  // CRITICAL: Get all metadata fields with unified fallback for own and foreign profiles
-  // Use userMeta first (which already has fallback logic), then try direct lookup as additional fallback
-  // CRITICAL: Memoize getMetaField so it updates when userMeta or metadataMap changes
-  const getMetaField = useMemo(() => {
-    return (field: string) => {
-      // Try userMeta first (now reactive to metadataMap changes)
-      if (userMeta && userMeta[field]) {
-        return userMeta[field];
-      }
-
-      // Fallback 1: Try pubkeyForMetadata lookup (validated 64-char pubkey)
-      if (pubkeyForMetadata) {
-        const meta = getUserMetadata(
-          pubkeyForMetadata.toLowerCase(),
-          metadataMap
-        );
-        if (meta && meta[field]) {
-          return meta[field];
-        }
-      }
-
-      // Fallback 2: If viewing own profile, try currentUserPubkey lookup
-      if (
-        isOwnProfileCheck &&
-        currentUserPubkey &&
-        /^[0-9a-f]{64}$/i.test(currentUserPubkey)
-      ) {
-        const meta = getUserMetadata(
-          currentUserPubkey.toLowerCase(),
-          metadataMap
-        );
-        if (meta && meta[field]) {
-          return meta[field];
-        }
-      }
-
-      return undefined;
-    };
-  }, [
-    userMeta,
-    pubkeyForMetadata,
-    metadataMap,
-    isOwnProfileCheck,
-    currentUserPubkey,
-  ]);
-
-  const about = getMetaField("about");
-  const nip05 = getMetaField("nip05");
-  const website = getMetaField("website");
-  const lud16 = getMetaField("lud16");
-  const lnurl = getMetaField("lnurl");
+  const about = userMeta?.about;
+  const nip05 = userMeta?.nip05;
+  const website = userMeta?.website;
+  const lud16 = userMeta?.lud16;
+  const lnurl = userMeta?.lnurl;
   const hideMirrorWebsite =
     !!website &&
     !!fullPubkeyForMeta &&
     isNostrProfileMirrorWebsite(website, fullPubkeyForMeta);
+
+  // Precompute owner metadata for the visible repo grid so we don't call
+  // getUserMetadata once per repo on every render.
+  const ownerMetaMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getUserMetadata>>();
+    const visible = userRepos.slice(0, visibleRepoCount);
+    for (const repo of visible) {
+      const ownerPubkey =
+        repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
+      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        if (!map.has(ownerPubkey)) {
+          map.set(ownerPubkey, getUserMetadata(ownerPubkey, metadataMap));
+        }
+      }
+    }
+    return map;
+  }, [userRepos, visibleRepoCount, metadataMap]);
 
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey =
@@ -4298,8 +3848,8 @@ export default function EntityPage({
                 const ownerPubkey =
                   repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
                 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  // CRITICAL: Use centralized getUserMetadata function for consistent lookup
-                  const ownerMeta = getUserMetadata(ownerPubkey, metadataMap);
+                  // Use the precomputed map so we don't re-run the lookup once per repo per render.
+                  const ownerMeta = ownerMetaMap.get(ownerPubkey);
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
                     if (

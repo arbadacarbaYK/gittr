@@ -248,86 +248,14 @@ export function getUserMetadata(
   const normalized = pubkey.toLowerCase();
 
   // Strategy 1: Direct lookup with normalized key (most common case)
-  if (metadataMap[normalized]) {
-    const meta = metadataMap[normalized];
-    // Log if identities are present for debugging
-    if (
-      meta.identities &&
-      Array.isArray(meta.identities) &&
-      meta.identities.length > 0
-    ) {
-      console.log(
-        `✅ [getUserMetadata] Found ${
-          meta.identities.length
-        } identities for ${normalized.slice(0, 8)}`
-      );
-    }
-    return meta;
-  }
+  const direct = metadataMap[normalized];
+  if (direct) return direct;
 
   // Strategy 2: Try original case (shouldn't happen if normalization is working)
-  if (metadataMap[pubkey]) {
-    const meta = metadataMap[pubkey];
-    if (
-      meta.identities &&
-      Array.isArray(meta.identities) &&
-      meta.identities.length > 0
-    ) {
-      console.log(
-        `✅ [getUserMetadata] Found ${
-          meta.identities.length
-        } identities for ${pubkey.slice(0, 8)} (original case)`
-      );
-    }
-    return meta;
-  }
+  const originalCase = metadataMap[pubkey];
+  if (originalCase) return originalCase;
 
-  // Strategy 3: Case-insensitive match (find key that matches when lowercased)
-  const matchingKey = Object.keys(metadataMap).find(
-    (k) => k.toLowerCase() === normalized
-  );
-  if (matchingKey && metadataMap[matchingKey]) {
-    const meta = metadataMap[matchingKey];
-    if (
-      meta.identities &&
-      Array.isArray(meta.identities) &&
-      meta.identities.length > 0
-    ) {
-      console.log(
-        `✅ [getUserMetadata] Found ${
-          meta.identities.length
-        } identities for ${normalized.slice(0, 8)} (case-insensitive match)`
-      );
-    }
-    return meta;
-  }
-
-  // Strategy 4: Partial match (first 8 chars) as last resort
-  const partialMatch = Object.keys(metadataMap).find(
-    (k) =>
-      k.toLowerCase().slice(0, 8) === normalized.slice(0, 8) && k.length === 64
-  );
-  if (partialMatch && metadataMap[partialMatch]) {
-    const meta = metadataMap[partialMatch];
-    if (
-      meta.identities &&
-      Array.isArray(meta.identities) &&
-      meta.identities.length > 0
-    ) {
-      console.log(
-        `✅ [getUserMetadata] Found ${
-          meta.identities.length
-        } identities for ${normalized.slice(0, 8)} (partial match)`
-      );
-    }
-    return meta;
-  }
-
-  console.log(
-    `⚠️ [getUserMetadata] No metadata found for ${normalized.slice(
-      0,
-      8
-    )} (available keys: ${Object.keys(metadataMap).slice(0, 5).join(", ")})`
-  );
+  // No metadata found. Keep silent in production; the profile page calls this
+  // many times per render and the console.log spam itself causes jank.
   return {};
 }
