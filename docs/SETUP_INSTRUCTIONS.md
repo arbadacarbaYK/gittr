@@ -232,15 +232,9 @@ WantedBy=multi-user.target
 
 SQLite `Repository.HostedAt` = first insert on this GRASP (`UpdatedAt` alone is “last event” and cannot age never-pushed shells). Backfilled from `UpdatedAt` on migrate.
 
-**Ops prune scripts:**
+**Ops prune — verified non-gittr mirrors (strict):** only remove a bare tree when **all** of these are true: (1) disk remotes have no `git.gittr.space`, (2) latest 30617 exists, (3) **none** of `clone` / `source` / `web` tags (nor content `sourceUrl`) mention `git.gittr.space`. If no 30617 is found → **keep** (uncertain). Gittr-native repos (e.g. `local-agent` with only a gittr clone, no GitHub) are kept via disk remote and/or clone tags. Never delete an owner’s tree just because `origin` still points at GitHub — imports often keep forge as origin while `clone[]` lists gittr.
 
-```bash
-# Soft-deleted announces still on disk
-node scripts/prune-bridge-deleted-orphans.mjs --list-via-ssh root@YOUR_HOST
-# then --apply after review
-```
-
-**Safe ops prune (foreign mirrors):** bare trees whose *only* remotes are other GRASP hosts (`relay.ngit.dev`, `git.shakespeare.diy`, …) are junk mirrors — safe to delete. Forge-origin trees under other pubkeys may still be real gittr imports — leave them until a second pass with clearer “hosted here” markers. Never auto-delete live hosted repos owners still expect.
+**Why duplicates existed (and future risk):** Old bridge watch-all did `git clone --bare` of foreign GitHub/ngit announces into each announcer’s hex folder (e.g. eight copies of `gnostr`). **Now:** `handleRepositoryEvent` only `git init --bare` when `clone[]` includes `git.gittr.space` (no foreign clone-on-announce). `POST /api/nostr/repo/clone` rejects other GRASP hosts. UI Create/Import stay browser-local until announce/Push. Push / sync-from-source write **one** path `{hex}/{repo}.git` for that owner — they do not spawn a second copy under another pubkey. Normalization that injects `git.gittr.space` into `clone[]` on gittr announce is intentional (marks “hosted here”), not a duplicate. Remaining residual risk: an empty shell left behind if someone later drops gittr from `clone[]` without a delete — ops prune above covers that when the live event no longer lists us.
 
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
