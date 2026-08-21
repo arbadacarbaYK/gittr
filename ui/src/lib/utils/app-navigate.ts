@@ -4,6 +4,9 @@
  * router.push after preventDefault can look like a dead click (home, personal
  * menu, top nav). SearchBar already uses location.assign for the same reason.
  *
+ * Soft nav also gets a short hard fallback (~400ms): Code-tab README/tree work
+ * can starve router.push the same way Explore does.
+ *
  * Important: on the hard path, do NOT preventDefault before calling this.
  * Letting the real <a href> stand is the fallback when JS is starved; we still
  * assign immediately when the handler runs.
@@ -31,6 +34,19 @@ type NavEvent = {
   preventDefault: () => void;
 };
 
+const SOFT_NAV_HARD_FALLBACK_MS = 400;
+
+function normalizePath(href: string): string {
+  try {
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      return new URL(href).pathname;
+    }
+  } catch {
+    /* ignore */
+  }
+  return href.split("?")[0] || href;
+}
+
 export function appNavigate(
   href: string,
   router?: { push: (href: string) => void } | null,
@@ -44,7 +60,13 @@ export function appNavigate(
   }
   event?.preventDefault();
   if (router) {
+    const targetPath = normalizePath(href);
     router.push(href);
+    window.setTimeout(() => {
+      if (window.location.pathname !== targetPath) {
+        window.location.assign(href);
+      }
+    }, SOFT_NAV_HARD_FALLBACK_MS);
     return;
   }
   window.location.assign(href);

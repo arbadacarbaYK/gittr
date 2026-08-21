@@ -991,6 +991,11 @@ export class RemoteSignerManager {
     return this.bootstrapInFlight;
   }
 
+  /** True while a quiet bunker warm dial is in flight (file-fetch should cap HTTP concurrency). */
+  isBunkerWarmInFlight(): boolean {
+    return this.bunkerWarmInFlight != null;
+  }
+
   /** True when at least one bunker directPool socket is OPEN (status 1). */
   async hasOpenBunkerTransport(): Promise<boolean> {
     const session = this.session || loadStoredRemoteSignerSession();

@@ -206,6 +206,12 @@ WantedBy=multi-user.target
 
 **If the site feels frozen and APIs return `503`:** that is usually the frontend hitting **MemoryHigh**, not Amber/remote signing. Check `systemctl show gittr-frontend.service -p MemoryCurrent -p MemoryHigh -p ActiveState`. A restart recovers immediately; durable mitigations in the app are (1) lighter header GitHub issue/PR warm (TTL + open-only, 1 page) and (2) SSR/metadata Nostr pools without Damus auto-reconnect storms (`dontAutoReconnect` on server pools, lean production relay fallback). Do not raise memory caps alone — fix the load first.
 
+**If header / repo tabs feel dead until the file list + README finish:** that is **main-thread Code-tab hydrate** (tree dates + ReactMarkdown), not a CSS overlay and not MemoryHigh. Soft `router.push` stalls until the event loop is free; chrome uses a ~400 ms hard-nav fallback, README mounts after idle, and last-commit/README state updates use `startTransition`. Amber bunker warm runs **in parallel** with file-fetch (not an 8 s await); when a remote-signer session exists, multifetch caps HTTP concurrency so bunker WebSockets are not starved. Push still hard-fails via `ensureRpcHealthy` if Amber is not ready.
+
+**Deploy tempo:** `upload_to_hetzner.sh` already **rsync-deltas `ui/src`**. Wall-clock is dominated by a full remote `yarn build` on the live box (deploy sets `SITEMAP_SKIP_GITTR_PAGES=1` / `SITEMAP_SKIP_NOSTR=1`). Redundant per-file `scp` of `ui/src` paths was removed — rsync is enough. Always `git push origin` when deploying so GitHub matches Hetzner.
+
+**Disk / lab / other VPS:** Lab SEO snapshot under `/opt/ngit/data/lab-snapshot/` is tiny (~KB–MB) and is **not** what fills the disk. Production disk is mostly **`/home/git-nostr/git-nostr-repositories`** (real git data) plus Go/Docker caches — do not delete lab or live repos to “speed up” the UI. clawgames.app runs on a **different** Hetzner host; moving it here does nothing. Optionally moving Pyramid / Pages / Blossom *off* the gittr box can free CPU/RAM for Next builds, but that is a DNS/certs/ops project — not a one-line fix.
+
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
 ```ini

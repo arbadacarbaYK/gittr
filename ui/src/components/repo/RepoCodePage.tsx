@@ -5102,12 +5102,14 @@ export function RepoCodePage() {
         }
         const md = String(data.content);
         upstreamContentLoadedKeyRef.current = contentKey;
-        setCurrentFolderReadme(md);
-        setLoadingFolderReadme(false);
-        setRepoData((prev) => {
-          if (!prev) return prev;
-          if (prev.readme === md) return prev;
-          return { ...prev, readme: md };
+        startTransition(() => {
+          setCurrentFolderReadme(md);
+          setLoadingFolderReadme(false);
+          setRepoData((prev) => {
+            if (!prev) return prev;
+            if (prev.readme === md) return prev;
+            return { ...prev, readme: md };
+          });
         });
       } catch (e) {
         console.warn("[Upstream sync] Failed to load README:", e);
@@ -5503,18 +5505,16 @@ export function RepoCodePage() {
 
     // Check if repo has clone URLs in localStorage - if so, try multi-source fetch immediately
     (async () => {
-      // Amber paired: yield briefly so URI-first bunker warm can OPEN before this
-      // page's parallel GitHub/GRASP HTTP storm starves directPool WebSockets.
+      // Amber paired: kick bunker warm in parallel (do not await — that froze
+      // chrome). Cap multifetch HTTP concurrency while warm needs socket budget.
       if (hasStoredRemoteSignerSession() && remoteSigner?.ensureBootstrapped) {
-        try {
-          await Promise.race([
-            remoteSigner.ensureBootstrapped(),
-            new Promise<void>((resolve) => setTimeout(resolve, 8000)),
-          ]);
-        } catch {
+        void remoteSigner.ensureBootstrapped().catch(() => {
           /* browse continues; Push will hard-fail with a clear error */
-        }
+        });
       }
+      const amberFetchOpts = hasStoredRemoteSignerSession()
+        ? { maxConcurrent: 2 }
+        : undefined;
 
       const initialRepoData = repoDataRef.current;
       const initialCloneUrls: string[] = [];
@@ -6210,7 +6210,8 @@ export function RepoCodePage() {
             ? effectiveUserPubkey
             : undefined,
           subscribe,
-          defaultRelays
+          defaultRelays,
+          amberFetchOpts
         );
 
         // Clear fetching message after fetch completes
@@ -12585,8 +12586,10 @@ export function RepoCodePage() {
     let cancelled = false;
     const finish = (md: string | null) => {
       if (cancelled || gen !== folderReadmeLoadGenRef.current) return;
-      setCurrentFolderReadme(md);
-      setLoadingFolderReadme(false);
+      startTransition(() => {
+        setCurrentFolderReadme(md);
+        setLoadingFolderReadme(false);
+      });
     };
 
     const loadReadme = async () => {
@@ -13611,7 +13614,7 @@ export function RepoCodePage() {
   // Last commit date/message for each row — keyed to selected tip/branch
   useEffect(() => {
     if (!mounted || deferredItems.length === 0) {
-      setTreeLastCommits({});
+      startTransition(() => setTreeLastCommits({}));
       return;
     }
     let ownerPubkey =
@@ -13656,11 +13659,13 @@ export function RepoCodePage() {
         if (!res.ok || cancelled) return;
         const json = await res.json();
         if (cancelled) return;
-        setTreeLastCommits(
-          json?.commits && typeof json.commits === "object" ? json.commits : {}
-        );
+        startTransition(() => {
+          setTreeLastCommits(
+            json?.commits && typeof json.commits === "object" ? json.commits : {}
+          );
+        });
       } catch {
-        if (!cancelled) setTreeLastCommits({});
+        if (!cancelled) startTransition(() => setTreeLastCommits({}));
       }
     })();
     return () => {

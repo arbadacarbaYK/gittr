@@ -1921,6 +1921,37 @@ export async function fetchFilesFromSource(
  * @param subscribe - Optional: Nostr subscribe function to fetch user's GRASP list
  * @param defaultRelays - Optional: default relays for fetching GRASP list
  */
+/** Limit how many clone sources hit the network at once (Amber bunker needs socket budget). */
+function createConcurrencyLimiter(maxConcurrent: number) {
+  let active = 0;
+  const waiters: Array<() => void> = [];
+  const acquire = () =>
+    new Promise<void>((resolve) => {
+      if (active < maxConcurrent) {
+        active += 1;
+        resolve();
+        return;
+      }
+      waiters.push(resolve);
+    });
+  const release = () => {
+    active = Math.max(0, active - 1);
+    const next = waiters.shift();
+    if (next) {
+      active += 1;
+      next();
+    }
+  };
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    await acquire();
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  };
+}
+
 export async function fetchFilesFromMultipleSources(
   cloneUrls: string[],
   branch = "main",
@@ -1935,7 +1966,8 @@ export async function fetchFilesFromMultipleSources(
     onEose?: (relayUrl: string, minCreatedAt: number) => void,
     options?: any
   ) => () => void,
-  defaultRelays?: string[]
+  defaultRelays?: string[],
+  options?: { maxConcurrent?: number }
 ): Promise<{
   files: Array<{ type: string; path: string; size?: number }> | null;
   statuses: FetchStatus[];
@@ -2150,10 +2182,20 @@ export async function fetchFilesFromMultipleSources(
     if (onStatusUpdate) onStatusUpdate(status);
   });
 
-  // CRITICAL: Try ALL sources in parallel using Promise.allSettled
-  // This ensures we try every source simultaneously, not sequentially
+  // Prefer parallel probes, but cap concurrency when Amber bunker warm needs
+  // browser WebSocket slots (unlimited storms starved sign_event).
+  const maxConcurrent = Math.max(
+    1,
+    Math.min(
+      sources.length || 1,
+      options?.maxConcurrent && options.maxConcurrent > 0
+        ? options.maxConcurrent
+        : sources.length || 1
+    )
+  );
+  const limit = createConcurrencyLimiter(maxConcurrent);
   console.log(
-    `🚀 [Git Source] Starting parallel fetch from ${sources.length} sources:`,
+    `🚀 [Git Source] Starting fetch from ${sources.length} sources (concurrency ${maxConcurrent}):`,
     sources.map((s) => s.displayName).join(", ")
   );
 
@@ -2164,7 +2206,8 @@ export async function fetchFilesFromMultipleSources(
     size?: number;
   }> | null = null;
 
-  const fetchPromises = sources.map(async (source, index) => {
+  const fetchPromises = sources.map(async (source, index) =>
+    limit(async () => {
     const status = statuses[index];
     if (!status) {
       console.error(`❌ [Git Source] No status found for index ${index}`);
@@ -2277,7 +2320,8 @@ export async function fetchFilesFromMultipleSources(
       files: status.files,
       success: status.status === "success",
     };
-  });
+    })
+  );
 
   // CRITICAL: Use Promise.race to return as soon as first source succeeds (don't wait for all)
   // Continue updating statuses in the background, but don't block the UI

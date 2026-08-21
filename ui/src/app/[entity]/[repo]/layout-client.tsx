@@ -2081,12 +2081,12 @@ export default function RepoLayoutClient({
                       );
                       const targetPath = href.split("?")[0] || href;
                       router.push(href);
-                      // Soft nav can stall while the Code page is busy; fall back.
+                      // Soft nav can stall while the Code page is busy; fall back fast.
                       window.setTimeout(() => {
                         if (window.location.pathname !== targetPath) {
                           window.location.assign(href);
                         }
-                      }, 2500);
+                      }, 400);
                     }}
                     className={clsx(
                       "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
@@ -2148,9 +2148,17 @@ export default function RepoLayoutClient({
                     }
                   )}
                   onSelect={() => {
-                    router.push(
-                      getRepoLink(item.link || "", item.name === "Code")
+                    const href = getRepoLink(
+                      item.link || "",
+                      item.name === "Code"
                     );
+                    const targetPath = href.split("?")[0] || href;
+                    router.push(href);
+                    window.setTimeout(() => {
+                      if (window.location.pathname !== targetPath) {
+                        window.location.assign(href);
+                      }
+                    }, 400);
                   }}
                 >
                   {item.icon}
