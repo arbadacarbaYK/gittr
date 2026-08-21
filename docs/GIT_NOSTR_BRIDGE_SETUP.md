@@ -44,7 +44,7 @@ Production example (absolute paths):
 ```
 
 - **`relays`:** match `NEXT_PUBLIC_NOSTR_RELAYS` in `ui/.env.local`.
-- **`gitRepoOwners: []`:** any pubkey may create repos. Non-empty = allowlist only.
+- **`gitRepoOwners: []`:** process announces from any pubkey (public GRASP). Non-empty = allowlist only. Bare disk is still only created when `clone[]` includes **`git.gittr.space`** (this host) — foreign GitHub/ngit announces are not cloned onto the server.
 - **Relay kinds:** [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md), [GRASP_RELAY_SETUP.md](GRASP_RELAY_SETUP.md).
 
 ## SSH

@@ -156,7 +156,7 @@ Create config (run `./bin/git-nostr-bridge` once, Ctrl+C after it starts), then 
 }
 ```
 
-Use **absolute paths**. `gitRepoOwners: []` allows any pubkey to create repos. Relays = same set as `NEXT_PUBLIC_NOSTR_RELAYS`.
+Use **absolute paths**. `gitRepoOwners: []` watches all authors’ NIP-34 events; bare repos materialize only when `clone[]` includes `git.gittr.space`. Relays = same set as `NEXT_PUBLIC_NOSTR_RELAYS`.
 
 ---
 
