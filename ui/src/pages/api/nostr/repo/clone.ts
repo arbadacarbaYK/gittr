@@ -225,6 +225,23 @@ export default async function handler(
     });
   }
 
+  // Do not permanently mirror other GRASP hosts onto this bridge (disk blow-up).
+  // Forge imports (GitHub/…) into a git.gittr.space-hosted repo are still allowed;
+  // foreign ngit/shakespeare/etc. remotes stay on their servers — UI uses temp shallow fetch.
+  const lowerClone = normalizedCloneUrl.toLowerCase();
+  const isOurGrasp = lowerClone.includes("git.gittr.space");
+  const isOtherGrasp =
+    /relay\.ngit\.dev|git\.shakespeare\.diy|gitnostr\.com|ngit-relay|ngit\.danconwaydev|membrane-grasp/i.test(
+      lowerClone
+    );
+  if (isOtherGrasp && !isOurGrasp) {
+    return res.status(400).json({
+      error:
+        "Foreign GRASP remotes are not mirrored onto git.gittr.space; open them from their clone URL (temp fetch).",
+      cloneUrl: normalizedCloneUrl.substring(0, 120),
+    });
+  }
+
   // Get repository directory from environment or git-nostr-bridge config file
   let reposDir =
     process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||

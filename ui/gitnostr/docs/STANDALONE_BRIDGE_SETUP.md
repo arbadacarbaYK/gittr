@@ -37,7 +37,8 @@ Create (or edit) `~/.config/git-nostr/git-nostr-bridge.json`:
 | `repositoryDir` | yes | Absolute path where bare Git repositories are stored. The bridge creates the directory if missing. |
 | `DbFile` | yes | SQLite file keeping Nostr event metadata and permissions. Use an absolute path. |
 | `relays` | yes | WebSocket URLs for repo, permission, and SSH-key events (kinds **50**, **51**, **30617**). Use the same public relays as gittr (e.g. `wss://relay.damus.io`, `wss://nos.lol`). |
-| `gitRepoOwners` | optional | If empty, the bridge mirrors **all** repositories it sees (“watch-all mode”). If you list pubkeys, only those authors can create repos on this bridge. |
+| `gitRepoOwners` | optional | If empty, the bridge **subscribes to all authors’** NIP-34 events (“watch-all” for ACL/metadata). If you list pubkeys, only those authors’ announces are processed. **Disk materialization is separate:** bare repos are created only when `clone[]` includes **this** GRASP host (e.g. `git.gittr.space`). Foreign GitHub/ngit announces are **not** cloned onto disk. |
+
 
 Save the file and ensure it is readable by the bridge user only (`chmod 600` is fine).
 

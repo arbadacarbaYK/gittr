@@ -194,40 +194,38 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		return fmt.Errorf("insert push policy failed: %w", err)
 	}
 
-	err = os.MkdirAll(repoParentPath, 0750)
-	if err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			//Ignore
-		} else {
+	hostedHere := cloneUrlsHostOnOurGrasp(cloneUrls)
+
+	// Check if repository already exists on disk
+	repoExists := false
+	if _, errStat := os.Stat(repoPath); errStat == nil {
+		repoExists = true
+	} else if !errors.Is(errStat, fs.ErrNotExist) {
+		return fmt.Errorf("git repository stat: %w", errStat)
+	}
+
+	// Only create owner dirs when we host this repo (or it already exists).
+	if hostedHere || repoExists {
+		if err = os.MkdirAll(repoParentPath, 0750); err != nil && !errors.Is(err, fs.ErrExist) {
 			return fmt.Errorf("repository path mkdir: %w", err)
 		}
-	}
-	// HTTPS git (git-http-backend via fcgiwrap as www-data) must traverse owner dirs.
-	// www-data is typically in supplementary group `git-nostr`; group needs rx on this directory.
-	// Older installs used 0700 here, which breaks https://git…/<pubkey>/<repo>.git (404) while SSH still works.
-	if st, err := os.Stat(repoParentPath); err == nil && st.IsDir() {
-		_ = os.Chmod(repoParentPath, 0750)
+		// HTTPS git (git-http-backend via fcgiwrap as www-data) must traverse owner dirs.
+		if st, errStat := os.Stat(repoParentPath); errStat == nil && st.IsDir() {
+			_ = os.Chmod(repoParentPath, 0750)
+		}
 	}
 
-	// Check if repository already exists
-	repoExists := false
-	_, err = os.Stat(repoPath)
-	if err == nil {
-		repoExists = true
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("git repository stat: %w", err)
-	}
+	// Public GRASP retention: only materialize / refresh bare repos we host.
+	// clone[] must include this bridge (git.gittr.space). Do NOT git-clone every
+	// foreign GitHub/ngit announce onto disk — that mirrored the whole Nostr-git
+	// network. UI still browses foreign remotes via temp shallow fetch.
 
-	// If repo already exists, ensure the source URL is registered as the "upstream" remote
-	// so the state event handler can fetch from it when commits are missing.
-	// Also refresh heads/tags from forge so Push-to-Nostr / 30618 can announce exact GitHub SHAs
-	// (instead of leaving a stale rewritten "Push from gittr" tip).
-	if repoExists && sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
+	// Existing hosted repos: refresh forge tip when source is set (import/sync).
+	if repoExists && hostedHere && sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
 		upstreamCloneUrl := sourceUrl
 		if !strings.HasSuffix(upstreamCloneUrl, ".git") {
 			upstreamCloneUrl = upstreamCloneUrl + ".git"
 		}
-		// Set or update the upstream remote (non-fatal)
 		setCmd := exec.Command("git", "--git-dir", repoPath, "remote", "set-url", "upstream", upstreamCloneUrl)
 		if setCmd.Run() != nil {
 			addCmd := exec.Command("git", "--git-dir", repoPath, "remote", "add", "upstream", upstreamCloneUrl)
@@ -248,89 +246,43 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		}
 	}
 
-	// If repo doesn't exist, try to clone from source URL or clone URLs
 	if !repoExists {
-		// Priority 1: external forge / self-hosted HTTPS or git@ (not GRASP /npub1 paths)
-		if sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
-			// Convert source URL to clone URL
-			cloneUrl := sourceUrl
-			if !strings.HasSuffix(cloneUrl, ".git") {
-				cloneUrl = cloneUrl + ".git"
-			}
-			log.Printf("🔍 [Bridge] Attempting to clone from source URL: %s\n", cloneUrl)
-			err := cloneRepository(cloneUrl, repoPath)
-			if err == nil {
-				log.Printf("✅ [Bridge] Successfully cloned repository from source URL: %s\n", cloneUrl)
-				ensureUploadPackBrowserCaps(repoPath)
-				ensureRepoOwnedByGitNostr(repoPath)
-				return nil
-			}
-			log.Printf("⚠️ [Bridge] Failed to clone from source URL, will try clone URLs: %v\n", err)
-		}
+		if !hostedHere {
+			// SQLite/ACL row already upserted above — skip disk for foreign-only announces.
+			log.Printf("⏭️ [Bridge] Skip bare materialize (no git.gittr.space clone tag): pubkey=%s repo=%s\n", event.PubKey, repoName)
+		} else {
+			// Hosted on this GRASP: empty bare ready for push/import (do not clone foreign remotes here).
+			// Forge fill is explicit via UI sync-from-source / import APIs.
+			log.Printf("📦 [Bridge] Creating empty bare repository (hosted on this GRASP): %s\n", repoName+".git")
+			cmd := exec.Command("git", "init", "--bare", repoName+".git")
+			cmd.Dir = repoParentPath
 
-		// Priority 2: Try to clone from clone URLs (prefer HTTPS)
-		if len(cloneUrls) > 0 {
-			// Prefer HTTPS URLs over SSH
-			var httpsUrl string
-			for _, url := range cloneUrls {
-				if strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://") {
-					httpsUrl = url
-					break
-				}
-			}
-			// If no HTTPS found, use first clone URL
-			if httpsUrl == "" {
-				httpsUrl = cloneUrls[0]
+			err = cmd.Run()
+			if err != nil {
+				return fmt.Errorf("git init --bare failed : %w", err)
 			}
 
-			log.Printf("🔍 [Bridge] Attempting to clone from clone URL: %s\n", httpsUrl)
-			err := cloneRepository(httpsUrl, repoPath)
-			if err == nil {
-				log.Printf("✅ [Bridge] Successfully cloned repository from clone URL: %s\n", httpsUrl)
-				ensureUploadPackBrowserCaps(repoPath)
-				ensureRepoOwnedByGitNostr(repoPath)
-				return nil
-			}
-			log.Printf("⚠️ [Bridge] Failed to clone from clone URL, will create empty repo: %v\n", err)
-		}
+			ensureUploadPackBrowserCaps(repoPath)
+			ensureRepoOwnedByGitNostr(repoPath)
 
-		// Fallback: Create empty bare repository
-		log.Printf("📦 [Bridge] Creating empty bare repository: %s\n", repoName+".git")
-		cmd := exec.Command("git", "init", "--bare", repoName+".git")
-		cmd.Dir = repoParentPath
-
-		err = cmd.Run()
-		if err != nil {
-			return fmt.Errorf("git init --bare failed : %w", err)
-		}
-
-		ensureUploadPackBrowserCaps(repoPath)
-		ensureRepoOwnedByGitNostr(repoPath)
-
-		// CRITICAL: Set HEAD to "main" branch so git clone works properly
-		// This ensures empty repos can be cloned and pushed to immediately
-		// Without this, git clone may fail or create a repo with no default branch
-		headCmd := exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/main")
-		err = headCmd.Run()
-		if err != nil {
-			// If main fails, try master (some systems default to master)
-			headCmd = exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/master")
+			headCmd := exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/main")
 			err = headCmd.Run()
 			if err != nil {
-				log.Printf("⚠️ [Bridge] Warning: Failed to set HEAD for empty repo %s: %v\n", repoName, err)
-				// Continue anyway - repo is created, user can set branch on first push
+				headCmd = exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/master")
+				err = headCmd.Run()
+				if err != nil {
+					log.Printf("⚠️ [Bridge] Warning: Failed to set HEAD for empty repo %s: %v\n", repoName, err)
+				} else {
+					log.Printf("✅ [Bridge] Set HEAD to master for empty repo: %s\n", repoName)
+				}
 			} else {
-				log.Printf("✅ [Bridge] Set HEAD to master for empty repo: %s\n", repoName)
+				log.Printf("✅ [Bridge] Set HEAD to main for empty repo: %s\n", repoName)
 			}
-		} else {
-			log.Printf("✅ [Bridge] Set HEAD to main for empty repo: %s\n", repoName)
 		}
 	}
 
-	// CRITICAL: Create symlink from npub to hex pubkey for NIP-34 compatibility
-	// Clone URLs use npub format (per NIP-34 spec), but we store repos by hex pubkey
-	// This symlink allows both formats to work: hex (storage) and npub (URLs)
-	if event.PubKey != "" && len(event.PubKey) == 64 {
+	// npub→hex symlink only when we actually host a directory for this owner
+	if (hostedHere || repoExists) && event.PubKey != "" && len(event.PubKey) == 64 {
 		// Check if pubkey is valid hex
 		if _, err := hex.DecodeString(event.PubKey); err == nil {
 			// Encode hex pubkey to npub format
@@ -365,6 +317,24 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 	}
 
 	return nil
+}
+
+// isOurGraspHostUrl is true for clone URLs that point at this bridge's public GRASP.
+func isOurGraspHostUrl(u string) bool {
+	lower := strings.ToLower(strings.TrimSpace(u))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "git.gittr.space")
+}
+
+func cloneUrlsHostOnOurGrasp(cloneUrls []string) bool {
+	for _, u := range cloneUrls {
+		if isOurGraspHostUrl(u) {
+			return true
+		}
+	}
+	return false
 }
 
 // looksLikeExternalGitRemote is true for public HTTPS/HTTP/git@ remotes the bridge

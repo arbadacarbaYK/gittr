@@ -210,7 +210,11 @@ WantedBy=multi-user.target
 
 **Deploy tempo:** `upload_to_hetzner.sh` already **rsync-deltas `ui/src`**. Wall-clock is dominated by a full remote `yarn build` on the live box (deploy sets `SITEMAP_SKIP_GITTR_PAGES=1` / `SITEMAP_SKIP_NOSTR=1`). Redundant per-file `scp` of `ui/src` paths was removed — rsync is enough. Always `git push origin` when deploying so GitHub matches Hetzner.
 
-**Disk / lab / other VPS:** Lab SEO snapshot under `/opt/ngit/data/lab-snapshot/` is tiny (~KB–MB) and is **not** what fills the disk. Production disk is mostly **`/home/git-nostr/git-nostr-repositories`** (real git data) plus Go/Docker caches — do not delete lab or live repos to “speed up” the UI. clawgames.app runs on a **different** Hetzner host; moving it here does nothing. Optionally moving Pyramid / Pages / Blossom *off* the gittr box can free CPU/RAM for Next builds, but that is a DNS/certs/ops project — not a one-line fix.
+**Disk / lab / other VPS:** Lab SEO snapshot under `/opt/ngit/data/lab-snapshot/` is tiny (~KB–MB) and is **not** what fills the disk. Production disk is mostly **`/home/git-nostr/git-nostr-repositories`** (bare git). clawgames.app is a **different** Hetzner host.
+
+**Public GRASP retention (important):** `git.gittr.space` hosts repos that were **created/pushed on gittr** (NIP-34 `clone[]` includes `git.gittr.space`). The bridge still *watches* public relays for events when `gitRepoOwners: []`, but it **must not** `git clone` every foreign GitHub/ngit announce onto disk. Opening someone else’s ngit/shakespeare clone in the UI uses **temp shallow fetch**, not a permanent mirror. Settings → Delete (NIP-34 `deleted` + kind 5) **does** `RemoveAll` the bare repo on the bridge. Flush-only / localStorage tombstones without a published delete leave disk in place.
+
+**Safe ops prune:** foreign bare trees whose *only* remotes are other GRASP hosts (`relay.ngit.dev`, `git.shakespeare.diy`, …) are junk mirrors — safe to delete. Forge-origin trees under other pubkeys may still be real gittr imports — leave them until a second pass with clearer “hosted here” markers. Never auto-delete the operator’s hex folder.
 
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
