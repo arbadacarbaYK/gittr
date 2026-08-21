@@ -23,9 +23,7 @@ This document describes production bridge features gittr relies on.
   identical to relay-only mode). Set it when you want to POST events directly (defaults to `8080`, but any
   port works and you can reverse-proxy it for auth/TLS).
 - **`gitRepoOwners` array** – Non-empty = only listed pubkeys’ announces are processed. **Empty** = watch-all *events*. Bare repos still require a `git.gittr.space` (or this host’s) clone tag to materialize on disk.
-- **Clone/source URLs** – No gittr-specific values are hard-coded. The bridge simply tries whatever
-  clone/source tags the event provides (GitHub, GitLab, Codeberg, GRASP, etc.); HTTPS URLs are
-  preferred, and git@/git:// schemes get normalized automatically.
+- **Clone tags (hosting signal)** – Bare disk is created only when `clone[]` includes **this GRASP host** (e.g. `git.gittr.space`). Foreign GitHub/ngit/shakespeare announces update ACL/SQLite only — they are **not** `git clone`’d onto the server. Forge fill is explicit (UI sync-from-source / import / push). Soft-delete 30617 via relays or `POST /api/event` removes the bare tree.
 
 See [`docs/STANDALONE_BRIDGE_SETUP.md`](docs/STANDALONE_BRIDGE_SETUP.md) for a full
 configuration reference for standalone bridge hosts.
