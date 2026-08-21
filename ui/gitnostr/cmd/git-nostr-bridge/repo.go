@@ -129,7 +129,8 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 	}
 
 	updatedAt := event.CreatedAt.Unix()
-	res, err := db.Exec("INSERT INTO Repository (OwnerPubKey,RepositoryName,PublicRead,PublicWrite,UpdatedAt) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET PublicRead=?,PublicWrite=?,UpdatedAt=? WHERE UpdatedAt<?;", event.PubKey, repoName, repo.PublicRead, repo.PublicWrite, updatedAt, repo.PublicRead, repo.PublicWrite, updatedAt, updatedAt)
+	// HostedAt set only on INSERT (first host); UPDATEs must not rewind it.
+	res, err := db.Exec("INSERT INTO Repository (OwnerPubKey,RepositoryName,PublicRead,PublicWrite,UpdatedAt,HostedAt) VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET PublicRead=?,PublicWrite=?,UpdatedAt=? WHERE UpdatedAt<?;", event.PubKey, repoName, repo.PublicRead, repo.PublicWrite, updatedAt, updatedAt, repo.PublicRead, repo.PublicWrite, updatedAt, updatedAt)
 	if err != nil {
 		return fmt.Errorf("insert repository failed: %w", err)
 	}

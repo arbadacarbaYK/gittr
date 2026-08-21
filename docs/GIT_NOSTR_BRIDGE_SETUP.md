@@ -46,6 +46,7 @@ Production example (absolute paths):
 - **`relays`:** match `NEXT_PUBLIC_NOSTR_RELAYS` in `ui/.env.local`.
 - **`gitRepoOwners: []`:** process announces from any pubkey (public GRASP). Non-empty = allowlist only. Bare disk is still only created when `clone[]` includes **`git.gittr.space`** (this host) — foreign GitHub/ngit announces are not cloned onto the server.
 - **Delete sync:** UI Settings → Delete must `POST` the signed soft-deleted 30617 to `/api/nostr/repo/event` (bridge `POST /api/event`) so disk/DB wipe is immediate. Relay-only deletes can leave orphans; ops tool: `scripts/prune-bridge-deleted-orphans.mjs` (dry-run first; only removes when relays confirm `deleted:true`).
+- **Empty never-pushed shells:** Create/Import stay browser-local until announce/Push. Bridge may still create an empty bare when a hosted 30617 arrives. `Repository.HostedAt` records first insert. Keep empty bares while a live 30617 exists; empty + no relay 30617 + age ≥7d is safe ops junk. Never wipe trees that have commits without a delete tombstone.
 - **Relay kinds:** [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md), [GRASP_RELAY_SETUP.md](GRASP_RELAY_SETUP.md).
 
 ## SSH

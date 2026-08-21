@@ -216,12 +216,28 @@ WantedBy=multi-user.target
 
 **Delete → bridge (must stay in sync):** Settings → Delete signs a soft-deleted kind **30617** (`deleted:true` tag + content), publishes it to social relays, **and** `POST`s the same signed event to `/api/nostr/repo/event` → bridge `POST /api/event` → `handleRepositoryEvent` wipes SQLite + `RemoveAll` the bare tree. Do not rely on relay lag alone (that left orphans like a deleted My Repos entry still on disk). Flush-only / localStorage tombstones **without** a published delete leave disk in place on purpose.
 
-**Find deleted orphans still on disk (safe):** dry-run first — only remove when relays return a 30617 with `deleted:true`. Never remove when no event is found (owners may still expect those):
+**Local draft vs bridge host (read this once):**
+- **Create / Import** write **browser only** (`gittr_repos`, `gittr_files__…`, overrides/IDB). No bare tree yet. Code tab prefers local when `hasUnpushedEdits` is set.
+- **Bridge bare appears** when a 30617 with `clone[]` → `git.gittr.space` hits the bridge (Settings announce / Push announce), or when web Push / sync-from-source / clone API writes the tree. SSH never creates an empty bare by itself.
+- So: editing before Push does **not** need a bridge copy. The empty bridge shell is only for “already announced on this GRASP, waiting for first objects.”
+
+**Retention rules (do not guess):**
+| State | Action |
+|--------|--------|
+| Soft-deleted 30617 (`deleted:true`) | Wipe disk + SQLite (UI posts to `/api/event`; ops: `prune-bridge-deleted-orphans.mjs`) |
+| Empty bare (0 commits) + **live** 30617 | **Keep** — owner announced; first push may still come |
+| Empty bare + **no** 30617 on relays + SQLite/HostedAt age ≥ **7 days** | Safe junk — announced once or relay-gone; never got objects. Ops prune OK |
+| Has commits, no 30617 found | **Keep** — relay miss ≠ unused; may still be a real import/push |
+| Flush / local tombstone only | Never wipe bridge |
+
+SQLite `Repository.HostedAt` = first insert on this GRASP (`UpdatedAt` alone is “last event” and cannot age never-pushed shells). Backfilled from `UpdatedAt` on migrate.
+
+**Ops prune scripts:**
 
 ```bash
-node --experimental-vm-modules scripts/prune-bridge-deleted-orphans.mjs \
-  --list-via-ssh root@YOUR_HOST
-# then with --apply after reviewing the orphans list
+# Soft-deleted announces still on disk
+node scripts/prune-bridge-deleted-orphans.mjs --list-via-ssh root@YOUR_HOST
+# then --apply after review
 ```
 
 **Safe ops prune (foreign mirrors):** bare trees whose *only* remotes are other GRASP hosts (`relay.ngit.dev`, `git.shakespeare.diy`, …) are junk mirrors — safe to delete. Forge-origin trees under other pubkeys may still be real gittr imports — leave them until a second pass with clearer “hosted here” markers. Never auto-delete live hosted repos owners still expect.

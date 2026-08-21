@@ -24,6 +24,7 @@ func applyMigrations(db *sql.DB) (err error) {
 		{Id: "createRepositoryPushPolicyTable", Migration: createRepositoryPushPolicyTable},
 		{Id: "createRepositoryPushPaymentTable", Migration: createRepositoryPushPaymentTable},
 		{Id: "createRepositoryPushPaymentIntentTable", Migration: createRepositoryPushPaymentIntentTable},
+		{Id: "addRepositoryHostedAt", Migration: addRepositoryHostedAt},
 	})
 }
 
@@ -70,5 +71,16 @@ func createRepositoryPushPaymentIntentTable(tx *sql.Tx) error {
 		return err
 	}
 	_, err = fsql.Exec(tx, "CREATE INDEX idx_repo_push_payment_intent_lookup ON RepositoryPushPaymentIntent (OwnerPubKey,RepositoryName,PayerPubKey,Status,UpdatedAt)")
+	return err
+}
+
+// HostedAt = first time this GRASP row was inserted (empty announce or first push).
+// UpdatedAt alone tracks the latest Nostr event and cannot age "never pushed" shells.
+func addRepositoryHostedAt(tx *sql.Tx) error {
+	_, err := fsql.Exec(tx, "ALTER TABLE Repository ADD COLUMN HostedAt INTEGER NOT NULL DEFAULT 0")
+	if err != nil {
+		return err
+	}
+	_, err = fsql.Exec(tx, "UPDATE Repository SET HostedAt=UpdatedAt WHERE HostedAt=0")
 	return err
 }
