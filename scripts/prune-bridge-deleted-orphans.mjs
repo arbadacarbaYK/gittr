@@ -6,7 +6,9 @@
  * SAFETY:
  * - Dry-run by default (print only).
  * - Removes ONLY when a 30617 is found AND deleted=true (tag or content JSON).
- * - Never removes when no event is found (relay miss ≠ deleted).
+ * - Never removes when no event is found (relay miss ≠ deleted) — those may still
+ *   be live imports with commits. Empty+no-event shells (≥7d) are a separate
+ *   ops pass (see SETUP_INSTRUCTIONS retention table); not handled by this script.
  * - Never removes when the announcement is live (not deleted).
  *
  * Usage:
