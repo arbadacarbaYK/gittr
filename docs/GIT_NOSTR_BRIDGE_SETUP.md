@@ -45,6 +45,7 @@ Production example (absolute paths):
 
 - **`relays`:** match `NEXT_PUBLIC_NOSTR_RELAYS` in `ui/.env.local`.
 - **`gitRepoOwners: []`:** process announces from any pubkey (public GRASP). Non-empty = allowlist only. Bare disk is still only created when `clone[]` includes **`git.gittr.space`** (this host) — foreign GitHub/ngit announces are not cloned onto the server.
+- **Delete sync:** UI Settings → Delete must `POST` the signed soft-deleted 30617 to `/api/nostr/repo/event` (bridge `POST /api/event`) so disk/DB wipe is immediate. Relay-only deletes can leave orphans; ops tool: `scripts/prune-bridge-deleted-orphans.mjs` (dry-run first; only removes when relays confirm `deleted:true`).
 - **Relay kinds:** [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md), [GRASP_RELAY_SETUP.md](GRASP_RELAY_SETUP.md).
 
 ## SSH

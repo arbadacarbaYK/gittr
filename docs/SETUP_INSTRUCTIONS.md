@@ -212,9 +212,19 @@ WantedBy=multi-user.target
 
 **Disk / lab / other VPS:** Lab SEO snapshot under `/opt/ngit/data/lab-snapshot/` is tiny (~KB–MB) and is **not** what fills the disk. Production disk is mostly **`/home/git-nostr/git-nostr-repositories`** (bare git). clawgames.app is a **different** Hetzner host.
 
-**Public GRASP retention (important):** `git.gittr.space` hosts repos that were **created/pushed on gittr** (NIP-34 `clone[]` includes `git.gittr.space`). The bridge still *watches* public relays for events when `gitRepoOwners: []`, but it **must not** `git clone` every foreign GitHub/ngit announce onto disk. Opening someone else’s ngit/shakespeare clone in the UI uses **temp shallow fetch**, not a permanent mirror. Settings → Delete (NIP-34 `deleted` + kind 5) **does** `RemoveAll` the bare repo on the bridge. Flush-only / localStorage tombstones without a published delete leave disk in place.
+**Public GRASP retention (important):** `git.gittr.space` hosts repos that were **created/pushed on gittr** (NIP-34 `clone[]` includes `git.gittr.space`). The bridge still *watches* public relays for events when `gitRepoOwners: []`, but it **must not** `git clone` every foreign GitHub/ngit announce onto disk. Opening someone else’s ngit/shakespeare clone in the UI uses **temp shallow fetch**, not a permanent mirror.
 
-**Safe ops prune:** foreign bare trees whose *only* remotes are other GRASP hosts (`relay.ngit.dev`, `git.shakespeare.diy`, …) are junk mirrors — safe to delete. Forge-origin trees under other pubkeys may still be real gittr imports — leave them until a second pass with clearer “hosted here” markers. Never auto-delete the operator’s hex folder.
+**Delete → bridge (must stay in sync):** Settings → Delete signs a soft-deleted kind **30617** (`deleted:true` tag + content), publishes it to social relays, **and** `POST`s the same signed event to `/api/nostr/repo/event` → bridge `POST /api/event` → `handleRepositoryEvent` wipes SQLite + `RemoveAll` the bare tree. Do not rely on relay lag alone (that left orphans like a deleted My Repos entry still on disk). Flush-only / localStorage tombstones **without** a published delete leave disk in place on purpose.
+
+**Find deleted orphans still on disk (safe):** dry-run first — only remove when relays return a 30617 with `deleted:true`. Never remove when no event is found (owners may still expect those):
+
+```bash
+node --experimental-vm-modules scripts/prune-bridge-deleted-orphans.mjs \
+  --list-via-ssh root@YOUR_HOST
+# then with --apply after reviewing the orphans list
+```
+
+**Safe ops prune (foreign mirrors):** bare trees whose *only* remotes are other GRASP hosts (`relay.ngit.dev`, `git.shakespeare.diy`, …) are junk mirrors — safe to delete. Forge-origin trees under other pubkeys may still be real gittr imports — leave them until a second pass with clearer “hosted here” markers. Never auto-delete live hosted repos owners still expect.
 
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 

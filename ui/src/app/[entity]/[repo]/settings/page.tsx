@@ -954,8 +954,8 @@ export default function RepoSettingsPage() {
                 throw new Error("No signing method available");
               }
 
-              // CRITICAL: Don't await publish - make it non-blocking
-              // Local deletion is complete, button should be re-enabled
+              // Relays for other clients + direct bridge POST so bare disk/DB wipe
+              // does not depend on relay lag (same path as Push / SSH key kind 52).
               try {
                 publish(deletionEvent, defaultRelays);
                 console.log(
@@ -967,6 +967,30 @@ export default function RepoSettingsPage() {
                   error
                 );
                 // Local deletion is already done, so this is just a warning
+              }
+
+              try {
+                const bridgeResponse = await fetch("/api/nostr/repo/event", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(deletionEvent),
+                });
+                if (bridgeResponse.ok) {
+                  const bridgeResult = await bridgeResponse.json();
+                  console.log(
+                    "✅ [Repo delete] Deleted 30617 sent to bridge:",
+                    bridgeResult
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ [Repo delete] Bridge API returned ${bridgeResponse.status} — bare wipe may wait for relay subscription`
+                  );
+                }
+              } catch (bridgeError: any) {
+                console.warn(
+                  "⚠️ [Repo delete] Bridge POST failed (relays still got the tombstone):",
+                  bridgeError?.message || bridgeError
+                );
               }
 
               // Also publish NIP-09 kind 5 pointing at the addressable 30617
