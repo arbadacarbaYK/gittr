@@ -30,6 +30,13 @@ function parseGithubOwnerRepo(
   }
 }
 
+export type SyncGithubRepoOptions = {
+  /** Pages of 100 items (default 5 for full tab sync). Header badge warm uses 1. */
+  maxPages?: number;
+  /** When true, only open items — enough for badge totals, far cheaper than state=all. */
+  openOnly?: boolean;
+};
+
 /**
  * Walk GitHub list pages via `/api/github/proxy` (maxPages * 100 items).
  * First page only was why tab badges / lists stayed short on busy repos.
@@ -67,14 +74,18 @@ async function fetchGithubListPages(
 export async function syncGithubIssuesForRepo(
   entity: string,
   repoSlug: string,
-  sourceUrl: string
+  sourceUrl: string,
+  options?: SyncGithubRepoOptions
 ): Promise<boolean> {
   const parsed = parseGithubOwnerRepo(sourceUrl);
   if (!parsed) return false;
   const { owner, repo: ghRepo } = parsed;
+  const maxPages = options?.maxPages ?? 5;
+  const state = options?.openOnly ? "open" : "all";
   try {
     const githubList = await fetchGithubListPages(
-      `/repos/${owner}/${ghRepo}/issues?state=all&sort=updated&direction=desc`
+      `/repos/${owner}/${ghRepo}/issues?state=${state}&sort=updated&direction=desc`,
+      maxPages
     );
     if (!githubList) return false;
 
@@ -135,14 +146,18 @@ export async function syncGithubIssuesForRepo(
 export async function syncGithubPullsForRepo(
   entity: string,
   repoSlug: string,
-  sourceUrl: string
+  sourceUrl: string,
+  options?: SyncGithubRepoOptions
 ): Promise<boolean> {
   const parsed = parseGithubOwnerRepo(sourceUrl);
   if (!parsed) return false;
   const { owner, repo: ghRepo } = parsed;
+  const maxPages = options?.maxPages ?? 5;
+  const state = options?.openOnly ? "open" : "all";
   try {
     const githubList = await fetchGithubListPages(
-      `/repos/${owner}/${ghRepo}/pulls?state=all&sort=updated&direction=desc`
+      `/repos/${owner}/${ghRepo}/pulls?state=${state}&sort=updated&direction=desc`,
+      maxPages
     );
     if (!githubList) return false;
 

@@ -4,9 +4,9 @@
  */
 import { nip19 } from "nostr-tools";
 
+/** Prefer gittr/own relays for SSR — Damus auto-reconnect leaks memory when races abandon pools. */
 const DEFAULT_RELAYS = [
   "wss://relay.gittr.space",
-  "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.noderunners.network",
 ];
@@ -42,17 +42,22 @@ export async function fetchUserMetadata(
 
     // Use dynamic import to avoid SSR issues
     const { RelayPool } = await import("nostr-relaypool");
-    const pool = new RelayPool(targetRelays);
+    // dontAutoReconnect: generateMetadata races this at ~1.5s; abandoned pools must not reconnect forever
+    const pool = new RelayPool(targetRelays, { dontAutoReconnect: true });
 
     return new Promise((resolve) => {
       let resolved = false;
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          pool.close();
+          try {
+            pool.close();
+          } catch {
+            /* ignore */
+          }
           resolve(null);
         }
-      }, 5000); // 5 second timeout
+      }, 1500);
 
       pool.subscribe(
         [
@@ -66,7 +71,11 @@ export async function fetchUserMetadata(
           if (resolved) return;
           resolved = true;
           clearTimeout(timeout);
-          pool.close();
+          try {
+            pool.close();
+          } catch {
+            /* ignore */
+          }
 
           try {
             const metadata = JSON.parse(event.content || "{}");

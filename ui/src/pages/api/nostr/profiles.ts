@@ -20,7 +20,6 @@ type ProfileMeta = {
 
 const RELAYS = [
   "wss://relay.gittr.space",
-  "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.nostr.band",
   "wss://relay.primal.net",
@@ -45,7 +44,7 @@ async function fetchProfilesBatch(
   pubkeys: string[]
 ): Promise<Record<string, ProfileMeta>> {
   const { RelayPool } = await import("nostr-relaypool");
-  const pool = new RelayPool(RELAYS);
+  const pool = new RelayPool(RELAYS, { dontAutoReconnect: true });
   const out: Record<string, ProfileMeta> = {};
   const pending = new Set(pubkeys);
 

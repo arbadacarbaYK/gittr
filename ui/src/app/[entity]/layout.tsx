@@ -18,13 +18,12 @@ export async function generateMetadata({
 }: {
   params: Promise<{ entity: string }>;
 }): Promise<Metadata> {
-  // CRITICAL: Log immediately to verify function is being called
-  console.log("[Metadata] ===== generateMetadata for [entity] CALLED =====");
-
   const resolvedParams = await params;
   const baseUrl = getPublicSiteUrl();
 
-  console.log("[Metadata] Entity:", resolvedParams.entity);
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[Metadata] generateMetadata [entity]:", resolvedParams.entity);
+  }
 
   // Try to decode npub to get pubkey
   let pubkey: string | null = null;
@@ -64,10 +63,12 @@ export async function generateMetadata({
         fetchUserMetadata(pubkey),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
       ]);
-      console.log(
-        "[Metadata] User metadata fetched:",
-        userMetadata ? "yes" : "no"
-      );
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          "[Metadata] User metadata fetched:",
+          userMetadata ? "yes" : "no"
+        );
+      }
     } catch (error) {
       console.warn("[Metadata] Failed to fetch user metadata:", error);
     }

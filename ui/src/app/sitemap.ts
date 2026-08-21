@@ -99,13 +99,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Prefer daily disk snapshot (built by standalone systemd job). Live relay
   // fan-out only when the snap is missing/stale — keeps crawler hits off the
   // heavy SimplePool path inside the public Next process.
+  // During `next build`, skip live Nostr unless SITEMAP_LIVE_NOSTR=1 — empty
+  // snaps otherwise hang static generation past Next's 60s page budget.
   const seoSnap = await loadNostrSeoReposSnapshot();
   const fromSnapshot = snapshotPathMap(seoSnap);
   const forceLive =
     process.env.SITEMAP_LIVE_NOSTR === "1" ||
     process.env.SITEMAP_LIVE_NOSTR === "true";
+  const isProductionBuild =
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    process.env.npm_lifecycle_event === "build";
   const fromNostr =
-    fromSnapshot.size === 0 || forceLive
+    forceLive || (fromSnapshot.size === 0 && !isProductionBuild)
       ? await fetchSitemapRepoPathsFromNostr()
       : new Map<string, number>();
   const fromFile = filterRepoPathLinesByPublisherBlocklist(

@@ -22,7 +22,6 @@ const CATALOG_RELAYS = [
   RELAY_ZAPSTORE,
   "wss://nos.lol",
   "wss://relay.ngit.dev",
-  "wss://relay.damus.io",
   "wss://relay.gittr.space",
 ];
 
@@ -56,7 +55,7 @@ function upsertRelease(
 
 async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
   const { RelayPool } = await import("nostr-relaypool");
-  const pool = new RelayPool(CATALOG_RELAYS);
+  const pool = new RelayPool(CATALOG_RELAYS, { dontAutoReconnect: true });
 
   const rawApps: NostrEventLike[] = [];
   const releasesByApp = new Map<string, ParsedSoftwareRelease[]>();

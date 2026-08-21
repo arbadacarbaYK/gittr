@@ -144,13 +144,12 @@ export async function fetchRepoLogoUrlFromNostr(
     const { RelayPool } = await import("nostr-relaypool");
     const relays = [
       "wss://relay.gittr.space",
-      "wss://relay.damus.io",
       "wss://relay.nostr.band",
       "wss://nos.lol",
       "wss://relay.ngit.dev",
       "wss://relay.primal.net",
     ];
-    const pool = new RelayPool(relays);
+    const pool = new RelayPool(relays, { dontAutoReconnect: true });
 
     return await new Promise<string | null>((resolve) => {
       let settled = false;

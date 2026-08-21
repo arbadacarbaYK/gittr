@@ -88,7 +88,11 @@ function createMainRelayPool(): RelayPool {
       /* fall back to full default relay list */
     }
   }
-  return new RelayPool(initialRelays);
+  // SSR / `next build` must not auto-reconnect — abandoned pools spam damus/wine
+  // and climb MemoryHigh on the public frontend. Browser keeps reconnect.
+  return new RelayPool(initialRelays, {
+    dontAutoReconnect: typeof window === "undefined",
+  });
 }
 
 const relayPool = createMainRelayPool();

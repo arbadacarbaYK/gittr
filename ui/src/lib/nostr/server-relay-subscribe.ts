@@ -7,7 +7,6 @@
 export const PLATFORM_STATS_RELAYS = [
   "wss://relay.gittr.space",
   "wss://nos.lol",
-  "wss://relay.damus.io",
 ];
 
 /**
@@ -52,7 +51,7 @@ export async function withRelayPoolSubscribe<T>(
   run: (subscribe: NostrSubscribeFn) => Promise<T>
 ): Promise<T> {
   const { RelayPool } = await import("nostr-relaypool");
-  const pool = new RelayPool(relays);
+  const pool = new RelayPool(relays, { dontAutoReconnect: true });
   const subscribe: NostrSubscribeFn = (
     filters,
     relayUrls,

@@ -114,108 +114,129 @@ export async function fetchSitemapRepoPathsFromNostr(
   }
 
   const timeoutMs = options.timeoutMs ?? SITEMAP_RELAY_TIMEOUT_MS;
+  // Hard ceiling under Next static-generation budget (~60s) even if pool.list hangs.
+  const hardCapMs = Math.min(timeoutMs + 5_000, 50_000);
   const pool = new SimplePool({
     eoseSubTimeout: timeoutMs,
     getTimeout: timeoutMs,
   });
 
-  try {
-    const [repoEvents, deletionEvents] = await Promise.all([
-      pool.list(relays, [
-        {
-          kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
-          limit: REPO_QUERY_LIMIT,
-        },
-      ]),
-      pool.list(relays, [{ kinds: [5], limit: DELETION_QUERY_LIMIT }]),
-    ]);
+  const run = async (): Promise<Map<string, number>> => {
+    try {
+      const [repoEvents, deletionEvents] = await Promise.all([
+        pool.list(relays, [
+          {
+            kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+            limit: REPO_QUERY_LIMIT,
+          },
+        ]),
+        pool.list(relays, [{ kinds: [5], limit: DELETION_QUERY_LIMIT }]),
+      ]);
 
-    const { eventIds: deletedIds, addresses: deletedAddresses } =
-      collectDeletionRefs(deletionEvents);
+      const { eventIds: deletedIds, addresses: deletedAddresses } =
+        collectDeletionRefs(deletionEvents);
 
-    const byId = new Map<string, Event>();
-    for (const ev of repoEvents) {
-      if (!byId.has(ev.id)) byId.set(ev.id, ev);
-    }
-    const unique = [...byId.values()];
+      const byId = new Map<string, Event>();
+      for (const ev of repoEvents) {
+        if (!byId.has(ev.id)) byId.set(ev.id, ev);
+      }
+      const unique = [...byId.values()];
 
-    const nip34ByKey = new Map<string, Event>();
-    const kind51ByKey = new Map<string, Event>();
+      const nip34ByKey = new Map<string, Event>();
+      const kind51ByKey = new Map<string, Event>();
 
-    for (const ev of unique) {
-      const kind = ev.kind as number;
-      if (kind === KIND_REPOSITORY_NIP34) {
-        const d = getTag(ev, "d");
-        if (!d) continue;
-        const key = `${ev.pubkey}:${d}`;
-        const prev = nip34ByKey.get(key);
-        if (!prev || (ev.created_at || 0) > (prev.created_at || 0)) {
-          nip34ByKey.set(key, ev);
+      for (const ev of unique) {
+        const kind = ev.kind as number;
+        if (kind === KIND_REPOSITORY_NIP34) {
+          const d = getTag(ev, "d");
+          if (!d) continue;
+          const key = `${ev.pubkey}:${d}`;
+          const prev = nip34ByKey.get(key);
+          if (!prev || (ev.created_at || 0) > (prev.created_at || 0)) {
+            nip34ByKey.set(key, ev);
+          }
+        } else if (kind === KIND_REPOSITORY) {
+          const name = parseKind51RepoName(ev.content);
+          if (!name) continue;
+          const key = `${ev.pubkey}:${name}`;
+          const prev = kind51ByKey.get(key);
+          if (!prev || (ev.created_at || 0) > (prev.created_at || 0)) {
+            kind51ByKey.set(key, ev);
+          }
         }
-      } else if (kind === KIND_REPOSITORY) {
+      }
+
+      const pathToModified = new Map<string, number>();
+
+      for (const ev of nip34ByKey.values()) {
+        if (isPublisherBlocklisted(ev.pubkey)) continue;
+        if (deletedIds.has(ev.id)) continue;
+        if (isDeletedNip34(ev, deletedAddresses)) continue;
+        if (isRepoAnnouncementDeleted(ev)) continue;
+        if (!isPublicReadFromEvent(ev)) continue;
+        if (shouldHideNip34EventForUnusableClones(ev)) continue;
+        const dRaw = getTag(ev, "d");
+        const name = getTag(ev, "name");
+        const d = normalizeNip34RepoIdentifier(dRaw, name);
+        if (!d) continue;
+        try {
+          const npub = nip19.npubEncode(ev.pubkey);
+          const line = `${npub}/${d}`;
+          const ts = (ev.created_at || 0) * 1000;
+          const prev = pathToModified.get(line);
+          if (prev === undefined || ts > prev) pathToModified.set(line, ts);
+        } catch {
+          /* skip bad pubkey */
+        }
+      }
+
+      for (const ev of kind51ByKey.values()) {
+        if (isPublisherBlocklisted(ev.pubkey)) continue;
+        if (deletedIds.has(ev.id)) continue;
+        if (isRepoAnnouncementDeleted(ev)) continue;
+        if (!isPublicReadFromEvent(ev)) continue;
         const name = parseKind51RepoName(ev.content);
         if (!name) continue;
-        const key = `${ev.pubkey}:${name}`;
-        const prev = kind51ByKey.get(key);
-        if (!prev || (ev.created_at || 0) > (prev.created_at || 0)) {
-          kind51ByKey.set(key, ev);
+        try {
+          const npub = nip19.npubEncode(ev.pubkey);
+          const line = `${npub}/${name}`;
+          const ts = (ev.created_at || 0) * 1000;
+          const prev = pathToModified.get(line);
+          if (prev === undefined || ts > prev) pathToModified.set(line, ts);
+        } catch {
+          /* skip */
         }
       }
-    }
 
-    const pathToModified = new Map<string, number>();
-
-    for (const ev of nip34ByKey.values()) {
-      if (isPublisherBlocklisted(ev.pubkey)) continue;
-      if (deletedIds.has(ev.id)) continue;
-      if (isDeletedNip34(ev, deletedAddresses)) continue;
-      if (isRepoAnnouncementDeleted(ev)) continue;
-      if (!isPublicReadFromEvent(ev)) continue;
-      if (shouldHideNip34EventForUnusableClones(ev)) continue;
-      const dRaw = getTag(ev, "d");
-      const name = getTag(ev, "name");
-      const d = normalizeNip34RepoIdentifier(dRaw, name);
-      if (!d) continue;
+      return pathToModified;
+    } catch (err) {
+      console.error("[sitemap] Nostr repo index failed:", err);
+      return new Map();
+    } finally {
       try {
-        const npub = nip19.npubEncode(ev.pubkey);
-        const line = `${npub}/${d}`;
-        const ts = (ev.created_at || 0) * 1000;
-        const prev = pathToModified.get(line);
-        if (prev === undefined || ts > prev) pathToModified.set(line, ts);
+        pool.close(relays);
       } catch {
-        /* skip bad pubkey */
+        /* ignore */
       }
     }
+  };
 
-    for (const ev of kind51ByKey.values()) {
-      if (isPublisherBlocklisted(ev.pubkey)) continue;
-      if (deletedIds.has(ev.id)) continue;
-      if (isRepoAnnouncementDeleted(ev)) continue;
-      if (!isPublicReadFromEvent(ev)) continue;
-      const name = parseKind51RepoName(ev.content);
-      if (!name) continue;
-      try {
-        const npub = nip19.npubEncode(ev.pubkey);
-        const line = `${npub}/${name}`;
-        const ts = (ev.created_at || 0) * 1000;
-        const prev = pathToModified.get(line);
-        if (prev === undefined || ts > prev) pathToModified.set(line, ts);
-      } catch {
-        /* skip */
-      }
-    }
-
-    return pathToModified;
-  } catch (err) {
-    console.error("[sitemap] Nostr repo index failed:", err);
-    return new Map();
-  } finally {
-    try {
-      pool.close(relays);
-    } catch {
-      /* ignore */
-    }
-  }
+  return Promise.race([
+    run(),
+    new Promise<Map<string, number>>((resolve) => {
+      setTimeout(() => {
+        try {
+          pool.close(relays);
+        } catch {
+          /* ignore */
+        }
+        console.warn(
+          `[sitemap] Nostr repo index hard-capped after ${hardCapMs}ms`
+        );
+        resolve(new Map());
+      }, hardCapMs);
+    }),
+  ]);
 }
 
 /** Daily / manual SEO index: longer timeout + force past SITEMAP_SKIP_NOSTR. */

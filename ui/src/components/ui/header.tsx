@@ -200,8 +200,8 @@ export function Header() {
     const warmKey = `gittr_global_issue_pr_warm:${pubkey.slice(0, 16)}`;
     try {
       const last = Number(sessionStorage.getItem(warmKey) || 0);
-      // 2 min — short enough that a failed first attempt recovers on refresh
-      if (Date.now() - last < 2 * 60_000) return;
+      // 15 min — avoids re-storming /api/github/proxy on every navigation/refresh
+      if (Date.now() - last < 15 * 60_000) return;
     } catch {
       /* warm anyway */
     }

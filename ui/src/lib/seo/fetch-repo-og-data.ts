@@ -19,11 +19,11 @@ import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { nip19 } from "nostr-tools";
 import sharp from "sharp";
 
+// No Damus: abandoned OG/metadata RelayPools + Damus reconnect storms hit MemoryHigh.
 const OG_RELAYS = [
   "wss://relay.gittr.space",
   "wss://relay.ngit.dev",
   "wss://gitnostr.com",
-  "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.noderunners.network",
   "wss://relay.nostr.band",
@@ -212,7 +212,7 @@ async function fetchAnnouncementBits(
   };
   try {
     const { RelayPool } = await import("nostr-relaypool");
-    const pool = new RelayPool(OG_RELAYS);
+    const pool = new RelayPool(OG_RELAYS, { dontAutoReconnect: true });
     return await new Promise<AnnouncementBits>((resolve) => {
       let settled = false;
       let best: AnnouncementBits | null = null;
@@ -274,7 +274,7 @@ async function fetchNostrStarCount(
   if (!/^[0-9a-f]{64}$/i.test(eventId)) return null;
   try {
     const { RelayPool } = await import("nostr-relaypool");
-    const pool = new RelayPool(OG_RELAYS);
+    const pool = new RelayPool(OG_RELAYS, { dontAutoReconnect: true });
     const events: any[] = [];
     return await new Promise<number | null>((resolve) => {
       let settled = false;
@@ -466,10 +466,9 @@ async function fetchOwnerProfile(
       "wss://purplepag.es",
       "wss://user.kindpag.es",
       "wss://relay.gittr.space",
-      "wss://relay.damus.io",
       "wss://nos.lol",
     ];
-    const pool = new RelayPool(profileRelays);
+    const pool = new RelayPool(profileRelays, { dontAutoReconnect: true });
     const meta = await new Promise<{
       name?: string;
       display_name?: string;

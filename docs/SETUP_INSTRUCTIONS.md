@@ -204,6 +204,8 @@ WantedBy=multi-user.target
 
 **Frontend** — prefer the checked-in unit [`infra/systemd/gittr-frontend.service`](../infra/systemd/gittr-frontend.service) (`WorkingDirectory=/opt/ngit/ui`, `npm start`). It sets **`MemoryHigh` / `MemoryMax`** and `NODE_OPTIONS=--max-old-space-size=…` so a runaway Next process is restarted before it wedges the host. On ~4 Gi boxes use lower caps (~1.4/1.8 Gi); on ~15 Gi production the checked-in unit uses **3 Gi / 4 Gi**.
 
+**If the site feels frozen and APIs return `503`:** that is usually the frontend hitting **MemoryHigh**, not Amber/remote signing. Check `systemctl show gittr-frontend.service -p MemoryCurrent -p MemoryHigh -p ActiveState`. A restart recovers immediately; durable mitigations in the app are (1) lighter header GitHub issue/PR warm (TTL + open-only, 1 page) and (2) SSR/metadata Nostr pools without Damus auto-reconnect storms (`dontAutoReconnect` on server pools, lean production relay fallback). Do not raise memory caps alone — fix the load first.
+
 Minimal example (adjust paths/user; keep memory caps on small VPS):
 
 ```ini

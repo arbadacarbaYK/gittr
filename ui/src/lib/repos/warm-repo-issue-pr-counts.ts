@@ -37,6 +37,41 @@ export type WarmableRepo = {
   githubSourceUrl?: string | null;
 };
 
+/** Skip GitHub proxy warm when badges already have local data (or recently warmed empty). */
+const GH_BADGE_WARM_TTL_MS = 6 * 60 * 60_000;
+
+function ghBadgeWarmMetaKey(entity: string, repo: string): string {
+  return `gittr_gh_badge_warm:${entity}:${repo}`;
+}
+
+function needsGithubBadgeWarm(entity: string, repo: string): boolean {
+  try {
+    const last = Number(localStorage.getItem(ghBadgeWarmMetaKey(entity, repo)) || 0);
+    if (Number.isFinite(last) && Date.now() - last < GH_BADGE_WARM_TTL_MS) {
+      return false;
+    }
+    const issues = readRepoIssuesFromLocalStorage(entity, repo) as unknown[];
+    const prs = readRepoPullsFromLocalStorage(entity, repo) as unknown[];
+    if (
+      (Array.isArray(issues) && issues.length > 0) ||
+      (Array.isArray(prs) && prs.length > 0)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function markGithubBadgeWarm(entity: string, repo: string): void {
+  try {
+    localStorage.setItem(ghBadgeWarmMetaKey(entity, repo), String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
 function resolveOwnerHex(entity: string, repo: string): string | null {
   const resolved = resolveEntityToPubkey(entity);
   if (resolved && /^[0-9a-f]{64}$/i.test(resolved))
@@ -297,28 +332,37 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
     );
   }
 
-  // GitHub mirror sync — this is what makes /issues and /pulls counts jump
-  // when those tabs are opened. Without it, header totals stay at
-  // "visited Nostr-only" forever for forge-mirrored repos.
+  // GitHub mirror sync for header open-issue/PR badges. Keep this light:
+  // one page of open items, serial, and skip repos that already have cache
+  // (full state=all sync stays on the Issues/PRs tabs).
   void (async () => {
     const queue = repos.filter(
-      (r) => r.githubSourceUrl && /github\.com/i.test(r.githubSourceUrl)
+      (r) =>
+        r.githubSourceUrl &&
+        /github\.com/i.test(r.githubSourceUrl) &&
+        needsGithubBadgeWarm(r.entity, r.repo)
     );
-    const concurrency = 3;
-    let idx = 0;
-    const workers = Array.from({ length: concurrency }, async () => {
-      while (!cancelled && idx < queue.length) {
-        const r = queue[idx++];
-        if (!r?.githubSourceUrl) continue;
-        try {
-          await syncGithubIssuesForRepo(r.entity, r.repo, r.githubSourceUrl);
-          await syncGithubPullsForRepo(r.entity, r.repo, r.githubSourceUrl);
-        } catch {
-          /* ignore per-repo failures */
-        }
+    const light = { maxPages: 1, openOnly: true } as const;
+    for (const r of queue) {
+      if (cancelled || !r?.githubSourceUrl) break;
+      try {
+        await syncGithubIssuesForRepo(
+          r.entity,
+          r.repo,
+          r.githubSourceUrl,
+          light
+        );
+        await syncGithubPullsForRepo(
+          r.entity,
+          r.repo,
+          r.githubSourceUrl,
+          light
+        );
+        markGithubBadgeWarm(r.entity, r.repo);
+      } catch {
+        /* ignore per-repo failures */
       }
-    });
-    await Promise.all(workers);
+    }
   })();
 
   // Status pass after root events land (global warm gets more data → 4s).

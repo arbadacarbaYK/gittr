@@ -42,9 +42,9 @@ export async function fetchRepoAnnouncementMeta(
       try {
         const { RelayPool } = await import("nostr-relaypool");
 
+        // No Damus: SSR metadata races abandon pools; Damus reconnect storms blow MemoryHigh.
         const DEFAULT_RELAYS = [
           "wss://relay.gittr.space",
-          "wss://relay.damus.io",
           "wss://relay.noderunners.network",
           "wss://nos.lol",
           "wss://relay.ngit.dev",
@@ -52,7 +52,7 @@ export async function fetchRepoAnnouncementMeta(
           "wss://relay.azzamo.net",
         ];
 
-        pool = new RelayPool(DEFAULT_RELAYS);
+        pool = new RelayPool(DEFAULT_RELAYS, { dontAutoReconnect: true });
 
         return new Promise<RepoAnnouncementMeta>((resolve) => {
           let resolved = false;
@@ -143,11 +143,7 @@ export async function fetchRepoAnnouncementMeta(
       }
     })();
 
-    const timeoutPromise = new Promise<RepoAnnouncementMeta>((resolve) =>
-      setTimeout(() => resolve(EMPTY), timeoutMs)
-    );
-
-    return await Promise.race([queryPromise, timeoutPromise]);
+    return await queryPromise;
   } catch {
     return EMPTY;
   }

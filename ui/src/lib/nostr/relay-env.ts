@@ -27,5 +27,6 @@ export function getDefaultRelayUrls(): string[] {
     return [];
   }
 
-  return ["wss://relay.gittr.space", "wss://relay.damus.io"];
+  // Keep production fallback lean — Damus auto-reconnect storms hurt SSR memory.
+  return ["wss://relay.gittr.space"];
 }
