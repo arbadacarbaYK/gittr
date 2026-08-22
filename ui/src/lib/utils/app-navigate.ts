@@ -40,7 +40,16 @@ export function isRepoCodePath(pathname: string): boolean {
   return parts.length === 2;
 }
 
-/** Prefer hard nav when leaving/entering Explore or leaving the Code tab. */
+function samePath(a: string, b: string): boolean {
+  const na = normalizePath(a).replace(/\/+$/, "") || "/";
+  const nb = normalizePath(b).replace(/\/+$/, "") || "/";
+  return na === nb;
+}
+
+/**
+ * Prefer hard nav when leaving/entering Explore, or for ANY leave from the
+ * Code tab (header, home, tabs, settings, user menu — not only Issues).
+ */
 export function shouldHardNavigate(
   href: string,
   pathname?: string | null
@@ -48,8 +57,7 @@ export function shouldHardNavigate(
   const path =
     pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
   if (isExplorePath(path) || isExploreHref(href)) return true;
-  // Leaving Code for Issues/PRs/Settings/home/etc. — do not wait for README.
-  if (isRepoCodePath(path) && !isRepoCodePath(normalizePath(href))) return true;
+  if (isRepoCodePath(path) && !samePath(path, href)) return true;
   return false;
 }
 
@@ -67,6 +75,8 @@ export function appNavigate(
 ): void {
   if (typeof window === "undefined") return;
   if (shouldHardNavigate(href, pathname)) {
+    // Do not preventDefault — if this handler is delayed, the real <a href>
+    // can still navigate. assign() covers menu onSelect (no native href).
     window.location.assign(href);
     return;
   }

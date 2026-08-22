@@ -97,7 +97,6 @@ import {
   Star,
   Zap,
 } from "lucide-react";
-import Link from "next/link";
 import {
   useParams,
   usePathname,
@@ -1813,6 +1812,7 @@ export default function RepoLayoutClient({
       />
 
       <section
+        data-repo-chrome
         className={
           pathname.includes("/projects")
             ? "mx-auto w-full max-w-[98vw] px-4 py-6 md:px-6"
@@ -1838,21 +1838,27 @@ export default function RepoLayoutClient({
             </div>
             <div className="min-w-0 pt-1">
               <div className="flex flex-wrap items-baseline gap-x-1 text-lg">
-                <Link
+                <a
                   className="text-[var(--color-link)] hover:underline font-semibold"
                   href={ownerProfileHref}
                   suppressHydrationWarning
+                  onClick={(e) =>
+                    appNavigate(ownerProfileHref, router, pathname, e)
+                  }
                 >
                   {ownerDisplayName}
-                </Link>
+                </a>
                 <span className="text-[var(--color-text-secondary)]">/</span>
-                <Link
+                <a
                   className="text-[var(--color-text-primary)] hover:underline font-semibold"
                   href={getRepoLink()}
                   onClick={(e) => {
                     // Already on Code: soft-nav to same URL is a no-op, but the
                     // file browser may still be in a subfolder (?path= / currentPath).
-                    if (!isCodeTabActive) return;
+                    if (!isCodeTabActive) {
+                      appNavigate(getRepoLink(), router, pathname, e);
+                      return;
+                    }
                     e.preventDefault();
                     const href = getRepoLink("", false);
                     window.dispatchEvent(
@@ -1863,7 +1869,7 @@ export default function RepoLayoutClient({
                   }}
                 >
                   {decodeURIComponent(resolvedParams.repo)}
-                </Link>
+                </a>
                 <span className="border-[var(--color-border)] text-[var(--color-text-secondary)] ml-1 rounded-full border px-1.5 text-xs">
                   {isDeletedRepo
                     ? "Deleted"
@@ -1901,7 +1907,7 @@ export default function RepoLayoutClient({
                     key="zaps"
                     title={zapBadgeTitle}
                     onClick={() => {
-                      router.push(getZapLink());
+                      appNavigate(getZapLink(), router, pathname);
                     }}
                   >
                     <Zap className="mr-2 h-4 w-4" /> Zaps
@@ -1968,7 +1974,13 @@ export default function RepoLayoutClient({
                     {isWatching ? "Unwatch" : "Watch"}
                     <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
                   </Button>
-                  <Link href={getZapLink()} title={zapBadgeTitle}>
+                  <a
+                    href={getZapLink()}
+                    title={zapBadgeTitle}
+                    onClick={(e) =>
+                      appNavigate(getZapLink(), router, pathname, e)
+                    }
+                  >
                     <Button
                       className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                       variant="outline"
@@ -1976,7 +1988,7 @@ export default function RepoLayoutClient({
                       <Zap className="mr-2 h-4 w-4" /> Zaps
                       <Badge className="ml-2">{zapBadge.totalSats}</Badge>
                     </Button>
-                  </Link>
+                  </a>
                   {/* Relays status not yet implemented */}
                   <Button
                     className="h-8 !border-[#383B42] bg-[#22262C] text-xs"

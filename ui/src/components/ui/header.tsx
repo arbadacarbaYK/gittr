@@ -277,8 +277,10 @@ export function Header() {
       : "/profile";
 
   return (
-    <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">
-      <div className="flex items-center gap-4">
+    <header
+      data-repo-chrome
+      className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8"
+    >      <div className="flex items-center gap-4">
         <MainNav items={navItems} />
         {mounted && isLoggedIn && (
           <a
@@ -316,14 +318,16 @@ export function Header() {
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
-              <DropdownMenuItem
-                onSelect={() => {
-                  go(profileUrl);
-                }}
-              >
-                <DropdownMenuLabel className="cursor-pointer">
-                  {name}
-                </DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <a
+                  href={profileUrl}
+                  className="cursor-pointer"
+                  onClick={(e) => go(profileUrl, e)}
+                >
+                  <DropdownMenuLabel className="cursor-pointer p-0 font-normal">
+                    {name}
+                  </DropdownMenuLabel>
+                </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
@@ -332,26 +336,20 @@ export function Header() {
                   const href =
                     item.href === "/profile" ? profileUrl : item.href;
                   return (
-                    <DropdownMenuItem
-                      key={item.title}
-                      onSelect={() => {
-                        go(href);
-                      }}
-                    >
-                      {item.title}
+                    <DropdownMenuItem key={item.title} asChild>
+                      <a href={href} onClick={(e) => go(href, e)}>
+                        {item.title}
+                      </a>
                     </DropdownMenuItem>
                   );
                 })}
                 <DropdownMenuSeparator />
 
                 {restGitInfo?.map((item) => (
-                  <DropdownMenuItem
-                    key={item.title}
-                    onSelect={() => {
-                      go(item.href);
-                    }}
-                  >
-                    {item.title}
+                  <DropdownMenuItem key={item.title} asChild>
+                    <a href={item.href} onClick={(e) => go(item.href, e)}>
+                      {item.title}
+                    </a>
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
