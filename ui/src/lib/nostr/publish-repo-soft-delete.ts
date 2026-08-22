@@ -87,11 +87,15 @@ export async function publishRepoSoftDelete(opts: {
   );
   unsigned.id = getEventHash(unsigned);
 
+  // Amber: remoteSigner already fail-fasts ~20s on silent 24133; keep outer race
+  // a bit above that. NIP-07 / nsec can wait longer for a real prompt.
+  const signBudgetMs = signer.source === "remote" ? 28000 : 120000;
   const deletionEvent = await signWithTimeout(
     signer.signEvent(unsigned),
     signer.source === "remote"
       ? "Amber soft-delete sign"
-      : "Soft-delete sign"
+      : "Soft-delete sign",
+    signBudgetMs
   );
 
   try {
@@ -149,7 +153,8 @@ export async function publishRepoSoftDelete(opts: {
       kind5Unsigned.id = getEventHash(kind5Unsigned);
       const kind5 = await signWithTimeout(
         signer.signEvent(kind5Unsigned),
-        signer.source === "remote" ? "Amber kind 5 sign" : "Kind 5 sign"
+        signer.source === "remote" ? "Amber kind 5 sign" : "Kind 5 sign",
+        signBudgetMs
       );
       if (kind5?.sig) {
         pub.publish(kind5, pub.defaultRelays);

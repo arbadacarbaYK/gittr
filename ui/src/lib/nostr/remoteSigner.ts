@@ -103,9 +103,15 @@ const REQUEST_TIMEOUT_MS = 15000;
 const SIGN_EVENT_TIMEOUT_MS = 120000;
 const CONNECT_TIMEOUT_MS = 25000;
 /** While waiting for Amber, re-sub if bunker sockets drop. */
-const SIGN_LISTEN_REFRESH_MS = 18000;
+const SIGN_LISTEN_REFRESH_MS = 8000;
 /** If no inbound 24133 after publish, republish the same request once. */
-const SIGN_REPUBLISH_IF_SILENT_MS = 35000;
+const SIGN_REPUBLISH_IF_SILENT_MS = 10000;
+/**
+ * `acked: true` only means the relay took the envelope — Amber may still be
+ * asleep. If we never see any inbound 24133, abort early instead of sitting
+ * on the full 120s interactive timeout (Delete / Push felt "stuck").
+ */
+const SIGN_SILENT_ABORT_MS = 20000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 export const DEFAULT_REMOTE_PERMISSIONS = [
@@ -1628,7 +1634,7 @@ export class RemoteSignerManager {
           );
         }
         throw new Error(
-          "The remote signer did not respond to the signing request. Open your signer app (e.g. Amber) on your phone, make sure it is online and connected, then try again."
+          "Amber did not open a signing prompt. Unlock Amber on your phone (bunker online), keep this tab open, then try again. Relay OK (acked:true) does not mean the phone saw the request."
         );
       }
       throw err;
@@ -3174,10 +3180,11 @@ export class RemoteSignerManager {
             return;
           }
           void this.refreshSignEventListenPath(session).catch(() => undefined);
+          const waited = Date.now() - waitStarted;
           if (
             !republishedOnce &&
             this.inboundDuringWait === 0 &&
-            Date.now() - waitStarted >= SIGN_REPUBLISH_IF_SILENT_MS
+            waited >= SIGN_REPUBLISH_IF_SILENT_MS
           ) {
             republishedOnce = true;
             const urls = this.lastPublishMeta?.urls || [];
@@ -3196,6 +3203,29 @@ export class RemoteSignerManager {
                 );
               }
             }
+          }
+          // Phone never decrypted / never woke — fail fast (keep full 120s only
+          // when inbound 24133 traffic shows Amber is talking).
+          if (
+            this.inboundDuringWait === 0 &&
+            waited >= SIGN_SILENT_ABORT_MS
+          ) {
+            finishListen();
+            this.pending.delete(id);
+            clearTimeout(timeout);
+            console.warn(
+              "[RemoteSigner] Aborting silent sign_event — no inbound 24133",
+              {
+                waitedMs: waited,
+                lastAcked: this.lastPublishMeta?.acked,
+                publishedUrls: this.lastPublishMeta?.urls || [],
+              }
+            );
+            reject(
+              new Error(
+                "Amber did not wake for signing (no reply on bunker relays). Unlock Amber, confirm bunker is online, then try Delete/Push again."
+              )
+            );
           }
         }, SIGN_LISTEN_REFRESH_MS);
       }
