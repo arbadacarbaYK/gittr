@@ -38,6 +38,7 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
+import { appNavigate } from "@/lib/utils/app-navigate";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import {
   canManageSettings,
@@ -2074,19 +2075,13 @@ export default function RepoLayoutClient({
                   <a
                     href={getRepoLink(item.link || "", item.name === "Code")}
                     onClick={(e) => {
-                      e.preventDefault();
                       const href = getRepoLink(
                         item.link || "",
                         item.name === "Code"
                       );
-                      const targetPath = href.split("?")[0] || href;
-                      router.push(href);
-                      // Soft nav can stall while the Code page is busy; fall back fast.
-                      window.setTimeout(() => {
-                        if (window.location.pathname !== targetPath) {
-                          window.location.assign(href);
-                        }
-                      }, 400);
+                      // Leaving Code while README/tree hydrate: hard-nav immediately
+                      // so tabs stay usable (soft router.push starves on main thread).
+                      appNavigate(href, router, pathname, e);
                     }}
                     className={clsx(
                       "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
@@ -2152,13 +2147,7 @@ export default function RepoLayoutClient({
                       item.link || "",
                       item.name === "Code"
                     );
-                    const targetPath = href.split("?")[0] || href;
-                    router.push(href);
-                    window.setTimeout(() => {
-                      if (window.location.pathname !== targetPath) {
-                        window.location.assign(href);
-                      }
-                    }, 400);
+                    appNavigate(href, router, pathname);
                   }}
                 >
                   {item.icon}

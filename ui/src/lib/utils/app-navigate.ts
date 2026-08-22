@@ -1,40 +1,15 @@
 /**
  * Client navigation that stays soft most places, but hard-assigns when Explore
- * is involved. Explore saturates the main thread with relay streams so
- * router.push after preventDefault can look like a dead click (home, personal
- * menu, top nav). SearchBar already uses location.assign for the same reason.
+ * or the Code tab is involved. Those paths saturate the main thread (relay
+ * streams / README markdown + tree hydrate) so router.push after preventDefault
+ * can look like a dead click until load finishes.
  *
- * Soft nav also gets a short hard fallback (~400ms): Code-tab README/tree work
- * can starve router.push the same way Explore does.
+ * Soft nav also gets a short hard fallback (~400ms) as a backup.
  *
  * Important: on the hard path, do NOT preventDefault before calling this.
  * Letting the real <a href> stand is the fallback when JS is starved; we still
  * assign immediately when the handler runs.
  */
-
-export function isExplorePath(pathname: string): boolean {
-  return pathname === "/explore" || pathname.startsWith("/explore/");
-}
-
-export function isExploreHref(href: string): boolean {
-  return href === "/explore" || href.startsWith("/explore?");
-}
-
-/** Prefer hard nav when leaving or entering Explore so chrome clicks stay responsive. */
-export function shouldHardNavigate(
-  href: string,
-  pathname?: string | null
-): boolean {
-  const path =
-    pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
-  return isExplorePath(path) || isExploreHref(href);
-}
-
-type NavEvent = {
-  preventDefault: () => void;
-};
-
-const SOFT_NAV_HARD_FALLBACK_MS = 400;
 
 function normalizePath(href: string): string {
   try {
@@ -46,6 +21,43 @@ function normalizePath(href: string): string {
   }
   return href.split("?")[0] || href;
 }
+
+export function isExplorePath(pathname: string): boolean {
+  return pathname === "/explore" || pathname.startsWith("/explore/");
+}
+
+export function isExploreHref(href: string): boolean {
+  return href === "/explore" || href.startsWith("/explore?");
+}
+
+/**
+ * Repo Code tab: `/{entity}/{repo}` with no further segment (optional trailing slash).
+ * That page does heavy sync work after the file list paints (README markdown).
+ */
+export function isRepoCodePath(pathname: string): boolean {
+  const path = normalizePath(pathname || "");
+  const parts = path.split("/").filter(Boolean);
+  return parts.length === 2;
+}
+
+/** Prefer hard nav when leaving/entering Explore or leaving the Code tab. */
+export function shouldHardNavigate(
+  href: string,
+  pathname?: string | null
+): boolean {
+  const path =
+    pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
+  if (isExplorePath(path) || isExploreHref(href)) return true;
+  // Leaving Code for Issues/PRs/Settings/home/etc. — do not wait for README.
+  if (isRepoCodePath(path) && !isRepoCodePath(normalizePath(href))) return true;
+  return false;
+}
+
+type NavEvent = {
+  preventDefault: () => void;
+};
+
+const SOFT_NAV_HARD_FALLBACK_MS = 400;
 
 export function appNavigate(
   href: string,

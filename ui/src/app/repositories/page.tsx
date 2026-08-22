@@ -2763,7 +2763,7 @@ export default function RepositoriesPage() {
               Syncing from Nostr...
             </span>
           )}
-          {pubkey && (
+          {mounted && pubkey && (
             <button
               onClick={() => setShowClearConfirm(true)}
               className="border border-purple-500/50 bg-purple-900/20 hover:bg-purple-900/30 text-purple-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
@@ -2784,7 +2784,7 @@ export default function RepositoriesPage() {
             </button>
           )}
 
-          {pubkey && (
+          {mounted && pubkey && (
             <button
               onClick={() => setShowClearForeignConfirm(true)}
               className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-2.5 py-1.5 sm:px-3 sm:py-1 rounded transition-colors text-xs sm:text-sm leading-snug max-w-full"
