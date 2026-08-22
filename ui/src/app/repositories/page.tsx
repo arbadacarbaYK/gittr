@@ -33,9 +33,11 @@ import {
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
+import { healLocalSoftDeletesIfNeeded } from "@/lib/nostr/heal-local-soft-deletes";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
+  resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
@@ -2170,6 +2172,50 @@ export default function RepositoriesPage() {
     };
   }, [mounted, pubkey, loadRepos, persistReposCatalog]);
 
+  // Heal local-only deletes: Settings used to navigate away before NIP-07 finished,
+  // so gittr_deleted_repos hid repos while relays still have a live 30617.
+  useEffect(() => {
+    if (!mounted || !pubkey || !publish) return;
+    if (!/^[0-9a-f]{64}$/i.test(pubkey)) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          repos?: Array<{ repo?: string; name?: string }>;
+        };
+        const liveNames = (data.repos || [])
+          .map((r) => (r.repo || r.name || "").trim())
+          .filter(Boolean);
+        if (liveNames.length === 0 || cancelled) return;
+
+        const signingCreds = await resolveSigningCredentials({
+          remoteSigner,
+        });
+        if (!signingCreds || cancelled) return;
+
+        await healLocalSoftDeletesIfNeeded({
+          ownerPubkey: pubkey,
+          liveRepoNames: liveNames,
+          signer: signingCreds.signer,
+          publish,
+          defaultRelays: defaultRelays || [],
+        });
+      } catch (e) {
+        console.warn("[Repositories] soft-delete heal skipped:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, pubkey, publish, defaultRelays, remoteSigner]);
+
   // Make findCorruptedRepos and deleteCorruptedTidesRepos available in console for debugging
   // Note: General corruption detection is handled by isRepoCorrupted() throughout the codebase
   useEffect(() => {
@@ -2202,12 +2248,46 @@ export default function RepositoriesPage() {
                   "⚠️  If events were published by someone else, you cannot delete them - contact relay operators"
                 );
               })
-              .catch((e) => {
-                console.warn(
-                  "Failed to load delete-corrupted-events utility:",
-                  e
-                );
+              .catch(() => {});
+
+            (window as any).healGittrSoftDeletes = async (
+              names?: string[]
+            ) => {
+              const { healLocalSoftDeletesIfNeeded } = await import(
+                "@/lib/nostr/heal-local-soft-deletes"
+              );
+              const { resolveSigningCredentials } = await import(
+                "@/lib/nostr/signer"
+              );
+              const creds = await resolveSigningCredentials({ remoteSigner });
+              if (!creds || !pubkey) {
+                console.warn("Need login + signer");
+                return;
+              }
+              const res = await fetch(
+                `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`,
+                { cache: "no-store" }
+              );
+              const data = res.ok
+                ? ((await res.json()) as { repos?: Array<{ repo?: string }> })
+                : { repos: [] };
+              const liveNames = (data.repos || [])
+                .map((r) => (r.repo || "").trim())
+                .filter(Boolean);
+              return healLocalSoftDeletesIfNeeded({
+                ownerPubkey: pubkey,
+                liveRepoNames: liveNames,
+                signer: creds.signer,
+                publish,
+                defaultRelays,
+                force: true,
+                forceNames: names,
+                forceEvenIfNotLive: Boolean(names?.length),
               });
+            };
+            console.log(
+              "💡 healGittrSoftDeletes(['nip-05-api','petrol-agent',...]) publishes soft-deletes for names still live on Nostr"
+            );
 
             import("@/lib/nostr/find-corrupted-event-publisher")
               .then(({ findCorruptedEventPublishers }) => {
@@ -2230,7 +2310,7 @@ export default function RepositoriesPage() {
         }
       })();
     }
-  }, [mounted, publish, defaultRelays]);
+  }, [mounted, publish, defaultRelays, pubkey, remoteSigner]);
 
   // After Nostr hydrate: only then backfill truly unpublished local creates from activities.
   // Writing those stubs first is what painted every card Local for ~15s after Flush.

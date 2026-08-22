@@ -214,7 +214,7 @@ WantedBy=multi-user.target
 
 **Public GRASP retention (important):** `git.gittr.space` hosts repos that were **created/pushed on gittr** (NIP-34 `clone[]` includes `git.gittr.space`). The bridge still *watches* public relays for events when `gitRepoOwners: []`, but it **must not** `git clone` every foreign GitHub/ngit announce onto disk. Opening someone else’s ngit/shakespeare clone in the UI uses **temp shallow fetch**, not a permanent mirror.
 
-**Delete → bridge (must stay in sync):** Settings → Delete signs a soft-deleted kind **30617** (`deleted:true` tag + content), publishes it to social relays, **and** `POST`s the same signed event to `/api/nostr/repo/event` → bridge `POST /api/event` → `handleRepositoryEvent` wipes SQLite + `RemoveAll` the bare tree. Do not rely on relay lag alone (that left orphans like a deleted My Repos entry still on disk). Flush-only / localStorage tombstones **without** a published delete leave disk in place on purpose.
+**Delete → bridge (must stay in sync):** Settings → Delete **awaits** Amber / NIP-07 / nsec signing a soft-deleted kind **30617** (`deleted:true`), publishes to relays, **and** `POST`s to `/api/nostr/repo/event` → bridge wipe. Amber **must** show a `sign_event` for that 30617 (and often a kind 5). Do **not** navigate away before you approve. Older Hetzner builds still used fire-and-forget + local hide only — deploy the soft-delete await path before trusting Delete. My Repos can heal local-only deletes.
 
 **Local draft vs bridge host (read this once):**
 - **Create / Import** write **browser only** (`gittr_repos`, `gittr_files__…`, overrides/IDB). No bare tree yet. Code tab prefers local when `hasUnpushedEdits` is set.

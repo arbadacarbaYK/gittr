@@ -15,12 +15,12 @@ import { resolveRepoPagesDTag } from "@/lib/gittr-pages/pages-public-slug";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { deleteRepoRelatedAnnounces } from "@/lib/nostr/delete-repo-related-nostr";
 import {
-  KIND_DELETION,
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
   createRepositoryEventNip07,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { publishRepoSoftDelete } from "@/lib/nostr/publish-repo-soft-delete";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -851,14 +851,7 @@ export default function RepoSettingsPage() {
       alert(NO_SIGNING_METHOD_MESSAGE);
       return;
     }
-    const { hasNip07, privateKey } = signingCreds;
-
-    if (!privateKey && !hasNip07) {
-      alert(
-        "Deleting repositories requires signature. Please configure NIP-07 extension or private key in settings."
-      );
-      return;
-    }
+    const { signer } = signingCreds;
 
     try {
       setDeleting(true);
@@ -881,225 +874,99 @@ export default function RepoSettingsPage() {
 
       saveStoredRepos(next);
 
-      // STEP 2: Publish deletion marker to Nostr (if repo was published)
-      // This notifies other clients that the owner has deleted the repo
-      // Only publish if repo was actually committed to Nostr (has event ID)
-      const wasPublishedToNostr =
-        repoToDelete &&
-        ((repoToDelete as any).lastNostrEventId ||
-          (repoToDelete as any).nostrEventId ||
-          (repoToDelete as any).syncedFromNostr);
+      // STEP 2: Soft-delete on Nostr + wipe bridge BEFORE navigating.
+      // Old path was fire-and-forget + 1s redirect — signer prompts never finished.
+      // Always attempt for owners (same `d` tag replaces any prior announce).
+      // Uses ResolvedNostrSigner so Amber (NIP-46) gets a real sign_event.
+      let softDeleteOk = false;
+      let softDeleteNote = "";
+      if (publish && signer) {
+        try {
+          const repoWithExtras = (repoToDelete || {}) as StoredRepo & {
+            publicRead?: boolean;
+            sourceUrl?: string;
+            forkedFrom?: string;
+            lastNostrEventId?: string;
+            nostrEventId?: string;
+          };
+          const result = await publishRepoSoftDelete({
+            repo: {
+              repoName: repo,
+              description: repoToDelete?.description,
+              publicRead: repoWithExtras.publicRead !== false,
+              sourceUrl: repoWithExtras.sourceUrl,
+              forkedFrom: repoWithExtras.forkedFrom,
+              priorEventId:
+                repoWithExtras.lastNostrEventId ||
+                repoWithExtras.nostrEventId ||
+                "",
+            },
+            signer,
+            pub: {
+              publish,
+              defaultRelays: defaultRelays || [],
+              pubkey,
+            },
+          });
+          softDeleteOk = true;
+          softDeleteNote =
+            result.bridgeStatus === "wiped"
+              ? "Nostr + bridge wiped"
+              : result.bridgeStatus === "relay_only"
+                ? "Nostr published; bridge will catch up via relays"
+                : `Nostr published; bridge ${result.bridgeStatus}${
+                    result.bridgeDetail ? ` (${result.bridgeDetail})` : ""
+                  }`;
+          console.log("✅ [Repo delete]", softDeleteNote, result);
 
-      // CRITICAL: Publish deletion marker to Nostr (non-blocking)
-      // Don't wait for publish to complete - local deletion is done, button should be re-enabled
-      if (publish && pubkey && repoToDelete && wasPublishedToNostr) {
-        // Publish deletion marker in background (non-blocking)
-        // This ensures the button is re-enabled immediately after local deletion
-        (async () => {
-          try {
-            // Sign with NIP-07 or private key
-            const signingCreds = await resolveSigningCredentials({
-              remoteSigner,
-            });
-            if (!signingCreds) {
-              console.warn("Cannot publish deletion: no signing method");
-              return;
-            }
-            const { hasNip07, privateKey } = signingCreds;
-
-            if (hasNip07 || privateKey) {
-              // Publish a replacement event with deleted: true
-              // This uses the same "d" tag, so it replaces the previous event (NIP-34 replaceable events)
-              const repoWithExtras = repoToDelete as StoredRepo & {
-                publicRead?: boolean;
-                sourceUrl?: string;
-                forkedFrom?: string;
-              };
-
-              let deletionEvent: any;
-              const deletionPayload = {
-                repositoryName: repo,
-                name: repo,
-                publicRead: repoWithExtras.publicRead !== false,
-                publicWrite: false,
-                description: repoToDelete.description,
-                deleted: true as const,
-                sourceUrl: repoWithExtras.sourceUrl,
-                forkedFrom: repoWithExtras.forkedFrom,
-              };
-
-              if (hasNip07 && window.nostr) {
-                // Prefer shared builder so tags + content markers stay consistent
-                const signPromise = createRepositoryEventNip07(
-                  deletionPayload,
-                  window.nostr
-                );
-                const timeoutPromise = new Promise((_, reject) =>
-                  setTimeout(
-                    () =>
-                      reject(new Error("Signing timeout - please try again")),
-                    30000
-                  )
-                );
-                deletionEvent = await Promise.race([
-                  signPromise,
-                  timeoutPromise,
-                ]);
-              } else if (privateKey) {
-                deletionEvent = createRepositoryEvent(
-                  deletionPayload,
-                  privateKey
-                );
-              } else {
-                throw new Error("No signing method available");
-              }
-
-              // Relays for other clients + direct bridge POST so bare disk/DB wipe
-              // does not depend on relay lag (same path as Push / SSH key kind 52).
-              try {
-                publish(deletionEvent, defaultRelays);
-                console.log(
-                  "✅ Published deletion marker to Nostr - other clients will hide this repo"
-                );
-              } catch (error: any) {
-                console.error(
-                  "Failed to publish deletion marker to Nostr:",
-                  error
-                );
-                // Local deletion is already done, so this is just a warning
-              }
-
-              try {
-                const bridgeResponse = await fetch("/api/nostr/repo/event", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(deletionEvent),
-                });
-                if (bridgeResponse.ok) {
-                  const bridgeResult = await bridgeResponse.json();
-                  console.log(
-                    "✅ [Repo delete] Deleted 30617 sent to bridge:",
-                    bridgeResult
-                  );
-                } else {
-                  console.warn(
-                    `⚠️ [Repo delete] Bridge API returned ${bridgeResponse.status} — bare wipe may wait for relay subscription`
-                  );
-                }
-              } catch (bridgeError: any) {
+          const authorPubkey = (
+            (result.deletionEvent?.pubkey as string) ||
+            pubkey ||
+            ""
+          ).toLowerCase();
+          if (subscribe && publish && authorPubkey) {
+            try {
+              const pagesDTag = resolveRepoPagesDTag(repo, repoToDelete);
+              const related = await deleteRepoRelatedAnnounces({
+                ownerPubkeyHex: authorPubkey,
+                repoName: repo,
+                pagesDTag,
+                defaultRelays: defaultRelays || [],
+                subscribe: subscribe as any,
+                publish: publish as any,
+                resolveSigner: () =>
+                  resolveNostrSigner({
+                    remoteSigner,
+                    waitForRemote: true,
+                  }),
+              });
+              if (related.errors.length) {
                 console.warn(
-                  "⚠️ [Repo delete] Bridge POST failed (relays still got the tombstone):",
-                  bridgeError?.message || bridgeError
+                  "[Repo delete] Related announce cleanup warnings:",
+                  related.errors
                 );
               }
-
-              // Also publish NIP-09 kind 5 pointing at the addressable 30617
-              // so clients that only honor deletions still drop the repo.
-              let authorPubkey =
-                (deletionEvent?.pubkey as string) || pubkey || "";
-              try {
-                const { getEventHash } = await import("nostr-tools");
-                if (!authorPubkey && hasNip07 && window.nostr) {
-                  authorPubkey = await window.nostr.getPublicKey();
-                }
-                if (authorPubkey) {
-                  const aTag = `30617:${authorPubkey.toLowerCase()}:${repo}`;
-                  const priorEventId =
-                    (
-                      repoToDelete as StoredRepo & {
-                        lastNostrEventId?: string;
-                      }
-                    )?.lastNostrEventId || "";
-                  let kind5: any = {
-                    kind: KIND_DELETION,
-                    created_at: Math.floor(Date.now() / 1000),
-                    tags: [
-                      ["a", aTag],
-                      // Prefer prior announcement id if known (not the new tombstone)
-                      ...(priorEventId ? [["e", priorEventId]] : []),
-                    ],
-                    content: `Deleted repository ${repo}`,
-                    pubkey: authorPubkey.toLowerCase(),
-                    id: "",
-                    sig: "",
-                  };
-                  kind5.id = getEventHash(kind5);
-                  if (hasNip07 && window.nostr) {
-                    kind5 = await Promise.race([
-                      window.nostr.signEvent(kind5),
-                      new Promise((_, reject) =>
-                        setTimeout(
-                          () =>
-                            reject(
-                              new Error("Signing timeout - please try again")
-                            ),
-                          30000
-                        )
-                      ),
-                    ]);
-                  } else if (privateKey) {
-                    const { signEvent } = await import("nostr-tools");
-                    kind5.sig = signEvent(kind5, privateKey);
-                  }
-                  if (kind5?.sig) {
-                    publish(kind5, defaultRelays);
-                    console.log(
-                      "✅ Published NIP-09 kind 5 for deleted repository address",
-                      aTag
-                    );
-                  }
-                }
-              } catch (error: any) {
-                console.warn(
-                  "NIP-09 kind 5 for repo delete failed (soft-delete 30617 still published):",
-                  error
-                );
-              }
-
-              // Also drop related Nostr Pages (35128) and app announces (NIP-82)
-              // when present — same owner, same repo address / pages d-tag.
-              if (subscribe && publish && authorPubkey) {
-                try {
-                  const pagesDTag = resolveRepoPagesDTag(repo, repoToDelete);
-                  const related = await deleteRepoRelatedAnnounces({
-                    ownerPubkeyHex: authorPubkey.toLowerCase(),
-                    repoName: repo,
-                    pagesDTag,
-                    defaultRelays: defaultRelays || [],
-                    subscribe: subscribe as any,
-                    publish: publish as any,
-                    resolveSigner: () =>
-                      resolveNostrSigner({
-                        remoteSigner,
-                        waitForRemote: true,
-                      }),
-                  });
-                  if (related.errors.length) {
-                    console.warn(
-                      "[Repo delete] Related announce cleanup warnings:",
-                      related.errors
-                    );
-                  }
-                } catch (error: any) {
-                  console.warn(
-                    "Related Pages/app announce cleanup failed (repo delete still done):",
-                    error
-                  );
-                }
-              }
+            } catch (error: any) {
+              console.warn(
+                "Related Pages/app announce cleanup failed (repo delete still done):",
+                error
+              );
             }
-          } catch (error: any) {
-            console.error(
-              "Failed to create/publish deletion marker to Nostr:",
-              error
-            );
-            // Continue - local deletion is already done
           }
-        })();
-      } else if (repoToDelete && !wasPublishedToNostr) {
-        console.log(
-          "ℹ️ Repo was not published to Nostr, skipping deletion event"
-        );
+        } catch (error: any) {
+          console.error(
+            "Failed to create/publish deletion marker to Nostr:",
+            error
+          );
+          softDeleteNote =
+            error?.message || "Nostr soft-delete failed — local hide only";
+          alert(
+            `Local hide succeeded, but Nostr/bridge delete failed:\n${softDeleteNote}\n\nApprove the Amber/extension prompt if it appears, then delete again from Settings — or the live announce will stay on relays.`
+          );
+        }
+      } else {
+        softDeleteNote = "No signing method / publish — local hide only";
+        console.warn("[Repo delete]", softDeleteNote);
       }
 
       // STEP 3: Mark repo as deleted in deletion list to prevent re-adding from Nostr sync
@@ -1176,15 +1043,17 @@ export default function RepoSettingsPage() {
       const zapRepoKey = `${entity}/${repo}`;
       localStorage.removeItem(`gittr_accumulated_zaps_${zapRepoKey}`);
 
-      // CRITICAL: Re-enable button immediately after local deletion is complete
-      // Nostr publish is non-blocking, so don't wait for it
+      // CRITICAL: Only navigate after soft-delete attempt finished (signer may have prompted)
       setDeleting(false);
-      setStatus("Repository deleted successfully");
+      setStatus(
+        softDeleteOk
+          ? `Repository deleted (${softDeleteNote})`
+          : `Repository hidden locally (${softDeleteNote || "Nostr not updated"})`
+      );
 
-      // Navigate away after a short delay to show success message
       setTimeout(() => {
         window.location.href = "/repositories";
-      }, 1000);
+      }, softDeleteOk ? 800 : 1500);
     } catch (e) {
       console.error("Delete error:", e);
       setDeleting(false);
