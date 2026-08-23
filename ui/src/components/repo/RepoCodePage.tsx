@@ -12533,6 +12533,7 @@ export function RepoCodePage() {
   ]); // Use specific properties instead of full repoData
 
   // Stable key so multifetch tree merges don't cancel an in-flight README load.
+  // Include tip size so bridge→GitHub listing upgrades re-fetch the body.
   const folderReadmePathKey = useMemo(() => {
     if (!safeFiles || safeFiles.length === 0) return "";
     const folderPrefix = currentPath
@@ -12551,8 +12552,27 @@ export function RepoCodePage() {
       const t = String(f.type || "file").toLowerCase();
       return t !== "dir" && t !== "tree" && t !== "folder";
     });
-    return hit?.path || "";
+    if (!hit?.path) return "";
+    const rawSize = (hit as { size?: unknown }).size;
+    const size =
+      typeof rawSize === "number" && Number.isFinite(rawSize)
+        ? rawSize
+        : typeof rawSize === "string" && rawSize.trim()
+          ? rawSize.trim()
+          : "";
+    return size !== "" ? `${hit.path}#${size}` : hit.path;
   }, [safeFiles, currentPath]);
+
+  const folderReadmeFilePath = useMemo(() => {
+    const key = folderReadmePathKey || "";
+    const hash = key.lastIndexOf("#");
+    // path#size — size never contains /; paths can. Prefer split on last # only
+    // when the suffix looks like a size token.
+    if (hash > 0 && /^[^/]+$/.test(key.slice(hash + 1))) {
+      return key.slice(0, hash);
+    }
+    return key;
+  }, [folderReadmePathKey]);
 
   // Load README from current folder when path changes
   useEffect(() => {
@@ -12563,14 +12583,14 @@ export function RepoCodePage() {
       return;
     }
 
-    if (!folderReadmePathKey) {
+    if (!folderReadmeFilePath) {
       folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
       setLoadingFolderReadme(false);
       return;
     }
 
-    const readmeFile = { path: folderReadmePathKey, type: "file" };
+    const readmeFile = { path: folderReadmeFilePath, type: "file" };
 
     if (!readmeFile) {
       folderReadmeLoadGenRef.current += 1;
@@ -12989,6 +13009,7 @@ export function RepoCodePage() {
   }, [
     currentPath,
     folderReadmePathKey,
+    folderReadmeFilePath,
     repoData?.sourceUrl,
     repoData?.forkedFrom,
     (repoData as { clone?: string[] })?.clone?.join("|") ?? "",

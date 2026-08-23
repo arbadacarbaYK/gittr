@@ -15,13 +15,17 @@ import { MarkdownCode } from "@/lib/utils/markdown-code";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-/** Above this, never auto-parse — ReactMarkdown freezes chrome clicks. */
-const AUTO_MARKDOWN_MAX_CHARS = 4000;
+/**
+ * Only truly huge READMEs need a click — normal forge READMEs (~5–20KB) must
+ * auto-format after idle. A 4KB gate made real READMEs look like broken stubs
+ * (“Show formatted README” + first 1200 raw chars).
+ */
+const MANUAL_MARKDOWN_MIN_CHARS = 48_000;
 
 /**
  * Isolate README markdown parse from Code-page tree/date re-renders.
- * Large READMEs require an explicit click (or stay plain until then) so
- * header / tabs / user-menu stay responsive during Code hydrate.
+ * Idle-gated mount keeps header/tabs usable; chrome pointerdown pauses auto
+ * parse so navigation is not starved.
  */
 export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   markdown,
@@ -47,17 +51,19 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   entity: string;
 }) {
   const deferred = useDeferredValue(markdown);
-  const needsManual = (deferred?.length || 0) > AUTO_MARKDOWN_MAX_CHARS;
+  const needsManual = (deferred?.length || 0) > MANUAL_MARKDOWN_MIN_CHARS;
   const [allowMount, setAllowMount] = useState(false);
   const [userRequested, setUserRequested] = useState(false);
+  const [pausedForChrome, setPausedForChrome] = useState(false);
 
   useEffect(() => {
     setAllowMount(false);
     setUserRequested(false);
+    setPausedForChrome(false);
   }, [deferred]);
 
   useEffect(() => {
-    if (!deferred || needsManual || userRequested) return;
+    if (!deferred || needsManual || userRequested || pausedForChrome) return;
     let cancelled = false;
     const enable = () => {
       if (cancelled) return;
@@ -71,6 +77,7 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
       if (t?.closest?.("[data-repo-chrome], header")) {
         cancelled = true;
         setAllowMount(false);
+        setPausedForChrome(true);
       }
     };
     document.addEventListener("pointerdown", onChromePointer, true);
@@ -83,29 +90,32 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
         ) => number;
         cancelIdleCallback?: (id: number) => void;
       };
+    const idleTimeoutMs = deferred.length > 16_000 ? 3500 : 2000;
     if (typeof w.requestIdleCallback === "function") {
-      const id = w.requestIdleCallback(enable, { timeout: 2500 });
+      const id = w.requestIdleCallback(enable, { timeout: idleTimeoutMs });
       return () => {
         cancelled = true;
         document.removeEventListener("pointerdown", onChromePointer, true);
         w.cancelIdleCallback?.(id);
       };
     }
-    const t = window.setTimeout(enable, 800);
+    const t = window.setTimeout(enable, Math.min(idleTimeoutMs, 1000));
     return () => {
       cancelled = true;
       document.removeEventListener("pointerdown", onChromePointer, true);
       window.clearTimeout(t);
     };
-  }, [deferred, needsManual, userRequested]);
+  }, [deferred, needsManual, userRequested, pausedForChrome]);
 
   useEffect(() => {
     if (!userRequested || !deferred) return;
     let cancelled = false;
-    // Yield so the click that requested render can finish navigating if needed.
     const t = window.setTimeout(() => {
       if (cancelled) return;
-      startTransition(() => setAllowMount(true));
+      startTransition(() => {
+        setPausedForChrome(false);
+        setAllowMount(true);
+      });
     }, 0);
     return () => {
       cancelled = true;
@@ -130,6 +140,19 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
             {deferred.slice(0, 1200)}
             {deferred.length > 1200 ? "\n…" : ""}
           </pre>
+        </div>
+      );
+    }
+    if (pausedForChrome && !userRequested) {
+      return (
+        <div className="py-2">
+          <button
+            type="button"
+            className="text-sm text-[var(--color-link)] hover:underline"
+            onClick={() => setUserRequested(true)}
+          >
+            Show formatted README
+          </button>
         </div>
       );
     }
