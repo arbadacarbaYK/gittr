@@ -183,16 +183,10 @@ export function ProfilePagesAppsSections({
 
   if (!ownerHex) return null;
 
-  if (pagesLoading || appsLoading) {
-    return (
-      <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-        <p className="text-sm text-gray-400">Loading pages and apps…</p>
-      </div>
-    );
-  }
-
-  const showPages = pages.length > 0;
-  const showApps = apps.length > 0;
+  // Stay silent while loading or when empty — only paint sections that have real items.
+  // A "Loading pages and apps…" line made the profile look unfinished for everyone.
+  const showPages = !pagesLoading && pages.length > 0;
+  const showApps = !appsLoading && apps.length > 0;
   if (!showPages && !showApps) return null;
 
   return (
