@@ -175,6 +175,8 @@ export default function EntityPage({
   /** Latest /api/nostr/profile-repos rows — re-applied after localStorage merges. */
   const networkProfileReposRef = useRef<any[]>([]);
   const profileHexLiveRef = useRef<string | null>(null);
+  /** True while the public profile-repos API is in flight (logged-out visitors need this). */
+  const [networkReposLoading, setNetworkReposLoading] = useState(false);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -189,6 +191,7 @@ export default function EntityPage({
     setVisibleRepoCount(REPO_LIST_PAGE_SIZE);
     setUserRepos([]);
     networkProfileReposRef.current = [];
+    setNetworkReposLoading(false);
   }, [resolvedParams.entity]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(
     {}
@@ -2097,7 +2100,8 @@ export default function EntityPage({
     currentUserPubkey,
   ]);
 
-  // Network repo list for any visitor (fixes logged-out profiles with correct count but empty list)
+  // Network repo list for any visitor (logged-out and logged-in). Does not
+  // depend on session — /api/nostr/profile-repos is public.
   const profileHexForFetch = useMemo(() => {
     const entity = resolvedParams.entity;
     if (isHexPubkey(entity)) return entity.toLowerCase();
@@ -2114,6 +2118,9 @@ export default function EntityPage({
   useEffect(() => {
     if (!isPubkey || !profileHexForFetch) return;
     const hex = profileHexForFetch;
+
+    let cancelled = false;
+    setNetworkReposLoading(true);
 
     const load = async () => {
       try {
@@ -2140,11 +2147,8 @@ export default function EntityPage({
             clone?: string[];
           }>;
         };
-        if (
-          !Array.isArray(data.repos) ||
-          data.repos.length === 0 ||
-          profileHexLiveRef.current !== hex
-        ) {
+        if (profileHexLiveRef.current !== hex) return;
+        if (!Array.isArray(data.repos) || data.repos.length === 0) {
           return;
         }
         const mapped = data.repos.map((row) => ({
@@ -2187,10 +2191,17 @@ export default function EntityPage({
         });
       } catch (e) {
         console.warn("[Profile] profile-repos fetch failed:", e);
+      } finally {
+        if (!cancelled && profileHexLiveRef.current === hex) {
+          setNetworkReposLoading(false);
+        }
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [isPubkey, profileHexForFetch]);
 
   /** Nostr rows often lack forkedFrom — hydrate from forge parent APIs on profile load. */
@@ -3251,7 +3262,9 @@ export default function EntityPage({
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Repositories</span>
                 <span className="text-purple-400 font-semibold">
-                  {userRepos.length}
+                  {networkReposLoading && userRepos.length === 0
+                    ? "…"
+                    : userRepos.length}
                 </span>
               </div>
               {profilePagesCount > 0 ? (
@@ -3596,15 +3609,19 @@ export default function EntityPage({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Repositories</span>
-                <span className="text-purple-400">{userRepos.length || 0}</span>
+                <span className="text-purple-400">
+                  {networkReposLoading && userRepos.length === 0
+                    ? "…"
+                    : userRepos.length || 0}
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* User Repositories — paint before Pages/Apps so counts never show with an empty grid */}
-      {userRepos.length > 0 && (
+      {/* User Repositories — public for logged-out visitors via profile-repos API */}
+      {userRepos.length > 0 ? (
         <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
           <h2 className="text-2xl font-semibold mb-6">
             Repositories ({userRepos.length})
@@ -3805,7 +3822,14 @@ export default function EntityPage({
             />
           </div>
         </div>
-      )}
+      ) : networkReposLoading ? (
+        <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+          <h2 className="text-2xl font-semibold mb-2">Repositories</h2>
+          <p className="text-sm text-gray-400">
+            Loading repositories from Nostr…
+          </p>
+        </div>
+      ) : null}
 
       <ProfilePagesAppsSections
         ownerPubkeyHex={pubkeyForMetadata || fullPubkeyForMeta}
