@@ -16,11 +16,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 /**
- * Only truly huge READMEs need a click — normal forge READMEs (~5–20KB) must
- * auto-format after idle. A 4KB gate made real READMEs look like broken stubs
- * (“Show formatted README” + first 1200 raw chars).
+ * Only truly huge READMEs need a click. Real project READMEs often land in the
+ * 50–100KB range (e.g. fiatjaf/nak ~87KB) — a 48KB gate made those look like
+ * broken stubs (“Show formatted README” + first 1200 raw chars).
  */
-const MANUAL_MARKDOWN_MIN_CHARS = 48_000;
+const MANUAL_MARKDOWN_MIN_CHARS = 200_000;
 
 /**
  * Isolate README markdown parse from Code-page tree/date re-renders.
@@ -90,7 +90,8 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
         ) => number;
         cancelIdleCallback?: (id: number) => void;
       };
-    const idleTimeoutMs = deferred.length > 16_000 ? 3500 : 2000;
+    const idleTimeoutMs =
+      deferred.length > 80_000 ? 5000 : deferred.length > 16_000 ? 3500 : 2000;
     if (typeof w.requestIdleCallback === "function") {
       const id = w.requestIdleCallback(enable, { timeout: idleTimeoutMs });
       return () => {
@@ -106,6 +107,21 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
       window.clearTimeout(t);
     };
   }, [deferred, needsManual, userRequested, pausedForChrome]);
+
+  useEffect(() => {
+    if (!pausedForChrome || userRequested || needsManual || !deferred) return;
+    // Chrome click paused auto-parse — resume after a short quiet window so
+    // users are not stuck on “Show formatted README” forever after one tap.
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setPausedForChrome(false);
+    }, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [pausedForChrome, userRequested, needsManual, deferred]);
 
   useEffect(() => {
     if (!userRequested || !deferred) return;
