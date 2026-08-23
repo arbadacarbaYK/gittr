@@ -67,7 +67,7 @@ Folder preview and click-to-open **must** show the same body. Winners after over
 | **External git source** | Forge `sourceUrl` / `shouldPreferUpstreamContent` | **Forge** `/api/git/file-content` tip (bridge is fallback only) |
 | **On gittr bridge** | Bare under `reposDir/{pubkey}/{repo}.git` | Bridge when no forge authority; if also forge-imported, treat as **External** (forge tip) so bare lag does not look like a “wrong README” |
 
-Presentation: normal READMEs (~≤48 KB) idle-auto-format; only huge bodies need **Show formatted README**.
+Presentation: normal READMEs (~≤200 KB) idle-auto-format; only enormous bodies need **Show formatted README** (e.g. fiatjaf/nak ~87 KB must auto-format — the old 48 KB gate left it as a raw stub).
 
 **README / in-repo media:** relative images (gif/png/…) must prefer `gittr_overrides` via `localOverrideDisplayUrl` before forge raw or bridge tip — otherwise an Upload overwrite looks “stuck” on the old asset until Push (and forge mirrors never show the draft). Same for Code-tab `openFile` (binary by extension; do not require `repo.files.isBinary` after upload strips that array).
 
