@@ -365,9 +365,11 @@ function addUtcDays(isoDate: string, days: number): string {
 /** One row per calendar year: previous year + current year (week buckets). */
 export function buildCalendarYearTimelineRows(
   daily: Array<{ date: string; count: number }>,
-  options?: { years?: number[]; dataComplete?: boolean }
+  options?: { years?: number[]; dataComplete?: boolean; now?: Date }
 ): CalendarYearTimelineRow[] {
-  const now = new Date();
+  // Callers on SSR/client first paint should pass a post-mount `now` so week
+  // grids cannot diverge across a UTC day/year boundary (React #418).
+  const now = options?.now ?? new Date();
   const currentYear = now.getUTCFullYear();
   const years = options?.years ?? [currentYear - 1, currentYear];
   const dailyMap = new Map(daily.map((d) => [d.date, d.count]));

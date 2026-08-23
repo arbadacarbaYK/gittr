@@ -208,6 +208,19 @@ export default function EntityPage({
     remoteSigner,
   } = useNostrContext();
   const { isLoggedIn } = useSession();
+  // NostrContext restores pubkey from localStorage synchronously, so the first
+  // client render is "logged in" while SSR was "logged out". Gate every session-
+  // dependent branch (Follow / Edit Profile / owner badges) like the homepage
+  // to avoid React #418 hydration mismatches.
+  const [mounted, setMounted] = useState(false);
+  const [calendarNow, setCalendarNow] = useState<Date | null>(null);
+  const hydratedPubkey = mounted ? currentUserPubkey : null;
+  const hydratedLoggedIn = mounted && isLoggedIn;
+
+  useEffect(() => {
+    setMounted(true);
+    setCalendarNow(new Date());
+  }, []);
 
   const isLowMemoryDevice = useMemo(() => {
     if (typeof navigator === "undefined") return false;
@@ -2964,22 +2977,31 @@ export default function EntityPage({
     }
   };
 
-  // Check if viewing own profile
+  // Check if viewing own profile (only after mount — see hydratedPubkey above)
   const isOwnProfile =
-    currentUserPubkey &&
-    fullPubkeyForMeta &&
+    !!hydratedPubkey &&
+    !!fullPubkeyForMeta &&
     /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) &&
-    currentUserPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
+    hydratedPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
 
   const calendarYearRows = useMemo(() => {
+    // Empty until mount so SSR and first client paint share the same DOM.
+    if (!calendarNow) return [];
     const daily = mergeContributionCountsByDay(
       mergeReposIntoContributionGraph(contributionGraph, userRepos),
       nostrActivityCounts?.contributionsByDay ?? {}
     );
     return buildCalendarYearTimelineRows(daily, {
       dataComplete: timelineNostrLoaded,
+      now: calendarNow,
     });
-  }, [contributionGraph, userRepos, nostrActivityCounts, timelineNostrLoaded]);
+  }, [
+    calendarNow,
+    contributionGraph,
+    userRepos,
+    nostrActivityCounts,
+    timelineNostrLoaded,
+  ]);
 
   const timelineMaxCount = useMemo(() => {
     const allWeeks = calendarYearRows.flatMap((r) => r.weeks);
@@ -3111,7 +3133,9 @@ export default function EntityPage({
                     {displayName}
                   </h1>
                   <TrustBadge
-                    targetPubkey={fullPubkeyForMeta}
+                    targetPubkey={
+                      mounted && fullPubkeyForMeta ? fullPubkeyForMeta : null
+                    }
                     size="md"
                     className="mt-1"
                   />
@@ -3129,9 +3153,9 @@ export default function EntityPage({
                 )}
               </div>
 
-              {/* Follow Button */}
+              {/* Follow / Edit — session-gated until mount (React #418) */}
               <div className="flex-shrink-0">
-                {isLoggedIn && !isOwnProfile && (
+                {hydratedLoggedIn && !isOwnProfile && (
                   <Button
                     onClick={handleFollow}
                     disabled={followingLoading}
@@ -3731,10 +3755,10 @@ export default function EntityPage({
                           </span>
                         )}
                         {/* Status badge - only show for repos owned by current user */}
-                        {currentUserPubkey &&
+                        {hydratedPubkey &&
                           repo.ownerPubkey &&
                           repo.ownerPubkey.toLowerCase() ===
-                            currentUserPubkey.toLowerCase() &&
+                            hydratedPubkey.toLowerCase() &&
                           (() => {
                             const status = getRepoStatus(repo);
                             const style = getStatusBadgeStyle(status);

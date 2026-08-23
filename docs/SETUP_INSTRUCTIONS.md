@@ -210,6 +210,8 @@ WantedBy=multi-user.target
 
 **If header / repo tabs feel dead until the file list + README finish:** that is **main-thread Code-tab hydrate** (tree dates + ReactMarkdown), not a CSS overlay. Leaving Code hard-navigates for **all** chrome (logo, top nav, user menu, owner link, Issues/Settings tabs). Folder README auto-formats after idle for normal sizes (up to ~200 KB); only enormous READMEs need **Show formatted README**. Soft `router.push` elsewhere keeps a ~400 ms hard fallback. README content must work for **local-only**, **Nostr/GRASP-only**, **external forge source**, and **gittr bridge** hosts — matrix in [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md).
 
+**If profile/homepage throws React #418 while logged in:** `NostrContext` restores the pubkey from `localStorage` on the first client paint while SSR was logged out. Session-dependent UI (Follow / Edit Profile / “your” activity / owner badges) must use a **mounted-gated** pubkey (`hydratedPubkey = mounted ? pubkey : null`) so first paint matches SSR — same pattern on `home-page-client.tsx` and `[entity]/page.tsx`.
+
 **Deploy tempo:** `upload_to_hetzner.sh` already **rsync-deltas `ui/src`**. Wall-clock is dominated by a full remote `yarn build` on the live box (deploy sets `SITEMAP_SKIP_GITTR_PAGES=1` / `SITEMAP_SKIP_NOSTR=1`). Redundant per-file `scp` of `ui/src` paths was removed — rsync is enough. Always `git push origin` when deploying so GitHub matches Hetzner.
 
 **Disk / lab / other VPS:** Lab SEO snapshot under `/opt/ngit/data/lab-snapshot/` is tiny (~KB–MB) and is **not** what fills the disk. Production disk is mostly **`/home/git-nostr/git-nostr-repositories`** (bare git). clawgames.app is a **different** Hetzner host.
