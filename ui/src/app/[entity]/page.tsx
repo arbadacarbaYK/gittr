@@ -172,6 +172,9 @@ export default function EntityPage({
     );
   }, [resolvedParams.entity]);
   const [userRepos, setUserRepos] = useState<any[]>([]);
+  /** Latest /api/nostr/profile-repos rows — re-applied after localStorage merges. */
+  const networkProfileReposRef = useRef<any[]>([]);
+  const profileHexLiveRef = useRef<string | null>(null);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -184,6 +187,8 @@ export default function EntityPage({
 
   useEffect(() => {
     setVisibleRepoCount(REPO_LIST_PAGE_SIZE);
+    setUserRepos([]);
+    networkProfileReposRef.current = [];
   }, [resolvedParams.entity]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(
     {}
@@ -1306,7 +1311,10 @@ export default function EntityPage({
             const deduplicatedUpdatedRepos = Array.from(dedupeMap.values());
 
             setUserRepos((prev) =>
-              mergeProfileRepoList(prev, deduplicatedUpdatedRepos)
+              mergeProfileRepoList(
+                mergeProfileRepoList(prev, deduplicatedUpdatedRepos),
+                networkProfileReposRef.current
+              )
             );
             console.log(
               `✅ [Profile] After sync: ${
@@ -1542,7 +1550,10 @@ export default function EntityPage({
         }
 
         setUserRepos((prev) => {
-          const next = mergeProfileRepoList(prev, deduplicatedRepos);
+          const next = mergeProfileRepoList(
+            mergeProfileRepoList(prev, deduplicatedRepos),
+            networkProfileReposRef.current
+          );
           if (
             prev.length === next.length &&
             prev.every(
@@ -2085,18 +2096,20 @@ export default function EntityPage({
     return null;
   }, [resolvedParams.entity, fullPubkeyForMeta]);
 
+  profileHexLiveRef.current = profileHexForFetch;
+
   useEffect(() => {
     if (!isPubkey || !profileHexForFetch) return;
-    let cancelled = false;
+    const hex = profileHexForFetch;
 
     const load = async () => {
       try {
         const res = await fetch(
-          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(
-            profileHexForFetch
-          )}`
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(hex)}`
         );
-        if (!res.ok || cancelled) return;
+        // Do not abort on effect cleanup — remounts / pubkey settle used to discard
+        // a finished 100+ repo payload and leave only a handful of localStorage rows.
+        if (!res.ok || profileHexLiveRef.current !== hex) return;
         const data = (await res.json()) as {
           repos?: Array<{
             entity: string;
@@ -2117,39 +2130,38 @@ export default function EntityPage({
         if (
           !Array.isArray(data.repos) ||
           data.repos.length === 0 ||
-          cancelled
+          profileHexLiveRef.current !== hex
         ) {
           return;
         }
+        const mapped = data.repos.map((row) => ({
+          slug: row.repo,
+          entity: row.entity,
+          repo: row.repo,
+          name: row.name || row.repo,
+          description: row.description || "",
+          ownerPubkey: row.ownerPubkey,
+          createdAt: row.lastActivity,
+          updatedAt: row.lastActivity,
+          lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
+          lastNostrEventId: row.lastNostrEventId,
+          syncedFromNostr: true,
+          fromNostr: true,
+          sourceUrl: row.sourceUrl,
+          forkedFrom: row.forkedFrom,
+          clone: row.clone,
+          // Kind 30617 author is this profile — not GitHub NIP-39.
+          userRole: profileAnnouncerRole({
+            forkedFrom: row.forkedFrom,
+            sourceUrl: row.sourceUrl,
+            clone: row.clone,
+          }),
+          // Preserve private status from relays after localStorage clear
+          publicRead: row.publicRead !== false,
+        }));
+        networkProfileReposRef.current = mapped;
         setUserRepos((prev) => {
-          const next = mergeProfileRepoList(
-            prev,
-            data.repos!.map((row) => ({
-              slug: row.repo,
-              entity: row.entity,
-              repo: row.repo,
-              name: row.name || row.repo,
-              description: row.description || "",
-              ownerPubkey: row.ownerPubkey,
-              createdAt: row.lastActivity,
-              updatedAt: row.lastActivity,
-              lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
-              lastNostrEventId: row.lastNostrEventId,
-              syncedFromNostr: true,
-              fromNostr: true,
-              sourceUrl: row.sourceUrl,
-              forkedFrom: row.forkedFrom,
-              clone: row.clone,
-              // Kind 30617 author is this profile — not GitHub NIP-39.
-              userRole: profileAnnouncerRole({
-                forkedFrom: row.forkedFrom,
-                sourceUrl: row.sourceUrl,
-                clone: row.clone,
-              }),
-              // Preserve private status from relays after localStorage clear
-              publicRead: row.publicRead !== false,
-            }))
-          );
+          const next = mergeProfileRepoList(prev, mapped);
           if (
             prev.length === next.length &&
             prev.every(
@@ -2166,9 +2178,6 @@ export default function EntityPage({
     };
 
     void load();
-    return () => {
-      cancelled = true;
-    };
   }, [isPubkey, profileHexForFetch]);
 
   /** Nostr rows often lack forkedFrom — hydrate from forge parent APIs on profile load. */
