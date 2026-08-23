@@ -646,6 +646,34 @@ function discoverableCloneUrlsForSidebar(
   return out;
 }
 
+function sidebarSuccessfulSourceUrls(repoData: unknown): string[] {
+  const rows = (repoData as { successfulSources?: unknown[] })?.successfulSources;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((s) =>
+      s &&
+      typeof s === "object" &&
+      typeof (s as { sourceUrl?: string }).sourceUrl === "string"
+        ? (s as { sourceUrl: string }).sourceUrl.trim()
+        : ""
+    )
+    .filter((u): u is string => !!u);
+}
+
+function forgeUrlFromRepoLinks(links: unknown): string {
+  if (!Array.isArray(links)) return "";
+  for (const item of links) {
+    const url =
+      item &&
+      typeof item === "object" &&
+      typeof (item as RepoLink).url === "string"
+        ? (item as RepoLink).url.trim()
+        : "";
+    if (url && isRefetchableUpstreamSourceUrl(url)) return url;
+  }
+  return "";
+}
+
 /** NIP-34 discovery relays that often hold announcements even when not in user prefs. */
 const NIP34_DISCOVERY_RELAYS = [
   "wss://relay.ngit.dev",
@@ -754,6 +782,7 @@ export function RepoCodePage() {
   const defaultRelaysRef = useRef(defaultRelays);
   const bridgeFetchInProgressRef = useRef<boolean>(false);
   const bridgeFetchDoneKeyRef = useRef<string>("");
+  const profileCloneHintsKeyRef = useRef("");
   const upstreamContentLoadedKeyRef = useRef<string>("");
   const ownerMetadataRef = useRef<Record<string, Metadata>>({}); // Ref to access latest ownerMetadata without causing re-renders
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
@@ -4741,6 +4770,7 @@ export function RepoCodePage() {
     bridgeFetchDoneKeyRef.current = "";
     upstreamContentLoadedKeyRef.current = "";
     nip34AnnouncementCloneStatusRef.current = "unknown";
+    profileCloneHintsKeyRef.current = "";
   }, [resolvedParams.entity, resolvedParams.repo]);
 
   const applyEffectiveSourceUrl = useCallback(
@@ -4784,6 +4814,83 @@ export function RepoCodePage() {
     },
     [resolvedParams.entity, resolvedParams.repo]
   );
+
+  // Seed sidebar clone/source from profile-repos before multifetch finishes (foreign repos).
+  useEffect(() => {
+    if (!mounted) return;
+    const ownerPk = (repoOwnerPubkey || entityPubkey || "").toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(ownerPk) || !decodedRepo) return;
+    const routeKey = `${resolvedParams.entity}/${decodedRepo}`;
+    if (profileCloneHintsKeyRef.current === routeKey) return;
+    profileCloneHintsKeyRef.current = routeKey;
+
+    let cancelled = false;
+    (async () => {
+      const hints = await fetchRepoCloneHintsFromProfile(ownerPk, decodedRepo);
+      if (cancelled || !hints) return;
+      if (hints.clone.length === 0 && !hints.sourceUrl) return;
+      if (hints.clone.length > 0) {
+        nip34AnnouncementCloneStatusRef.current = "present";
+      }
+      if (hints.sourceUrl) {
+        applyEffectiveSourceUrl(hints.sourceUrl);
+      }
+      setRepoData((prev: any) => {
+        const base =
+          prev ||
+          ({
+            entity: resolvedParams.entity,
+            repo: resolvedParams.repo,
+            name: decodedRepo,
+            readme: "",
+            files: [],
+            description: "",
+            contributors: [],
+            defaultBranch: "main",
+            ownerPubkey: ownerPk,
+          } as StoredRepo);
+        const mergedClone = mergeAnnouncementClonesPreferringEvent(
+          base.clone,
+          hints.clone,
+          resolvedParams.entity,
+          decodedRepo
+        );
+        const announced = hints.clone.length > 0 ? hints.clone : undefined;
+        if (
+          prev &&
+          announced &&
+          Array.isArray(prev.announcementClone) &&
+          prev.announcementClone.length === announced.length &&
+          prev.announcementClone.every((u: string) => announced.includes(u)) &&
+          Array.isArray(prev.clone) &&
+          prev.clone.length === mergedClone.length &&
+          prev.clone.every((u: string) => mergedClone.includes(u)) &&
+          (!hints.sourceUrl || prev.sourceUrl === hints.sourceUrl)
+        ) {
+          return prev;
+        }
+        return {
+          ...base,
+          clone: mergedClone,
+          ...(announced ? { announcementClone: announced } : {}),
+          sourceUrl: hints.sourceUrl || base.sourceUrl,
+          lastNostrEventId: hints.lastNostrEventId || base.lastNostrEventId,
+          syncedFromNostr: true,
+          ownerPubkey: ownerPk,
+        };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    repoOwnerPubkey,
+    entityPubkey,
+    resolvedParams.entity,
+    decodedRepo,
+    applyEffectiveSourceUrl,
+  ]);
 
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
@@ -16880,6 +16987,7 @@ export function RepoCodePage() {
       ? ((repoData as { announcementClone?: string[] })
           .announcementClone as string[])
       : [];
+    const forgeFromLinks = forgeUrlFromRepoLinks((repoData as any)?.links);
     let rawCloneList = sidebarClonesFromAnnouncement({
       announcementClones,
       mergedClones: Array.isArray((repoData as any)?.clone)
@@ -16892,7 +17000,8 @@ export function RepoCodePage() {
           : "") ||
         (typeof (repoData as any)?.forkedFrom === "string"
           ? String((repoData as any).forkedFrom).trim()
-          : ""),
+          : "") ||
+        forgeFromLinks,
     });
     const eventCloneFromRepo = announcementClones.length > 0;
     if (
@@ -16943,10 +17052,18 @@ export function RepoCodePage() {
     if (fromRepoDataSource) {
       rawCloneList = [...rawCloneList, fromRepoDataSource];
     }
+    // successfulSources often exist before clone[] is written (bridge-first race).
+    const fromSuccessful = sidebarSuccessfulSourceUrls(repoData);
+    if (fromSuccessful.length > 0) {
+      rawCloneList = [...rawCloneList, ...fromSuccessful];
+    }
     if (rawCloneList.length === 0 && resolvedParams.entity && decodedRepo) {
       rawCloneList = discoverableCloneUrlsForSidebar(
         resolvedParams.entity,
-        decodedRepo
+        decodedRepo,
+        announcementClones,
+        (repoData as { clone?: string[] })?.clone,
+        fromSuccessful
       ).filter((u) => !u.includes("git.gittr.space"));
     }
     const uniqueCloneUrls = Array.from(
@@ -17021,6 +17138,8 @@ export function RepoCodePage() {
     typeof (repoData as any)?.sourceUrl === "string"
       ? (repoData as any).sourceUrl
       : "",
+    sidebarSuccessfulSourceUrls(repoData).join("|"),
+    forgeUrlFromRepoLinks((repoData as any)?.links),
   ]);
 
   const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
