@@ -5,7 +5,13 @@
  *
  * Amber signing stays on Push/Star/Watch via ensureRpcHealthy at click time.
  * Browse must not hard-reload or await bunker warm.
+ *
+ * Soft RSC for repo tabs also must stay fast: generateMetadata skips Nostr on
+ * Flight requests (isRscClientNavigation). startTransition keeps the chrome
+ * responsive while the new segment streams in.
  */
+
+import { startTransition } from "react";
 
 function normalizePath(href: string): string {
   try {
@@ -111,7 +117,9 @@ export function appNavigate(
   if (router) {
     const targetPath = canonicalPath(href);
     const gen = ++softNavGeneration;
-    router.push(href);
+    startTransition(() => {
+      router.push(href);
+    });
     window.setTimeout(() => {
       if (gen !== softNavGeneration) return;
       if (canonicalPath(window.location.pathname) === targetPath) return;

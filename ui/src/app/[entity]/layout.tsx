@@ -1,4 +1,5 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
+import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import {
   normalizeSocialImageUrl,
@@ -20,6 +21,16 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const resolvedParams = await params;
   const baseUrl = getPublicSiteUrl();
+  const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}`;
+
+  // Soft profile navigations must not wait on Nostr kind-0 (same stall as repo tabs).
+  if (await isRscClientNavigation()) {
+    return {
+      title: resolvedParams.entity,
+      description: `Profile for ${resolvedParams.entity} on gittr - Decentralized Git on Nostr`,
+      alternates: { canonical: url },
+    };
+  }
 
   if (process.env.NODE_ENV !== "production") {
     console.log("[Metadata] generateMetadata [entity]:", resolvedParams.entity);
@@ -46,7 +57,6 @@ export async function generateMetadata({
   }
 
   const title = displayName;
-  const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}`;
 
   // Fetch user metadata from Nostr (name, description, picture) - with timeout
   let userMetadata: {

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
+import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { openGraphImageDescriptor } from "@/lib/utils/social-image";
@@ -14,6 +15,30 @@ import RepoLayoutClient from "./layout-client";
 // Force dynamic rendering so social crawlers get fresh title/description.
 export const dynamic = "force-dynamic";
 
+function decodeRepoParam(repo: string): string {
+  try {
+    return decodeURIComponent(repo);
+  } catch {
+    return repo;
+  }
+}
+
+/** Lightweight title for soft tab clicks — no Nostr/SQLite. */
+function softNavMetadata(
+  entity: string,
+  decodedRepo: string,
+  baseUrl: string
+): Metadata {
+  const title = `${entity}/${decodedRepo}`;
+  const description = buildRepoFallbackDescription(entity, decodedRepo);
+  const url = `${baseUrl}/${encodeURIComponent(entity)}/${encodeURIComponent(decodedRepo)}`;
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+  };
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -24,16 +49,19 @@ export async function generateMetadata({
   try {
     const resolvedParams = await params;
     const baseUrl = getPublicSiteUrl();
+    const decodedRepo = decodeRepoParam(resolvedParams.repo);
 
-    let decodedRepo: string;
-    try {
-      decodedRepo = decodeURIComponent(resolvedParams.repo);
-    } catch (decodeError) {
-      console.warn(
-        "[Metadata] Failed to decode repo name, using original:",
-        decodeError
-      );
-      decodedRepo = resolvedParams.repo;
+    // Soft client navigations (Code ↔ ToDo ↔ Issues) must not open RelayPools
+    // or hit SQLite — that stalled RSC ~2–8s and triggered hard location.assign.
+    if (await isRscClientNavigation()) {
+      if (devMeta) {
+        console.log(
+          "[Metadata] RSC soft-nav fast path:",
+          resolvedParams.entity,
+          decodedRepo
+        );
+      }
+      return softNavMetadata(resolvedParams.entity, decodedRepo, baseUrl);
     }
 
     if (devMeta) {

@@ -969,9 +969,10 @@ export class RemoteSignerManager {
 
   /**
    * Single-flight bootstrap — safe to call from push/sign while page load is still pairing.
-   * Page load hydrates cached identity and awaits a short URI-first bunker warm so
-   * file-fetch cannot steal browser sockets before Amber's directPool dials.
-   * Live Amber connect RPC still waits for ensureRpcHealthy / first sign.
+   * Page load hydrates cached identity and fire-and-forgets URI-first bunker warm.
+   * Browse/nav must resolve as soon as the adapter is attached — never join the
+   * warm promise (that blocked soft nav / file-fetch up to ~10s). Sign paths use
+   * ensureRpcHealthy at click time for live Amber RPC.
    */
   ensureBootstrapped(): Promise<void> {
     if (this.bootstrapInFlight) {
@@ -980,12 +981,9 @@ export class RemoteSignerManager {
     if (this.state === "ready" && this.session?.userPubkey && this.rpcHealthy) {
       return Promise.resolve();
     }
-    // Already hydrated — still join an in-flight warm so callers (Push, file-fetch
-    // gate) do not race ahead of the first bunker OPEN.
+    // Already hydrated — do not await bunker warm (browse must stay instant).
+    // Callers that need OPEN sockets before sign use ensureRpcHealthy / isBunkerWarmInFlight.
     if (this.session?.userPubkey && this.adapter) {
-      if (this.bunkerWarmInFlight) {
-        return this.bunkerWarmInFlight.then(() => undefined).catch(() => undefined);
-      }
       return Promise.resolve();
     }
     if (!loadStoredRemoteSignerSession()) {
