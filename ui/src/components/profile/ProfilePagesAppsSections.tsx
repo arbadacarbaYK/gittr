@@ -183,8 +183,16 @@ export function ProfilePagesAppsSections({
 
   if (!ownerHex) return null;
 
-  const showPages = !pagesLoading && pages.length > 0;
-  const showApps = !appsLoading && apps.length > 0;
+  if (pagesLoading || appsLoading) {
+    return (
+      <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+        <p className="text-sm text-gray-400">Loading pages and apps…</p>
+      </div>
+    );
+  }
+
+  const showPages = pages.length > 0;
+  const showApps = apps.length > 0;
   if (!showPages && !showApps) return null;
 
   return (

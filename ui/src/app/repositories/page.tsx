@@ -82,6 +82,7 @@ import {
 
 import { Globe, Loader2, Lock, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { OnEvent } from "nostr-relaypool";
 import { type Event as NostrEvent, nip19 } from "nostr-tools";
 
@@ -2752,11 +2753,20 @@ export default function RepositoriesPage() {
   // whole page for a thin Loading shell (that reads as bare Header + Footer).
   // Keep the real chrome; list area shows Loading until client mount / data load.
   const showReposLoading = !mounted;
+  const hydratedLoggedIn = mounted && !!pubkey;
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start mb-4">
-        <h1 className="text-2xl font-bold shrink-0">Your repositories</h1>
+        <div>
+          <h1 className="text-2xl font-bold shrink-0">Your repositories</h1>
+          {!hydratedLoggedIn && !showReposLoading ? (
+            <p className="mt-1 text-sm text-gray-400">
+              Sign in with Nostr to manage your repos, or explore public code on
+              the network.
+            </p>
+          ) : null}
+        </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {syncing && (
             <span className="text-xs text-gray-400 w-full sm:w-auto">
@@ -3134,7 +3144,27 @@ export default function RepositoriesPage() {
       </div>
       <div className="space-y-2">
         {showReposLoading && <p className="text-gray-400">Loading...</p>}
+        {!showReposLoading && !hydratedLoggedIn && (
+          <div className="space-y-4 rounded-lg border border-[#383B42] bg-[#171B21] p-6">
+            <p className="text-gray-300">
+              You are not signed in. Your repositories live on Nostr — connect a
+              signer to see and manage them here.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/login">
+                <Button>Sign in with Nostr</Button>
+              </Link>
+              <Link href="/explore">
+                <Button variant="outline">Explore repositories</Button>
+              </Link>
+              <Link href="/new">
+                <Button variant="outline">Create repository</Button>
+              </Link>
+            </div>
+          </div>
+        )}
         {!showReposLoading &&
+          hydratedLoggedIn &&
           repos.filter((r: Repo) => {
             // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
             if (
@@ -3217,6 +3247,7 @@ export default function RepositoriesPage() {
             </div>
           )}
         {!showReposLoading &&
+          hydratedLoggedIn &&
           (() => {
             // Load list of locally-deleted repos (user deleted them, don't show)
             const deletedRepos =

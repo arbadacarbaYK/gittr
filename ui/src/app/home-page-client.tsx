@@ -2012,7 +2012,7 @@ export default function HomePage({
                 </Link>
                 <Link href="/explore">
                   <Button className="w-full" variant="outline">
-                    Repos
+                    Explore repositories
                   </Button>
                 </Link>
                 <a
@@ -2023,18 +2023,33 @@ export default function HomePage({
                   rel="noopener noreferrer"
                   target="_blank"
                 >
-                  Explore pages
+                  Browse published pages
                 </a>
-                <Link href="/repositories">
+                <Link href="/apps">
                   <Button className="w-full" variant="outline">
-                    Your repositories
+                    Browse apps
                   </Button>
                 </Link>
-                <Link href="/settings">
-                  <Button className="w-full" variant="outline">
-                    Settings
-                  </Button>
-                </Link>
+                {hydratedPubkey ? (
+                  <>
+                    <Link href="/repositories">
+                      <Button className="w-full" variant="outline">
+                        Your repositories
+                      </Button>
+                    </Link>
+                    <Link href="/settings">
+                      <Button className="w-full" variant="outline">
+                        Settings
+                      </Button>
+                    </Link>
+                  </>
+                ) : (
+                  <Link href="/login">
+                    <Button className="w-full" variant="outline">
+                      Sign in with Nostr
+                    </Button>
+                  </Link>
+                )}
               </div>
             </div>
 
