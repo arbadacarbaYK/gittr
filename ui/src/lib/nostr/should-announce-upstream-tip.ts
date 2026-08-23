@@ -55,7 +55,17 @@ export function shouldPreferBridgeSyncFromSource(opts: {
     hasUnpushedEdits: false,
   });
   if (!forgeOk) return false;
-  if ((opts.deletedPathCount ?? 0) > 0) return false;
+
+  const fileCount = opts.fileCount ?? 0;
+  const withContent = opts.filesWithLocalContent ?? 0;
+  const deletedCount = opts.deletedPathCount ?? 0;
+  const remainingFiles = Math.max(0, fileCount - deletedCount);
+
+  // Large metadata-only tree (Refetch caches paths, not bodies). Prefer one
+  // server git fetch over N× /api/git/file-content (HTTP 429 storms).
+  const sparseMetadataTree =
+    fileCount >= LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD &&
+    withContent === 0;
 
   // Refetch just aligned local tree to forge — announce that tip, don't rewrite
   // via hundreds of file-content GETs (even if a stale dirty flag remains).
@@ -63,12 +73,16 @@ export function shouldPreferBridgeSyncFromSource(opts: {
     return true;
   }
 
-  // Metadata-only index marked dirty with zero bodies — cannot be real uploads.
-  const fileCount = opts.fileCount ?? 0;
-  const withContent = opts.filesWithLocalContent ?? 0;
+  if (sparseMetadataTree) {
+    return true;
+  }
+
+  // Refetch → delete paths on a metadata-only tree: sync upstream once, then
+  // apply UI deletes on the bridge (deletedPaths). Any real local bodies mean
+  // the user edited/uploaded — keep per-file push so those changes are kept.
   if (
-    opts.hasUnpushedEdits === true &&
-    fileCount >= LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD &&
+    deletedCount > 0 &&
+    remainingFiles >= LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD &&
     withContent === 0
   ) {
     return true;

@@ -5,6 +5,7 @@
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 
 import { sanitizeForkedFromField } from "../repos/fork-attribution";
+import { OVERRIDE_IDB_MARKER_PREFIX } from "../repos/overrides-idb";
 import {
   persistGithubSourceOnRepo,
   queryNostrForGithubSourceUrl,
@@ -922,7 +923,11 @@ export async function pushRepoToNostr(
         savedOverrides[filePath] ||
         savedOverrides[file.path || ""] ||
         savedOverrides[normalizeFilePath(file.path || "")];
-      return typeof fromOverride === "string" && fromOverride.length > 0;
+      if (typeof fromOverride !== "string" || fromOverride.length === 0) {
+        return false;
+      }
+      // IDB pointer is not inline body — still needs upstream/bridge fetch.
+      return !fromOverride.startsWith(OVERRIDE_IDB_MARKER_PREFIX);
     }).length;
 
     const deferToBridgeSourceClone = shouldPreferBridgeSyncFromSource({
@@ -2746,6 +2751,45 @@ export async function pushRepoToNostr(
           } else {
             onProgress?.(
               "⚠️ Bridge sync still in progress — state event will sync when ready"
+            );
+          }
+        }
+
+        if (normalizedDeletedPaths.length > 0 && refs.length > 0) {
+          onProgress?.(
+            `🗑️ Applying ${normalizedDeletedPaths.length} deleted path(s) on bridge…`
+          );
+          try {
+            const { pushFilesToBridge } = await import("./push-to-bridge");
+            const deleteResult = await pushFilesToBridge({
+              ownerPubkey: pubkey,
+              repoSlug: actualRepositoryName,
+              entity,
+              branch: repo.defaultBranch || "main",
+              files: [],
+              commitDate: Math.floor(Date.now() / 1000),
+              authEvent: repoEvent,
+              pubkey,
+              signer: getBridgeSigner()!,
+              deletedPaths: normalizedDeletedPaths,
+            });
+            if (
+              deleteResult?.refs &&
+              Array.isArray(deleteResult.refs) &&
+              deleteResult.refs.length > 0
+            ) {
+              refs = deleteResult.refs;
+              onProgress?.(
+                `✅ Bridge tip updated after ${normalizedDeletedPaths.length} deletion(s)`
+              );
+            }
+          } catch (deleteErr: any) {
+            console.warn(
+              `⚠️ [Push Repo] Post-sync deletion commit failed`,
+              deleteErr
+            );
+            onProgress?.(
+              "⚠️ Could not apply deletions on bridge — files may still appear upstream"
             );
           }
         }

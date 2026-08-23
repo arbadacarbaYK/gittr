@@ -74,15 +74,27 @@ describe("shouldPreferBridgeSyncFromSource (large forge / post-refetch)", () => 
     ).toBe(true);
   });
 
-  it("does not prefer bridge after Refetch when user deleted paths", () => {
+  it("prefers bridge after Refetch+delete on sparse metadata tree", () => {
     expect(
       shouldPreferBridgeSyncFromSource({
         sourceUrl: github,
         hasUnpushedEdits: true,
-        postSourceRefetchPending: true,
+        postSourceRefetchPending: false,
         deletedPathCount: 2,
         fileCount: 825,
-        filesWithLocalContent: 10,
+        filesWithLocalContent: 0,
+      })
+    ).toBe(true);
+  });
+
+  it("keeps per-file push when delete accompanies real local bodies", () => {
+    expect(
+      shouldPreferBridgeSyncFromSource({
+        sourceUrl: github,
+        hasUnpushedEdits: true,
+        deletedPathCount: 2,
+        fileCount: 825,
+        filesWithLocalContent: 120,
       })
     ).toBe(false);
   });
