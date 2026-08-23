@@ -204,12 +204,27 @@ export function resolveContentBranch(
 }
 
 export function branchesToTryForContent(
-  repo: { filesBranch?: string; defaultBranch?: string } | null | undefined,
+  repo:
+    | {
+        filesBranch?: string;
+        defaultBranch?: string;
+        successfulSources?: Array<{ resolvedBranch?: string } | null> | null;
+      }
+    | null
+    | undefined,
   selectedBranch: string,
   route?: RepoBranchRoute | null
 ): string[] {
   const primary = resolveContentBranch(repo, selectedBranch, route);
+  // Multifetch winners (e.g. pyramid → master) must lead — otherwise README/logo
+  // burn time on bridge ?branch=main 404s while the tree already resolved master.
+  const fromSources = (repo?.successfulSources || [])
+    .map((s) =>
+      s && typeof s.resolvedBranch === "string" ? s.resolvedBranch.trim() : ""
+    )
+    .filter((b): b is string => !!b);
   return [
+    ...fromSources,
     primary,
     repo?.filesBranch,
     repo?.defaultBranch,

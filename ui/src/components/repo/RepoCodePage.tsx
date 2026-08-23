@@ -297,6 +297,16 @@ import remarkGfm from "remark-gfm";
 const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
   "gittr_chain_readme_push_after_refetch_v1";
 
+/** Session sticky: skip gittr-bridge file-content after a full branch sweep 404'd.
+ * GRASP-only repos (e.g. fips on pyramid) are not on our bare store — hammering
+ * /api/nostr/repo/file-content made README/logo feel stuck for minutes. */
+const bridgeFileContentMissKeys = new Set<string>();
+function bridgeFileMissKey(ownerPubkey: string, repo: string): string {
+  return `${ownerPubkey.toLowerCase()}/${String(repo)
+    .replace(/\.git$/i, "")
+    .toLowerCase()}`;
+}
+
 /** Merge IndexedDB/local `loadRepoFiles` into a repo row from `loadStoredRepos` (files are stored separately). */
 function mergeStoredRepoWithFilesFromStorage(
   base: StoredRepo,
@@ -12724,15 +12734,96 @@ export function RepoCodePage() {
           }
         }
 
-        // Bridge fallback: always try gittr bridge after upstream miss.
-        // preferUpstreamReadme used to SKIP bridge entirely — then a slow/failed
-        // GitHub fetch left the folder README blank even when files were on the bridge.
+        // GRASP / clone winners from multifetch — BEFORE bridge.
+        // Bridge-first on foreign GRASP repos (not on gittr bares) was a main/master
+        // 404 storm while pyramid already had the tip.
+        const successfulSources =
+          (
+            repoData as {
+              successfulSources?: Array<{
+                sourceUrl?: string;
+                resolvedBranch?: string;
+                files?: unknown[];
+              }>;
+            }
+          )?.successfulSources || [];
+
+        const tryCloneSourceReadme = async (
+          cloneUrl: string,
+          branchHint?: string
+        ): Promise<boolean> => {
+          if (!cloneUrl || !/^https?:\/\//i.test(cloneUrl)) return false;
+          try {
+            const u = new URL(cloneUrl);
+            if (
+              u.protocol === "http:" &&
+              /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
+            ) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
+          const branchOrder = [
+            branchHint,
+            ...branchesToTry,
+          ]
+            .map((b) => (typeof b === "string" ? b.trim() : ""))
+            .filter((b): b is string => !!b)
+            .filter((b, i, arr) => arr.indexOf(b) === i);
+          for (const srcBranch of branchOrder) {
+            try {
+              const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                cloneUrl
+              )}&path=${encodeURIComponent(
+                readmeFile.path
+              )}&branch=${encodeURIComponent(srcBranch)}`;
+              const cloneResp = await fetchDeduped(cloneApi);
+              if (!cloneResp.ok) continue;
+              const data = await cloneResp.json();
+              if (
+                data?.content !== undefined &&
+                data?.content !== null &&
+                !data.isBinary
+              ) {
+                finish(String(data.content));
+                return true;
+              }
+            } catch (e) {
+              console.warn("[Folder README] Clone source fetch failed:", e);
+            }
+          }
+          return false;
+        };
+
+        for (const src of successfulSources) {
+          if (
+            !src?.sourceUrl ||
+            !Array.isArray(src.files) ||
+            src.files.length === 0
+          ) {
+            continue;
+          }
+          if (
+            await tryCloneSourceReadme(
+              src.sourceUrl,
+              src.resolvedBranch ||
+                (repoData as { filesBranch?: string })?.filesBranch
+            )
+          ) {
+            return;
+          }
+        }
+
+        // Bridge: gittr-hosted bares. Skip after a known full miss, or when
+        // multifetch already proved a foreign clone is the tip (still try bridge
+        // once if no sources yet — local gittr repos need it).
         const isNostrEntityRoute =
           !!resolvedParams.entity &&
           (resolvedParams.entity.startsWith("npub") ||
             /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
 
-        if (isNostrEntityRoute && repoData) {
+        if (isNostrEntityRoute && repoData && successfulSources.length === 0) {
           let ownerPubkey: string | null =
             (repoData as any).ownerPubkey &&
             /^[0-9a-f]{64}$/i.test(String((repoData as any).ownerPubkey))
@@ -12785,149 +12876,21 @@ export function RepoCodePage() {
               bridgeRepoName = parts[parts.length - 1] || bridgeRepoName;
             }
             bridgeRepoName = String(bridgeRepoName).replace(/\.git$/, "");
-            for (const branch of branchesToTry) {
-              try {
-                const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-                  ownerPubkey
-                )}&repo=${encodeURIComponent(
-                  bridgeRepoName
-                )}&path=${encodeURIComponent(
-                  readmeFile.path
-                )}&branch=${encodeURIComponent(branch)}`;
-                const bridgeResp = await fetchBridgeRead(bridgeUrl);
-                if (bridgeResp.ok) {
-                  const data = await bridgeResp.json();
-                  if (
-                    data?.content !== undefined &&
-                    data?.content !== null &&
-                    !data.isBinary
-                  ) {
-                    finish(String(data.content));
-                    return;
-                  }
-                }
-              } catch (e) {
-                console.warn(
-                  `[Folder README] Bridge fetch failed (branch ${branch}):`,
-                  e
-                );
-              }
-            }
-          }
-        }
-
-        // GRASP / nostr-git mirrors (same path as file tree multifetch).
-        // Also used as fallback when preferUpstreamReadme upstream fetch missed.
-        if (repoData) {
-          const successfulSources =
-            (
-              repoData as {
-                successfulSources?: Array<{
-                  sourceUrl?: string;
-                  resolvedBranch?: string;
-                  files?: unknown[];
-                }>;
-              }
-            )?.successfulSources || [];
-          for (const src of successfulSources) {
-            if (
-              !src?.sourceUrl ||
-              !Array.isArray(src.files) ||
-              src.files.length === 0
-            ) {
-              continue;
-            }
-            // Bare http://IP:port home hosts cannot be fetched by gittr's servers
-            // (SSRF / no Gitea raw) — skip; bridge + HTTPS GRASP already cover these.
-            try {
-              const u = new URL(src.sourceUrl);
-              if (
-                u.protocol === "http:" &&
-                /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
-              ) {
-                continue;
-              }
-            } catch {
-              continue;
-            }
-            const srcBranch =
-              src.resolvedBranch ||
-              (repoData as { filesBranch?: string })?.filesBranch ||
-              branchesToTry[0] ||
-              "main";
-            try {
-              const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-                src.sourceUrl
-              )}&path=${encodeURIComponent(
-                readmeFile.path
-              )}&branch=${encodeURIComponent(srcBranch)}`;
-              const cloneResp = await fetchDeduped(cloneApi);
-              if (cloneResp.ok) {
-                const data = await cloneResp.json();
-                if (
-                  data?.content !== undefined &&
-                  data?.content !== null &&
-                  !data.isBinary
-                ) {
-                  finish(String(data.content));
-                  return;
-                }
-              }
-            } catch (e) {
-              console.warn("[Folder README] Clone source fetch failed:", e);
-            }
-          }
-          // Prefer local indexed body before giving up when multifetch already
-          // succeeded (otherwise a thin remote README miss blanks a local upload).
-          if (
-            row &&
-            typeof (row as any).content === "string" &&
-            String((row as any).content).trim().length > 0
-          ) {
-            finish(String((row as any).content));
-            return;
-          }
-          // When multifetch already found working sources, don't re-hammer every
-          // clone URL with main/master — that was the console 400/404 storm.
-          if (successfulSources.length > 0) {
-            finish(null);
-            return;
-          }
-          const cloneList = (repoData as { clone?: string[] })?.clone;
-          if (Array.isArray(cloneList)) {
-            for (const cloneUrl of cloneList) {
-              if (
-                !cloneUrl ||
-                typeof cloneUrl !== "string" ||
-                !/^https?:\/\//i.test(cloneUrl)
-              ) {
-                continue;
-              }
-              try {
-                const u = new URL(cloneUrl);
-                if (
-                  u.protocol === "http:" &&
-                  /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
-                ) {
-                  continue;
-                }
-              } catch {
-                continue;
-              }
-              for (const tryBranch of branchesToTryForContent(
-                repoData,
-                selectedBranch,
-                repoBranchRoute
-              )) {
+            const missKey = bridgeFileMissKey(ownerPubkey, bridgeRepoName);
+            if (!bridgeFileContentMissKeys.has(missKey)) {
+              let anyBridgeOk = false;
+              for (const branch of branchesToTry) {
                 try {
-                  const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-                    cloneUrl
+                  const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                    ownerPubkey
+                  )}&repo=${encodeURIComponent(
+                    bridgeRepoName
                   )}&path=${encodeURIComponent(
                     readmeFile.path
-                  )}&branch=${encodeURIComponent(tryBranch)}`;
-                  const cloneResp = await fetchDeduped(cloneApi);
-                  if (cloneResp.ok) {
-                    const data = await cloneResp.json();
+                  )}&branch=${encodeURIComponent(branch)}`;
+                  const bridgeResp = await fetchBridgeRead(bridgeUrl);
+                  if (bridgeResp.ok) {
+                    const data = await bridgeResp.json();
                     if (
                       data?.content !== undefined &&
                       data?.content !== null &&
@@ -12936,13 +12899,46 @@ export function RepoCodePage() {
                       finish(String(data.content));
                       return;
                     }
+                    anyBridgeOk = true;
                   }
-                } catch {
-                  /* try next branch / clone */
+                } catch (e) {
+                  console.warn(
+                    `[Folder README] Bridge fetch failed (branch ${branch}):`,
+                    e
+                  );
                 }
+              }
+              if (!anyBridgeOk) {
+                bridgeFileContentMissKeys.add(missKey);
               }
             }
           }
+        }
+
+        // Prefer local indexed body before more clone hammering.
+        if (
+          row &&
+          typeof (row as any).content === "string" &&
+          String((row as any).content).trim().length > 0
+        ) {
+          finish(String((row as any).content));
+          return;
+        }
+
+        // Remaining announcement clones when multifetch has not recorded winners yet.
+        if (successfulSources.length === 0) {
+          const cloneList = (repoData as { clone?: string[] })?.clone;
+          if (Array.isArray(cloneList)) {
+            for (const cloneUrl of cloneList) {
+              if (await tryCloneSourceReadme(String(cloneUrl || ""))) {
+                return;
+              }
+            }
+          }
+        } else {
+          // Sources known but blob miss — do not re-hammer every clone × branch.
+          finish(null);
+          return;
         }
 
         if (
@@ -14309,11 +14305,6 @@ export function RepoCodePage() {
   }> {
     // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null });
 
-    // Strategy 0: Nostr entity URLs — prefer on-disk bridge when there is NO
-    // forge upstream. If GitHub/GitLab/Codeberg is the content authority
-    // (shouldPreferUpstreamContent), skip bridge-first so openFile matches
-    // folder README (forge tip, not a stale bare). Local-only / GRASP-only /
-    // gittr-hosted still use bridge here.
     const isNostrEntityRoute =
       !!resolvedParams.entity &&
       (resolvedParams.entity.startsWith("npub") ||
@@ -14334,7 +14325,115 @@ export function RepoCodePage() {
       }
     );
 
-    if (isNostrEntityRoute && repoData && !preferForgeContent) {
+    // Strategy 0a: winning multifetch clones BEFORE bridge (GRASP-only / foreign
+    // remotes). Strategy 0b bridge follows only when no sources yet / miss cache.
+    const successfulSourcesEarly =
+      (
+        repoData as {
+          successfulSources?: Array<{
+            sourceUrl?: string;
+            resolvedBranch?: string;
+            files?: unknown[];
+          }>;
+        }
+      )?.successfulSources || [];
+
+    if (!preferForgeContent && successfulSourcesEarly.length > 0) {
+      for (const src of successfulSourcesEarly) {
+        if (
+          !src?.sourceUrl ||
+          !Array.isArray(src.files) ||
+          src.files.length === 0
+        ) {
+          continue;
+        }
+        try {
+          const u = new URL(src.sourceUrl);
+          if (
+            u.protocol === "http:" &&
+            /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
+          ) {
+            continue;
+          }
+        } catch {
+          continue;
+        }
+        const branchHint =
+          src.resolvedBranch ||
+          (repoData as { filesBranch?: string })?.filesBranch ||
+          resolveContentBranch(repoData, selectedBranch, repoBranchRoute);
+        const branchList = [branchHint, ...branchesToTryForContent(
+          repoData,
+          selectedBranch,
+          repoBranchRoute
+        )]
+          .map((b) => (typeof b === "string" ? b.trim() : ""))
+          .filter((b): b is string => !!b)
+          .filter((b, i, arr) => arr.indexOf(b) === i);
+        // One resolved tip is enough — don't re-fetch the same branch N times.
+        const branchesOnce = src.resolvedBranch
+          ? [String(src.resolvedBranch).trim()].filter(Boolean)
+          : branchList;
+        for (const br of branchesOnce) {
+          try {
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+              src.sourceUrl
+            )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+              br
+            )}`;
+            const githubToken =
+              typeof window !== "undefined"
+                ? localStorage.getItem("gittr_github_token")
+                : null;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
+            const resp = await fetchDeduped(apiUrl);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            if (data?.content === undefined) continue;
+            if (data.isBinary) {
+              const ext = path.split(".").pop()?.toLowerCase() || "";
+              const mimeTypes: Record<string, string> = {
+                png: "image/png",
+                jpg: "image/jpeg",
+                jpeg: "image/jpeg",
+                gif: "image/gif",
+                webp: "image/webp",
+                svg: "image/svg+xml",
+                ico: "image/x-icon",
+                pdf: "application/pdf",
+                woff: "font/woff",
+                woff2: "font/woff2",
+                ttf: "font/ttf",
+                otf: "font/otf",
+                mp4: "video/mp4",
+                mp3: "audio/mpeg",
+                wav: "audio/wav",
+              };
+              const mime = mimeTypes[ext] || "application/octet-stream";
+              return {
+                content: null,
+                url: `data:${mime};base64,${data.content}`,
+                isBinary: true,
+              };
+            }
+            return { content: data.content, url: null, isBinary: false };
+          } catch {
+            /* next branch / source */
+          }
+        }
+      }
+    }
+
+    // Strategy 0b: gittr bridge — only when no multifetch winner yet (or forge
+    // path skipped). Sticky-skip after a full 404 sweep for this bare.
+    if (
+      isNostrEntityRoute &&
+      repoData &&
+      !preferForgeContent &&
+      successfulSourcesEarly.length === 0
+    ) {
       let ownerPk: string | null = (repoData as any)?.ownerPubkey;
       if (!ownerPk || !/^[0-9a-f]{64}$/i.test(ownerPk)) {
         try {
@@ -14388,56 +14487,66 @@ export function RepoCodePage() {
           bridgeRepo = parts[parts.length - 1] || bridgeRepo;
         }
         bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
-        const branchCandidates0 = branchesToTryForContent(
-          repoData,
-          selectedBranch,
-          repoBranchRoute
-        );
-        try {
-          for (const branch0 of branchCandidates0) {
-            const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-              ownerPk.toLowerCase()
-            )}&repo=${encodeURIComponent(bridgeRepo)}&path=${encodeURIComponent(
-              path
-            )}&branch=${encodeURIComponent(branch0)}`;
-            const r0 = await fetchBridgeRead(api0);
-            if (!r0.ok) continue;
-            const d0 = await r0.json();
-            if (d0.content === undefined) continue;
-            if (d0.isBinary) {
-              const ext0 = path.split(".").pop()?.toLowerCase() || "";
-              const mimeTypes0: Record<string, string> = {
-                png: "image/png",
-                jpg: "image/jpeg",
-                jpeg: "image/jpeg",
-                gif: "image/gif",
-                webp: "image/webp",
-                svg: "image/svg+xml",
-                ico: "image/x-icon",
-                pdf: "application/pdf",
-                woff: "font/woff",
-                woff2: "font/woff2",
-                ttf: "font/ttf",
-                otf: "font/otf",
-                mp4: "video/mp4",
-                mp3: "audio/mpeg",
-                wav: "audio/wav",
-              };
-              const mime0 = mimeTypes0[ext0] || "application/octet-stream";
-              const dataUrl0 = `data:${mime0};base64,${d0.content}`;
-              return { content: null, url: dataUrl0, isBinary: true };
-            }
-            return {
-              content: d0.content,
-              url: null,
-              isBinary: false,
-            };
-          }
-        } catch (e) {
-          console.warn(
-            `[fetchGithubRaw] Strategy 0 (bridge) failed for ${path}:`,
-            e
+        const missKey = bridgeFileMissKey(ownerPk, bridgeRepo);
+        if (!bridgeFileContentMissKeys.has(missKey)) {
+          const branchCandidates0 = branchesToTryForContent(
+            repoData,
+            selectedBranch,
+            repoBranchRoute
           );
+          let anyOk = false;
+          try {
+            for (const branch0 of branchCandidates0) {
+              const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                ownerPk.toLowerCase()
+              )}&repo=${encodeURIComponent(
+                bridgeRepo
+              )}&path=${encodeURIComponent(
+                path
+              )}&branch=${encodeURIComponent(branch0)}`;
+              const r0 = await fetchBridgeRead(api0);
+              if (!r0.ok) continue;
+              const d0 = await r0.json();
+              if (d0.content === undefined) continue;
+              anyOk = true;
+              if (d0.isBinary) {
+                const ext0 = path.split(".").pop()?.toLowerCase() || "";
+                const mimeTypes0: Record<string, string> = {
+                  png: "image/png",
+                  jpg: "image/jpeg",
+                  jpeg: "image/jpeg",
+                  gif: "image/gif",
+                  webp: "image/webp",
+                  svg: "image/svg+xml",
+                  ico: "image/x-icon",
+                  pdf: "application/pdf",
+                  woff: "font/woff",
+                  woff2: "font/woff2",
+                  ttf: "font/ttf",
+                  otf: "font/otf",
+                  mp4: "video/mp4",
+                  mp3: "audio/mpeg",
+                  wav: "audio/wav",
+                };
+                const mime0 = mimeTypes0[ext0] || "application/octet-stream";
+                const dataUrl0 = `data:${mime0};base64,${d0.content}`;
+                return { content: null, url: dataUrl0, isBinary: true };
+              }
+              return {
+                content: d0.content,
+                url: null,
+                isBinary: false,
+              };
+            }
+          } catch (e) {
+            console.warn(
+              `[fetchGithubRaw] Strategy 0 (bridge) failed for ${path}:`,
+              e
+            );
+          }
+          if (!anyOk) {
+            bridgeFileContentMissKeys.add(missKey);
+          }
         }
       }
     }
@@ -15783,16 +15892,17 @@ export function RepoCodePage() {
             }
           }
         } else {
-          const contentBranches = branchesToTryForContent(
-            repoData,
-            selectedBranch,
-            repoBranchRoute
-          );
-          for (const tryBranch of contentBranches) {
-            const resolvedFromSource = (
-              sourceInfo as { resolvedBranch?: string }
-            ).resolvedBranch;
-            const branchForFetch = resolvedFromSource || tryBranch;
+          const resolvedFromSource = (
+            sourceInfo as { resolvedBranch?: string }
+          ).resolvedBranch;
+          const contentBranches = resolvedFromSource
+            ? [String(resolvedFromSource).trim()].filter(Boolean)
+            : branchesToTryForContent(
+                repoData,
+                selectedBranch,
+                repoBranchRoute
+              );
+          for (const branchForFetch of contentBranches) {
             let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
               sourceUrl
             )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(

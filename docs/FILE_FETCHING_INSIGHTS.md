@@ -33,13 +33,14 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 **Single file** (`openFile` → `fetchGithubRaw`) — must match folder README winners:
 
 1. Local overrides / IDB (`resolveLocalOverrideBody`, including storage alias)
-2. If **no** forge upstream: bridge `GET /api/nostr/repo/file-content` (npub/hex routes)
-3. Embedded / indexed listing body when present
-4. Forge `GET /api/git/file-content?sourceUrl=…` when `shouldPreferUpstreamContent` (GitHub / GitLab.com / Codeberg)
-5. Bridge again / `successfulSources` / `clone[]` / shallow clone recovery
-6. Binary → base64 / data URL in the browser  
+2. Multifetch **`successfulSources`** tip (`/api/git/file-content`) when present
+3. If **no** forge upstream and **no** successfulSources yet: bridge `GET /api/nostr/repo/file-content` (npub/hex routes; sticky-skip after full 404)
+4. Embedded / indexed listing body when present
+5. Forge `GET /api/git/file-content?sourceUrl=…` when `shouldPreferUpstreamContent` (GitHub / GitLab.com / Codeberg)
+6. Bridge again / remaining `clone[]` / shallow clone recovery
+7. Binary → base64 / data URL in the browser  
 
-Do **not** bridge-first on forge-import npub routes — that made folder README (forge tip) disagree with click-to-open (stale bare).
+Do **not** bridge-first on forge-import npub routes — that made folder README (forge tip) disagree with click-to-open (stale bare). Do **not** bridge-first once GRASP multifetch already won a foreign clone (pyramid etc.) — that was the README 404 storm on `main`/`master`.
 
 **Refetch content hydrate** (after `/api/import` returns metadata-only files)
 
@@ -53,7 +54,7 @@ Same branch as the loaded tree: honor `?branch=` in the URL, then `repoData.file
 
 `shouldPreferUpstreamContent` is **forge-only** (GitHub / GitLab.com / Codeberg). GRASP-only / home `http://IP:port` clones are **not** treated as upstream, so README goes to bridge first instead of a 400/404 storm.
 
-Fallback order: local overrides → (forge upstream if any) → bridge `file-content` → `successfulSources` (HTTPS, with `resolvedBranch`) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content. Tip README **size** is part of the reload key so bridge→GitHub listing upgrades re-fetch the body.
+Fallback order: local overrides → (forge upstream if any) → **`successfulSources` / winning clones first** (honor `resolvedBranch`) → bridge `file-content` only when no multifetch winner yet (sticky-skip after a full 404) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content. Tip README **size** is part of the reload key so bridge→GitHub listing upgrades re-fetch the body.
 
 ### Code-tab README matrix (all four content states)
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  branchesToTryForContent,
   nestedFilePathCount,
   resolveSharedRepoBranch,
   shouldApplyFetchedFileTree,
@@ -49,6 +50,21 @@ describe("resolveSharedRepoBranch", () => {
         branches: [],
       })
     ).toBe("main");
+  });
+});
+
+describe("branchesToTryForContent", () => {
+  it("leads with successfulSources resolvedBranch before main", () => {
+    expect(
+      branchesToTryForContent(
+        {
+          defaultBranch: "main",
+          successfulSources: [{ resolvedBranch: "master" }],
+        },
+        "main",
+        null
+      )[0]
+    ).toBe("master");
   });
 });
 
