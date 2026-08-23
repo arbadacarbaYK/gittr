@@ -1021,10 +1021,32 @@ export class RemoteSignerManager {
    * the full connect timeout then aborting never wakes the phone.
    */
   async ensureRpcHealthy(timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
-    if (this.isRpcHealthy()) return;
+    // After a successful Push, rpcHealthy can stay true while bunker sockets
+    // silently go CLOSED (file-fetch / main-pool pressure). Star/Watch must not
+    // skip warm-up on a stale healthy flag.
+    if (this.isRpcHealthy() && this.session) {
+      const open = await this.listDirectOpenRelays(
+        this.buildBunkerTransportTargets(this.session)
+      );
+      if (open.length > 0) return;
+      console.warn(
+        "[RemoteSigner] rpcHealthy but no OPEN bunker sockets — clearing flag and re-warming"
+      );
+      this.rpcHealthy = false;
+    } else if (this.isRpcHealthy()) {
+      return;
+    }
     if (this.healthProbeInFlight) {
       await this.healthProbeInFlight;
-      if (this.isRpcHealthy()) return;
+      if (this.isRpcHealthy()) {
+        const live = this.session;
+        if (!live) return;
+        const open = await this.listDirectOpenRelays(
+          this.buildBunkerTransportTargets(live)
+        );
+        if (open.length > 0) return;
+        this.rpcHealthy = false;
+      }
     }
     const session = this.session || loadStoredRemoteSignerSession();
     if (!session?.userPubkey) {
@@ -1630,7 +1652,7 @@ export class RemoteSignerManager {
         }
         if (bunkerPublishIsThin(published, uriRelays)) {
           throw new Error(
-            `The signing request only reached ${overlap.overlap.length} of ${uriRelays.length} Amber bunker relays. Keep Amber open and unlocked, then try Push again — gittr will retry on more of those relays.`
+            `The signing request only reached ${overlap.overlap.length} of ${uriRelays.length} Amber bunker relays. Keep Amber open and unlocked, then try again — gittr will retry on more of those relays.`
           );
         }
         throw new Error(
@@ -1720,17 +1742,39 @@ export class RemoteSignerManager {
    * Used on first sign after hydrate-only bootstrap.
    */
   private async prepareTransportForSession(session: RemoteSignerSession) {
-    const open = await this.ensureBunkerSocketsOpen(session);
-    if (open.length === 0) {
-      const statuses = await this.snapshotDirectRelayStatuses(
-        this.buildBunkerTransportTargets(session)
+    // Code-tab HTTP (clone/list/file-content) can saturate browser sockets so
+    // every bunker dial lands CLOSED. Free collisions and pause briefly first.
+    const dialTargets = this.buildBunkerTransportTargets(session);
+    const alreadyOpen = await this.listDirectOpenRelays(dialTargets);
+    if (alreadyOpen.length === 0) {
+      this.claimBunkerHostsForDirectPool(
+        getSessionUriRelays(session).length > 0
+          ? getSessionUriRelays(session)
+          : dialTargets
       );
+      await this.waitForMainPoolBunkerSlotsClear();
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    let open = await this.ensureBunkerSocketsOpen(session);
+    if (open.length === 0) {
+      // One quiet retry after a longer breathe — Star often hits this under load.
+      console.warn(
+        "[RemoteSigner] Bunker warm empty — quiet retry after freeing main-pool slots"
+      );
+      this.claimBunkerHostsForDirectPool(dialTargets);
+      await this.waitForMainPoolBunkerSlotsClear();
+      await new Promise((r) => setTimeout(r, 1200));
+      this.resetDirectPool();
+      open = await this.ensureBunkerSocketsOpen(session);
+    }
+    if (open.length === 0) {
+      const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
       console.error(
         "[RemoteSigner] Bunker relay statuses after warm-up:",
         JSON.stringify(statuses)
       );
       throw new Error(
-        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
+        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
       );
     }
     this.lastBunkerWarmAt = Date.now();
@@ -3105,7 +3149,7 @@ export class RemoteSignerManager {
     const openDirect = await this.ensureDirectTransport(session);
     if (openDirect.length === 0) {
       throw new Error(
-        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try Push again."
+        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
       );
     }
     const id = randomRequestId();

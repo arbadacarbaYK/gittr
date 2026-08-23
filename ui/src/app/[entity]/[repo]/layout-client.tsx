@@ -201,6 +201,8 @@ export default function RepoLayoutClient({
   const { pubkey, publish, subscribe, defaultRelays, remoteSigner } =
     useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
+  const [isStarring, setIsStarring] = useState(false);
+  const starringInFlightRef = useRef(false);
   const [githubStarCount, setGithubStarCount] = useState<number | null>(null);
   /** GitHub URL discovered via Nostr hydrate (session/LS may lag behind). */
   const [hydratedGithubUrl, setHydratedGithubUrl] = useState<string>("");
@@ -1513,7 +1515,16 @@ export default function RepoLayoutClient({
         pubkey,
       };
 
-      // Same path as Push/Star: wait for Amber bootstrap, then probe on sign.
+      // Same path as Push/Star: warm Amber bunker sockets before sign.
+      try {
+        await remoteSigner?.ensureRpcHealthy?.();
+      } catch (warmErr) {
+        const warmMsg =
+          warmErr instanceof Error ? warmErr.message : String(warmErr);
+        console.warn("[Repo Watch] Remote signer warm before publish:", warmMsg);
+        showToast(warmMsg, "error");
+        return;
+      }
       const resolved = await resolveNostrSigner({
         remoteSigner,
         waitForRemote: true,
@@ -1562,6 +1573,7 @@ export default function RepoLayoutClient({
   }, []);
 
   const handleNostrStar = useCallback(async () => {
+    if (starringInFlightRef.current) return;
     if (!pubkey) {
       showToast("Log in with Nostr to star this repo.", "error");
       router.push("/login");
@@ -1587,79 +1599,97 @@ export default function RepoLayoutClient({
       return;
     }
 
-    // Same signing path as Push: wait for Amber bootstrap, then probe on sign.
-    const resolved = await resolveNostrSigner({
-      remoteSigner,
-      waitForRemote: true,
-    });
-    if (!resolved) {
-      showToast(NO_SIGNING_METHOD_MESSAGE, "error");
-      return;
-    }
-    const getSigner = async () => ({
-      signEvent: resolved.signEvent,
-    });
-    const publishRelays = getAllRelays(defaultRelays);
-    const doPublish = (event: NostrEvent) => {
-      publish(event, publishRelays);
-    };
-    const ownerHex = ownerPubkey.toLowerCase();
-    const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
-
-    const syncLocalStarsIndex = (add: boolean) => {
-      if (typeof window === "undefined") return;
+    starringInFlightRef.current = true;
+    setIsStarring(true);
+    try {
+      // Same early warm as Push: hydrate leaves bunker sockets CLOSED; file-fetch
+      // can starve dials. Warm before sign so Star does not race CLOSED sockets.
       try {
-        const starred = JSON.parse(
-          localStorage.getItem("gittr_starred_repos") || "[]"
-        ) as string[];
-        const next = add
-          ? starred.includes(repoId)
-            ? starred
-            : [...starred, repoId]
-          : starred.filter((r) => r !== repoId);
-        localStorage.setItem("gittr_starred_repos", JSON.stringify(next));
-        window.dispatchEvent(new Event("gittr:stars-updated"));
-        window.dispatchEvent(new Event("gittr:repos-updated"));
-      } catch {
-        /* ignore */
+        await remoteSigner?.ensureRpcHealthy?.();
+      } catch (warmErr) {
+        const warmMsg =
+          warmErr instanceof Error ? warmErr.message : String(warmErr);
+        console.warn("[Repo Stars] Remote signer warm before star:", warmMsg);
+        showToast(warmMsg, "error");
+        return;
       }
-    };
 
-    if (isNostrStarred) {
-      const r = await removeStarReaction(
-        repoNostrEventId,
-        ownerHex,
-        doPublish,
-        getSigner
-      );
-      if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent);
-        syncLocalStarsIndex(false);
-        showToast("Unstarred on Nostr.", "success");
-      } else {
-        showToast(
-          r.error || "Could not unstar — check extension approval.",
-          "error"
-        );
+      const resolved = await resolveNostrSigner({
+        remoteSigner,
+        waitForRemote: true,
+      });
+      if (!resolved) {
+        showToast(NO_SIGNING_METHOD_MESSAGE, "error");
+        return;
       }
-    } else {
-      const r = await publishStarReaction(
-        repoNostrEventId,
-        ownerHex,
-        doPublish,
-        getSigner
-      );
-      if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent);
-        syncLocalStarsIndex(true);
-        showToast("Starred on Nostr (NIP-25).", "success");
-      } else {
-        showToast(
-          r.error ||
-            "Could not publish star — approve the extension prompt or try another relay.",
-          "error"
+      const getSigner = async () => ({
+        signEvent: resolved.signEvent,
+      });
+      const publishRelays = getAllRelays(defaultRelays);
+      const doPublish = (event: NostrEvent) => {
+        publish(event, publishRelays);
+      };
+      const ownerHex = ownerPubkey.toLowerCase();
+      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
+
+      const syncLocalStarsIndex = (add: boolean) => {
+        if (typeof window === "undefined") return;
+        try {
+          const starred = JSON.parse(
+            localStorage.getItem("gittr_starred_repos") || "[]"
+          ) as string[];
+          const next = add
+            ? starred.includes(repoId)
+              ? starred
+              : [...starred, repoId]
+            : starred.filter((r) => r !== repoId);
+          localStorage.setItem("gittr_starred_repos", JSON.stringify(next));
+          window.dispatchEvent(new Event("gittr:stars-updated"));
+          window.dispatchEvent(new Event("gittr:repos-updated"));
+        } catch {
+          /* ignore */
+        }
+      };
+
+      if (isNostrStarred) {
+        const r = await removeStarReaction(
+          repoNostrEventId,
+          ownerHex,
+          doPublish,
+          getSigner
         );
+        if (r.success && r.signedEvent) {
+          mergeNostrStarEvent(r.signedEvent);
+          syncLocalStarsIndex(false);
+          showToast("Unstarred on Nostr.", "success");
+        } else {
+          showToast(
+            r.error || "Could not unstar — check extension approval.",
+            "error"
+          );
+        }
+      } else {
+        const r = await publishStarReaction(
+          repoNostrEventId,
+          ownerHex,
+          doPublish,
+          getSigner
+        );
+        if (r.success && r.signedEvent) {
+          mergeNostrStarEvent(r.signedEvent);
+          syncLocalStarsIndex(true);
+          showToast("Starred on Nostr (NIP-25).", "success");
+        } else {
+          showToast(
+            r.error ||
+              "Could not publish star — approve the extension prompt or try another relay.",
+            "error"
+          );
+        }
       }
+    } finally {
+      starringInFlightRef.current = false;
+      setIsStarring(false);
     }
   }, [
     pubkey,
@@ -1921,6 +1951,7 @@ export default function RepoLayoutClient({
                   <DropdownMenuItem
                     key="nostr-star"
                     title={nostrStarButtonTitle}
+                    disabled={isStarring || resolvingRepoEventId}
                     onClick={() => {
                       void handleNostrStar();
                     }}
@@ -1930,7 +1961,11 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    {resolvingRepoEventId ? "Looking up…" : "Star"}
+                    {resolvingRepoEventId
+                      ? "Looking up…"
+                      : isStarring
+                        ? "Signing…"
+                        : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </DropdownMenuItem>
                   {sourceStarsDisplay ? (
@@ -2014,6 +2049,7 @@ export default function RepoLayoutClient({
                     }`}
                     variant="outline"
                     title={nostrStarButtonTitle}
+                    disabled={isStarring || resolvingRepoEventId}
                     onClick={() => {
                       void handleNostrStar();
                     }}
@@ -2024,7 +2060,11 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    {resolvingRepoEventId ? "Looking up…" : "Star"}
+                    {resolvingRepoEventId
+                      ? "Looking up…"
+                      : isStarring
+                        ? "Signing…"
+                        : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </Button>
                   {sourceStarsDisplay ? (

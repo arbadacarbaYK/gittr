@@ -5,6 +5,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -24,8 +25,9 @@ const MANUAL_MARKDOWN_MIN_CHARS = 200_000;
 
 /**
  * Isolate README markdown parse from Code-page tree/date re-renders.
- * Idle-gated mount keeps header/tabs usable; chrome pointerdown pauses auto
- * parse so navigation is not starved.
+ * Idle-gated mount keeps header/tabs usable; chrome pointerdown pauses *pending*
+ * parse so navigation is not starved — but never tears down an already-shown
+ * README (Star/Watch live under data-repo-chrome and used to blank the page).
  */
 export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   markdown,
@@ -55,6 +57,11 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   const [allowMount, setAllowMount] = useState(false);
   const [userRequested, setUserRequested] = useState(false);
   const [pausedForChrome, setPausedForChrome] = useState(false);
+  const allowMountRef = useRef(false);
+
+  useEffect(() => {
+    allowMountRef.current = allowMount;
+  }, [allowMount]);
 
   useEffect(() => {
     setAllowMount(false);
@@ -74,11 +81,13 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
     };
     const onChromePointer = (e: PointerEvent) => {
       const t = e.target as Element | null;
-      if (t?.closest?.("[data-repo-chrome], header")) {
-        cancelled = true;
-        setAllowMount(false);
-        setPausedForChrome(true);
-      }
+      if (!t?.closest?.("[data-repo-chrome], header")) return;
+      // Cancel a pending idle mount so tabs stay snappy — but do not unmount
+      // markdown the user is already reading (Star/Watch/Fork live in chrome).
+      cancelled = true;
+      if (allowMountRef.current) return;
+      setAllowMount(false);
+      setPausedForChrome(true);
     };
     document.addEventListener("pointerdown", onChromePointer, true);
 
