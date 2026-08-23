@@ -50,9 +50,24 @@ function pageBelongsToOwner(
   }
 }
 
+function runWhenIdle(fn: () => void, timeoutMs: number): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+  if (typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(() => fn(), { timeout: timeoutMs });
+    return () => window.cancelIdleCallback(id);
+  }
+  const t = window.setTimeout(fn, Math.min(timeoutMs, 1500));
+  return () => window.clearTimeout(t);
+}
+
 /**
  * Profile sections for this person's Nostr Pages (gateway) and Apps (NIP-82).
  * Mirrors the stacked Repositories block style — not tabs.
+ *
+ * Load order: wait for browser idle (after repos/meta paint), then Pages HTTP,
+ * then author-scoped Apps — so the full Zapstore scrape does not fight profile-repos.
  */
 export function ProfilePagesAppsSections({
   ownerPubkeyHex,
@@ -65,6 +80,7 @@ export function ProfilePagesAppsSections({
 
   const onCountsRef = useRef(onCountsChange);
   onCountsRef.current = onCountsChange;
+  const lastCountsRef = useRef<{ pages: number; apps: number } | null>(null);
 
   const [pagesLoading, setPagesLoading] = useState(false);
   const [appsLoading, setAppsLoading] = useState(false);
@@ -82,6 +98,7 @@ export function ProfilePagesAppsSections({
     if (!ownerHex) {
       setPages([]);
       setApps([]);
+      lastCountsRef.current = { pages: 0, apps: 0 };
       onCountsRef.current?.({ pages: 0, apps: 0 });
       return;
     }
@@ -89,65 +106,79 @@ export function ProfilePagesAppsSections({
     let cancelled = false;
     setPages([]);
     setApps([]);
+    lastCountsRef.current = { pages: 0, apps: 0 };
     onCountsRef.current?.({ pages: 0, apps: 0 });
-    setPagesLoading(true);
-    setAppsLoading(true);
 
-    fetch("/api/gittr-pages/status-sites")
-      .then(async (res) => {
-        const data = (await res.json()) as {
-          sites?: GatewayStatusSiteRow[];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error || `pages ${res.status}`);
-        const mine = (data.sites || []).filter((s) =>
-          pageBelongsToOwner(s, ownerHex)
-        );
-        if (!cancelled) setPages(mine);
-      })
-      .catch(() => {
-        if (!cancelled) setPages([]);
-      })
-      .finally(() => {
-        if (!cancelled) setPagesLoading(false);
-      });
+    const cancelIdle = runWhenIdle(() => {
+      if (cancelled) return;
+      setPagesLoading(true);
+      setAppsLoading(true);
 
-    fetch("/api/nostr/software-catalog")
-      .then(async (res) => {
-        const data = (await res.json()) as {
-          apps?: ParsedSoftwareApp[];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error || `apps ${res.status}`);
-        const mine = (data.apps || []).filter((a) =>
-          appBelongsToOwner(a, ownerHex)
-        );
-        const seen = new Set<string>();
-        const unique: ParsedSoftwareApp[] = [];
-        for (const a of mine) {
-          const k = appDedupKey(a.pubkey, a.appId);
-          if (seen.has(k)) continue;
-          seen.add(k);
-          unique.push(a);
+      void (async () => {
+        try {
+          const pagesRes = await fetch("/api/gittr-pages/status-sites");
+          const pagesData = (await pagesRes.json()) as {
+            sites?: GatewayStatusSiteRow[];
+            error?: string;
+          };
+          if (cancelled) return;
+          if (!pagesRes.ok) throw new Error(pagesData.error || `pages ${pagesRes.status}`);
+          setPages(
+            (pagesData.sites || []).filter((s) => pageBelongsToOwner(s, ownerHex))
+          );
+        } catch {
+          if (!cancelled) setPages([]);
+        } finally {
+          if (!cancelled) setPagesLoading(false);
         }
-        unique.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        if (!cancelled) setApps(unique);
-      })
-      .catch(() => {
-        if (!cancelled) setApps([]);
-      })
-      .finally(() => {
-        if (!cancelled) setAppsLoading(false);
-      });
+
+        if (cancelled) return;
+
+        try {
+          // Author-scoped catalog — avoids scraping 4k Zapstore apps on every profile.
+          const appsRes = await fetch(
+            `/api/nostr/software-catalog?author=${encodeURIComponent(ownerHex)}`
+          );
+          const appsData = (await appsRes.json()) as {
+            apps?: ParsedSoftwareApp[];
+            error?: string;
+          };
+          if (cancelled) return;
+          if (!appsRes.ok) throw new Error(appsData.error || `apps ${appsRes.status}`);
+          const mine = (appsData.apps || []).filter((a) =>
+            appBelongsToOwner(a, ownerHex)
+          );
+          const seen = new Set<string>();
+          const unique: ParsedSoftwareApp[] = [];
+          for (const a of mine) {
+            const k = appDedupKey(a.pubkey, a.appId);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            unique.push(a);
+          }
+          unique.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          setApps(unique);
+        } catch {
+          if (!cancelled) setApps([]);
+        } finally {
+          if (!cancelled) setAppsLoading(false);
+        }
+      })();
+    }, 4000);
 
     return () => {
       cancelled = true;
+      cancelIdle();
     };
   }, [ownerHex]);
 
   useEffect(() => {
     if (pagesLoading || appsLoading) return;
-    onCountsRef.current?.({ pages: pages.length, apps: apps.length });
+    const next = { pages: pages.length, apps: apps.length };
+    const prev = lastCountsRef.current;
+    if (prev && prev.pages === next.pages && prev.apps === next.apps) return;
+    lastCountsRef.current = next;
+    onCountsRef.current?.(next);
   }, [pages.length, apps.length, pagesLoading, appsLoading]);
 
   if (!ownerHex) return null;
@@ -177,45 +208,43 @@ export function ProfilePagesAppsSections({
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pages.slice(0, visiblePages).map((s) => (
-                  <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
-                    <article className="flex h-full min-h-[10rem] flex-col rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
-                      <h3 className="line-clamp-2 text-lg font-semibold text-white">
-                        {s.title}
-                      </h3>
-                      {s.description ? (
-                        <p className="mt-2 line-clamp-2 text-sm text-gray-400">
-                          {s.description}
-                        </p>
-                      ) : null}
-                      <p className="mt-2 text-xs text-gray-500">
-                        {s.pathCount} path{s.pathCount === 1 ? "" : "s"}
-                        {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
-                      </p>
-                      <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-3">
-                        <a
-                          className={cn(
-                            buttonVariants({ size: "sm", variant: "default" })
-                          )}
-                          href={s.siteUrl}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Open site
-                          <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                        </a>
-                      </div>
-                    </article>
-                  </li>
-                ))}
-              </ul>
-              <LoadMoreButton
-                visibleCount={Math.min(visiblePages, pages.length)}
-                totalCount={pages.length}
-                pageSize={REPO_LIST_PAGE_SIZE}
-                onLoadMore={() =>
-                  setVisiblePages((n) => n + REPO_LIST_PAGE_SIZE)
-                }
-              />
+              <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
+                <article className="flex h-full min-h-[10rem] flex-col rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
+                  <h3 className="line-clamp-2 text-lg font-semibold text-white">
+                    {s.title}
+                  </h3>
+                  {s.description ? (
+                    <p className="mt-2 line-clamp-2 text-sm text-gray-400">
+                      {s.description}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-gray-500">
+                    {s.pathCount} path{s.pathCount === 1 ? "" : "s"}
+                    {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
+                  </p>
+                  <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-3">
+                    <a
+                      className={cn(
+                        buttonVariants({ size: "sm", variant: "default" })
+                      )}
+                      href={s.siteUrl}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Open site
+                      <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </article>
+              </li>
+            ))}
+          </ul>
+          <LoadMoreButton
+            visibleCount={Math.min(visiblePages, pages.length)}
+            totalCount={pages.length}
+            pageSize={REPO_LIST_PAGE_SIZE}
+            onLoadMore={() => setVisiblePages((n) => n + REPO_LIST_PAGE_SIZE)}
+          />
         </div>
       ) : null}
 
@@ -238,72 +267,70 @@ export function ProfilePagesAppsSections({
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {apps.slice(0, visibleApps).map((app) => (
-                  <li key={appDedupKey(app.pubkey, app.appId)}>
-                    <article className="flex h-full min-h-[10rem] gap-3 rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
-                      {app.icon ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={app.icon}
-                          alt=""
-                          className="h-14 w-14 shrink-0 rounded-xl border border-[#383B42]/80 object-cover bg-[#171B21]"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21] text-lg font-bold text-gray-400">
-                          {app.name.slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1 flex flex-col">
-                        <h3 className="truncate text-lg font-semibold text-white">
-                          {app.name}
-                        </h3>
-                        {app.summary ? (
-                          <p className="mt-1 line-clamp-2 text-sm text-gray-400">
-                            {app.summary}
-                          </p>
-                        ) : null}
-                        <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                          {app.webUrl || app.repository ? (
-                            <a
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "default",
-                                })
-                              )}
-                              href={app.webUrl || app.repository}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              Open
-                              <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                            </a>
-                          ) : (
-                            <Link
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                })
-                              )}
-                              href="/apps"
-                            >
-                              View in Apps
-                            </Link>
+              <li key={appDedupKey(app.pubkey, app.appId)}>
+                <article className="flex h-full min-h-[10rem] gap-3 rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
+                  {app.icon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={app.icon}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-xl border border-[#383B42]/80 object-cover bg-[#171B21]"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21] text-lg font-bold text-gray-400">
+                      {app.name.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <h3 className="truncate text-lg font-semibold text-white">
+                      {app.name}
+                    </h3>
+                    {app.summary ? (
+                      <p className="mt-1 line-clamp-2 text-sm text-gray-400">
+                        {app.summary}
+                      </p>
+                    ) : null}
+                    <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                      {app.webUrl || app.repository ? (
+                        <a
+                          className={cn(
+                            buttonVariants({
+                              size: "sm",
+                              variant: "default",
+                            })
                           )}
-                        </div>
-                      </div>
-                    </article>
-                  </li>
-                ))}
-              </ul>
-              <LoadMoreButton
-                visibleCount={Math.min(visibleApps, apps.length)}
-                totalCount={apps.length}
-                pageSize={REPO_LIST_PAGE_SIZE}
-                onLoadMore={() =>
-                  setVisibleApps((n) => n + REPO_LIST_PAGE_SIZE)
-                }
-              />
+                          href={app.webUrl || app.repository}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Open
+                          <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        <Link
+                          className={cn(
+                            buttonVariants({
+                              size: "sm",
+                              variant: "outline",
+                            })
+                          )}
+                          href="/apps"
+                        >
+                          View in Apps
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              </li>
+            ))}
+          </ul>
+          <LoadMoreButton
+            visibleCount={Math.min(visibleApps, apps.length)}
+            totalCount={apps.length}
+            pageSize={REPO_LIST_PAGE_SIZE}
+            onLoadMore={() => setVisibleApps((n) => n + REPO_LIST_PAGE_SIZE)}
+          />
         </div>
       ) : null}
     </>

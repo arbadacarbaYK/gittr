@@ -30,12 +30,16 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 8. **Bridge-only success still fills the sidebar** — if files come from `GET /api/nostr/repo/files` while the 30617 event was slow/missing, merge event clones (when known) into `repoData.clone`. Do not invent GRASP URLs for the sidebar until the announcement is confirmed empty.
 9. Repo event queries always include NIP-34 discovery relays (`relay.ngit.dev`, shakespeare, nostrhub, gittr) even when they are not in the viewer’s social relay list — many batch-imported / ngit-published repos announce only there
 
-**Single file**
+**Single file** (`openFile` → `fetchGithubRaw`) — must match folder README winners:
 
-1. Embedded in event / local cache  
-2. Bridge `GET /api/nostr/repo/file-content`  
-3. Upstream `GET /api/git/file-content?sourceUrl=…` (forges, Gitea-style raw, then **shallow `git clone` + `git show`** for other public HTTPS remotes announced on `clone`)  
-4. Binary → base64 / data URL in the browser  
+1. Local overrides / IDB (`resolveLocalOverrideBody`, including storage alias)
+2. If **no** forge upstream: bridge `GET /api/nostr/repo/file-content` (npub/hex routes)
+3. Embedded / indexed listing body when present
+4. Forge `GET /api/git/file-content?sourceUrl=…` when `shouldPreferUpstreamContent` (GitHub / GitLab.com / Codeberg)
+5. Bridge again / `successfulSources` / `clone[]` / shallow clone recovery
+6. Binary → base64 / data URL in the browser  
+
+Do **not** bridge-first on forge-import npub routes — that made folder README (forge tip) disagree with click-to-open (stale bare).
 
 **Refetch content hydrate** (after `/api/import` returns metadata-only files)
 
@@ -49,7 +53,20 @@ Same branch as the loaded tree: honor `?branch=` in the URL, then `repoData.file
 
 `shouldPreferUpstreamContent` is **forge-only** (GitHub / GitLab.com / Codeberg). GRASP-only / home `http://IP:port` clones are **not** treated as upstream, so README goes to bridge first instead of a 400/404 storm.
 
-Fallback order: local overrides → (forge upstream if any) → bridge `file-content` → `successfulSources` (HTTPS, with `resolvedBranch`) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content.
+Fallback order: local overrides → (forge upstream if any) → bridge `file-content` → `successfulSources` (HTTPS, with `resolvedBranch`) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content. Tip README **size** is part of the reload key so bridge→GitHub listing upgrades re-fetch the body.
+
+### Code-tab README matrix (all four content states)
+
+Folder preview and click-to-open **must** show the same body. Winners after overrides:
+
+| State | What it means | README / openFile winner |
+| --- | --- | --- |
+| **Local only** | Browser drafts / `hasUnpushedEdits` / overrides / IDB; may have no live bare | **Overrides / IDB** first; else indexed `gittr_files` body; network usually empty |
+| **Nostr / GRASP only** | 30617 `clone[]` → `git.gittr.space` or other GRASP; **no** forge `source` | **Bridge** `file-content` (then GRASP HTTPS / indexed) |
+| **External git source** | Forge `sourceUrl` / `shouldPreferUpstreamContent` | **Forge** `/api/git/file-content` tip (bridge is fallback only) |
+| **On gittr bridge** | Bare under `reposDir/{pubkey}/{repo}.git` | Bridge when no forge authority; if also forge-imported, treat as **External** (forge tip) so bare lag does not look like a “wrong README” |
+
+Presentation: normal READMEs (~≤48 KB) idle-auto-format; only huge bodies need **Show formatted README**.
 
 **README / in-repo media:** relative images (gif/png/…) must prefer `gittr_overrides` via `localOverrideDisplayUrl` before forge raw or bridge tip — otherwise an Upload overwrite looks “stuck” on the old asset until Push (and forge mirrors never show the draft). Same for Code-tab `openFile` (binary by extension; do not require `repo.files.isBinary` after upload strips that array).
 

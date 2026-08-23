@@ -12678,7 +12678,11 @@ export function RepoCodePage() {
         const preferUpstreamReadme = shouldPreferUpstreamContent(
           resolvedParams.entity,
           {
-            sourceUrl: repoData?.sourceUrl,
+            sourceUrl:
+              sourceUrl ||
+              repoData?.sourceUrl ||
+              effectiveSourceUrl ||
+              null,
             forkedFrom: repoData?.forkedFrom,
             clone: (repoData as { clone?: string[] })?.clone,
           }
@@ -14305,13 +14309,32 @@ export function RepoCodePage() {
   }> {
     // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null });
 
-    // Strategy 0: Nostr entity URLs — prefer on-disk bridge over embedded events and GitHub mirrors
+    // Strategy 0: Nostr entity URLs — prefer on-disk bridge when there is NO
+    // forge upstream. If GitHub/GitLab/Codeberg is the content authority
+    // (shouldPreferUpstreamContent), skip bridge-first so openFile matches
+    // folder README (forge tip, not a stale bare). Local-only / GRASP-only /
+    // gittr-hosted still use bridge here.
     const isNostrEntityRoute =
       !!resolvedParams.entity &&
       (resolvedParams.entity.startsWith("npub") ||
         /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
 
-    if (isNostrEntityRoute && repoData) {
+    const preferForgeContent = shouldPreferUpstreamContent(
+      resolvedParams.entity,
+      {
+        sourceUrl:
+          effectiveSourceUrl ||
+          repoData?.sourceUrl ||
+          (repoData as any)?.forkedFrom ||
+          null,
+        forkedFrom: (repoData as any)?.forkedFrom || null,
+        clone: Array.isArray((repoData as any)?.clone)
+          ? (repoData as any).clone
+          : null,
+      }
+    );
+
+    if (isNostrEntityRoute && repoData && !preferForgeContent) {
       let ownerPk: string | null = (repoData as any)?.ownerPubkey;
       if (!ownerPk || !/^[0-9a-f]{64}$/i.test(ownerPk)) {
         try {
@@ -14419,10 +14442,10 @@ export function RepoCodePage() {
       }
     }
 
-    // Strategy 1: Check if file content is embedded in repoData.files array
-    // According to the working insights: "Files embedded in Nostr events are always checked first"
-    // This handles legacy repos and small files that are stored directly in events
-    if (safeFiles.length > 0) {
+    // Strategy 1: Embedded event / listing body — skip when forge is content
+    // authority so openFile matches folder README (forge tip, not stale kind
+    // 30617 / hydrate blobs). Local-only and GRASP-only still use embeds.
+    if (safeFiles.length > 0 && !preferForgeContent) {
       // Normalize paths for comparison (remove leading/trailing slashes, handle relative paths)
       const normalizePath = (p: string) =>
         p.replace(/^\/+/, "").replace(/\/+/g, "/");
@@ -16059,7 +16082,22 @@ export function RepoCodePage() {
       resolvedParams.repo,
       path
     );
-    if (overrideBody != null && overrideBody.length > 0) {
+    const storageAliasForOpen = resolveRepoStorageAlias(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    const overrideBodyAlias =
+      overrideBody == null &&
+      storageAliasForOpen &&
+      storageAliasForOpen !== resolvedParams.repo
+        ? await resolveLocalOverrideBody(
+            resolvedParams.entity,
+            storageAliasForOpen,
+            path
+          )
+        : null;
+    const resolvedOverride = overrideBody ?? overrideBodyAlias;
+    if (resolvedOverride != null && resolvedOverride.length > 0) {
       if (isBinaryFile(normalizedPath)) {
         const media =
           localOverrideDisplayUrl(
@@ -16071,7 +16109,14 @@ export function RepoCodePage() {
             resolvedParams.entity,
             resolvedParams.repo,
             normalizedPath
-          );
+          ) ||
+          (storageAliasForOpen
+            ? localOverrideDisplayUrl(
+                resolvedParams.entity,
+                storageAliasForOpen,
+                path
+              )
+            : null);
         if (media) {
           setFileContent(media);
           setLoadingFile(false);
@@ -16079,7 +16124,7 @@ export function RepoCodePage() {
         }
       } else {
         // Plain text / markdown — never wrap as data: base64 (blame-style garbage).
-        setFileContent(overrideBody);
+        setFileContent(resolvedOverride);
         setLoadingFile(false);
         return;
       }

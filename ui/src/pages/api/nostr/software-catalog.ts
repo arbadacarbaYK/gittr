@@ -53,7 +53,9 @@ function upsertRelease(
   map.set(key, next);
 }
 
-async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
+async function fetchCatalogFromRelays(
+  authorHex?: string | null
+): Promise<CatalogResponse> {
   const { RelayPool } = await import("nostr-relaypool");
   const pool = new RelayPool(CATALOG_RELAYS, { dontAutoReconnect: true });
 
@@ -61,6 +63,15 @@ async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
   const releasesByApp = new Map<string, ParsedSoftwareRelease[]>();
   const releasesByAppId = new Map<string, ParsedSoftwareRelease[]>();
   const eoseRelays = new Set<string>();
+  const authorScoped =
+    !!authorHex && /^[0-9a-f]{64}$/i.test(authorHex)
+      ? authorHex.toLowerCase()
+      : null;
+  // Profile pages only need one publisher — tiny limits + short timeout.
+  const appLimit = authorScoped ? 80 : 4000;
+  const releaseLimit = authorScoped ? 200 : 12000;
+  const fetchMs = authorScoped ? 8000 : FETCH_MS;
+  const earlyExitMs = authorScoped ? 2500 : EARLY_EXIT_AFTER_APPS_MS;
 
   await new Promise<void>((resolve) => {
     let settled = false;
@@ -74,20 +85,37 @@ async function fetchCatalogFromRelays(): Promise<CatalogResponse> {
       resolve();
     };
 
-    const hardTimer = setTimeout(finish, FETCH_MS);
+    const hardTimer = setTimeout(finish, fetchMs);
 
     const maybeEarlyExit = () => {
       if (rawApps.length === 0) return;
       if (earlyTimer) return;
       // Got apps from at least one relay — paint soon, keep listening briefly.
-      earlyTimer = setTimeout(finish, EARLY_EXIT_AFTER_APPS_MS);
+      earlyTimer = setTimeout(finish, earlyExitMs);
     };
 
+    const appFilter: Record<string, unknown> = {
+      kinds: [KIND_SOFTWARE_APPLICATION],
+      limit: appLimit,
+    };
+    const releaseFilter: Record<string, unknown> = {
+      kinds: [KIND_SOFTWARE_RELEASE],
+      limit: releaseLimit,
+    };
+    const filters: Record<string, unknown>[] = [appFilter, releaseFilter];
+    if (authorScoped) {
+      appFilter.authors = [authorScoped];
+      releaseFilter.authors = [authorScoped];
+      // Also apps that attribute this pubkey via NIP-82 `p` (not authored by them).
+      filters.push({
+        kinds: [KIND_SOFTWARE_APPLICATION],
+        "#p": [authorScoped],
+        limit: appLimit,
+      });
+    }
+
     pool.subscribe(
-      [
-        { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
-        { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
-      ],
+      filters,
       CATALOG_RELAYS,
       (event: NostrEventLike) => {
         if (isPublisherBlocklisted(event.pubkey)) return;
@@ -157,12 +185,20 @@ export default async function handler(
   }
 
   try {
-    const catalog = await fetchCatalogFromRelays();
+    const authorRaw = req.query.author;
+    const author =
+      typeof authorRaw === "string" && /^[0-9a-f]{64}$/i.test(authorRaw)
+        ? authorRaw.toLowerCase()
+        : null;
+    const catalog = await fetchCatalogFromRelays(author);
     // Never CDN-cache an empty catalog — that made /apps stick on zero after a race.
+    // Author-scoped responses are short-lived (profile paint).
     if (catalog.apps.length > 0) {
       res.setHeader(
         "Cache-Control",
-        "public, s-maxage=120, stale-while-revalidate=300"
+        author
+          ? "public, s-maxage=60, stale-while-revalidate=120"
+          : "public, s-maxage=120, stale-while-revalidate=300"
       );
     } else {
       res.setHeader("Cache-Control", "no-store");

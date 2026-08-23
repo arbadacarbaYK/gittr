@@ -307,15 +307,16 @@ export default function EntityPage({
         const fullPubkey = decoded.data as string;
         if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(fullPubkey)) {
           const normalized = fullPubkey.toLowerCase();
-          console.log(
-            `📡 [Profile] Fetching metadata for npub (decoded): ${normalized.slice(
-              0,
-              8
-            )}... (full length: ${normalized.length}, normalized to lowercase)`
-          );
-          console.log(`📡 [Profile] Full decoded pubkey: ${normalized}`);
+          if (shouldLogProfileDebug) {
+            console.log(
+              `📡 [Profile] Fetching metadata for npub (decoded): ${normalized.slice(
+                0,
+                8
+              )}... (full length: ${normalized.length}, normalized to lowercase)`
+            );
+          }
           pubkeys.add(normalized);
-        } else {
+        } else if (shouldLogProfileDebug) {
           console.error(`❌ [Profile] Decoded npub is not valid 64-char hex:`, {
             type: decoded.type,
             dataLength: fullPubkey.length,
@@ -331,12 +332,14 @@ export default function EntityPage({
     // Priority 2: Use fullPubkeyForMeta if it's a full 64-char pubkey (now initialized to empty string if not valid)
     if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
       const normalized = fullPubkeyForMeta.toLowerCase();
-      console.log(
-        `📡 [Profile] Fetching metadata for fullPubkeyForMeta: ${normalized.slice(
-          0,
-          8
-        )}... (full length: ${normalized.length}, normalized to lowercase)`
-      );
+      if (shouldLogProfileDebug) {
+        console.log(
+          `📡 [Profile] Fetching metadata for fullPubkeyForMeta: ${normalized.slice(
+            0,
+            8
+          )}... (full length: ${normalized.length}, normalized to lowercase)`
+        );
+      }
       pubkeys.add(normalized);
     }
 
@@ -346,12 +349,14 @@ export default function EntityPage({
       /^[0-9a-f]{64}$/i.test(resolvedParams.entity)
     ) {
       const normalized = resolvedParams.entity.toLowerCase();
-      console.log(
-        `📡 [Profile] Fetching metadata for entity (full pubkey): ${normalized.slice(
-          0,
-          8
-        )}... (full length: ${normalized.length}, normalized to lowercase)`
-      );
+      if (shouldLogProfileDebug) {
+        console.log(
+          `📡 [Profile] Fetching metadata for entity (full pubkey): ${normalized.slice(
+            0,
+            8
+          )}... (full length: ${normalized.length}, normalized to lowercase)`
+        );
+      }
       pubkeys.add(normalized);
     }
 
@@ -370,12 +375,14 @@ export default function EntityPage({
         const isOwnProfile =
           normalizedCurrentPubkey === resolvedPubkey.toLowerCase();
         if (isOwnProfile) {
-          console.log(
-            `📡 [Profile] Viewing own profile - adding currentUserPubkey to metadata fetch: ${currentUserPubkey.slice(
-              0,
-              8
-            )}`
-          );
+          if (shouldLogProfileDebug) {
+            console.log(
+              `📡 [Profile] Viewing own profile - adding currentUserPubkey to metadata fetch: ${currentUserPubkey.slice(
+                0,
+                8
+              )}`
+            );
+          }
           pubkeys.add(normalizedCurrentPubkey);
         }
       } else {
@@ -387,12 +394,14 @@ export default function EntityPage({
             if (decoded.type === "npub") {
               const decodedPubkey = (decoded.data as string).toLowerCase();
               if (decodedPubkey === normalizedCurrentPubkey) {
-                console.log(
-                  `📡 [Profile] Entity npub matches currentUserPubkey - adding to metadata fetch: ${currentUserPubkey.slice(
-                    0,
-                    8
-                  )}`
-                );
+                if (shouldLogProfileDebug) {
+                  console.log(
+                    `📡 [Profile] Entity npub matches currentUserPubkey - adding to metadata fetch: ${currentUserPubkey.slice(
+                      0,
+                      8
+                    )}`
+                  );
+                }
                 pubkeys.add(normalizedCurrentPubkey);
               }
             }
@@ -402,19 +411,21 @@ export default function EntityPage({
           /^[0-9a-f]{64}$/i.test(resolvedParams.entity) &&
           resolvedParams.entity.toLowerCase() === normalizedCurrentPubkey
         ) {
-          console.log(
-            `📡 [Profile] Entity pubkey matches currentUserPubkey - adding to metadata fetch: ${currentUserPubkey.slice(
-              0,
-              8
-            )}`
-          );
+          if (shouldLogProfileDebug) {
+            console.log(
+              `📡 [Profile] Entity pubkey matches currentUserPubkey - adding to metadata fetch: ${currentUserPubkey.slice(
+                0,
+                8
+              )}`
+            );
+          }
           pubkeys.add(normalizedCurrentPubkey);
         }
       }
     }
 
     const pubkeysArray = Array.from(pubkeys);
-    if (pubkeysArray.length === 0) {
+    if (pubkeysArray.length === 0 && shouldLogProfileDebug) {
       console.log(
         `⏭️ [Profile] Skipping metadata fetch - no valid pubkey. Entity: ${
           resolvedParams.entity
@@ -428,7 +439,12 @@ export default function EntityPage({
       );
     }
     return pubkeysArray;
-  }, [fullPubkeyForMeta, resolvedParams.entity, currentUserPubkey]);
+  }, [
+    fullPubkeyForMeta,
+    resolvedParams.entity,
+    currentUserPubkey,
+    shouldLogProfileDebug,
+  ]);
 
   // CRITICAL: This hook returns the FULL metadataMap from cache, not just the pubkeys passed to it
   // The hook loads all cached metadata on initialization, so we should have access to all 15+ entries
@@ -1505,29 +1521,42 @@ export default function EntityPage({
 
         const deduplicatedRepos = Array.from(dedupeMap.values());
 
-        console.log(`🔍 [Profile] Repository filtering results:`, {
-          totalReposInStorage: repos.length,
-          userReposFound: userReposList.length,
-          afterDeletedFilter: filteredRepos.length,
-          afterDeduplication: deduplicatedRepos.length,
-          duplicatesRemoved: filteredRepos.length - deduplicatedRepos.length,
-          deletedReposFiltered: userReposList.length - filteredRepos.length,
-          repoActivitiesCount: repoActivitiesForSync.length,
-          entityParam,
-          isHexEntity,
-          isNpub,
-          isEntityPrefix,
-          fullPubkeyForMeta: fullPubkeyForMeta?.slice(0, 8),
-          sampleUserRepos: deduplicatedRepos.slice(0, 3).map((r: any) => ({
-            slug: r.slug || r.repo,
-            entity: r.entity,
-            ownerPubkey: r.ownerPubkey?.slice(0, 8),
-            hasContributors: !!r.contributors,
-          })),
-          allReposSample: allReposDebug,
-        });
+        if (shouldLogProfileDebug) {
+          console.log(`🔍 [Profile] Repository filtering results:`, {
+            totalReposInStorage: repos.length,
+            userReposFound: userReposList.length,
+            afterDeletedFilter: filteredRepos.length,
+            afterDeduplication: deduplicatedRepos.length,
+            duplicatesRemoved: filteredRepos.length - deduplicatedRepos.length,
+            deletedReposFiltered: userReposList.length - filteredRepos.length,
+            repoActivitiesCount: repoActivitiesForSync.length,
+            entityParam,
+            isHexEntity,
+            isNpub,
+            isEntityPrefix,
+            fullPubkeyForMeta: fullPubkeyForMeta?.slice(0, 8),
+            sampleUserRepos: deduplicatedRepos.slice(0, 3).map((r: any) => ({
+              slug: r.slug || r.repo,
+              entity: r.entity,
+              ownerPubkey: r.ownerPubkey?.slice(0, 8),
+              hasContributors: !!r.contributors,
+            })),
+            allReposSample: allReposDebug,
+          });
+        }
 
-        setUserRepos((prev) => mergeProfileRepoList(prev, deduplicatedRepos));
+        setUserRepos((prev) => {
+          const next = mergeProfileRepoList(prev, deduplicatedRepos);
+          if (
+            prev.length === next.length &&
+            prev.every(
+              (r, i) => profileRepoRowKey(r) === profileRepoRowKey(next[i]!)
+            )
+          ) {
+            return prev;
+          }
+          return next;
+        });
 
         // For activities, we need the full pubkey. If we only have prefix, find it from repos
         let fullPubkey = entityParam;
@@ -1663,6 +1692,9 @@ export default function EntityPage({
                       /^[0-9a-f]{64}$/i.test(ownerPubkey)
                     );
                   })
+                  // Cap #a fan-out — dozens of repos × 4 kinds stalls the shared relay pool
+                  // while profile-repos / metadata still need bandwidth.
+                  .slice(0, 24)
                   .map((r: any) => {
                     const ownerPubkey = r.ownerPubkey || fullPubkey;
                     const repoName = r.repo || r.slug;
@@ -1670,9 +1702,11 @@ export default function EntityPage({
                   });
 
                 if (repoIdentifiers.length > 0) {
-                  console.log(
-                    `🔍 [Profile] Querying PRs/issues for ${repoIdentifiers.length} repos by #a tag...`
-                  );
+                  if (shouldLogProfileDebug) {
+                    console.log(
+                      `🔍 [Profile] Querying PRs/issues for ${repoIdentifiers.length} repos by #a tag...`
+                    );
+                  }
 
                   // Query for PRs/issues that reference this user's repos
                   const seenPRs = new Set<string>();
@@ -1853,10 +1887,10 @@ export default function EntityPage({
           // Timeline: paint from local/repos first; Nostr merge after idle (keeps profile snappy)
           if (typeof requestIdleCallback !== "undefined") {
             requestIdleCallback(() => runProfileNostrActivity(), {
-              timeout: 3500,
+              timeout: 8000,
             });
           } else {
-            setTimeout(runProfileNostrActivity, 2000);
+            setTimeout(runProfileNostrActivity, 3500);
           }
 
           // CRITICAL: Sync activities from multiple sources for the timeline graph.
@@ -1967,18 +2001,20 @@ export default function EntityPage({
           }
 
           // Debug: log what we found
-          console.log("Profile stats for", fullPubkey, {
-            totalActivities: activities.length,
-            commits: activities.filter((a) => a.type === "commit_created")
-              .length,
-            prsMerged: activities.filter((a) => a.type === "pr_merged").length,
-            bountiesClaimed: activities.filter(
-              (a) => a.type === "bounty_claimed"
-            ).length,
-            counts: counts,
-            allActivityTypes: activities.map((a) => a.type),
-            filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
-          });
+          if (shouldLogProfileDebug) {
+            console.log("Profile stats for", fullPubkey, {
+              totalActivities: activities.length,
+              commits: activities.filter((a) => a.type === "commit_created")
+                .length,
+              prsMerged: activities.filter((a) => a.type === "pr_merged").length,
+              bountiesClaimed: activities.filter(
+                (a) => a.type === "bounty_claimed"
+              ).length,
+              counts: counts,
+              allActivityTypes: activities.map((a) => a.type),
+              filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
+            });
+          }
 
           // CRITICAL: Use actual filtered repo count instead of counting from activities
           // This ensures deleted repos are excluded
@@ -2089,8 +2125,8 @@ export default function EntityPage({
         ) {
           return;
         }
-        setUserRepos((prev) =>
-          mergeProfileRepoList(
+        setUserRepos((prev) => {
+          const next = mergeProfileRepoList(
             prev,
             data.repos!.map((row) => ({
               slug: row.repo,
@@ -2117,8 +2153,17 @@ export default function EntityPage({
               // Preserve private status from relays after localStorage clear
               publicRead: row.publicRead !== false,
             }))
-          )
-        );
+          );
+          if (
+            prev.length === next.length &&
+            prev.every(
+              (r, i) => profileRepoRowKey(r) === profileRepoRowKey(next[i]!)
+            )
+          ) {
+            return prev;
+          }
+          return next;
+        });
       } catch (e) {
         console.warn("[Profile] profile-repos fetch failed:", e);
       }
@@ -3303,33 +3348,6 @@ export default function EntityPage({
             </div>
 
             {/* Claimed Identities (NIP-39) */}
-            {(() => {
-              // Debug: Log what we have
-              if (userMeta) {
-                console.log(
-                  `🔍 [Profile] userMeta for ${fullPubkeyForMeta?.slice(
-                    0,
-                    8
-                  )}:`,
-                  {
-                    hasIdentities: !!userMeta.identities,
-                    identitiesCount: userMeta.identities?.length || 0,
-                    identities: userMeta.identities,
-                    allKeys: Object.keys(userMeta),
-                    metadataMapSize: Object.keys(metadataMap).length,
-                    metadataMapHasPubkey: !!(
-                      pubkeyForMetadata &&
-                      metadataMap[pubkeyForMetadata.toLowerCase()]
-                    ),
-                    metadataMapIdentities: pubkeyForMetadata
-                      ? metadataMap[pubkeyForMetadata.toLowerCase()]
-                          ?.identities || []
-                      : [],
-                  }
-                );
-              }
-              return null;
-            })()}
             {userMeta?.identities &&
               Array.isArray(userMeta.identities) &&
               userMeta.identities.length > 0 && (
@@ -3560,8 +3578,8 @@ export default function EntityPage({
       <ProfilePagesAppsSections
         ownerPubkeyHex={pubkeyForMetadata || fullPubkeyForMeta}
         onCountsChange={({ pages, apps }) => {
-          setProfilePagesCount(pages);
-          setProfileAppsCount(apps);
+          setProfilePagesCount((prev) => (prev === pages ? prev : pages));
+          setProfileAppsCount((prev) => (prev === apps ? prev : apps));
         }}
       />
 
