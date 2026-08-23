@@ -1132,7 +1132,7 @@ export class RemoteSignerManager {
   /**
    * Rehydrate cached bunker identity for read-only UI (logged-in pubkey, adapter).
    * Does NOT call Amber RPC — live NIP-46 connect runs on first sign via ensureRpcHealthy.
-   * Awaits a short URI-first bunker warm so child file-fetch cannot starve directPool.
+   * Bunker warm runs in the background so page navigation is never blocked (≤10s dial).
    */
   async bootstrapFromStorage() {
     const stored = loadStoredRemoteSignerSession();
@@ -1161,13 +1161,16 @@ export class RemoteSignerManager {
       this.applyNip07Adapter();
       // "idle" + adapter = logged in for browsing; signing will probe Amber.
       this.notifyState("idle");
-      // Await URI-first warm (budget-capped) so file-fetch storms lose the race.
-      // Keepalive continues filling remaining relays in the background.
-      await this.warmBunkerTransportQuietly({
+      // Fire-and-forget URI-first warm — never await on browse/nav remount.
+      // Push/Star/Watch still call ensureRpcHealthy at click before sign_event.
+      void this.warmBunkerTransportQuietly({
         budgetMs: BUNKER_BOOTSTRAP_WARM_BUDGET_MS,
         uriFirstOnly: true,
-      });
-      this.scheduleBackgroundBunkerWarm();
+      })
+        .catch(() => undefined)
+        .finally(() => {
+          this.scheduleBackgroundBunkerWarm();
+        });
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
       this.rpcHealthy = false;

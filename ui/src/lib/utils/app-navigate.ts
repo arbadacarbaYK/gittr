@@ -1,14 +1,10 @@
 /**
- * Client navigation that stays soft most places, but hard-assigns when Explore
- * or the Code tab is involved. Those paths saturate the main thread (relay
- * streams / README markdown + tree hydrate) so router.push after preventDefault
- * can look like a dead click until load finishes.
+ * Soft client navigation by default. Hard full-document loads were used as a
+ * blunt fix when Code-tab hydrate starved clicks — that made *every* chrome
+ * click feel like a 10s tab spinner after RemoteSigner remount warm.
  *
- * Soft nav also gets a short hard fallback (~400ms) as a backup.
- *
- * Important: on the hard path, do NOT preventDefault before calling this.
- * Letting the real <a href> stand is the fallback when JS is starved; we still
- * assign immediately when the handler runs.
+ * Amber signing stays on Push/Star/Watch via ensureRpcHealthy at click time.
+ * Browse must not hard-reload or await bunker warm.
  */
 
 function normalizePath(href: string): string {
@@ -22,6 +18,38 @@ function normalizePath(href: string): string {
   return href.split("?")[0] || href;
 }
 
+function canonicalPath(href: string): string {
+  return normalizePath(href).replace(/\/+$/, "") || "/";
+}
+
+/** First path segments that are never a Nostr entity/repo Code tab. */
+const RESERVED_TOP_SEGMENTS = new Set([
+  "settings",
+  "explore",
+  "repositories",
+  "stars",
+  "zaps",
+  "pulls",
+  "issues",
+  "apps",
+  "pages",
+  "lab",
+  "new",
+  "login",
+  "signup",
+  "help",
+  "legal",
+  "import",
+  "profile",
+  "bounty-hunt",
+  "organizations",
+  "projects",
+  "sponsors",
+  "upgrade",
+  "api",
+  "notifications",
+]);
+
 export function isExplorePath(pathname: string): boolean {
   return pathname === "/explore" || pathname.startsWith("/explore/");
 }
@@ -31,33 +59,30 @@ export function isExploreHref(href: string): boolean {
 }
 
 /**
- * Repo Code tab: `/{entity}/{repo}` with no further segment (optional trailing slash).
- * That page does heavy sync work after the file list paints (README markdown).
+ * Repo Code tab: `/{entity}/{repo}` with no further segment.
+ * Excludes reserved app routes like `/settings/profile`.
  */
 export function isRepoCodePath(pathname: string): boolean {
   const path = normalizePath(pathname || "");
   const parts = path.split("/").filter(Boolean);
-  return parts.length === 2;
+  if (parts.length !== 2) return false;
+  const first = (parts[0] || "").toLowerCase();
+  if (RESERVED_TOP_SEGMENTS.has(first)) return false;
+  return true;
 }
 
 function samePath(a: string, b: string): boolean {
-  const na = normalizePath(a).replace(/\/+$/, "") || "/";
-  const nb = normalizePath(b).replace(/\/+$/, "") || "/";
-  return na === nb;
+  return canonicalPath(a) === canonicalPath(b);
 }
 
 /**
- * Prefer hard nav when leaving/entering Explore, or for ANY leave from the
- * Code tab (header, home, tabs, settings, user menu — not only Issues).
+ * Hard nav is reserved for rare stuck soft transitions — not for every leave
+ * from Code/Explore (that remounted the whole app + bunker warm).
  */
 export function shouldHardNavigate(
-  href: string,
-  pathname?: string | null
+  _href: string,
+  _pathname?: string | null
 ): boolean {
-  const path =
-    pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
-  if (isExplorePath(path) || isExploreHref(href)) return true;
-  if (isRepoCodePath(path) && !samePath(path, href)) return true;
   return false;
 }
 
@@ -65,7 +90,11 @@ type NavEvent = {
   preventDefault: () => void;
 };
 
-const SOFT_NAV_HARD_FALLBACK_MS = 400;
+/** Last-resort hard assign only if soft push truly stalls (RSC hung). */
+const SOFT_NAV_HARD_FALLBACK_MS = 8000;
+
+/** Invalidate in-flight soft→hard fallbacks when a newer navigation starts. */
+let softNavGeneration = 0;
 
 export function appNavigate(
   href: string,
@@ -75,21 +104,30 @@ export function appNavigate(
 ): void {
   if (typeof window === "undefined") return;
   if (shouldHardNavigate(href, pathname)) {
-    // Do not preventDefault — if this handler is delayed, the real <a href>
-    // can still navigate. assign() covers menu onSelect (no native href).
     window.location.assign(href);
     return;
   }
   event?.preventDefault();
   if (router) {
-    const targetPath = normalizePath(href);
+    const targetPath = canonicalPath(href);
+    const gen = ++softNavGeneration;
     router.push(href);
     window.setTimeout(() => {
-      if (window.location.pathname !== targetPath) {
-        window.location.assign(href);
-      }
+      if (gen !== softNavGeneration) return;
+      if (canonicalPath(window.location.pathname) === targetPath) return;
+      // Soft RSC hung for 8s — last resort only.
+      console.warn(
+        "[appNavigate] Soft nav stalled; hard-assigning after",
+        SOFT_NAV_HARD_FALLBACK_MS,
+        "ms",
+        { href, from: pathname }
+      );
+      window.location.assign(href);
     }, SOFT_NAV_HARD_FALLBACK_MS);
     return;
   }
   window.location.assign(href);
 }
+
+// Re-export for tests / callers that still check Code path semantics.
+export { samePath };

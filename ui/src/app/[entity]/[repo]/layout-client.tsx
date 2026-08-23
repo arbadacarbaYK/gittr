@@ -2131,8 +2131,8 @@ export default function RepoLayoutClient({
                         item.link || "",
                         item.name === "Code"
                       );
-                      // Leaving Code while README/tree hydrate: hard-nav immediately
-                      // so tabs stay usable (soft router.push starves on main thread).
+                      // Soft client nav — hard location.assign was freezing the
+                      // tab ~10s on every leave from Code (full remount + bunker).
                       appNavigate(href, router, pathname, e);
                     }}
                     className={clsx(
