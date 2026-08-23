@@ -128,7 +128,7 @@ Profile pages show a **repo count** from Nostr stats, but the grid used to rely 
 - The profile page passes the decoded hex pubkey (npub URLs are decoded client-side; do not pass npub to this API).
 - Response is **field-merged** with local repos (`mergeProfileRepoList`): sparse network rows must not erase About text, display names, or `userRole` (owner cards flipping to contributor green).
 - Below Repositories, the same profile also lists that person’s **Pages** (from **`GET /api/gittr-pages/status-sites`**, filtered by author pubkey / `npub…` site hostname) and **Apps** (from **`GET /api/nostr/software-catalog?author=<hex>`**, author-scoped NIP-82 scrape — not the full Zapstore catalog). Both sections start after browser idle so they do not fight `profile-repos` / metadata. UI: `ProfilePagesAppsSections`.
-- Profile load priority: paint header + local/network **repos** first; defer contribution-graph Nostr activity and Pages/Apps; cap per-repo `#a` PR/issue fan-out. Avoid render-path `console.log` of `userMeta` (that caused production console storms and made the page feel stuck).
+- Profile load priority: paint header + local/network **repos** first (eager grid — do **not** use `useDeferredValue` for cards while counts use live `userRepos`, or you get “Repositories (107) / Load more 59 remaining” with an empty grid for minutes); defer contribution-graph Nostr activity and Pages/Apps; cap per-repo `#a` PR/issue fan-out. Avoid render-path `console.log` of `userMeta` (that caused production console storms and made the page feel stuck). Profile cards skip scanning fat `repo.files` for logos.
 - Smoke test: `curl -sS 'https://YOUR_DOMAIN/api/nostr/profile-repos?ownerPubkey=<hex>' | jq '.repos | length'`
 
 ---

@@ -2,7 +2,6 @@
 
 import {
   use,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -173,9 +172,6 @@ export default function EntityPage({
     );
   }, [resolvedParams.entity]);
   const [userRepos, setUserRepos] = useState<any[]>([]);
-  // Defer the repo grid so header / navigation clicks stay responsive while the
-  // list is being merged/rendered.
-  const deferredUserRepos = useDeferredValue(userRepos);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -2439,11 +2435,10 @@ export default function EntityPage({
     isNostrProfileMirrorWebsite(website, fullPubkeyForMeta);
 
   // Precompute owner metadata for the visible repo grid so we don't call
-  // getUserMetadata once per repo on every render. Use the deferred list so
-  // this heavy work is scheduled at lower priority and doesn't block header clicks.
+  // getUserMetadata once per repo on every render.
   const ownerMetaMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof getUserMetadata>>();
-    const visible = deferredUserRepos.slice(0, visibleRepoCount);
+    const visible = userRepos.slice(0, visibleRepoCount);
     for (const repo of visible) {
       const ownerPubkey =
         repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
@@ -2454,7 +2449,7 @@ export default function EntityPage({
       }
     }
     return map;
-  }, [deferredUserRepos, visibleRepoCount, metadataMap]);
+  }, [userRepos, visibleRepoCount, metadataMap]);
 
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey =
@@ -3575,27 +3570,18 @@ export default function EntityPage({
         </div>
       </div>
 
-      <ProfilePagesAppsSections
-        ownerPubkeyHex={pubkeyForMetadata || fullPubkeyForMeta}
-        onCountsChange={({ pages, apps }) => {
-          setProfilePagesCount((prev) => (prev === pages ? prev : pages));
-          setProfileAppsCount((prev) => (prev === apps ? prev : apps));
-        }}
-      />
-
-      {/* User Repositories */}
+      {/* User Repositories — paint before Pages/Apps so counts never show with an empty grid */}
       {userRepos.length > 0 && (
         <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
           <h2 className="text-2xl font-semibold mb-6">
             Repositories ({userRepos.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {deferredUserRepos.slice(0, visibleRepoCount).map((repo: any) => {
+            {userRepos.slice(0, visibleRepoCount).map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
               // For display, use original name (repo.name)
               const repoForUrl = repo.repo || repo.slug;
-              const repoDisplayName = repo.name || repoForUrl; // CRITICAL: Use original name for display
-              // Use npub format for URLs if we have full pubkey
+              const repoDisplayName = repo.name || repoForUrl;
               let href = `/${repo.entity}/${repoForUrl}`;
               if (
                 repo.ownerPubkey &&
@@ -3607,284 +3593,51 @@ export default function EntityPage({
                 } catch {}
               }
 
-              // Resolve repo icon (same pattern as explore/homepage)
+              // Keep icons cheap on profile: never scan fat repo.files trees here
+              // (that starved the grid for minutes when useDeferredValue lagged).
               let iconUrl: string | null = null;
               try {
-                // Priority 1: Stored logoUrl
                 if (repo.logoUrl && repo.logoUrl.trim().length > 0) {
-                  iconUrl = repo.logoUrl;
-                } else if (repo.files && repo.files.length > 0) {
-                  // Priority 2: Logo/repo image file from repo
-                  const repoName = (repo.repo || repo.slug || repo.name || "")
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]/g, "");
-                  const imageExts = [
-                    "png",
-                    "jpg",
-                    "jpeg",
-                    "gif",
-                    "webp",
-                    "svg",
-                    "ico",
-                  ];
-
-                  // Find all potential icon files with proper prioritization:
-                  // 1. Exact "logo" files (highest priority)
-                  // 2. Files named after the repo (e.g., "tides.png" for tides repo)
-                  // 3. Common icon names in root (repo.png, icon.png, etc.)
-                  const iconFiles = repo.files
-                    .map((f: any) => f.path)
-                    .filter((p: string) => {
-                      const fileName = p.split("/").pop() || "";
-                      const baseName = fileName
-                        .replace(/\.[^.]+$/, "")
-                        .toLowerCase();
-                      const extension =
-                        fileName.split(".").pop()?.toLowerCase() || "";
-                      const isRoot = p.split("/").length === 1;
-
-                      if (!imageExts.includes(extension)) return false;
-
-                      // Match logo files, but exclude third-party logos (alby, etc.)
-                      if (
-                        baseName.includes("logo") &&
-                        !baseName.includes("logo-alby") &&
-                        !baseName.includes("alby-logo")
-                      )
-                        return true;
-
-                      // Match repo-name-based files (e.g., "tides.png" for tides repo)
-                      if (repoName && baseName === repoName) return true;
-
-                      // Match common icon names in root directory
-                      if (
-                        isRoot &&
-                        (baseName === "repo" ||
-                          baseName === "icon" ||
-                          baseName === "favicon")
-                      )
-                        return true;
-
-                      return false;
-                    })
-                    .sort((a: string, b: string) => {
-                      const aParts = a.split("/");
-                      const bParts = b.split("/");
-                      const aName =
-                        aParts[aParts.length - 1]
-                          ?.replace(/\.[^.]+$/, "")
-                          .toLowerCase() || "";
-                      const bName =
-                        bParts[bParts.length - 1]
-                          ?.replace(/\.[^.]+$/, "")
-                          .toLowerCase() || "";
-                      const aIsRoot = aParts.length === 1;
-                      const bIsRoot = bParts.length === 1;
-
-                      // Priority 1: Exact "logo" match
-                      if (aName === "logo" && bName !== "logo") return -1;
-                      if (bName === "logo" && aName !== "logo") return 1;
-
-                      // Priority 2: Repo-name-based files
-                      if (
-                        repoName &&
-                        aName === repoName &&
-                        bName !== repoName &&
-                        bName !== "logo"
-                      )
-                        return -1;
-                      if (
-                        repoName &&
-                        bName === repoName &&
-                        aName !== repoName &&
-                        aName !== "logo"
-                      )
-                        return 1;
-
-                      // Priority 3: Root directory files
-                      if (aName === "logo" && bName === "logo") {
-                        if (aIsRoot && !bIsRoot) return -1;
-                        if (!aIsRoot && bIsRoot) return 1;
-                      }
-                      if (aIsRoot && !bIsRoot) return -1;
-                      if (!bIsRoot && aIsRoot) return 1;
-
-                      // Priority 4: Format preference (png > svg > webp > jpg > gif > ico)
-                      const formatPriority: Record<string, number> = {
-                        png: 0,
-                        svg: 1,
-                        webp: 2,
-                        jpg: 3,
-                        jpeg: 3,
-                        gif: 4,
-                        ico: 5,
-                      };
-                      const aExt = a.split(".").pop()?.toLowerCase() || "";
-                      const bExt = b.split(".").pop()?.toLowerCase() || "";
-                      const aPrio = formatPriority[aExt] ?? 10;
-                      const bPrio = formatPriority[bExt] ?? 10;
-
-                      return aPrio - bPrio;
-                    });
-
-                  const logoFiles = iconFiles;
-                  if (logoFiles.length > 0) {
-                    const logoPath = logoFiles[0];
-
-                    // Helper function to extract owner/repo from various URL formats
-                    const extractOwnerRepo = (
-                      urlString: string
-                    ): {
-                      owner: string;
-                      repo: string;
-                      hostname: string;
-                    } | null => {
-                      try {
-                        // Handle SSH format: git@github.com:owner/repo.git
-                        if (
-                          urlString.includes("@") &&
-                          urlString.includes(":")
-                        ) {
-                          const match = urlString.match(
-                            /(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                          );
-                          if (match && match[1] && match[2] && match[3]) {
-                            const hostname = match[1]!;
-                            const owner = match[2]!;
-                            const repo = match[3]!.replace(/\.git$/, "");
-                            return { owner, repo, hostname };
-                          }
-                        }
-
-                        // Handle HTTPS/HTTP URLs
-                        const url = new URL(urlString);
-                        const parts = url.pathname.split("/").filter(Boolean);
-                        if (parts.length >= 2 && parts[0] && parts[1]) {
-                          return {
-                            owner: parts[0],
-                            repo: parts[1].replace(/\.git$/, ""),
-                            hostname: url.hostname,
-                          };
-                        }
-                      } catch (e) {
-                        // Invalid URL format
-                      }
-                      return null;
-                    };
-
-                    // Try sourceUrl first
-                    const gitUrl: string | undefined = repo.sourceUrl;
-                    let ownerRepo: {
-                      owner: string;
-                      repo: string;
-                      hostname: string;
-                    } | null = null;
-
-                    if (gitUrl) {
-                      ownerRepo = extractOwnerRepo(gitUrl);
-                    }
-
-                    // If sourceUrl didn't work, try clone array
-                    if (
-                      !ownerRepo &&
-                      repo.clone &&
-                      Array.isArray(repo.clone) &&
-                      repo.clone.length > 0
-                    ) {
-                      // Find first GitHub/GitLab/Codeberg URL in clone array
-                      const gitCloneUrl = repo.clone.find(
-                        (url: string) =>
-                          url &&
-                          (url.includes("github.com") ||
-                            url.includes("gitlab.com") ||
-                            url.includes("codeberg.org"))
-                      );
-                      if (gitCloneUrl) {
-                        ownerRepo = extractOwnerRepo(gitCloneUrl);
-                      }
-                    }
-
-                    // If we found a valid git URL, construct raw URL
-                    if (ownerRepo) {
-                      const { owner, repo: repoName, hostname } = ownerRepo;
-                      const branch = repo.defaultBranch || "main";
-
-                      if (
-                        hostname === "github.com" ||
-                        hostname.includes("github.com")
-                      ) {
-                        iconUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                          branch
-                        )}/${logoPath}`;
-                      } else if (
-                        hostname === "gitlab.com" ||
-                        hostname.includes("gitlab.com")
-                      ) {
-                        iconUrl = `https://gitlab.com/${owner}/${repoName}/-/raw/${encodeURIComponent(
-                          branch
-                        )}/${logoPath}`;
-                      } else if (
-                        hostname === "codeberg.org" ||
-                        hostname.includes("codeberg.org")
-                      ) {
-                        iconUrl = `https://codeberg.org/${owner}/${repoName}/raw/branch/${encodeURIComponent(
-                          branch
-                        )}/${logoPath}`;
-                      }
-                    } else {
-                      // For native Nostr repos (without sourceUrl), use the API endpoint
-                      // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-                      // Priority: repositoryName > repo > slug > name
-                      const ownerPubkey =
-                        repo.ownerPubkey ||
-                        getRepoOwnerPubkey(repo, repo.entity);
-                      const repoDataAny = repo;
-                      let repoName =
-                        repoDataAny?.repositoryName ||
-                        repo.repo ||
-                        repo.slug ||
-                        repo.name;
-
-                      // Extract repo name (handle paths like "host.example/my-repo")
-                      if (
-                        repoName &&
-                        typeof repoName === "string" &&
-                        repoName.includes("/")
-                      ) {
-                        const parts = repoName.split("/");
-                        repoName = parts[parts.length - 1] || repoName;
-                      }
-                      if (repoName) {
-                        repoName = String(repoName).replace(/\.git$/, "");
-                      }
-
-                      if (
-                        ownerPubkey &&
-                        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
-                        repoName
-                      ) {
-                        iconUrl = `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
-                          ownerPubkey
-                        )}&repo=${encodeURIComponent(repoName)}`;
-                      }
-                    }
-                  }
-                }
-
-                // Priority 3: Owner Nostr profile picture (last fallback)
-                const ownerPubkey =
-                  repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
-                if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  // Use the precomputed map so we don't re-run the lookup once per repo per render.
-                  const ownerMeta = ownerMetaMap.get(ownerPubkey);
-                  if (ownerMeta?.picture && !iconUrl) {
-                    const picture = ownerMeta.picture;
+                  iconUrl = repo.logoUrl.trim();
+                } else {
+                  const ownerPubkey =
+                    repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
+                  if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+                    const ownerMeta = ownerMetaMap.get(ownerPubkey);
+                    const picture = ownerMeta?.picture;
                     if (
                       picture &&
                       picture.trim().length > 0 &&
                       picture.startsWith("http")
                     ) {
                       iconUrl = picture;
+                    }
+                  }
+                  if (!iconUrl) {
+                    let repoName =
+                      repo.repositoryName ||
+                      repo.repo ||
+                      repo.slug ||
+                      repo.name;
+                    if (
+                      repoName &&
+                      typeof repoName === "string" &&
+                      repoName.includes("/")
+                    ) {
+                      const parts = repoName.split("/");
+                      repoName = parts[parts.length - 1] || repoName;
+                    }
+                    if (repoName) {
+                      repoName = String(repoName).replace(/\.git$/, "");
+                    }
+                    if (
+                      ownerPubkey &&
+                      /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+                      repoName
+                    ) {
+                      iconUrl = `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
+                        ownerPubkey
+                      )}&repo=${encodeURIComponent(repoName)}`;
                     }
                   }
                 }
@@ -3909,7 +3662,7 @@ export default function EntityPage({
 
               return (
                 <a
-                  key={repo.slug}
+                  key={profileRepoRowKey(repo)}
                   href={href}
                   onClick={(e) => {
                     e.preventDefault();
@@ -4020,6 +3773,14 @@ export default function EntityPage({
           </div>
         </div>
       )}
+
+      <ProfilePagesAppsSections
+        ownerPubkeyHex={pubkeyForMetadata || fullPubkeyForMeta}
+        onCountsChange={({ pages, apps }) => {
+          setProfilePagesCount((prev) => (prev === pages ? prev : pages));
+          setProfileAppsCount((prev) => (prev === apps ? prev : apps));
+        }}
+      />
     </div>
   );
 }
