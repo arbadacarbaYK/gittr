@@ -1,3 +1,5 @@
+import { nip19 } from "nostr-tools";
+
 export type ProfileRepoCloneHints = {
   clone: string[];
   sourceUrl?: string;
@@ -29,7 +31,18 @@ export async function fetchRepoCloneHintsFromProfile(
   ownerPubkey: string,
   repoName: string
 ): Promise<ProfileRepoCloneHints | null> {
-  const pk = ownerPubkey.trim().toLowerCase();
+  let pk = ownerPubkey.trim();
+  if (pk.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(pk);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        pk = decoded.data;
+      }
+    } catch {
+      return null;
+    }
+  }
+  pk = pk.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(pk)) return null;
   const slug = repoName.trim();
   if (!slug) return null;

@@ -3,6 +3,7 @@
  * Settings historically navigated away before the signer finished, so relays still
  * have a live kind 30617. Call from My Repos when the owner is signed in.
  */
+import { appAlert, appConfirm } from "@/components/ui/app-dialog";
 import { publishRepoSoftDelete } from "@/lib/nostr/publish-repo-soft-delete";
 import type { ResolvedNostrSigner } from "@/lib/nostr/signer";
 import type { DeletedRepoTombstone } from "@/lib/repos/deleted-repo-tombstones";
@@ -34,6 +35,10 @@ function tombstoneOwnedBy(
 /**
  * If local tombstones still have live (non-deleted) announces for this owner,
  * confirm once and publish soft-deletes + bridge wipe for each.
+ *
+ * `liveRepoNames` must come from `/api/nostr/profile-repos`, which treats a
+ * repo as live only when the **latest kind 30617** is not soft-deleted
+ * (kind 30618 state events must not resurrect a delete).
  */
 export async function healLocalSoftDeletesIfNeeded(opts: {
   ownerPubkey: string;
@@ -98,18 +103,22 @@ export async function healLocalSoftDeletesIfNeeded(opts: {
     sessionStorage.setItem(SESSION_KEY, "1");
   }
 
-  const okConfirm = window.confirm(
+  const okConfirm = await appConfirm(
     `${unique.length} repo(s) are hidden here but still live on Nostr (delete never finished signing).\n\n` +
       `Publish soft-deletes now?\n\n${unique.slice(0, 12).join(", ")}${
         unique.length > 12 ? ", …" : ""
-      }\n\nAmber / your extension may ask once per repo.`
+      }\n\nAmber / your extension may ask once per repo.`,
+    "Repos still on Nostr"
   );
   if (!okConfirm) {
     return { attempted: 0, ok: 0, failed: [] };
   }
 
   if (!opts.publish || !opts.signer) {
-    window.alert("Sign in with Amber, NIP-07, or a key to publish soft-deletes.");
+    await appAlert(
+      "Sign in with Amber, NIP-07, or a key to publish soft-deletes.",
+      "Cannot publish"
+    );
     return { attempted: 0, ok: 0, failed: unique };
   }
 
@@ -134,12 +143,16 @@ export async function healLocalSoftDeletesIfNeeded(opts: {
   }
 
   if (failed.length) {
-    window.alert(
-      `Published ${ok}/${unique.length}. Failed:\n${failed.slice(0, 8).join("\n")}`
+    await appAlert(
+      `Published ${ok}/${unique.length}. Failed:\n${failed
+        .slice(0, 8)
+        .join("\n")}`,
+      "Soft-delete"
     );
   } else if (ok > 0) {
-    window.alert(
-      `Published soft-deletes for ${ok} repo(s). Bridge wipe requested.`
+    await appAlert(
+      `Published soft-deletes for ${ok} repo(s). Bridge wipe requested.`,
+      "Soft-delete"
     );
   }
 

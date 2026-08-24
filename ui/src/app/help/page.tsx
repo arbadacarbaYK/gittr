@@ -284,7 +284,10 @@ export default function HelpPage() {
             <strong className="text-white">Releases</strong> tab shows forge
             download assets when a GitHub/Codeberg/GitLab source is linked, and
             also NIP-82 / Blossom releases from Nostr (same family as{" "}
-            <Link href="/apps" className="text-purple-400 hover:text-purple-300">
+            <Link
+              href="/apps"
+              className="text-purple-400 hover:text-purple-300"
+            >
               /apps
             </Link>
             ). Creating or announcing a release is <em>not</em> the same as{" "}
@@ -1055,6 +1058,21 @@ export default function HelpPage() {
                   Nostr Pages and app announce work the same as for GitHub once
                   a Release exists on that forge.
                 </li>
+                <li>
+                  <strong className="text-white">Nostr-only / GRASP</strong> —
+                  paste{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">
+                    npub…/repo
+                  </code>
+                  , a gittr.space repo page, or a{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">
+                    git.gittr.space
+                  </code>{" "}
+                  clone URL on Option 1. The{" "}
+                  <strong className="text-white">Fork</strong> button on a repo
+                  page uses the same import (parent files, not an empty About
+                  stub).
+                </li>
               </ul>
 
               <HelpSubTopic title={<>Three ways gittr talks to forges</>}>
@@ -1438,11 +1456,10 @@ export default function HelpPage() {
                   <p className="font-semibold text-white">Publishing</p>
                   <p className="text-sm text-gray-200">
                     Use <strong>Push to Nostr</strong> on the Code tab. Approve
-                    with whatever you logged in with:{" "}
-                    <strong>NIP-07</strong> extension,{" "}
-                    <strong>NIP-46 remote signer</strong> (Amber / bunker), or
-                    nsec. That publishes the NIP‑34 announcement to your relays
-                    and, on gittr, tries to mirror the Git repo to{" "}
+                    with whatever you logged in with: <strong>NIP-07</strong>{" "}
+                    extension, <strong>NIP-46 remote signer</strong> (Amber /
+                    bunker), or nsec. That publishes the NIP‑34 announcement to
+                    your relays and, on gittr, tries to mirror the Git repo to{" "}
                     <code className="bg-black/40 px-1 rounded">
                       git.gittr.space
                     </code>{" "}
@@ -1498,7 +1515,9 @@ export default function HelpPage() {
             <HelpTopic id="push-to-nostr" title={<>Push to Nostr</>}>
               <p>
                 After making local changes, click <strong>Push to Nostr</strong>{" "}
-                on the Code tab (sidebar). Sign with{" "}
+                on the Code tab (sidebar). Result and cache-flush messages open
+                in a gittr dialog that grows to fit the full text (not the
+                browser&apos;s tiny alert box). Sign with{" "}
                 <strong>NIP-07</strong>, <strong>Amber / NIP-46</strong> remote
                 signer, or nsec — same login as Settings. Or use{" "}
                 <strong>gittr-mcp</strong>{" "}

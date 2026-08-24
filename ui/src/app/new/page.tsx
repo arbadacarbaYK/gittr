@@ -6,9 +6,23 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { githubParentForkedFrom } from "@/lib/repos/fork-attribution";
-import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import {
-  detectGitForge,
+  type ForkImportCandidate,
+  gittrForkPointer,
+  importApiForUrl,
+  isGithubOwnerRepoShorthand,
+  parseGittrRepoPointer,
+  pickForkImportUrls,
+  rewriteGittrWebUrlToGitRemote,
+} from "@/lib/repos/fork-import-source";
+import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
+import {
+  type StoredContributor,
+  type StoredRepo,
+  loadStoredRepos,
+} from "@/lib/repos/storage";
+import {
+  isCloneableUpstreamSourceUrl,
   normalizeGitCloneUrl,
 } from "@/lib/utils/detect-git-forge";
 import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
@@ -53,27 +67,86 @@ function NewRepoPageContent() {
   const forkParts = forkParam.split("/").filter(Boolean);
   const forkEntity = forkParts[0] || "";
   const forkRepo = forkParts[1] || "";
-  const [forkSource, setForkSource] = useState<any | null>(null);
+  const [forkSource, setForkSource] = useState<StoredRepo | null>(null);
+  const [forkHintsReady, setForkHintsReady] = useState(false);
 
-  // Prefill name for forks and load source repo from localStorage
+  // Prefill name for forks and load source repo (localStorage + live clone/source)
   useEffect(() => {
-    try {
-      if (forkEntity && forkRepo) {
+    let cancelled = false;
+    if (!forkEntity || !forkRepo) {
+      setForkHintsReady(true);
+      return;
+    }
+    void (async () => {
+      let source: StoredRepo | null = null;
+      try {
         const repos = loadStoredRepos();
-        const source = findRepoByEntityAndName<StoredRepo>(
-          repos,
+        source =
+          findRepoByEntityAndName<StoredRepo>(repos, forkEntity, forkRepo) ||
+          null;
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        const hints = await fetchRepoCloneHintsFromProfile(
           forkEntity,
           forkRepo
         );
-        if (source) {
-          setForkSource(source);
-          if (!name) setName(`${source.name || forkRepo}-fork`);
-          const sourceWithReadme = source as StoredRepo & { readme?: string };
-          if (sourceWithReadme.readme) setReadme(sourceWithReadme.readme);
+        if (hints && !cancelled) {
+          source = {
+            ...(source || {
+              entity: forkEntity,
+              repo: forkRepo,
+              name: forkRepo,
+            }),
+            clone:
+              hints.clone.length > 0 ? hints.clone : source?.clone || undefined,
+            sourceUrl: hints.sourceUrl || source?.sourceUrl,
+            description: source?.description,
+          };
         }
+      } catch {
+        /* clone tags optional — inferred GRASP URLs still work */
       }
-    } catch {}
-  }, [forkEntity, forkRepo]);
+
+      if (cancelled) return;
+      if (source) {
+        setForkSource(source);
+        setName((current) => {
+          if (current) return current;
+          const base = source.name || forkRepo;
+          try {
+            if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+              const myNpub = nip19.npubEncode(pubkey);
+              const taken = findRepoByEntityAndName(
+                loadStoredRepos(),
+                myNpub,
+                base
+              );
+              return taken ? `${base}-fork` : base;
+            }
+          } catch {
+            /* keep base */
+          }
+          return base;
+        });
+        const sourceWithReadme = source as StoredRepo & { readme?: string };
+        if (sourceWithReadme.readme) setReadme(sourceWithReadme.readme);
+      } else {
+        setForkSource({
+          entity: forkEntity,
+          repo: forkRepo,
+          name: forkRepo,
+        });
+        setName((current) => current || forkRepo);
+      }
+      setForkHintsReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [forkEntity, forkRepo, pubkey]);
 
   // Helper to get entity slug and display name - use Nostr pubkey, not username slug
   const getEntityInfo = () => {
@@ -126,6 +199,95 @@ function NewRepoPageContent() {
     return { entitySlug: entityNpub, displayName };
   };
 
+  function resolveImportCandidates(): ForkImportCandidate[] {
+    const typedUrl = url.trim();
+    if (typedUrl) {
+      const pointer = parseGittrRepoPointer(typedUrl);
+      const rewritten = rewriteGittrWebUrlToGitRemote(typedUrl);
+      if (isGithubOwnerRepoShorthand(typedUrl)) {
+        return [{ url: `https://github.com/${typedUrl}`, via: "forge-source" }];
+      }
+      if (pointer) {
+        return pickForkImportUrls({
+          sourceUrl: forkSource?.sourceUrl || rewritten,
+          clone: [
+            ...(Array.isArray(forkSource?.clone) ? forkSource.clone : []),
+            ...(rewritten ? [rewritten] : []),
+          ],
+          forkEntity: pointer.entity,
+          forkRepo: pointer.repo,
+        });
+      }
+      if (rewritten) {
+        return [{ url: rewritten, via: "clone" }];
+      }
+      const normalized = normalizeGitCloneUrl(typedUrl);
+      return [
+        {
+          url: normalized,
+          via:
+            importApiForUrl(normalized) === "github" ? "forge-source" : "clone",
+        },
+      ];
+    }
+    if (forkEntity && forkRepo) {
+      return pickForkImportUrls({
+        sourceUrl: forkSource?.sourceUrl,
+        clone: forkSource?.clone,
+        forkEntity,
+        forkRepo,
+      });
+    }
+    return [];
+  }
+
+  async function postImportFromUrl(sourceUrl: string): Promise<{
+    ok: boolean;
+    d?: any;
+    error?: string;
+  }> {
+    const normalized = normalizeGitCloneUrl(sourceUrl);
+    const api = importApiForUrl(normalized);
+    let r: Response;
+    if (api === "github") {
+      const githubToken =
+        typeof window !== "undefined"
+          ? localStorage.getItem("gittr_github_token")
+          : null;
+      r = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceUrl: normalized,
+          ...(githubToken ? { githubToken } : {}),
+        }),
+      });
+    } else {
+      r = await fetch("/api/import-git", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceUrl: normalized }),
+      });
+    }
+    const rawText = await r.text();
+    try {
+      const d = JSON.parse(rawText);
+      if (d.status === "completed" || d.success) {
+        return { ok: true, d };
+      }
+      return {
+        ok: false,
+        d,
+        error: d.message || d.status || `HTTP ${r.status}`,
+      };
+    } catch {
+      return {
+        ok: false,
+        error: `HTTP ${r.status}: non-JSON response. ${rawText.slice(0, 180)}`,
+      };
+    }
+  }
+
   async function submit() {
     setStatus("Working…");
     let entityInfo;
@@ -135,67 +297,35 @@ function NewRepoPageContent() {
       setStatus(`Error: ${e.message}`);
       return;
     }
-    if (url) {
+    const isForkIntent = !!(forkEntity && forkRepo);
+    const importCandidates = resolveImportCandidates();
+
+    if (importCandidates.length > 0) {
       setImporting(true);
       try {
-        // Normalize the URL - support GitHub name-only format (owner/repo)
-        let normalizedUrl = url.trim();
+        let d: any = null;
+        let used: ForkImportCandidate | null = null;
+        let lastError = "";
+        let normalizedUrl = "";
 
-        // Check if it's just "owner/repo" format (no protocol, no dots, has slash)
-        const githubNamePattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
-        if (
-          githubNamePattern.test(normalizedUrl) &&
-          !normalizedUrl.includes("://") &&
-          !normalizedUrl.includes("@")
-        ) {
-          normalizedUrl = `https://github.com/${normalizedUrl}`;
-          setUrl(normalizedUrl);
+        for (const candidate of importCandidates) {
+          setStatus(`Importing from ${candidate.url}…`);
+          const result = await postImportFromUrl(candidate.url);
+          if (result.ok && result.d) {
+            d = result.d;
+            used = candidate;
+            normalizedUrl = candidate.url;
+            break;
+          }
+          lastError = result.error || "Import failed";
         }
 
-        normalizedUrl = normalizeGitCloneUrl(normalizedUrl);
-        const forge = detectGitForge(normalizedUrl);
-
-        let r: Response;
-        let d: any;
-
-        if (forge.useGithubApi) {
-          setStatus("Importing from GitHub…");
-          const githubToken =
-            typeof window !== "undefined"
-              ? localStorage.getItem("gittr_github_token")
-              : null;
-          r = await fetch("/api/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sourceUrl: normalizedUrl,
-              ...(githubToken ? { githubToken } : {}),
-            }),
-          });
-        } else {
-          setStatus(`Importing from ${forge.label} via git clone…`);
-          r = await fetch("/api/import-git", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourceUrl: normalizedUrl }),
-          });
-        }
-
-        const rawText = await r.text();
-        try {
-          d = JSON.parse(rawText);
-        } catch {
-          setStatus(
-            `Import failed (HTTP ${
-              r.status
-            }): server returned a non-JSON response. ${rawText.slice(0, 180)}`
+        if (d && used) {
+          // Slugify the imported repo name to ensure URL-safe format.
+          // Forks keep the name the user chose (parent name by default).
+          const importedRepoSlug = slugify(
+            isForkIntent ? name || d.repo || d.slug : d.repo || d.slug
           );
-          return;
-        }
-
-        if (d.status === "completed" || d.success) {
-          // Slugify the imported repo name to ensure URL-safe format
-          const importedRepoSlug = slugify(d.repo || d.slug);
           if (!importedRepoSlug) {
             setStatus(
               `Import failed: Repository name "${
@@ -207,6 +337,7 @@ function NewRepoPageContent() {
           setStatus(`Imported ${entityInfo.entitySlug}/${importedRepoSlug}`);
           setReadme(d.readme || "");
 
+          let importedFileCount = 0;
           // store repo locally for listing - always use current user's Nostr pubkey as entity
           try {
             const repos = JSON.parse(
@@ -252,8 +383,22 @@ function NewRepoPageContent() {
 
             // CRITICAL: Preserve original GitHub repo name (with dots) in 'name' field for display
             // Use slugified version for URLs (slug, repo, repositoryName)
-            const originalRepoName =
-              d.repo || d.slug || name || importedRepoSlug; // Original name from GitHub (may have dots)
+            const originalRepoName = isForkIntent
+              ? name || d.repo || d.slug || importedRepoSlug
+              : d.repo || d.slug || name || importedRepoSlug;
+
+            const parentForgeSource =
+              forkSource?.sourceUrl &&
+              isCloneableUpstreamSourceUrl(forkSource.sourceUrl)
+                ? forkSource.sourceUrl
+                : undefined;
+            const importedForgeSource =
+              used.via === "forge-source" &&
+              isCloneableUpstreamSourceUrl(
+                d.sourceUrl || d.htmlUrl || normalizedUrl
+              )
+                ? d.sourceUrl || d.htmlUrl || normalizedUrl
+                : undefined;
 
             // CRITICAL: Validate entity is not a domain name or empty
             if (
@@ -272,6 +417,7 @@ function NewRepoPageContent() {
             let fileCount = 0;
             if (d.files && Array.isArray(d.files) && d.files.length > 0) {
               fileCount = d.files.length;
+              importedFileCount = fileCount;
               try {
                 const { saveRepoFiles } = await import("@/lib/repos/storage");
                 saveRepoFiles(entity, importedRepoSlug, d.files);
@@ -296,15 +442,30 @@ function NewRepoPageContent() {
               name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
               // Always set ownerPubkey for reliable ownership detection
               ownerPubkey: pubkey || undefined,
-              sourceUrl: d.sourceUrl || d.htmlUrl || normalizedUrl,
-              forkedFrom: githubParentForkedFrom({
-                htmlUrl: d.htmlUrl || d.sourceUrl || normalizedUrl,
-                isFork: d.isGithubFork,
-                parentHtmlUrl: d.parentHtmlUrl,
-              }),
-              readme: d.readme,
+              sourceUrl:
+                (isForkIntent
+                  ? parentForgeSource || importedForgeSource
+                  : d.sourceUrl || d.htmlUrl || normalizedUrl) || undefined,
+              forkedFrom: isForkIntent
+                ? gittrForkPointer(forkEntity, forkRepo)
+                : githubParentForkedFrom({
+                    htmlUrl: d.htmlUrl || d.sourceUrl || normalizedUrl,
+                    isFork: d.isGithubFork,
+                    parentHtmlUrl: d.parentHtmlUrl,
+                  }),
+              clone: isForkIntent
+                ? forkSource?.clone && forkSource.clone.length > 0
+                  ? forkSource.clone
+                  : used.via !== "forge-source"
+                  ? [normalizedUrl]
+                  : undefined
+                : undefined,
+              readme:
+                d.readme || (isForkIntent ? forkSource?.readme : undefined),
               fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
-              description: d.description,
+              description:
+                (isForkIntent ? forkSource?.description : undefined) ||
+                d.description,
               stars: d.stars,
               forks: d.forks,
               languages: d.languages,
@@ -360,6 +521,12 @@ function NewRepoPageContent() {
                 : [rec, ...repos];
             localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
 
+            clearDeletedRepoTombstones({
+              entity,
+              repo: importedRepoSlug,
+              ownerPubkey: pubkey || undefined,
+            });
+
             // Dispatch event to update repositories page
             window.dispatchEvent(new CustomEvent("gittr:repo-created"));
 
@@ -378,27 +545,54 @@ function NewRepoPageContent() {
           }
           // Only redirect if repo was successfully created
           if (importedRepoSlug && entityInfo) {
-            setTimeout(() => router.push("/repositories"), 600);
+            const next =
+              isForkIntent && importedFileCount === 0
+                ? `/${entityInfo.entitySlug}/${importedRepoSlug}/upload`
+                : isForkIntent
+                ? `/${entityInfo.entitySlug}/${importedRepoSlug}`
+                : "/repositories";
+            setTimeout(() => router.push(next), 600);
+            return;
           } else {
             setStatus(
               `Import failed: Repository was not created. ${
                 d.message || d.status || "Unknown error"
               }`
             );
+            if (!isForkIntent) return;
           }
+        } else if (!isForkIntent) {
+          setStatus(`Import failed: ${lastError || "Unknown error"}`);
+          return;
         } else {
           setStatus(
-            `Import failed: ${d.message || d.status || `HTTP ${r.status}`}`
+            `Could not clone the parent (${
+              lastError || "unknown error"
+            }). Trying a local copy…`
           );
         }
       } catch (importErr: any) {
         console.error("❌ [New Repo] Import error:", importErr);
-        setStatus(`Import failed: ${importErr?.message || String(importErr)}`);
+        if (!isForkIntent) {
+          setStatus(
+            `Import failed: ${importErr?.message || String(importErr)}`
+          );
+          return;
+        }
+        setStatus(
+          `Could not clone the parent (${
+            importErr?.message || importErr
+          }). Trying a local copy…`
+        );
       } finally {
         setImporting(false);
       }
-    } else {
-      // Create new repo - slugify the name to ensure URL-safe format
+    }
+
+    {
+      // Empty create, or fork fallback when clone failed.
+      if (!isForkIntent && importCandidates.length > 0) return;
+      if (!isForkIntent && !name.trim()) return;
       const repoSlug = slugify(name || "repo");
       if (!repoSlug) {
         setStatus("Error: Repository name is not valid for URL");
@@ -428,13 +622,7 @@ function NewRepoPageContent() {
         }
 
         // Ensure owner is ALWAYS in contributors array with pubkey for icon resolution
-        let contributors: Array<{
-          pubkey?: string;
-          name?: string;
-          picture?: string;
-          weight: number;
-          githubLogin?: string;
-        }> = [];
+        let contributors: StoredContributor[] = [];
 
         if (isFork) {
           // When forking, include original contributors but ensure new owner is added
@@ -487,32 +675,30 @@ function NewRepoPageContent() {
         // Only store fileCount in repo object, not full files array
         let fileCount = 0;
         if (isFork && forkSource) {
-          // When forking, copy files from source repo
-          const sourceFiles = forkSource.files || [];
-          if (sourceFiles.length > 0) {
-            // Try to load from separate storage if files not in repo object
-            const { loadRepoFiles, saveRepoFiles } = await import(
-              "@/lib/repos/storage"
-            );
-            const filesToCopy =
-              Array.isArray(sourceFiles) && sourceFiles.length > 0
-                ? sourceFiles
-                : loadRepoFiles(forkEntity, forkRepo);
+          const { loadRepoFiles, saveRepoFiles } = await import(
+            "@/lib/repos/storage"
+          );
+          const fromObject = Array.isArray(forkSource.files)
+            ? forkSource.files
+            : [];
+          const filesToCopy =
+            fromObject.length > 0
+              ? fromObject
+              : loadRepoFiles(forkEntity, forkRepo);
 
-            if (filesToCopy.length > 0) {
-              fileCount = filesToCopy.length;
-              try {
-                saveRepoFiles(entity, repoSlug, filesToCopy);
-                console.log(
-                  `✅ [New Repo] Saved ${fileCount} files to separate storage for fork ${entity}/${repoSlug}`
-                );
-              } catch (e: any) {
-                console.error(
-                  `❌ [New Repo] Failed to save files separately for fork:`,
-                  e
-                );
-                // Continue anyway - fileCount will be 0
-              }
+          if (filesToCopy.length > 0) {
+            fileCount = filesToCopy.length;
+            try {
+              saveRepoFiles(entity, repoSlug, filesToCopy);
+              console.log(
+                `✅ [New Repo] Saved ${fileCount} files to separate storage for fork ${entity}/${repoSlug}`
+              );
+            } catch (e: any) {
+              console.error(
+                `❌ [New Repo] Failed to save files separately for fork:`,
+                e
+              );
+              fileCount = 0;
             }
           }
         }
@@ -530,8 +716,16 @@ function NewRepoPageContent() {
           readme: isFork ? forkSource.readme || "" : undefined,
           fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
           // Keep attribution of source
-          forkedFrom: isFork ? `/${forkEntity}/${forkRepo}` : undefined,
-          sourceUrl: isFork ? forkSource.sourceUrl || undefined : undefined,
+          forkedFrom: isFork
+            ? gittrForkPointer(forkEntity, forkRepo)
+            : undefined,
+          sourceUrl: isFork
+            ? forkSource.sourceUrl &&
+              isCloneableUpstreamSourceUrl(forkSource.sourceUrl)
+              ? forkSource.sourceUrl
+              : undefined
+            : undefined,
+          clone: isFork ? forkSource.clone : undefined,
           // Carry over description and topics where useful
           description: isFork ? forkSource.description || undefined : undefined,
           topics: isFork ? forkSource.topics || [] : undefined,
@@ -564,7 +758,6 @@ function NewRepoPageContent() {
           })(),
           defaultBranch: isFork ? forkSource.defaultBranch : undefined,
           branches: isFork ? forkSource.branches : undefined,
-          releases: isFork ? forkSource.releases : undefined,
           createdAt: Date.now(),
           status: "local" as const,
         } as any;
@@ -659,7 +852,47 @@ function NewRepoPageContent() {
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-      <h1 className="text-2xl font-bold mb-4">Create repository</h1>
+      <h1 className="text-2xl font-bold mb-4">
+        {forkEntity && forkRepo ? "Fork repository" : "Create repository"}
+      </h1>
+
+      {forkEntity && forkRepo && (
+        <div className="mb-6 p-4 bg-purple-900/20 border border-purple-500/50 rounded">
+          <h2 className="mb-2 font-semibold text-purple-400">
+            Fork {forkEntity}/{forkRepo}
+          </h2>
+          <p className="mb-3 text-sm text-gray-300">
+            Copies the files from the parent — GitHub/GitLab if it has an
+            external source, otherwise the Nostr/GRASP git clone. Local until
+            you Push to Nostr.
+          </p>
+          <label className="mb-2 block text-sm font-medium">
+            Repository Name
+          </label>
+          <input
+            className="w-full border p-2 text-black"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={forkRepo}
+          />
+          <button
+            className="mt-3 rounded border border-purple-500 bg-purple-600 px-4 py-2 text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={submit}
+            disabled={!name.trim() || importing || !forkHintsReady}
+          >
+            {importing
+              ? "Forking…"
+              : !forkHintsReady
+              ? "Looking up parent…"
+              : "Fork repository"}
+          </button>
+          {status && (
+            <div className="mt-3 whitespace-pre-wrap text-sm text-[var(--color-text-secondary)]">
+              {status}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mb-6 p-4 bg-purple-900/20 border border-purple-500/50 rounded">
         <h2 className="font-semibold text-purple-400 mb-2">
@@ -668,10 +901,19 @@ function NewRepoPageContent() {
         <p className="text-sm text-gray-300 mb-3">
           One repo at a time. <strong className="text-gray-200">GitHub:</strong>{" "}
           short <code className="bg-gray-800 px-1 rounded">owner/repo</code> or
-          full URL. <strong className="text-gray-200">GitLab, Codeberg, Gitea,</strong>{" "}
-          Forgejo, or other hosts: full clone URL only (
-          <code className="bg-gray-800 px-1 rounded">https://…</code> or{" "}
-          <code className="bg-gray-800 px-1 rounded">git@…</code>).
+          full URL.{" "}
+          <strong className="text-gray-200">GitLab, Codeberg, Gitea,</strong>{" "}
+          Forgejo, or other hosts: full clone URL.{" "}
+          <strong className="text-gray-200">Nostr-only:</strong> paste{" "}
+          <code className="bg-gray-800 px-1 rounded">npub…/repo</code>, a{" "}
+          <code className="bg-gray-800 px-1 rounded">
+            gittr.space/npub…/repo
+          </code>{" "}
+          page, or a GRASP clone URL (
+          <code className="bg-gray-800 px-1 rounded">
+            https://git.gittr.space/…
+          </code>
+          ).
         </p>
         <label className="block text-sm font-medium mb-2">
           Repository link
@@ -701,9 +943,8 @@ function NewRepoPageContent() {
           placeholder="arbadacarbaYK/gittr · https://codeberg.org/owner/repo · https://gitlab.com/group/repo"
         />
         <p className="text-xs mt-1 text-gray-400">
-          Examples:{" "}
-          <code className="bg-gray-800 px-1 rounded">owner/repo</code> (GitHub
-          only),{" "}
+          Examples: <code className="bg-gray-800 px-1 rounded">owner/repo</code>{" "}
+          (GitHub only),{" "}
           <code className="bg-gray-800 px-1 rounded">
             https://codeberg.org/owner/repo
           </code>

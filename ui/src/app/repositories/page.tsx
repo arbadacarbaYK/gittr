@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { appAlert, appConfirm } from "@/components/ui/app-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
@@ -21,6 +22,7 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { usableCloneUrls } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { healLocalSoftDeletesIfNeeded } from "@/lib/nostr/heal-local-soft-deletes";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -33,7 +35,6 @@ import {
   repairHostOnlyCloneAnnounces,
 } from "@/lib/nostr/repair-host-only-clones";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
-import { healLocalSoftDeletesIfNeeded } from "@/lib/nostr/heal-local-soft-deletes";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -81,8 +82,8 @@ import {
 } from "@/lib/utils/repo-status";
 
 import { Globe, Loader2, Lock, Upload } from "lucide-react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { OnEvent } from "nostr-relaypool";
 import { type Event as NostrEvent, nip19 } from "nostr-tools";
 
@@ -2112,8 +2113,8 @@ export default function RepositoriesPage() {
               typeof row.lastNostrEventCreatedAt === "number"
                 ? row.lastNostrEventCreatedAt * 1000
                 : typeof row.lastActivity === "number"
-                  ? row.lastActivity
-                  : undefined;
+                ? row.lastActivity
+                : undefined;
             // Flush/delete tombstones must survive profile-repos refill of old 30617s.
             if (
               isDeletedRepoTombstoned({
@@ -2128,24 +2129,24 @@ export default function RepositoriesPage() {
             return true;
           })
           .map((row) => ({
-          slug: row.repo,
-          entity: row.entity,
-          repo: row.repo,
-          name: row.name || row.repo,
-          description: row.description || "",
-          ownerPubkey: row.ownerPubkey,
-          createdAt: row.lastActivity,
-          updatedAt: row.lastActivity,
-          lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
-          lastNostrEventId: row.lastNostrEventId,
-          stateEventId: row.stateEventId,
-          sourceUrl: row.sourceUrl,
-          forkedFrom: row.forkedFrom,
-          clone: row.clone,
-          syncedFromNostr: true,
-          fromNostr: true,
-          publicRead: row.publicRead !== false,
-        }));
+            slug: row.repo,
+            entity: row.entity,
+            repo: row.repo,
+            name: row.name || row.repo,
+            description: row.description || "",
+            ownerPubkey: row.ownerPubkey,
+            createdAt: row.lastActivity,
+            updatedAt: row.lastActivity,
+            lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
+            lastNostrEventId: row.lastNostrEventId,
+            stateEventId: row.stateEventId,
+            sourceUrl: row.sourceUrl,
+            forkedFrom: row.forkedFrom,
+            clone: row.clone,
+            syncedFromNostr: true,
+            fromNostr: true,
+            publicRead: row.publicRead !== false,
+          }));
 
         if (rows.length === 0) {
           if (!cancelled) setNostrOwnedListReady(true);
@@ -2159,7 +2160,11 @@ export default function RepositoriesPage() {
           setNostrOwnedListReady(true);
           loadRepos();
           console.log(
-            `✅ [Repositories] Refilled ${rows.length} owned repo(s) from profile-repos API (${data.repos.length - rows.length} hidden by local flush/delete)`
+            `✅ [Repositories] Refilled ${
+              rows.length
+            } owned repo(s) from profile-repos API (${
+              data.repos.length - rows.length
+            } hidden by local flush/delete)`
           );
         }
       } catch (e) {
@@ -2251,9 +2256,7 @@ export default function RepositoriesPage() {
               })
               .catch(() => {});
 
-            (window as any).healGittrSoftDeletes = async (
-              names?: string[]
-            ) => {
+            (window as any).healGittrSoftDeletes = async (names?: string[]) => {
               const { healLocalSoftDeletesIfNeeded } = await import(
                 "@/lib/nostr/heal-local-soft-deletes"
               );
@@ -2266,7 +2269,9 @@ export default function RepositoriesPage() {
                 return;
               }
               const res = await fetch(
-                `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pubkey)}`,
+                `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(
+                  pubkey
+                )}`,
                 { cache: "no-store" }
               );
               const data = res.ok
@@ -2818,159 +2823,174 @@ export default function RepositoriesPage() {
           {/* Flush others' repos cache Confirmation Modal */}
           {showClearForeignConfirm && (
             <div
-              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+              className="fixed inset-0 z-50 overflow-y-auto bg-black/70"
               onClick={() => setShowClearForeignConfirm(false)}
             >
-              <div
-                className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
-                onClick={(e: MouseEvent) => e.stopPropagation()}
-              >
-                <h2 className="text-xl font-bold mb-4 text-orange-400">
-                  Flush others&apos; repos cache?
-                </h2>
+              <div className="flex min-h-full items-center justify-center p-4">
+                <div
+                  className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full"
+                  onClick={(e: MouseEvent) => e.stopPropagation()}
+                >
+                  <h2 className="text-xl font-bold mb-4 text-orange-400">
+                    Flush others&apos; repos cache?
+                  </h2>
 
-                <div className="space-y-4 mb-6">
-                  <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
-                    <p className="font-semibold text-yellow-300 mb-2">
-                      What will be removed from this browser:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
-                      <li>Cached copies of repos you don&apos;t own</li>
-                      <li>
-                        Imported files, issues, PRs, and commits for those repos
-                      </li>
-                      <li>Explore leftovers from other people&apos;s repos</li>
-                    </ul>
-                    {foreignFlushPreview && (
-                      <p className="text-sm text-yellow-100 mt-3">
-                        This will remove{" "}
-                        <strong>{foreignFlushPreview.clearedRepos}</strong>{" "}
-                        other people&apos;s repo
-                        {foreignFlushPreview.clearedRepos === 1 ? "" : "s"}
-                        {foreignFlushPreview.duplicateRowsCollapsed > 0
-                          ? ` (plus ${foreignFlushPreview.duplicateRowsCollapsed} duplicate cache rows of the same repos)`
-                          : ""}
-                        {foreignFlushPreview.clearedKeys > 0
-                          ? ` and ${foreignFlushPreview.clearedKeys} related file/issue cache entries`
-                          : ""}
-                        . Your {foreignFlushPreview.keptOwnRepos} repo
-                        {foreignFlushPreview.keptOwnRepos === 1 ? "" : "s"} stay
-                        {foreignFlushPreview.keptOwnRepos === 1 ? "s" : ""}.
-                        {foreignFlushPreview.keptForeignLocal > 0
-                          ? ` ${foreignFlushPreview.keptForeignLocal} other-people repo(s) with unpushed local edits are kept.`
-                          : ""}
+                  <div className="space-y-4 mb-6">
+                    <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
+                      <p className="font-semibold text-yellow-300 mb-2">
+                        What will be removed from this browser:
                       </p>
-                    )}
+                      <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
+                        <li>Cached copies of repos you don&apos;t own</li>
+                        <li>
+                          Imported files, issues, PRs, and commits for those
+                          repos
+                        </li>
+                        <li>
+                          Explore leftovers from other people&apos;s repos
+                        </li>
+                      </ul>
+                      {foreignFlushPreview && (
+                        <p className="text-sm text-yellow-100 mt-3">
+                          This will remove{" "}
+                          <strong>{foreignFlushPreview.clearedRepos}</strong>{" "}
+                          other people&apos;s repo
+                          {foreignFlushPreview.clearedRepos === 1 ? "" : "s"}
+                          {foreignFlushPreview.duplicateRowsCollapsed > 0
+                            ? ` (plus ${foreignFlushPreview.duplicateRowsCollapsed} duplicate cache rows of the same repos)`
+                            : ""}
+                          {foreignFlushPreview.clearedKeys > 0
+                            ? ` and ${foreignFlushPreview.clearedKeys} related file/issue cache entries`
+                            : ""}
+                          . Your {foreignFlushPreview.keptOwnRepos} repo
+                          {foreignFlushPreview.keptOwnRepos === 1
+                            ? ""
+                            : "s"}{" "}
+                          stay
+                          {foreignFlushPreview.keptOwnRepos === 1 ? "s" : ""}.
+                          {foreignFlushPreview.keptForeignLocal > 0
+                            ? ` ${foreignFlushPreview.keptForeignLocal} other-people repo(s) with unpushed local edits are kept.`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
+                      <p className="font-semibold text-green-300 mb-2">
+                        ✅ What stays:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
+                        <li>Your own repositories in this browser</li>
+                        <li>Files / issues / PRs for your own repos</li>
+                        <li>Everything already on Nostr (unchanged)</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-blue-900/20 border border-blue-600/50 rounded p-4">
+                      <p className="font-semibold text-blue-300 mb-2">
+                        When to use this:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
+                        <li>
+                          After Explore/import filled the cache with
+                          others&apos; repos
+                        </li>
+                        <li>To free space so your own repos keep syncing</li>
+                        <li>
+                          Anytime — other people&apos;s repos can be re-fetched
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
+                      <p className="font-semibold text-red-300 mb-2">
+                        ⚠️ Note:
+                      </p>
+                      <p className="text-sm text-red-200/90">
+                        This only clears other people&apos;s repos from your
+                        browser. Opening those repos again will download a fresh
+                        copy from Nostr. Your own repos stay.
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
-                    <p className="font-semibold text-green-300 mb-2">
-                      ✅ What stays:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
-                      <li>Your own repositories in this browser</li>
-                      <li>Files / issues / PRs for your own repos</li>
-                      <li>Everything already on Nostr (unchanged)</li>
-                    </ul>
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={() => setShowClearForeignConfirm(false)}
+                      className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e35] px-4 py-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!pubkey) {
+                          await appAlert(
+                            "Error: Not logged in. Cannot identify other people's cached repos."
+                          );
+                          setShowClearForeignConfirm(false);
+                          return;
+                        }
+
+                        try {
+                          if (typeof window === "undefined") return;
+
+                          const result = clearForeignReposFromStorage(pubkey, {
+                            preserveUnpushedEdits: true,
+                            preserveWithMetadata: false,
+                          });
+
+                          console.log(
+                            "✅ Flushed others' repos cache:",
+                            result
+                          );
+
+                          setShowClearForeignConfirm(false);
+
+                          await appAlert(
+                            [
+                              "✅ Others' repos cache flushed!",
+                              "",
+                              `• Removed ${
+                                result.clearedRepos
+                              } other people's repo${
+                                result.clearedRepos === 1 ? "" : "s"
+                              }`,
+                              result.duplicateRowsCollapsed > 0
+                                ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
+                                : "",
+                              `• Removed ${result.clearedKeys} related file/issue cache entries`,
+                              `• Kept ${result.keptOwnRepos} of your repos`,
+                              result.keptForeignLocal > 0
+                                ? `• Kept ${result.keptForeignLocal} other-people repo(s) with unpushed local edits`
+                                : "",
+                              "",
+                              "This page will not refill other people's repos. Opening them in Explore downloads a fresh copy.",
+                            ]
+                              .filter(Boolean)
+                              .join("\n"),
+                            "Cache flushed"
+                          );
+
+                          reposCatalogRef.current = null;
+                          // Stay on My Repositories (reload can restore a prior repo tab via bfcache).
+                          window.location.assign("/repositories");
+                        } catch (error) {
+                          console.error(
+                            "Failed to flush others' repos cache:",
+                            error
+                          );
+                          await appAlert(
+                            `❌ Error flushing others' repos cache: ${error}`,
+                            "Flush cache"
+                          );
+                          setShowClearForeignConfirm(false);
+                        }
+                      }}
+                      className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-4 py-2 rounded transition-colors font-semibold"
+                    >
+                      Yes, flush others&apos; repos
+                    </button>
                   </div>
-
-                  <div className="bg-blue-900/20 border border-blue-600/50 rounded p-4">
-                    <p className="font-semibold text-blue-300 mb-2">
-                      When to use this:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>
-                        After Explore/import filled the cache with others&apos;
-                        repos
-                      </li>
-                      <li>To free space so your own repos keep syncing</li>
-                      <li>
-                        Anytime — other people&apos;s repos can be re-fetched
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
-                    <p className="font-semibold text-red-300 mb-2">⚠️ Note:</p>
-                    <p className="text-sm text-red-200/90">
-                      This only clears other people&apos;s repos from your
-                      browser. Opening those repos again will download a fresh
-                      copy from Nostr. Your own repos stay.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setShowClearForeignConfirm(false)}
-                    className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e35] px-4 py-2 rounded transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!pubkey) {
-                        alert(
-                          "Error: Not logged in. Cannot identify other people's cached repos."
-                        );
-                        setShowClearForeignConfirm(false);
-                        return;
-                      }
-
-                      try {
-                        if (typeof window === "undefined") return;
-
-                        const result = clearForeignReposFromStorage(pubkey, {
-                          preserveUnpushedEdits: true,
-                          preserveWithMetadata: false,
-                        });
-
-                        console.log("✅ Flushed others' repos cache:", result);
-
-                        setShowClearForeignConfirm(false);
-
-                        alert(
-                          [
-                            "✅ Others' repos cache flushed!",
-                            "",
-                            `• Removed ${
-                              result.clearedRepos
-                            } other people's repo${
-                              result.clearedRepos === 1 ? "" : "s"
-                            }`,
-                            result.duplicateRowsCollapsed > 0
-                              ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
-                              : "",
-                            `• Removed ${result.clearedKeys} related file/issue cache entries`,
-                            `• Kept ${result.keptOwnRepos} of your repos`,
-                            result.keptForeignLocal > 0
-                              ? `• Kept ${result.keptForeignLocal} other-people repo(s) with unpushed local edits`
-                              : "",
-                            "",
-                            "This page will not refill other people's repos. Opening them in Explore downloads a fresh copy.",
-                          ]
-                            .filter(Boolean)
-                            .join("\n")
-                        );
-
-                        reposCatalogRef.current = null;
-                        // Stay on My Repositories (reload can restore a prior repo tab via bfcache).
-                        window.location.assign("/repositories");
-                      } catch (error) {
-                        console.error(
-                          "Failed to flush others' repos cache:",
-                          error
-                        );
-                        alert(
-                          `❌ Error flushing others' repos cache: ${error}`
-                        );
-                        setShowClearForeignConfirm(false);
-                      }
-                    }}
-                    className="border border-orange-500/50 bg-orange-900/20 hover:bg-orange-900/30 text-orange-300 px-4 py-2 rounded transition-colors font-semibold"
-                  >
-                    Yes, flush others&apos; repos
-                  </button>
                 </div>
               </div>
             </div>
@@ -2979,163 +2999,170 @@ export default function RepositoriesPage() {
           {/* Flush my own repos cache Confirmation Modal */}
           {showClearConfirm && (
             <div
-              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+              className="fixed inset-0 z-50 overflow-y-auto bg-black/70"
               onClick={() => setShowClearConfirm(false)}
             >
-              <div
-                className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
-                onClick={(e: MouseEvent) => e.stopPropagation()}
-              >
-                <h2 className="text-xl font-bold mb-4 text-red-400">
-                  Flush my own repos cache?
-                </h2>
+              <div className="flex min-h-full items-center justify-center p-4">
+                <div
+                  className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full"
+                  onClick={(e: MouseEvent) => e.stopPropagation()}
+                >
+                  <h2 className="text-xl font-bold mb-4 text-red-400">
+                    Flush my own repos cache?
+                  </h2>
 
-                <div className="space-y-4 mb-6">
-                  <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
-                    <p className="font-semibold text-yellow-300 mb-2">
-                      What will be removed from this browser:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
-                      <li>Your own cached repos and imported file trees</li>
-                      <li>Cached issues, PRs, and commits for your repos</li>
-                      <li>
-                        Unpushed local-only work on your repos (not yet on
-                        Nostr)
-                      </li>
-                    </ul>
-                    {ownFlushPreview && (
-                      <p className="text-sm text-yellow-100 mt-3">
-                        This will remove{" "}
-                        <strong>{ownFlushPreview.clearedRepos}</strong> of your
-                        repo
-                        {ownFlushPreview.clearedRepos === 1 ? "" : "s"}
-                        {ownFlushPreview.duplicateRowsCollapsed > 0
-                          ? ` (plus ${ownFlushPreview.duplicateRowsCollapsed} duplicate cache rows)`
-                          : ""}
-                        {ownFlushPreview.clearedKeys > 0
-                          ? ` and ${ownFlushPreview.clearedKeys} related file/issue cache entries`
-                          : ""}
-                        . Already-pushed ones re-fetch from Nostr after reload.
+                  <div className="space-y-4 mb-6">
+                    <div className="bg-yellow-900/20 border border-yellow-600/50 rounded p-4">
+                      <p className="font-semibold text-yellow-300 mb-2">
+                        What will be removed from this browser:
                       </p>
-                    )}
+                      <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90">
+                        <li>Your own cached repos and imported file trees</li>
+                        <li>Cached issues, PRs, and commits for your repos</li>
+                        <li>
+                          Unpushed local-only work on your repos (not yet on
+                          Nostr)
+                        </li>
+                      </ul>
+                      {ownFlushPreview && (
+                        <p className="text-sm text-yellow-100 mt-3">
+                          This will remove{" "}
+                          <strong>{ownFlushPreview.clearedRepos}</strong> of
+                          your repo
+                          {ownFlushPreview.clearedRepos === 1 ? "" : "s"}
+                          {ownFlushPreview.duplicateRowsCollapsed > 0
+                            ? ` (plus ${ownFlushPreview.duplicateRowsCollapsed} duplicate cache rows)`
+                            : ""}
+                          {ownFlushPreview.clearedKeys > 0
+                            ? ` and ${ownFlushPreview.clearedKeys} related file/issue cache entries`
+                            : ""}
+                          . Already-pushed ones re-fetch from Nostr after
+                          reload.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
+                      <p className="font-semibold text-green-300 mb-2">
+                        ✅ What stays:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
+                        <li>
+                          Other people&apos;s repos still cached in this browser
+                        </li>
+                        <li>
+                          Anything already pushed to Nostr (your own repos
+                          re-fetch after reload)
+                        </li>
+                        <li>Data on the Nostr network itself</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-blue-900/20 border border-blue-600/50 rounded p-4">
+                      <p className="font-semibold text-blue-300 mb-2">
+                        When to use this:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
+                        <li>
+                          After push already happened — safe way to refresh your
+                          own list from Nostr
+                        </li>
+                        <li>
+                          After import when you want a clean refetch from relays
+                        </li>
+                        <li>
+                          If the list is empty after an older flush that left
+                          hide markers — flush again (even at 0) to lift them
+                          and let Nostr refill
+                        </li>
+                        <li>
+                          If your own repos look stale (use &quot;Flush
+                          others&apos; repos cache&quot; to free space from
+                          Explore leftovers)
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
+                      <p className="font-semibold text-red-300 mb-2">
+                        ⚠️ Important:
+                      </p>
+                      <p className="text-sm text-red-200/90">
+                        Only flush after you&apos;ve pushed (or you don&apos;t
+                        need unpushed local work). Unpushed local-only repos
+                        cannot be recovered from Nostr.
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="bg-green-900/20 border border-green-600/50 rounded p-4">
-                    <p className="font-semibold text-green-300 mb-2">
-                      ✅ What stays:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-green-200/90">
-                      <li>
-                        Other people&apos;s repos still cached in this browser
-                      </li>
-                      <li>
-                        Anything already pushed to Nostr (your own repos
-                        re-fetch after reload)
-                      </li>
-                      <li>Data on the Nostr network itself</li>
-                    </ul>
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={() => setShowClearConfirm(false)}
+                      className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e35] px-4 py-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!pubkey) {
+                          await appAlert(
+                            "Error: Not logged in. Cannot identify your own cached repos."
+                          );
+                          setShowClearConfirm(false);
+                          return;
+                        }
+
+                        try {
+                          if (typeof window === "undefined") return;
+
+                          const result = clearOwnReposFromStorage(pubkey);
+
+                          console.log("✅ Flushed my own repos cache:", result);
+
+                          setShowClearConfirm(false);
+
+                          await appAlert(
+                            [
+                              "✅ My own repos cache flushed!",
+                              "",
+                              `• Removed ${result.clearedRepos} of your repo${
+                                result.clearedRepos === 1 ? "" : "s"
+                              }`,
+                              result.duplicateRowsCollapsed > 0
+                                ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
+                                : "",
+                              `• Removed ${result.clearedKeys} related file/issue cache entries`,
+                              `• Kept ${result.keptRepos} other people's repo${
+                                result.keptRepos === 1 ? "" : "s"
+                              } in cache`,
+                              "",
+                              "Local hide markers for your repos were cleared. After reload, Nostr will refill your list from relays. Unpushed local-only work is gone.",
+                            ]
+                              .filter(Boolean)
+                              .join("\n"),
+                            "Cache flushed"
+                          );
+
+                          reposCatalogRef.current = null;
+                          // Hard navigate to this page so we never land back on a repo tab from history/bfcache.
+                          window.location.assign("/repositories");
+                        } catch (error) {
+                          console.error(
+                            "Failed to flush my own repos cache:",
+                            error
+                          );
+                          await appAlert(
+                            `❌ Error flushing my own repos cache: ${error}`,
+                            "Flush cache"
+                          );
+                          setShowClearConfirm(false);
+                        }
+                      }}
+                      className="border border-red-500/50 bg-red-900/20 hover:bg-red-900/30 text-red-300 px-4 py-2 rounded transition-colors font-semibold"
+                    >
+                      Yes, flush my own repos
+                    </button>
                   </div>
-
-                  <div className="bg-blue-900/20 border border-blue-600/50 rounded p-4">
-                    <p className="font-semibold text-blue-300 mb-2">
-                      When to use this:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90">
-                      <li>
-                        After push already happened — safe way to refresh your
-                        own list from Nostr
-                      </li>
-                      <li>
-                        After import when you want a clean refetch from relays
-                      </li>
-                      <li>
-                        If the list is empty after an older flush that left
-                        hide markers — flush again (even at 0) to lift them and
-                        let Nostr refill
-                      </li>
-                      <li>
-                        If your own repos look stale (use &quot;Flush
-                        others&apos; repos cache&quot; to free space from
-                        Explore leftovers)
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-red-900/20 border border-red-600/50 rounded p-4">
-                    <p className="font-semibold text-red-300 mb-2">
-                      ⚠️ Important:
-                    </p>
-                    <p className="text-sm text-red-200/90">
-                      Only flush after you&apos;ve pushed (or you don&apos;t
-                      need unpushed local work). Unpushed local-only repos
-                      cannot be recovered from Nostr.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setShowClearConfirm(false)}
-                    className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e35] px-4 py-2 rounded transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!pubkey) {
-                        alert(
-                          "Error: Not logged in. Cannot identify your own cached repos."
-                        );
-                        setShowClearConfirm(false);
-                        return;
-                      }
-
-                      try {
-                        if (typeof window === "undefined") return;
-
-                        const result = clearOwnReposFromStorage(pubkey);
-
-                        console.log("✅ Flushed my own repos cache:", result);
-
-                        setShowClearConfirm(false);
-
-                        alert(
-                          [
-                            "✅ My own repos cache flushed!",
-                            "",
-                            `• Removed ${result.clearedRepos} of your repo${
-                              result.clearedRepos === 1 ? "" : "s"
-                            }`,
-                            result.duplicateRowsCollapsed > 0
-                              ? `• Collapsed ${result.duplicateRowsCollapsed} duplicate cache rows (same repo listed more than once)`
-                              : "",
-                            `• Removed ${result.clearedKeys} related file/issue cache entries`,
-                            `• Kept ${result.keptRepos} other people's repo${
-                              result.keptRepos === 1 ? "" : "s"
-                            } in cache`,
-                            "",
-                            "Local hide markers for your repos were cleared. After reload, Nostr will refill your list from relays. Unpushed local-only work is gone.",
-                          ]
-                            .filter(Boolean)
-                            .join("\n")
-                        );
-
-                        reposCatalogRef.current = null;
-                        // Hard navigate to this page so we never land back on a repo tab from history/bfcache.
-                        window.location.assign("/repositories");
-                      } catch (error) {
-                        console.error(
-                          "Failed to flush my own repos cache:",
-                          error
-                        );
-                        alert(`❌ Error flushing my own repos cache: ${error}`);
-                        setShowClearConfirm(false);
-                      }
-                    }}
-                    className="border border-red-500/50 bg-red-900/20 hover:bg-red-900/30 text-red-300 px-4 py-2 rounded transition-colors font-semibold"
-                  >
-                    Yes, flush my own repos
-                  </button>
                 </div>
               </div>
             </div>
@@ -3622,24 +3649,27 @@ export default function RepositoriesPage() {
 
             const runBatchCloneRepublish = async () => {
               if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
-                alert("Sign in and wait for relays before republishing.");
+                await appAlert(
+                  "Sign in and wait for relays before republishing."
+                );
                 return;
               }
               if (needsCloneRepublish.length === 0) return;
               const nameList =
                 formatCloneRepublishRepoNames(needsCloneRepublish);
-              const ok = window.confirm(
+              const ok = await appConfirm(
                 `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses):\n\n` +
                   `${nameList}\n\n` +
                   `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
-                  `Republish all ${needsCloneRepublish.length} now?`
+                  `Republish all ${needsCloneRepublish.length} now?`,
+                "Republish clone URLs"
               );
               if (!ok) return;
               setRepairingCloneUrls(true);
               try {
                 const signer = await resolveNostrSigner({ remoteSigner });
                 if (!signer) {
-                  alert(NO_SIGNING_METHOD_MESSAGE);
+                  await appAlert(NO_SIGNING_METHOD_MESSAGE);
                   return;
                 }
                 const { repaired, failed } = await repairHostOnlyCloneAnnounces(
@@ -3661,17 +3691,18 @@ export default function RepositoriesPage() {
                   localStorage.getItem("gittr_repos") || "[]"
                 );
                 setRepos([...updatedRepos]);
-                alert(
+                await appAlert(
                   `Republished ${repaired.length} of ${needsCloneRepublish.length} repo(s).` +
                     (failed.length
                       ? `\nFailed: ${failed
                           .map((f) => `${f.repo}: ${f.error}`)
                           .join("; ")}`
-                      : "")
+                      : ""),
+                  "Republish clone URLs"
                 );
                 window.dispatchEvent(new Event("storage"));
               } catch (e: any) {
-                alert(`Republish failed: ${e?.message || e}`);
+                await appAlert(`Republish failed: ${e?.message || e}`);
               } finally {
                 setRepairingCloneUrls(false);
               }
@@ -3919,7 +3950,9 @@ export default function RepositoriesPage() {
                                     !subscribe ||
                                     !defaultRelays
                                   ) {
-                                    alert("Please log in to push repositories");
+                                    await appAlert(
+                                      "Please log in to push repositories"
+                                    );
                                     return;
                                   }
 
@@ -3928,7 +3961,7 @@ export default function RepositoriesPage() {
                                       remoteSigner,
                                     });
                                     if (!signer) {
-                                      alert(NO_SIGNING_METHOD_MESSAGE);
+                                      await appAlert(NO_SIGNING_METHOD_MESSAGE);
                                       return;
                                     }
                                     const privateKey = signer.privateKey;
@@ -3937,7 +3970,7 @@ export default function RepositoriesPage() {
                                     const validation =
                                       validateRepoForForkOrSign(r);
                                     if (!validation.valid) {
-                                      alert(
+                                      await appAlert(
                                         `Cannot push corrupted repository: ${validation.error}`
                                       );
                                       return;
@@ -3960,11 +3993,12 @@ export default function RepositoriesPage() {
                                         signer: signer.signEvent,
                                       });
                                     if (!paymentAuth.ok) {
-                                      alert(
+                                      await appAlert(
                                         `Push blocked: ${
                                           paymentAuth.error ||
                                           "payment authorization failed"
-                                        }`
+                                        }`,
+                                        "Push to Nostr"
                                       );
                                       return;
                                     }
@@ -4001,10 +4035,14 @@ export default function RepositoriesPage() {
                                       );
                                       setRepos([...updatedRepos]);
 
-                                      alert(formatPushRepoSuccessAlert(result));
+                                      await appAlert(
+                                        formatPushRepoSuccessAlert(result),
+                                        "Push to Nostr"
+                                      );
                                     } else {
-                                      alert(
-                                        `❌ Failed to push: ${result.error}`
+                                      await appAlert(
+                                        `❌ Failed to push: ${result.error}`,
+                                        "Push to Nostr"
                                       );
                                     }
                                   } catch (error: any) {
@@ -4012,10 +4050,11 @@ export default function RepositoriesPage() {
                                       "Failed to push repo:",
                                       error
                                     );
-                                    alert(
+                                    await appAlert(
                                       `Failed to push: ${
                                         error.message || "Unknown error"
-                                      }`
+                                      }`,
+                                      "Push to Nostr"
                                     );
                                   } finally {
                                     setPushingRepos((prev: Set<string>) => {

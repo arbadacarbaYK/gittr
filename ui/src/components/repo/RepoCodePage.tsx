@@ -14,6 +14,7 @@ import {
 
 import { ReadmeMarkdownImage } from "@/components/repo/ReadmeMarkdownImage";
 import { RepoFolderReadmeMarkdown } from "@/components/repo/RepoFolderReadmeMarkdown";
+import { appAlert } from "@/components/ui/app-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
@@ -647,7 +648,8 @@ function discoverableCloneUrlsForSidebar(
 }
 
 function sidebarSuccessfulSourceUrls(repoData: unknown): string[] {
-  const rows = (repoData as { successfulSources?: unknown[] })?.successfulSources;
+  const rows = (repoData as { successfulSources?: unknown[] })
+    ?.successfulSources;
   if (!Array.isArray(rows)) return [];
   return rows
     .map((s) =>
@@ -1887,8 +1889,8 @@ export function RepoCodePage() {
   }, [repoData, repoLinksList]);
 
   // Bump this when a push finishes (or is cancelled) so a pending watchdog
-  // cannot fire while a blocking alert() is open — React state alone is not
-  // enough because alert() freezes the handler before effects can clear.
+  // cannot fire while the result dialog is still on screen. Native alert()
+  // used to freeze JS; in-app appAlert does not, so generation must bump first.
   const pushGenerationRef = useRef(0);
 
   // Keep a local timer for push operations so the UI can recover from stalled flows.
@@ -1916,8 +1918,9 @@ export function RepoCodePage() {
         );
         pushGenerationRef.current += 1;
         setIsPushing(false);
-        alert(
-          "❌ Push timed out.\n\nThe signing request got no response. Check your browser extension (Alby/nos2x) or remote signer app (e.g. Amber), make sure it is online, then push again."
+        void appAlert(
+          "❌ Push timed out.\n\nThe signing request got no response. Check your browser extension (Alby/nos2x) or remote signer app (e.g. Amber), make sure it is online, then push again.",
+          "Push to Nostr"
         );
       }
     }, 180_000);
@@ -4374,20 +4377,22 @@ export function RepoCodePage() {
           window.prompt("Copy this README snippet:", section.trimStart());
           return;
         }
-        alert(
-          "Copied gittr Pages snippet for README. Paste it where you can edit README, then ask the owner to Push to Nostr so everyone sees it."
+        await appAlert(
+          "Copied gittr Pages snippet for README. Paste it where you can edit README, then ask the owner to Push to Nostr so everyone sees it.",
+          "gittr Pages"
         );
         return;
       }
       const current = repoDataRef.current;
       if (!current) {
-        alert("Repository is still loading — try again in a moment.");
+        await appAlert("Repository is still loading — try again in a moment.");
         return;
       }
       const siteFiles = (current.files || []) as Array<{ path?: string }>;
       if (!hasGittrPagesEntryFile(siteFiles)) {
-        alert(
-          "README update is blocked: this repo has no static page entry file in root (for example index.html). Add one first."
+        await appAlert(
+          "README update is blocked: this repo has no static page entry file in root (for example index.html). Add one first.",
+          "gittr Pages"
         );
         return;
       }
@@ -4429,8 +4434,9 @@ export function RepoCodePage() {
         console.error("Failed to sync README.md into file storage", e);
       }
       if (!args.silent) {
-        alert(
-          "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays."
+        await appAlert(
+          "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays.",
+          "gittr Pages"
         );
       }
       if (args.schedulePushClick) {
@@ -12675,8 +12681,8 @@ export function RepoCodePage() {
       typeof rawSize === "number" && Number.isFinite(rawSize)
         ? rawSize
         : typeof rawSize === "string" && rawSize.trim()
-          ? rawSize.trim()
-          : "";
+        ? rawSize.trim()
+        : "";
     return size !== "" ? `${hit.path}#${size}` : hit.path;
   }, [safeFiles, currentPath]);
 
@@ -12796,10 +12802,7 @@ export function RepoCodePage() {
           resolvedParams.entity,
           {
             sourceUrl:
-              sourceUrl ||
-              repoData?.sourceUrl ||
-              effectiveSourceUrl ||
-              null,
+              sourceUrl || repoData?.sourceUrl || effectiveSourceUrl || null,
             forkedFrom: repoData?.forkedFrom,
             clone: (repoData as { clone?: string[] })?.clone,
           }
@@ -12871,10 +12874,7 @@ export function RepoCodePage() {
           } catch {
             return false;
           }
-          const branchOrder = [
-            branchHint,
-            ...branchesToTry,
-          ]
+          const branchOrder = [branchHint, ...branchesToTry]
             .map((b) => (typeof b === "string" ? b.trim() : ""))
             .filter((b): b is string => !!b)
             .filter((b, i, arr) => arr.indexOf(b) === i);
@@ -13789,7 +13789,9 @@ export function RepoCodePage() {
         if (cancelled) return;
         startTransition(() => {
           setTreeLastCommits(
-            json?.commits && typeof json.commits === "object" ? json.commits : {}
+            json?.commits && typeof json.commits === "object"
+              ? json.commits
+              : {}
           );
         });
       } catch {
@@ -14469,11 +14471,10 @@ export function RepoCodePage() {
           src.resolvedBranch ||
           (repoData as { filesBranch?: string })?.filesBranch ||
           resolveContentBranch(repoData, selectedBranch, repoBranchRoute);
-        const branchList = [branchHint, ...branchesToTryForContent(
-          repoData,
-          selectedBranch,
-          repoBranchRoute
-        )]
+        const branchList = [
+          branchHint,
+          ...branchesToTryForContent(repoData, selectedBranch, repoBranchRoute),
+        ]
           .map((b) => (typeof b === "string" ? b.trim() : ""))
           .filter((b): b is string => !!b)
           .filter((b, i, arr) => arr.indexOf(b) === i);
@@ -14608,9 +14609,9 @@ export function RepoCodePage() {
                 ownerPk.toLowerCase()
               )}&repo=${encodeURIComponent(
                 bridgeRepo
-              )}&path=${encodeURIComponent(
-                path
-              )}&branch=${encodeURIComponent(branch0)}`;
+              )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+                branch0
+              )}`;
               const r0 = await fetchBridgeRead(api0);
               if (!r0.ok) continue;
               const d0 = await r0.json();
@@ -15999,9 +16000,8 @@ export function RepoCodePage() {
             }
           }
         } else {
-          const resolvedFromSource = (
-            sourceInfo as { resolvedBranch?: string }
-          ).resolvedBranch;
+          const resolvedFromSource = (sourceInfo as { resolvedBranch?: string })
+            .resolvedBranch;
           const contentBranches = resolvedFromSource
             ? [String(resolvedFromSource).trim()].filter(Boolean)
             : branchesToTryForContent(
@@ -18951,60 +18951,65 @@ export function RepoCodePage() {
                 </ul>
               </div>
             )}
-            {mounted && deferredItems.length === 0 && repoData && hashtreeOnlyEmpty && (
-              <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
-                <p className="text-sm text-gray-300">
-                  This repo is hosted on{" "}
-                  <span className="text-white font-medium">Iris Hashtree</span>,
-                  not a classic HTTPS git server. gittr cannot list those files
-                  in the Code browser yet.
-                </p>
-                {hashtreeOnlyEmpty.browseUrl && (
-                  <a
-                    href={hashtreeOnlyEmpty.browseUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-                  >
-                    Open in Iris Git
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                )}
-                {hashtreeOnlyEmpty.htree && (
-                  <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
-                    <p className="text-xs text-gray-400">
-                      Clone with Iris{" "}
-                      <code className="text-gray-300">git-remote-htree</code>:
-                    </p>
-                    <div className="flex items-start gap-2">
-                      <code className="flex-1 text-xs text-green-400 break-all">
-                        git clone {hashtreeOnlyEmpty.htree}
-                      </code>
-                      <button
-                        type="button"
-                        className="shrink-0 p-1.5 text-gray-400 hover:text-white"
-                        title="Copy clone command"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard?.writeText(
-                              `git clone ${hashtreeOnlyEmpty.htree}`
-                            );
-                            const { showToast } = await import(
-                              "@/components/ui/toast"
-                            );
-                            showToast("Copied clone command", "success");
-                          } catch {
-                            /* ignore */
-                          }
-                        }}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
+            {mounted &&
+              deferredItems.length === 0 &&
+              repoData &&
+              hashtreeOnlyEmpty && (
+                <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
+                  <p className="text-sm text-gray-300">
+                    This repo is hosted on{" "}
+                    <span className="text-white font-medium">
+                      Iris Hashtree
+                    </span>
+                    , not a classic HTTPS git server. gittr cannot list those
+                    files in the Code browser yet.
+                  </p>
+                  {hashtreeOnlyEmpty.browseUrl && (
+                    <a
+                      href={hashtreeOnlyEmpty.browseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                    >
+                      Open in Iris Git
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  {hashtreeOnlyEmpty.htree && (
+                    <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
+                      <p className="text-xs text-gray-400">
+                        Clone with Iris{" "}
+                        <code className="text-gray-300">git-remote-htree</code>:
+                      </p>
+                      <div className="flex items-start gap-2">
+                        <code className="flex-1 text-xs text-green-400 break-all">
+                          git clone {hashtreeOnlyEmpty.htree}
+                        </code>
+                        <button
+                          type="button"
+                          className="shrink-0 p-1.5 text-gray-400 hover:text-white"
+                          title="Copy clone command"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard?.writeText(
+                                `git clone ${hashtreeOnlyEmpty.htree}`
+                              );
+                              const { showToast } = await import(
+                                "@/components/ui/toast"
+                              );
+                              showToast("Copied clone command", "success");
+                            } catch {
+                              /* ignore */
+                            }
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
             {mounted &&
               deferredItems.length === 0 &&
               repoData &&
@@ -20506,8 +20511,9 @@ export function RepoCodePage() {
                                 // Handle refetch for GitHub/GitLab/Codeberg repos
                                 if (hasEffectiveSourceUrl) {
                                   if (!effectiveSourceUrl) {
-                                    alert(
-                                      "No source URL found for this repository"
+                                    await appAlert(
+                                      "No source URL found for this repository",
+                                      "Refetch"
                                     );
                                     return;
                                   }
@@ -21503,10 +21509,11 @@ export function RepoCodePage() {
                                             savedFiles: savedFileCount,
                                           }
                                         );
-                                        alert(
+                                        await appAlert(
                                           `⚠️ Refetch got ${
                                             importData.files?.length || 0
-                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' repos cache, or use a private window with more free space.`
+                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → Flush others' repos cache, or use a private window with more free space.`,
+                                          "Refetch"
                                         );
                                       } else {
                                         // Reload page to show updated data
@@ -21520,10 +21527,11 @@ export function RepoCodePage() {
                                         } catch {
                                           // ignore
                                         }
-                                        alert(
+                                        await appAlert(
                                           `✅ Refetched from GitHub (${savedFileCount} files).\n\n` +
                                             `Your local file tree now matches the source. Nostr-only PRs/issues still exist on relays and may still appear in gittr—their saved diffs are not automatically checked against these new files.\n\n` +
-                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr (bridge syncs the GitHub tip — no per-file upload for large repos).`
+                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr (bridge syncs the GitHub tip — no per-file upload for large repos).`,
+                                          "Refetch"
                                         );
                                         window.location.reload();
                                       }
@@ -21588,12 +21596,13 @@ export function RepoCodePage() {
                                       } catch {
                                         // ignore
                                       }
-                                      alert(
+                                      await appAlert(
                                         `✅ Refetched from GitHub!\n\nFound ${
                                           newFiles.filter(
                                             (f: any) => f.type === "file"
                                           ).length
-                                        } files.\n\nRepository created in localStorage.`
+                                        } files.\n\nRepository created in localStorage.`,
+                                        "Refetch"
                                       );
                                       window.location.reload();
                                     }
@@ -21602,10 +21611,11 @@ export function RepoCodePage() {
                                       "Failed to refetch from source:",
                                       error
                                     );
-                                    alert(
+                                    await appAlert(
                                       `❌ Failed to refetch: ${
                                         error.message || "Unknown error"
-                                      }`
+                                      }`,
+                                      "Refetch"
                                     );
                                   } finally {
                                     setIsRefetching(false);
@@ -22126,10 +22136,11 @@ export function RepoCodePage() {
                                         {
                                           const n =
                                             eventRepoData.files?.length || 0;
-                                          alert(
+                                          await appAlert(
                                             n > 0
                                               ? `✅ Refreshed from gittr!\n\nFound ${n} files.\n\nRepository created in localStorage.`
-                                              : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`
+                                              : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`,
+                                            "Refresh"
                                           );
                                         }
                                         window.location.reload();
@@ -22244,10 +22255,11 @@ export function RepoCodePage() {
 
                                       const refreshedCount =
                                         eventRepoData.files?.length || 0;
-                                      alert(
+                                      await appAlert(
                                         refreshedCount > 0
                                           ? `✅ Refreshed from gittr!\n\nFound ${refreshedCount} files.\n\nLocal edits have been replaced with the latest version from the bridge/clones.`
-                                          : `✅ Refreshed from gittr!\n\nAnnouncement updated, but no file tree was loaded yet (empty bridge or clone still syncing).\n\nYou can Upload files now — they'll merge on top when you Push to Nostr. Or wait a moment and Refresh again.`
+                                          : `✅ Refreshed from gittr!\n\nAnnouncement updated, but no file tree was loaded yet (empty bridge or clone still syncing).\n\nYou can Upload files now — they'll merge on top when you Push to Nostr. Or wait a moment and Refresh again.`,
+                                        "Refresh"
                                       );
                                       window.location.reload();
                                     } else {
@@ -22336,10 +22348,11 @@ export function RepoCodePage() {
 
                                       const createdCount =
                                         eventRepoData.files?.length || 0;
-                                      alert(
+                                      await appAlert(
                                         createdCount > 0
                                           ? `✅ Refreshed from gittr!\n\nFound ${createdCount} files.\n\nRepository created in localStorage.`
-                                          : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`
+                                          : `✅ Refreshed from gittr!\n\nRepository saved locally, but no file tree loaded yet.\n\nYou can Upload files now, then Push to Nostr.`,
+                                        "Refresh"
                                       );
                                       window.location.reload();
                                     }
@@ -22348,10 +22361,11 @@ export function RepoCodePage() {
                                       "Failed to refresh from gittr:",
                                       error
                                     );
-                                    alert(
+                                    await appAlert(
                                       `❌ Failed to refresh from gittr: ${
                                         error.message || "Unknown error"
-                                      }\n\nIf the Code tab already shows files, wait a few seconds and try again — relays can answer at different speeds.`
+                                      }\n\nIf the Code tab already shows files, wait a few seconds and try again — relays can answer at different speeds.`,
+                                      "Refresh"
                                     );
                                   } finally {
                                     setIsRefetching(false);
@@ -22428,7 +22442,10 @@ export function RepoCodePage() {
                                     !subscribe ||
                                     !defaultRelays
                                   ) {
-                                    alert("Please log in to push repositories");
+                                    await appAlert(
+                                      "Please log in to push repositories",
+                                      "Push to Nostr"
+                                    );
                                     return;
                                   }
 
@@ -22442,7 +22459,10 @@ export function RepoCodePage() {
                                     if (!signer) {
                                       pushGenerationRef.current += 1;
                                       setIsPushing(false);
-                                      alert(NO_SIGNING_METHOD_MESSAGE);
+                                      await appAlert(
+                                        NO_SIGNING_METHOD_MESSAGE,
+                                        "Push to Nostr"
+                                      );
                                       return;
                                     }
                                     // Warm Amber bunker sockets before payment +
@@ -22464,7 +22484,10 @@ export function RepoCodePage() {
                                       ) {
                                         pushGenerationRef.current += 1;
                                         setIsPushing(false);
-                                        alert(warmMsg);
+                                        await appAlert(
+                                          warmMsg,
+                                          "Push to Nostr"
+                                        );
                                         return;
                                       }
                                     }
@@ -22490,8 +22513,9 @@ export function RepoCodePage() {
                                     if (!validation.valid) {
                                       pushGenerationRef.current += 1;
                                       setIsPushing(false);
-                                      alert(
-                                        `Cannot push corrupted repository: ${validation.error}`
+                                      await appAlert(
+                                        `Cannot push corrupted repository: ${validation.error}`,
+                                        "Push to Nostr"
                                       );
                                       return;
                                     }
@@ -22549,11 +22573,12 @@ export function RepoCodePage() {
                                       }
                                       pushGenerationRef.current += 1;
                                       setIsPushing(false);
-                                      alert(
+                                      await appAlert(
                                         `Push blocked: ${
                                           paymentAuth.error ||
                                           "payment authorization failed"
-                                        }`
+                                        }`,
+                                        "Push to Nostr"
                                       );
                                       return;
                                     }
@@ -22701,8 +22726,9 @@ export function RepoCodePage() {
                                               m.includes("⚠️ DO NOT close")
                                             ).length === 1
                                           ) {
-                                            alert(
-                                              "⚠️ IMPORTANT: Please stay on this page!\n\nA second signature prompt will appear shortly.\n\nDo not close or navigate away until both signatures are complete."
+                                            void appAlert(
+                                              "⚠️ IMPORTANT: Please stay on this page!\n\nA second signature prompt will appear shortly.\n\nDo not close or navigate away until both signatures are complete.",
+                                              "Push to Nostr"
                                             );
                                           }
                                         }
@@ -22718,8 +22744,8 @@ export function RepoCodePage() {
                                     }
 
                                     // Push finished — disarm the 180s watchdog BEFORE any
-                                    // blocking alert(). Leaving success/error dialogs open
-                                    // used to keep isPushing=true and falsely blame Amber.
+                                    // result dialog. In-app dialogs do not freeze JS the way
+                                    // native alert() did; leaving isPushing=true blamed Amber.
                                     const finishPushUi = () => {
                                       pushGenerationRef.current += 1;
                                       setIsPushing(false);
@@ -22782,7 +22808,10 @@ export function RepoCodePage() {
 
                                       finishPushUi();
                                       // Show success message (after clearing push state)
-                                      alert(formatPushRepoSuccessAlert(result));
+                                      await appAlert(
+                                        formatPushRepoSuccessAlert(result),
+                                        "Push to Nostr"
+                                      );
 
                                       // CRITICAL: Refresh repo data from localStorage and check bridge
                                       // This updates the status without a full page reload
@@ -22921,10 +22950,11 @@ export function RepoCodePage() {
                                       }
                                     } else {
                                       finishPushUi();
-                                      alert(
+                                      await appAlert(
                                         `❌ Failed to push: ${
                                           result.error || "Unknown error"
-                                        }`
+                                        }`,
+                                        "Push to Nostr"
                                       );
                                     }
                                   } catch (error: any) {
@@ -22934,10 +22964,11 @@ export function RepoCodePage() {
                                     );
                                     pushGenerationRef.current += 1;
                                     setIsPushing(false);
-                                    alert(
+                                    await appAlert(
                                       `Failed to push: ${
                                         error.message || "Unknown error"
-                                      }`
+                                      }`,
+                                      "Push to Nostr"
                                     );
                                   } finally {
                                     pushGenerationRef.current += 1;
@@ -23052,17 +23083,19 @@ export function RepoCodePage() {
                                     schedulePushClick: true,
                                   });
                                 }}
-                                onRefetchThenReadmeThenPush={() => {
+                                onRefetchThenReadmeThenPush={async () => {
                                   const refetchEl = refetchButtonRef.current;
                                   if (!refetchEl) {
-                                    alert(
-                                      "Refetch control is not available on this screen."
+                                    await appAlert(
+                                      "Refetch control is not available on this screen.",
+                                      "Refetch"
                                     );
                                     return;
                                   }
                                   if (refetchEl.disabled) {
-                                    alert(
-                                      "Wait until push/refetch finishes, then try again."
+                                    await appAlert(
+                                      "Wait until push/refetch finishes, then try again.",
+                                      "Refetch"
                                     );
                                     return;
                                   }
@@ -23078,8 +23111,9 @@ export function RepoCodePage() {
                                       })
                                     );
                                   } catch {
-                                    alert(
-                                      "Could not start chain (storage blocked?)."
+                                    await appAlert(
+                                      "Could not start chain (storage blocked?).",
+                                      "Refetch"
                                     );
                                     return;
                                   }
@@ -23110,7 +23144,7 @@ export function RepoCodePage() {
                                     !subscribe ||
                                     !defaultRelays?.length
                                   ) {
-                                    alert(
+                                    await appAlert(
                                       "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
                                     );
                                     return;
@@ -23189,7 +23223,7 @@ export function RepoCodePage() {
                                             : "pending — relays may need a moment"
                                         }`
                                       : "";
-                                    alert(
+                                    await appAlert(
                                       `Pages manifest published.\n\nEvent id:\n${
                                         r.manifestEventId
                                       }\n\nFiles in manifest: ${
@@ -23198,11 +23232,13 @@ export function RepoCodePage() {
                                         r.confirmed
                                           ? "yes"
                                           : "pending — check /pages shortly"
-                                      }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`
+                                      }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`,
+                                      "gittr Pages"
                                     );
                                   } else {
-                                    alert(
-                                      `Manifest publish failed:\n\n${r.error}`
+                                    await appAlert(
+                                      `Manifest publish failed:\n\n${r.error}`,
+                                      "gittr Pages"
                                     );
                                   }
                                 }}

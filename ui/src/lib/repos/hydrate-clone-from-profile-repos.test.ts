@@ -37,4 +37,20 @@ describe("fetchRepoCloneHintsFromProfile", () => {
   it("rejects invalid pubkey", async () => {
     expect(await fetchRepoCloneHintsFromProfile("bad", "LiE")).toBeNull();
   });
+
+  it("accepts npub and decodes to hex for the profile-repos query", async () => {
+    const { nip19 } = await import("nostr-tools");
+    const hex =
+      "5e13bab588e1f3618bcc76499a7db1704aa0bb44a3cee46867f68a35a0667d7d";
+    const npub = nip19.npubEncode(hex);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ repos: [{ repo: "LiE", clone: [] }] }),
+    });
+    await fetchRepoCloneHintsFromProfile(npub, "LiE");
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(hex)}`,
+      { cache: "no-store" }
+    );
+  });
 });

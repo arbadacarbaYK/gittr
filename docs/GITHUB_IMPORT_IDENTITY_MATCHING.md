@@ -124,7 +124,7 @@ Importing a GitHub/GitLab URL is **not** a gittr fork. The imported page URL is 
 - **owner** (purple) — you created or imported this repo. A GitHub URL on the card does **not** make it a fork.
 - **forked** (orange) — this announcement is a real fork of someone else’s work:
   - GitHub says `fork: true` and `parent.html_url` is a **different** repo, or
-  - you used gittr **Fork** (`/new?fork=npub/repo`), which stores `forkedFrom` as `/npub…/repo`.
+  - you used gittr **Fork** (`/new?fork=npub/repo`), which stores `forkedFrom` as `/npub…/repo` and **imports the file tree** (forge `source` if present, otherwise GRASP/`clone[]` via `/api/import-git`). Empty-create-only forks were a bug (About copied, 0 files).
 - Importing your own GitHub original (`gittr`, `gittr-mcp`, …) must **not** copy that URL into `forkedFrom`. Older imports that did are sanitized on load/Push (own URL == `sourceUrl` is dropped).
 - Opening an already-imported GitHub **fork** (e.g. `andronixorigin`) hydrates `forkedFrom` from GitHub `parent`.
 - Profile repo cards also batch-hydrate fork parent from GitHub when Nostr tags lack `forkedFrom` (old imports).

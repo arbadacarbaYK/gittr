@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { appAlert, appConfirm } from "@/components/ui/app-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
@@ -670,16 +671,17 @@ export function ReposList({
 
   const runHostOnlyRepair = async () => {
     if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
-      alert("Sign in and wait for relays before fixing clone URLs.");
+      await appAlert("Sign in and wait for relays before fixing clone URLs.");
       return;
     }
     if (hostOnlyBroken.length === 0) return;
     const nameList = formatCloneRepublishRepoNames(hostOnlyBroken);
-    const ok = window.confirm(
+    const ok = await appConfirm(
       `${hostOnlyBroken.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses):\n\n` +
         `${nameList}\n\n` +
         `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
-        `Republish all ${hostOnlyBroken.length} now?`
+        `Republish all ${hostOnlyBroken.length} now?`,
+      "Republish clone URLs"
     );
     if (!ok) return;
     setRepairingHostOnly(true);
@@ -696,17 +698,18 @@ export function ReposList({
         remoteSigner,
         onProgress: (m) => console.log("[repair host-only]", m),
       });
-      alert(
+      await appAlert(
         `Republished ${repaired.length} repo(s).` +
           (failed.length
             ? `\nFailed: ${failed
                 .map((f) => `${f.repo}: ${f.error}`)
                 .join("; ")}`
-            : "")
+            : ""),
+        "Republish clone URLs"
       );
       window.dispatchEvent(new Event("storage"));
     } catch (e: any) {
-      alert(`Repair failed: ${e?.message || e}`);
+      await appAlert(`Repair failed: ${e?.message || e}`);
     } finally {
       setRepairingHostOnly(false);
     }
@@ -909,7 +912,7 @@ export function ReposList({
                       e.stopPropagation();
 
                       if (!pubkey || !publish || !subscribe || !defaultRelays) {
-                        alert("Please log in to push repositories");
+                        await appAlert("Please log in to push repositories");
                         return;
                       }
 
@@ -918,7 +921,7 @@ export function ReposList({
                           remoteSigner,
                         });
                         if (!signer) {
-                          alert(NO_SIGNING_METHOD_MESSAGE);
+                          await appAlert(NO_SIGNING_METHOD_MESSAGE);
                           return;
                         }
                         const privateKey = signer.privateKey;
@@ -939,11 +942,12 @@ export function ReposList({
                             signer: signer.signEvent,
                           });
                         if (!paymentAuth.ok) {
-                          alert(
+                          await appAlert(
                             `Push blocked: ${
                               paymentAuth.error ||
                               "payment authorization failed"
-                            }`
+                            }`,
+                            "Push to Nostr"
                           );
                           return;
                         }
@@ -975,18 +979,25 @@ export function ReposList({
                           );
                           window.dispatchEvent(new Event("storage"));
 
-                          alert(formatPushRepoSuccessAlert(result));
+                          await appAlert(
+                            formatPushRepoSuccessAlert(result),
+                            "Push to Nostr"
+                          );
                         } else {
-                          alert(`❌ Failed to push: ${result.error}`);
+                          await appAlert(
+                            `❌ Failed to push: ${result.error}`,
+                            "Push to Nostr"
+                          );
                         }
                       } catch (error: any) {
                         console.error("Failed to push repo:", error);
-                        alert(
+                        await appAlert(
                           `❌ Failed to push repository: ${
                             error?.message ||
                             error?.toString() ||
                             "Unknown error"
-                          }`
+                          }`,
+                          "Push to Nostr"
                         );
                       } finally {
                         setPushingRepos((prev) => {
