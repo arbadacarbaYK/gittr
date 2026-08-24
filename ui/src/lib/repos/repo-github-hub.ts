@@ -3,16 +3,15 @@
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
+import { fetchForgeRepoForkMeta } from "@/lib/repos/forge-fork-meta";
 import {
   applyGithubForkMetaToRepo,
   isRealForkAttribution,
   resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
-import {
-  fetchForgeRepoForkMeta,
-} from "@/lib/repos/forge-fork-meta";
 import { parseGiteaCompatibleRepo } from "@/lib/repos/gitea-forge";
+import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
@@ -25,6 +24,7 @@ import {
   resolveRepoUpstreamSource,
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
+import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -108,31 +108,46 @@ export function findStoredRepoForRoute(
   });
 }
 
-/** Latest kind 30617/51 on relays — finds forge URL in source/forkedFrom/clone/web/link. */
-export function queryNostrForGithubSourceUrl(
+function resolveOwnerHexForRepo(entity: string): string | null {
+  let ownerPubkey: string | null = resolveEntityToPubkey(entity);
+  if (!ownerPubkey && entity.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(entity);
+      if (decoded.type === "npub") {
+        ownerPubkey = decoded.data as string;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return null;
+  return ownerPubkey.toLowerCase();
+}
+
+/** Latest kind 30617/51 — forge URL from profile-repos, then live subscribe. */
+export async function queryNostrForGithubSourceUrl(
   entity: string,
   repoSlug: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  subscribe: (...args: any[]) => () => void,
-  relays: string[]
+  subscribe?: (...args: any[]) => () => void,
+  relays?: string[]
 ): Promise<string> {
-  return new Promise((resolve) => {
-    let ownerPubkey: string | null = resolveEntityToPubkey(entity);
-    if (!ownerPubkey && entity.startsWith("npub")) {
-      try {
-        const decoded = nip19.decode(entity);
-        if (decoded.type === "npub") {
-          ownerPubkey = decoded.data as string;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      resolve("");
-      return;
-    }
+  const ownerPubkey = resolveOwnerHexForRepo(entity);
+  if (!ownerPubkey) return "";
 
+  try {
+    const hints = await fetchRepoCloneHintsFromProfile(ownerPubkey, repoSlug);
+    const fromProfile = hints?.sourceUrl?.trim();
+    if (fromProfile && isCloneableUpstreamSourceUrl(fromProfile)) {
+      return fromProfile.replace(/\.git$/i, "");
+    }
+  } catch {
+    /* fall through to live subscribe */
+  }
+
+  if (!subscribe || !relays?.length) return "";
+
+  return new Promise((resolve) => {
     let bestUrl = "";
     let bestCreated = 0;
     let settled = false;
@@ -302,7 +317,7 @@ export type ProfileRepoForkRow = {
  * GitHub, GitLab, Gitea, Forgejo, Codeberg.
  */
 export async function enrichReposWithForgeForkMeta<
-  T extends ProfileRepoForkRow,
+  T extends ProfileRepoForkRow
 >(
   repos: T[],
   opts?: {
@@ -323,7 +338,10 @@ export async function enrichReposWithForgeForkMeta<
   });
   if (candidates.length === 0) return repos;
 
-  const metaBySource = new Map<string, Awaited<ReturnType<typeof fetchForgeRepoForkMeta>>>();
+  const metaBySource = new Map<
+    string,
+    Awaited<ReturnType<typeof fetchForgeRepoForkMeta>>
+  >();
   const batchSize = 4;
   for (let i = 0; i < candidates.length; i += batchSize) {
     const batch = candidates.slice(i, i + batchSize);
@@ -396,12 +414,7 @@ export async function hydrateRepoFromGithub(
     opts.repoRecord ?? findStoredRepoForRoute(entity, repoSlug) ?? null;
 
   let sourceUrl = resolveGithubUpstreamForTabs(entity, repoSlug, record);
-  if (
-    !sourceUrl &&
-    opts.subscribe &&
-    opts.defaultRelays &&
-    opts.defaultRelays.length > 0
-  ) {
+  if (!sourceUrl) {
     sourceUrl = await queryNostrForGithubSourceUrl(
       entity,
       repoSlug,
@@ -568,6 +581,7 @@ export function persistRepoAnnouncementMeta(opts: {
   clone?: string[] | null;
   description?: string | null;
   ownerPubkey?: string | null;
+  publicRead?: boolean;
 }): void {
   const repos = loadStoredRepos();
   const idx = repos.findIndex((r) => {
@@ -619,6 +633,9 @@ export function persistRepoAnnouncementMeta(opts: {
   if (clone.length > 0) patch.clone = clone;
   if (description) patch.description = description;
   if (owner) patch.ownerPubkey = owner;
+  if (typeof opts.publicRead === "boolean") {
+    patch.publicRead = opts.publicRead;
+  }
 
   if (idx < 0 || !repos[idx]) {
     repos.push({
@@ -640,6 +657,10 @@ export function persistRepoAnnouncementMeta(opts: {
       lastNostrEventId: eventId || prev.lastNostrEventId,
       nostrEventId: eventId || prev.nostrEventId,
       ownerPubkey: owner || prev.ownerPubkey,
+      publicRead:
+        typeof opts.publicRead === "boolean"
+          ? opts.publicRead
+          : prev.publicRead,
       syncedFromNostr: true,
       fromNostr: true,
     };
@@ -670,6 +691,7 @@ export function persistRepoAnnouncementMeta(opts: {
       prev.forkedFrom === next.forkedFrom &&
       prev.description === next.description &&
       prev.ownerPubkey === next.ownerPubkey &&
+      prev.publicRead === next.publicRead &&
       prev.syncedFromNostr === next.syncedFromNostr &&
       prev.status === next.status &&
       JSON.stringify(prev.clone || []) === JSON.stringify(next.clone || []);

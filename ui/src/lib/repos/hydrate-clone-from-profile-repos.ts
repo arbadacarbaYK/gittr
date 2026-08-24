@@ -4,7 +4,21 @@ export type ProfileRepoCloneHints = {
   clone: string[];
   sourceUrl?: string;
   lastNostrEventId?: string;
+  publicRead?: boolean;
+  description?: string;
+  forkedFrom?: string;
 };
+
+const HINTS_TTL_MS = 8000;
+const hintsCache = new Map<
+  string,
+  { at: number; value: ProfileRepoCloneHints | null }
+>();
+
+/** Test hook — production callers should not need this. */
+export function clearProfileRepoHintsCache(): void {
+  hintsCache.clear();
+}
 
 function repoNameMatches(
   row: Record<string, unknown>,
@@ -47,6 +61,12 @@ export async function fetchRepoCloneHintsFromProfile(
   const slug = repoName.trim();
   if (!slug) return null;
 
+  const cacheKey = `${pk}:${slug.toLowerCase()}`;
+  const cached = hintsCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < HINTS_TTL_MS) {
+    return cached.value;
+  }
+
   try {
     const res = await fetch(
       `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pk)}`,
@@ -61,7 +81,10 @@ export async function fetchRepoCloneHintsFromProfile(
         typeof r === "object" &&
         repoNameMatches(r as Record<string, unknown>, slug)
     );
-    if (!match) return null;
+    if (!match) {
+      hintsCache.set(cacheKey, { at: Date.now(), value: null });
+      return null;
+    }
 
     const clone = Array.isArray(match.clone)
       ? match.clone
@@ -75,14 +98,32 @@ export async function fetchRepoCloneHintsFromProfile(
         ? match.sourceUrl.trim()
         : undefined;
 
-    return {
+    const lastNostrEventId =
+      typeof match.lastNostrEventId === "string" &&
+      /^[0-9a-f]{64}$/i.test(match.lastNostrEventId)
+        ? match.lastNostrEventId
+        : undefined;
+    const description =
+      typeof match.description === "string" && match.description.trim()
+        ? match.description.trim()
+        : undefined;
+    const forkedFrom =
+      typeof match.forkedFrom === "string" && match.forkedFrom.trim()
+        ? match.forkedFrom.trim()
+        : undefined;
+    const publicRead =
+      typeof match.publicRead === "boolean" ? match.publicRead : undefined;
+
+    const hints: ProfileRepoCloneHints = {
       clone,
       sourceUrl,
-      lastNostrEventId:
-        typeof match.lastNostrEventId === "string"
-          ? match.lastNostrEventId
-          : undefined,
+      lastNostrEventId,
+      publicRead,
+      description,
+      forkedFrom,
     };
+    hintsCache.set(cacheKey, { at: Date.now(), value: hints });
+    return hints;
   } catch {
     return null;
   }

@@ -9,7 +9,7 @@ Canonical UI order (localStorage → embedded → **published `clone[]`/`source`
 | API / path | What it does |
 | --- | --- |
 | Relays + optional **`POST /api/event`** (`BRIDGE_HTTP_PORT`) | Mirror bare repos under `repositoryDir/{pubkey}/{repo}.git` |
-| **`GET /api/nostr/repo/files`** (gittr Next.js) | File tree from that directory (`GIT_NOSTR_BRIDGE_REPOS_DIR`) |
+| **`GET /api/nostr/repo/files`** (gittr Next.js) | File tree from that directory (`GIT_NOSTR_BRIDGE_REPOS_DIR`). **404 is intended** when `clone[]` is not this host — UI reads the announced clone URL. 30617 event id is for Star/identity, not blobs. |
 | **`GET /api/nostr/repo/file-content`** (gittr Next.js) | Blob content; `path=` must be URL-encoded (UTF-8 filenames) |
 | **`GET /api/nostr/repo/commits`** (gittr Next.js) | `git log` on the bare mirror for the Commits tab |
 | **`GET /api/nostr/repo/tree-last-commits`** (gittr Next.js) | Batched last-commit message/time per folder child for the Code file list (same tip/branch as the tree) |

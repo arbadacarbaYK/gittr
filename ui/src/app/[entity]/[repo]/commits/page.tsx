@@ -10,6 +10,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import {
   repoDefaultBranch,
   resolveSharedRepoBranch,
@@ -308,11 +309,28 @@ export default function CommitsPage({
       if (ownerParam && repoName) {
         bridgeCommits = await fetchBridgeCommits(ownerParam, repoName, branch);
         if (!bridgeCommits.length) {
+          let recForClones = rec;
+          if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk)) {
+            const hints = await fetchRepoCloneHintsFromProfile(
+              ownerPk,
+              repoName
+            );
+            if (hints && (hints.clone.length > 0 || hints.sourceUrl)) {
+              recForClones = {
+                ...(rec || {}),
+                clone: [
+                  ...(hints.clone || []),
+                  ...((rec?.clone as string[]) || []),
+                ],
+                sourceUrl: hints.sourceUrl || rec?.sourceUrl,
+              } as StoredRepo;
+            }
+          }
           const clones = candidateCloneUrls(
             entity,
             repoName,
             ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
-            rec
+            recForClones
           );
           if (clones.length > 0) {
             bridgeCommits = await mirrorThenFetchCommits(

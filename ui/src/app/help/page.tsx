@@ -948,8 +948,10 @@ export default function HelpPage() {
                     NIP-25
                   </a>{" "}
                   kind <strong>7</strong> reaction on the repo&apos;s kind{" "}
-                  <strong>30617</strong> event (needs a published repo
-                  announcement on relays). Also listed on your{" "}
+                  <strong>30617</strong> event. gittr looks that event up on
+                  your relays and on the same profile-repos query used to load
+                  files, Public/Private, Refetch, and new issues — a foreign
+                  GRASP clone still counts as published. Also listed on your{" "}
                   <strong>Stars</strong> page. Not the same as Watch.
                 </li>
                 <li>

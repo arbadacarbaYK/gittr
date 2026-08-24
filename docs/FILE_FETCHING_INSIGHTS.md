@@ -168,6 +168,8 @@ After **Clear local / flush**, File Fetch must still hydrate the sidebar from th
 
 **Public profiles** (`GET /api/nostr/profile-repos`) query `PROFILE_REPOS_RELAYS` (stats pool + NIP-34 discovery: ngit, shakespeare, nostrhub, gitnostr, …). The slim `PLATFORM_STATS_RELAYS` set alone under-counts NostrHub publishers whose 30617s never land on `relay.gittr.space`.
 
+**One announcement lookup for chrome + files:** File fetch order (localStorage → published `clone[]`/`source` → bridge → forge) is unchanged. Star, Public/Private, Settings visibility, Refetch/forge Issues/PRs/Releases, Fork, Commits, and new Issue/PR publish must reuse that same 30617 (`resolveLiveRepoAnnouncement` / `fetchRepoCloneHintsFromProfile`). Do not rediscover the repo on the browser’s default relay list only — that is why a foreign GRASP repo can show files while Star says “not on relays yet”. The gittr bridge `GET /api/nostr/repo/files` **404s on purpose** when `clone[]` does not include `git.gittr.space`; the UI then reads the owner’s announced clone host. Do **not** add every foreign GRASP host to `KNOWN_GRASP_DOMAINS` just to make Commits work (known GRASP hosts that are not on the push allowlist are **dropped** from the sidebar).
+
 ## Richer local tree vs SOURCE (64 vs 62)
 
 Console `Keeping richer local tree` / `Skipping persist` is **intentional for GRASP partial listings** (avoids wiping folders). It is **wrong** when a declared NIP-34 **`source` / `forkedFrom`** is authoritative and returned fewer paths (deletes upstream).

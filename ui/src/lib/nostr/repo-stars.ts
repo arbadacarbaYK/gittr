@@ -2,6 +2,17 @@
 import { type Filter, type Event as NostrEvent } from "nostr-tools";
 
 import { KIND_REACTION, KIND_REPOSITORY_NIP34 } from "./events";
+import {
+  announcementEventMatchesRepo,
+  isHexEventId,
+  repoAnnouncementDTagCandidates,
+} from "./repo-announcement-match";
+
+export {
+  announcementEventMatchesRepo,
+  isHexEventId,
+  repoAnnouncementDTagCandidates,
+} from "./repo-announcement-match";
 
 export type RelaySubscribeFn = (
   filters: Filter[],
@@ -66,47 +77,6 @@ export function aggregateMyStarredRepoEventIds(
   return out;
 }
 
-/** Build possible `d` identifiers for a repo row / URL slug. */
-export function repoAnnouncementDTagCandidates(
-  repositoryName: string,
-  repo?: {
-    repositoryName?: string;
-    repo?: string;
-    slug?: string;
-    name?: string;
-  } | null
-): string[] {
-  const out = new Set<string>();
-  const add = (v?: string) => {
-    const t = (v || "").trim();
-    if (t) out.add(t);
-  };
-  add(repositoryName);
-  add(repo?.repositoryName);
-  add(repo?.repo);
-  add(repo?.slug);
-  add(repo?.name);
-  return [...out];
-}
-
-function eventMatchesRepoAnnouncement(
-  event: NostrEvent,
-  author: string,
-  dCandidates: string[]
-): boolean {
-  const d = event.tags.find((t) => t[0] === "d")?.[1]?.trim();
-  if (d && dCandidates.includes(d)) return true;
-  const want = new Set(
-    dCandidates.map((name) => `30617:${author}:${name}`.toLowerCase())
-  );
-  for (const t of event.tags) {
-    if (t[0] === "a" && typeof t[1] === "string") {
-      if (want.has(t[1].toLowerCase())) return true;
-    }
-  }
-  return false;
-}
-
 export const REPO_ANNOUNCEMENT_ID_EVENT = "gittr:repo-announcement-id";
 
 export type RepoAnnouncementIdDetail = {
@@ -139,7 +109,7 @@ export function cacheRepoAnnouncementEventId(
   eventId: string
 ): void {
   if (typeof window === "undefined") return;
-  if (!/^[0-9a-f]{64}$/i.test(eventId)) return;
+  if (!isHexEventId(eventId)) return;
   try {
     sessionStorage.setItem(announcementCacheKey(entity, repo), eventId);
   } catch {
@@ -147,12 +117,12 @@ export function cacheRepoAnnouncementEventId(
   }
 }
 
-/** File-fetch on the Code tab already found a 30617 — tell the layout header immediately. */
+/** File-fetch / profile-repos already found a 30617 — tell the layout header immediately. */
 export function broadcastRepoAnnouncementEventId(
   detail: RepoAnnouncementIdDetail
 ): void {
   if (typeof window === "undefined") return;
-  if (!/^[0-9a-f]{64}$/i.test(detail.eventId)) return;
+  if (!isHexEventId(detail.eventId)) return;
   cacheRepoAnnouncementEventId(detail.entity, detail.repo, detail.eventId);
   window.dispatchEvent(new CustomEvent(REPO_ANNOUNCEMENT_ID_EVENT, { detail }));
 }
@@ -206,7 +176,7 @@ export async function queryRepoAnnouncementEventId(
       relays,
       (event: NostrEvent) => {
         if ((event.kind as number) !== KIND_REPOSITORY_NIP34) return;
-        if (!eventMatchesRepoAnnouncement(event, author, dCandidates)) return;
+        if (!announcementEventMatchesRepo(event, author, dCandidates)) return;
         if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
           latest = event;
           // Found a matching announce — no need to wait for slow/empty relays

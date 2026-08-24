@@ -28,6 +28,7 @@ import {
   type RepoAnnouncementIdDetail,
   aggregateRepoStarReactions,
   cacheRepoAnnouncementEventId,
+  isHexEventId,
   isRepoStarReaction,
   publishStarReaction,
   queryRepoAnnouncementEventId,
@@ -38,7 +39,6 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
-import { appNavigate } from "@/lib/utils/app-navigate";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import {
   canManageSettings,
@@ -54,6 +54,7 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
+import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -62,6 +63,7 @@ import {
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { startWarmRepoIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { isRepoUiNextPath } from "@/lib/ui/repo-ui-mode";
+import { appNavigate } from "@/lib/utils/app-navigate";
 import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
@@ -523,7 +525,7 @@ export default function RepoLayoutClient({
   // After localStorage clear (or cold anonymous visit), Public/Private badge still
   // needs public-read from the latest kind 30617 — local row alone is not enough.
   useEffect(() => {
-    if (!mounted || !subscribe || !defaultRelays?.length) return;
+    if (!mounted) return;
 
     let ownerHex =
       ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
@@ -544,8 +546,35 @@ export default function RepoLayoutClient({
     const repoName = decodeURIComponent(resolvedParams.repo || "");
     if (!repoName) return;
 
-    let latest: { created_at?: number; tags?: string[][] } | null = null;
     let cancelled = false;
+    void resolveLiveRepoAnnouncement({
+      ownerPubkey: ownerHex,
+      repoName,
+      entity: resolvedParams.entity,
+      persist: true,
+      broadcast: true,
+    }).then((hints) => {
+      if (cancelled || typeof hints?.publicRead !== "boolean") return;
+      setRepo((prev: any) => {
+        if (prev && prev.publicRead === hints.publicRead) return prev;
+        return {
+          ...(prev || {
+            entity: resolvedParams.entity,
+            repo: repoName,
+            ownerPubkey: ownerHex,
+          }),
+          publicRead: hints.publicRead,
+        };
+      });
+    });
+
+    if (!subscribe || !defaultRelays?.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let latest: { created_at?: number; tags?: string[][] } | null = null;
     const unsub = subscribe(
       [
         {
@@ -1096,27 +1125,39 @@ export default function RepoLayoutClient({
     let cancelled = false;
     setResolvingRepoEventId(true);
     const relays = getAllRelays(defaultRelays);
-    void queryRepoAnnouncementEventId(
+    const applyId = (id: string | null | undefined) => {
+      if (cancelled || !isHexEventId(id)) return false;
+      setRelayRepoEventId(id);
+      cacheRepoAnnouncementEventId(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        id
+      );
+      setResolvingRepoEventId(false);
+      return true;
+    };
+
+    // Browser relay set often misses ngit/NostrHub announces that profile-repos
+    // already found (that's how foreign files load). Query both; first 64-hex
+    // id wins so Star is not blocked on an empty 8s subscribe.
+    const relayLookup = queryRepoAnnouncementEventId(
       subscribe as RelaySubscribeFn,
       relays,
       ownerPubkey,
       repoIdentifier,
       { timeoutMs: 8000, repo }
-    )
-      .then((id) => {
-        if (cancelled) return;
-        if (id) {
-          setRelayRepoEventId(id);
-          cacheRepoAnnouncementEventId(
-            resolvedParams.entity,
-            resolvedParams.repo,
-            id
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setResolvingRepoEventId(false);
-      });
+    ).then((id) => applyId(id));
+    const profileLookup = resolveLiveRepoAnnouncement({
+      ownerPubkey,
+      repoName: repoIdentifier,
+      entity: resolvedParams.entity,
+      persist: true,
+      broadcast: true,
+    }).then((hints) => applyId(hints?.lastNostrEventId));
+
+    void Promise.allSettled([relayLookup, profileLookup]).finally(() => {
+      if (!cancelled) setResolvingRepoEventId(false);
+    });
     return () => {
       cancelled = true;
       setResolvingRepoEventId(false);
@@ -1521,7 +1562,10 @@ export default function RepoLayoutClient({
       } catch (warmErr) {
         const warmMsg =
           warmErr instanceof Error ? warmErr.message : String(warmErr);
-        console.warn("[Repo Watch] Remote signer warm before publish:", warmMsg);
+        console.warn(
+          "[Repo Watch] Remote signer warm before publish:",
+          warmMsg
+        );
         showToast(warmMsg, "error");
         return;
       }
@@ -1579,7 +1623,7 @@ export default function RepoLayoutClient({
       router.push("/login");
       return;
     }
-    if (resolvingRepoEventId) {
+    if (resolvingRepoEventId && !repoNostrEventId) {
       showToast("Still looking up this repo on Nostr relays…", "error");
       return;
     }
@@ -1964,8 +2008,8 @@ export default function RepoLayoutClient({
                     {resolvingRepoEventId
                       ? "Looking up…"
                       : isStarring
-                        ? "Signing…"
-                        : "Star"}
+                      ? "Signing…"
+                      : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </DropdownMenuItem>
                   {sourceStarsDisplay ? (
@@ -2063,8 +2107,8 @@ export default function RepoLayoutClient({
                     {resolvingRepoEventId
                       ? "Looking up…"
                       : isStarring
-                        ? "Signing…"
-                        : "Star"}
+                      ? "Signing…"
+                      : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </Button>
                   {sourceStarsDisplay ? (

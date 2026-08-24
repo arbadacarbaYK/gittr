@@ -37,10 +37,7 @@ vi.mock("../nostr/relay-env", () => ({
 
 vi.mock("../nostr/server-relay-subscribe", () => ({
   PLATFORM_STATS_RELAYS: [],
-}));
-
-vi.mock("../nostr/repo-stars", () => ({
-  repoAnnouncementDTagCandidates: vi.fn((slug: string) => [slug]),
+  PROFILE_REPOS_RELAYS: [],
 }));
 
 const OWNER = "a".repeat(64);

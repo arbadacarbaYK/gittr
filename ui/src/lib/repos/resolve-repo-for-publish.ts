@@ -6,8 +6,11 @@
  * path entity (npub / hex / NIP-05). Optionally hydrate `d` / euc from kind 30617.
  */
 import { getDefaultRelayUrls } from "../nostr/relay-env";
-import { repoAnnouncementDTagCandidates } from "../nostr/repo-stars";
-import { PLATFORM_STATS_RELAYS } from "../nostr/server-relay-subscribe";
+import {
+  announcementEventMatchesRepo,
+  repoAnnouncementDTagCandidates,
+} from "../nostr/repo-announcement-match";
+import { PROFILE_REPOS_RELAYS } from "../nostr/server-relay-subscribe";
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkeyAsync,
@@ -78,29 +81,6 @@ export function parseAnnouncementHydration(
   return out;
 }
 
-function eventMatchesD(
-  tags: string[][] | undefined,
-  author: string,
-  dCandidates: string[]
-): boolean {
-  if (!Array.isArray(tags)) return false;
-  const d = tags.find((t) => t[0] === "d")?.[1]?.trim();
-  if (d && dCandidates.includes(d)) return true;
-  const want = new Set(
-    dCandidates.map((name) => `30617:${author}:${name}`.toLowerCase())
-  );
-  for (const t of tags) {
-    if (
-      t[0] === "a" &&
-      typeof t[1] === "string" &&
-      want.has(t[1].toLowerCase())
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function defaultFetchAnnouncement(
   ownerPubkey: string,
   repoSlug: string,
@@ -112,7 +92,7 @@ async function defaultFetchAnnouncement(
 
   const relays = [
     ...new Set([
-      ...PLATFORM_STATS_RELAYS,
+      ...PROFILE_REPOS_RELAYS,
       ...getDefaultRelayUrls(),
       "wss://relay.gittr.space",
     ]),
@@ -141,8 +121,8 @@ async function defaultFetchAnnouncement(
         if ((event as { kind?: number }).kind !== KIND_REPOSITORY_NIP34)
           continue;
         if (
-          !eventMatchesD(
-            (event as { tags?: string[][] }).tags,
+          !announcementEventMatchesRepo(
+            { tags: (event as { tags?: string[][] }).tags || [] },
             author,
             dCandidates
           )

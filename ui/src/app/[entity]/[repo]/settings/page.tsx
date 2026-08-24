@@ -31,6 +31,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import { removeStaleAutoLinks } from "@/lib/repos/enrich-repo-links";
+import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
 import {
@@ -404,8 +405,6 @@ export default function RepoSettingsPage() {
     visibilityTouchedRef.current = false;
     // Don't clear visibilityReady here if localStorage already applied private
     // in the load effect — only wait for Nostr when still unknown/public.
-    if (!subscribe || !defaultRelays?.length) return;
-
     const repos = loadStoredRepos();
     const stored = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
     let ownerHex =
@@ -467,6 +466,20 @@ export default function RepoSettingsPage() {
       }
       setVisibilityReady(true);
     };
+
+    void fetchRepoCloneHintsFromProfile(ownerHex, repoName).then((hints) => {
+      if (typeof hints?.publicRead === "boolean") finish(hints.publicRead);
+    });
+
+    if (!subscribe || !defaultRelays?.length) {
+      const timeout = setTimeout(() => {
+        if (!cancelled) setVisibilityReady(true);
+      }, 8000);
+      return () => {
+        cancelled = true;
+        clearTimeout(timeout);
+      };
+    }
 
     const unsub = subscribe(
       [
@@ -913,10 +926,10 @@ export default function RepoSettingsPage() {
             result.bridgeStatus === "wiped"
               ? "Nostr + bridge wiped"
               : result.bridgeStatus === "relay_only"
-                ? "Nostr published; bridge will catch up via relays"
-                : `Nostr published; bridge ${result.bridgeStatus}${
-                    result.bridgeDetail ? ` (${result.bridgeDetail})` : ""
-                  }`;
+              ? "Nostr published; bridge will catch up via relays"
+              : `Nostr published; bridge ${result.bridgeStatus}${
+                  result.bridgeDetail ? ` (${result.bridgeDetail})` : ""
+                }`;
           console.log("✅ [Repo delete]", softDeleteNote, result);
 
           const authorPubkey = (
@@ -1048,12 +1061,17 @@ export default function RepoSettingsPage() {
       setStatus(
         softDeleteOk
           ? `Repository deleted (${softDeleteNote})`
-          : `Repository hidden locally (${softDeleteNote || "Nostr not updated"})`
+          : `Repository hidden locally (${
+              softDeleteNote || "Nostr not updated"
+            })`
       );
 
-      setTimeout(() => {
-        window.location.href = "/repositories";
-      }, softDeleteOk ? 800 : 1500);
+      setTimeout(
+        () => {
+          window.location.href = "/repositories";
+        },
+        softDeleteOk ? 800 : 1500
+      );
     } catch (e) {
       console.error("Delete error:", e);
       setDeleting(false);

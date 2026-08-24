@@ -72,6 +72,7 @@ import {
   REPO_ANNOUNCEMENT_ID_EVENT,
   type RepoAnnouncementIdDetail,
   broadcastRepoAnnouncementEventId,
+  isHexEventId,
   readCachedRepoAnnouncementEventId,
 } from "@/lib/nostr/repo-stars";
 import { LARGE_FORGE_TREE_BRIDGE_SYNC_THRESHOLD } from "@/lib/nostr/should-announce-upstream-tip";
@@ -100,7 +101,6 @@ import {
   resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
-import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import {
   type AnnouncementCloneStatus,
   shouldInferGraspCloneUrls,
@@ -140,6 +140,7 @@ import {
   resolveRepoActivityDisplayMs,
 } from "@/lib/repos/repo-github-hub";
 import { sanitizeRepoNavPath } from "@/lib/repos/repo-path-sanity";
+import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
 import {
@@ -4832,14 +4833,26 @@ export function RepoCodePage() {
 
     let cancelled = false;
     (async () => {
-      const hints = await fetchRepoCloneHintsFromProfile(ownerPk, decodedRepo);
+      const hints = await resolveLiveRepoAnnouncement({
+        ownerPubkey: ownerPk,
+        repoName: decodedRepo,
+        entity: resolvedParams.entity,
+        persist: true,
+        broadcast: true,
+      });
       if (cancelled || !hints) return;
-      if (hints.clone.length === 0 && !hints.sourceUrl) return;
       if (hints.clone.length > 0) {
         nip34AnnouncementCloneStatusRef.current = "present";
       }
       if (hints.sourceUrl) {
         applyEffectiveSourceUrl(hints.sourceUrl);
+      }
+      if (
+        hints.clone.length === 0 &&
+        !hints.sourceUrl &&
+        !hints.lastNostrEventId
+      ) {
+        return;
       }
       setRepoData((prev: any) => {
         const base =
@@ -4862,6 +4875,7 @@ export function RepoCodePage() {
           decodedRepo
         );
         const announced = hints.clone.length > 0 ? hints.clone : undefined;
+        const nextId = hints.lastNostrEventId || base.lastNostrEventId;
         if (
           prev &&
           announced &&
@@ -4873,6 +4887,13 @@ export function RepoCodePage() {
           prev.clone.every((u: string) => mergedClone.includes(u)) &&
           (!hints.sourceUrl || prev.sourceUrl === hints.sourceUrl)
         ) {
+          if (nextId && prev.lastNostrEventId !== nextId) {
+            return {
+              ...prev,
+              lastNostrEventId: nextId,
+              syncedFromNostr: true,
+            };
+          }
           return prev;
         }
         return {
@@ -4880,7 +4901,7 @@ export function RepoCodePage() {
           clone: mergedClone,
           ...(announced ? { announcementClone: announced } : {}),
           sourceUrl: hints.sourceUrl || base.sourceUrl,
-          lastNostrEventId: hints.lastNostrEventId || base.lastNostrEventId,
+          lastNostrEventId: nextId,
           syncedFromNostr: true,
           ownerPubkey: ownerPk,
         };
@@ -5652,10 +5673,13 @@ export function RepoCodePage() {
         typeof window !== "undefined"
       ) {
         try {
-          const hints = await fetchRepoCloneHintsFromProfile(
+          const hints = await resolveLiveRepoAnnouncement({
             ownerPubkey,
-            resolvedParams.repo
-          );
+            repoName: resolvedParams.repo,
+            entity: resolvedParams.entity,
+            persist: true,
+            broadcast: true,
+          });
           if (hints) {
             if (hints.clone.length > 0) {
               nip34AnnouncementCloneStatusRef.current = "present";
@@ -19957,7 +19981,7 @@ export function RepoCodePage() {
                     <p className="text-xs text-gray-500 mt-1">
                       {gitServerSidebar.kind === "source"
                         ? "Files are stored on this git server (per NIP-34 architecture)"
-                        : "No separate upstream source tag — showing a clone host from the announcement"}
+                        : "Owner’s clone host from the Nostr announcement — not gittr’s git.gittr.space unless they published that"}
                     </p>
                   </>
                 ) : null}
@@ -19979,7 +20003,7 @@ export function RepoCodePage() {
                 <p className="text-xs text-gray-500 mt-1">
                   {gitServerSidebar.kind === "source"
                     ? "Files are stored on this git server (per NIP-34 architecture)"
-                    : "No separate upstream source tag — showing a clone host from the announcement"}
+                    : "Owner’s clone host from the Nostr announcement — not gittr’s git.gittr.space unless they published that"}
                 </p>
               </div>
             )
