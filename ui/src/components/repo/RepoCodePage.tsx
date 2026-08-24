@@ -139,6 +139,11 @@ import {
   queryNostrForGithubSourceUrl,
   resolveRepoActivityDisplayMs,
 } from "@/lib/repos/repo-github-hub";
+import {
+  cloneSourceUrlIsUsable,
+  firstSuccessfulSourceKey,
+  folderReadmeLoadPath,
+} from "@/lib/repos/repo-page-chrome";
 import { sanitizeRepoNavPath } from "@/lib/repos/repo-path-sanity";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
@@ -12681,8 +12686,40 @@ export function RepoCodePage() {
 
   // Stable key so multifetch tree merges don't cancel an in-flight README load.
   // Include tip size so bridge→GitHub listing upgrades re-fetch the body.
+  // Additional clone winners must NOT change this key — that restarted README
+  // for as long as the full file-fetch race.
+  const firstWinnerKey = useMemo(
+    () =>
+      firstSuccessfulSourceKey(
+        (
+          repoData as {
+            successfulSources?: Array<{
+              sourceUrl?: string;
+              resolvedBranch?: string;
+            }>;
+          }
+        )?.successfulSources,
+        (repoData as { filesBranch?: string })?.filesBranch
+      ),
+    [
+      (
+        repoData as {
+          successfulSources?: Array<{
+            sourceUrl?: string;
+            resolvedBranch?: string;
+          }>;
+        }
+      )?.successfulSources?.[0]?.sourceUrl,
+      (
+        repoData as {
+          successfulSources?: Array<{ resolvedBranch?: string }>;
+        }
+      )?.successfulSources?.[0]?.resolvedBranch,
+      (repoData as { filesBranch?: string })?.filesBranch,
+    ]
+  );
+
   const folderReadmePathKey = useMemo(() => {
-    if (!safeFiles || safeFiles.length === 0) return "";
     const folderPrefix = currentPath
       ? currentPath.endsWith("/")
         ? currentPath
@@ -12694,21 +12731,28 @@ export function RepoCodePage() {
       `${folderPrefix}README`,
       `${folderPrefix}readme`,
     ];
-    const hit = safeFiles.find((f: any) => {
+    const hit = (safeFiles || []).find((f: any) => {
       if (!readmeVariants.includes(f.path)) return false;
       const t = String(f.type || "file").toLowerCase();
       return t !== "dir" && t !== "tree" && t !== "folder";
     });
-    if (!hit?.path) return "";
-    const rawSize = (hit as { size?: unknown }).size;
-    const size =
-      typeof rawSize === "number" && Number.isFinite(rawSize)
-        ? rawSize
-        : typeof rawSize === "string" && rawSize.trim()
-        ? rawSize.trim()
-        : "";
-    return size !== "" ? `${hit.path}#${size}` : hit.path;
-  }, [safeFiles, currentPath]);
+    if (hit?.path) {
+      const rawSize = (hit as { size?: unknown }).size;
+      const size =
+        typeof rawSize === "number" && Number.isFinite(rawSize)
+          ? rawSize
+          : typeof rawSize === "string" && rawSize.trim()
+          ? rawSize.trim()
+          : "";
+      return size !== "" ? `${hit.path}#${size}` : hit.path;
+    }
+    return folderReadmeLoadPath({
+      listedPath: "",
+      currentPath,
+      hasWinner: !!firstWinnerKey,
+      hasListing: !!(safeFiles && safeFiles.length > 0),
+    });
+  }, [safeFiles, currentPath, firstWinnerKey]);
 
   const folderReadmeFilePath = useMemo(() => {
     const key = folderReadmePathKey || "";
@@ -12928,16 +12972,11 @@ export function RepoCodePage() {
         };
 
         for (const src of successfulSources) {
-          if (
-            !src?.sourceUrl ||
-            !Array.isArray(src.files) ||
-            src.files.length === 0
-          ) {
-            continue;
-          }
+          const winnerUrl = String(src?.sourceUrl || "");
+          if (!cloneSourceUrlIsUsable(winnerUrl)) continue;
           if (
             await tryCloneSourceReadme(
-              src.sourceUrl,
+              winnerUrl,
               src.resolvedBranch ||
                 (repoData as { filesBranch?: string })?.filesBranch
             )
@@ -13141,13 +13180,15 @@ export function RepoCodePage() {
     currentPath,
     folderReadmePathKey,
     folderReadmeFilePath,
-    repoData?.sourceUrl,
-    repoData?.forkedFrom,
-    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
+    firstWinnerKey,
+    firstWinnerKey ? "" : repoData?.sourceUrl,
+    firstWinnerKey ? "" : repoData?.forkedFrom,
+    firstWinnerKey
+      ? ""
+      : (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
     repoData?.hasUnpushedEdits,
     repoData?.defaultBranch,
     (repoData as { filesBranch?: string })?.filesBranch,
-    (repoData as { successfulSources?: unknown[] })?.successfulSources?.length,
     repoData?.ownerPubkey,
     (repoData as any)?.repositoryName,
     selectedBranch,
@@ -13156,7 +13197,7 @@ export function RepoCodePage() {
     resolvedParams.entity,
     resolvedParams.repo,
     decodedRepo,
-    effectiveSourceUrl,
+    firstWinnerKey ? "" : effectiveSourceUrl,
   ]);
 
   // Open file when selectedFile is set from URL (skip URL update since URL already has it)
@@ -14460,9 +14501,12 @@ export function RepoCodePage() {
 
     // Strategy 0a: winning multifetch clones BEFORE bridge (GRASP-only / foreign
     // remotes). Strategy 0b bridge follows only when no sources yet / miss cache.
+    // Use repoDataRef so a click after first success sees the winner immediately.
+    const liveRepoForOpen =
+      (repoDataRef.current as any) || (repoData as any) || {};
     const successfulSourcesEarly =
       (
-        repoData as {
+        liveRepoForOpen as {
           successfulSources?: Array<{
             sourceUrl?: string;
             resolvedBranch?: string;
@@ -14473,22 +14517,8 @@ export function RepoCodePage() {
 
     if (!preferForgeContent && successfulSourcesEarly.length > 0) {
       for (const src of successfulSourcesEarly) {
-        if (
-          !src?.sourceUrl ||
-          !Array.isArray(src.files) ||
-          src.files.length === 0
-        ) {
-          continue;
-        }
-        try {
-          const u = new URL(src.sourceUrl);
-          if (
-            u.protocol === "http:" &&
-            /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
-          ) {
-            continue;
-          }
-        } catch {
+        const winnerUrl = String(src?.sourceUrl || "");
+        if (!cloneSourceUrlIsUsable(winnerUrl)) {
           continue;
         }
         const branchHint =
@@ -14509,7 +14539,7 @@ export function RepoCodePage() {
         for (const br of branchesOnce) {
           try {
             let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-              src.sourceUrl
+              winnerUrl
             )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
               br
             )}`;
@@ -19045,7 +19075,9 @@ export function RepoCodePage() {
             {mounted &&
               !selectedFile &&
               !fileContent &&
-              deferredSafeFiles.length > 0 &&
+              (deferredSafeFiles.length > 0 ||
+                !!deferredCurrentFolderReadme ||
+                loadingFolderReadme) &&
               (deferredCurrentFolderReadme ||
                 (!currentPath && deferredRepoReadme) ||
                 loadingFolderReadme) && (

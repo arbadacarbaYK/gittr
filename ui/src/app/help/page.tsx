@@ -951,7 +951,9 @@ export default function HelpPage() {
                   <strong>30617</strong> event. gittr looks that event up on
                   your relays and on the same profile-repos query used to load
                   files, Public/Private, Refetch, and new issues — a foreign
-                  GRASP clone still counts as published. Also listed on your{" "}
+                  GRASP clone still counts as published. The button stays{" "}
+                  <strong>Star</strong> while that lookup runs in the background
+                  (it should not flicker to “Looking up…”). Also listed on your{" "}
                   <strong>Stars</strong> page. Not the same as Watch.
                 </li>
                 <li>

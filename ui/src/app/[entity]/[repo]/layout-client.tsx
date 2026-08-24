@@ -54,6 +54,7 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
+import { repoPageChromeSignature } from "@/lib/repos/repo-page-chrome";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import {
   type StoredContributor,
@@ -327,6 +328,23 @@ export default function RepoLayoutClient({
     [mounted, pubkey, ownerPubkey, repoNostrEventId]
   );
 
+  const repoIdentifier = useMemo(
+    () =>
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repositoryName ||
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repo ||
+      resolvedParams.repo,
+    [
+      (repo as { repositoryName?: string } | null)?.repositoryName,
+      (repo as { repo?: string } | null)?.repo,
+      (repo as { slug?: string } | null)?.slug,
+      resolvedParams.repo,
+    ]
+  );
+
+  const defaultRelaysKey = defaultRelays?.join("|") ?? "";
+
   const githubUpstreamUrl = useMemo(() => {
     const fromTabs = resolveGithubUpstreamForTabs(
       resolvedParams.entity,
@@ -365,27 +383,30 @@ export default function RepoLayoutClient({
   const hasUpstreamSourceUrl = !!repo?.sourceUrl?.trim();
 
   const sourceStarsDisplay = useMemo(() => {
-    // GitHub mirror stats are public; do not require a published 30617 id (logged-in
-    // localStorage often lacks nostrEventId while route still maps to github.com/entity/repo).
-    if (githubSpec && githubStarCount !== null) {
+    // Keep the GitHub button mounted as soon as we know a github.com URL.
+    // Clearing the live count during hydrate used to unmount it and shift the row.
+    if (githubSpec) {
+      const live =
+        githubStarCount !== null
+          ? githubStarCount
+          : importStarSnapshot !== null && importStarSnapshot > 0
+          ? importStarSnapshot
+          : 0;
       return {
         label: "GitHub",
-        value: githubStarCount,
+        value: live,
         href: `https://github.com/${githubSpec.owner}/${githubSpec.repo}/stargazers`,
-        title: "Stargazers on GitHub (live)",
+        title:
+          githubStarCount !== null
+            ? "Stargazers on GitHub (live)"
+            : importStarSnapshot !== null && importStarSnapshot > 0
+            ? "Stars from last import (GitHub link for reference)"
+            : "GitHub repository (star count loading)",
       } as const;
     }
     // No upstream URL → nothing to attribute; avoid bogus "Import 0" from local `stars`.
-    if (!hasUpstreamSourceUrl && !githubSpec) {
+    if (!hasUpstreamSourceUrl) {
       return null;
-    }
-    if (importStarSnapshot !== null && importStarSnapshot > 0 && githubSpec) {
-      return {
-        label: "GitHub",
-        value: importStarSnapshot,
-        href: `https://github.com/${githubSpec.owner}/${githubSpec.repo}/stargazers`,
-        title: "Stars from last import (GitHub link for reference)",
-      } as const;
     }
     if (importStarSnapshot !== null && importStarSnapshot > 0) {
       return {
@@ -649,14 +670,19 @@ export default function RepoLayoutClient({
       setRepo((prev: any) => {
         if (foundRepo) {
           // Prefer explicit private from Nostr hydrate over a stale local public default
-          if (
+          const next =
             prev &&
             prev.publicRead === false &&
             (foundRepo as { publicRead?: boolean }).publicRead !== false
+              ? { ...foundRepo, publicRead: false }
+              : foundRepo;
+          if (
+            prev &&
+            repoPageChromeSignature(prev) === repoPageChromeSignature(next)
           ) {
-            return { ...foundRepo, publicRead: false };
+            return prev;
           }
-          return foundRepo;
+          return next;
         }
         // Keep Nostr-hydrated stub (badge/ACL) when there is no localStorage row
         if (prev && prev.publicRead !== undefined) return prev;
@@ -1037,7 +1063,7 @@ export default function RepoLayoutClient({
       ) as string[];
       setIsWatching(watched.includes(repoId));
     } catch {}
-  }, [resolvedParams.entity, resolvedParams.repo, pubkey, repo]);
+  }, [resolvedParams.entity, resolvedParams.repo, pubkey]);
 
   // Live GitHub star count when we know a github.com upstream
   useEffect(() => {
@@ -1073,12 +1099,20 @@ export default function RepoLayoutClient({
   }, [mounted, githubSpec?.owner, githubSpec?.repo]);
 
   // NIP-25 kind 7 reactions (#e = repo 30617 event, #k = 30617)
+  const lastStarQueryIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!mounted || !subscribe || !defaultRelays?.length || !repoNostrEventId) {
+    if (!repoNostrEventId) {
+      lastStarQueryIdRef.current = null;
       setNostrStarEvents([]);
       return;
     }
-    setNostrStarEvents([]);
+    if (lastStarQueryIdRef.current !== repoNostrEventId) {
+      lastStarQueryIdRef.current = repoNostrEventId;
+      setNostrStarEvents([]);
+    }
+    if (!mounted || !subscribe || !defaultRelays?.length) {
+      return;
+    }
     const collected = new Map<string, NostrEvent>();
     const relays = getAllRelays(defaultRelays);
     const unsub = subscribe(
@@ -1106,7 +1140,7 @@ export default function RepoLayoutClient({
         /* ignore */
       }
     };
-  }, [mounted, subscribe, defaultRelays, repoNostrEventId]);
+  }, [mounted, subscribe, defaultRelaysKey, repoNostrEventId]);
 
   // Always resolve latest kind 30617 from relays (local id may be missing or stale).
   useEffect(() => {
@@ -1114,16 +1148,16 @@ export default function RepoLayoutClient({
       return;
     }
     if (!/^[0-9a-f]{64}$/i.test(ownerPubkey)) return;
-    const repoIdentifier =
-      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-        ?.repositoryName ||
-      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-        ?.repo ||
-      resolvedParams.repo;
     if (!repoIdentifier) return;
 
     let cancelled = false;
-    setResolvingRepoEventId(true);
+    const cachedId = readCachedRepoAnnouncementEventId(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    const alreadyKnown = isHexEventId(cachedId);
+    // Do not flip the Star button into a loading label on every persist.
+    if (!alreadyKnown) setResolvingRepoEventId(true);
     const relays = getAllRelays(defaultRelays);
     const applyId = (id: string | null | undefined) => {
       if (cancelled || !isHexEventId(id)) return false;
@@ -1145,13 +1179,20 @@ export default function RepoLayoutClient({
       relays,
       ownerPubkey,
       repoIdentifier,
-      { timeoutMs: 8000, repo }
+      {
+        timeoutMs: 8000,
+        repo: {
+          repositoryName: repoIdentifier,
+          repo: repoIdentifier,
+          slug: resolvedParams.repo,
+        },
+      }
     ).then((id) => applyId(id));
     const profileLookup = resolveLiveRepoAnnouncement({
       ownerPubkey,
       repoName: repoIdentifier,
       entity: resolvedParams.entity,
-      persist: true,
+      persist: false,
       broadcast: true,
     }).then((hints) => applyId(hints?.lastNostrEventId));
 
@@ -1160,14 +1201,14 @@ export default function RepoLayoutClient({
     });
     return () => {
       cancelled = true;
-      setResolvingRepoEventId(false);
     };
   }, [
     mounted,
     subscribe,
-    defaultRelays,
+    defaultRelaysKey,
     ownerPubkey,
-    repo,
+    repoIdentifier,
+    resolvedParams.entity,
     resolvedParams.repo,
   ]);
 
@@ -1180,12 +1221,6 @@ export default function RepoLayoutClient({
       return;
     }
 
-    const repoIdentifier =
-      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-        ?.repositoryName ||
-      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-        ?.repo ||
-      resolvedParams.repo;
     if (!repoIdentifier) return;
 
     const repoAddress = `30617:${ownerPubkey}:${repoIdentifier}`;
@@ -1223,9 +1258,9 @@ export default function RepoLayoutClient({
   }, [
     pubkey,
     subscribe,
-    defaultRelays,
+    defaultRelaysKey,
     ownerPubkey,
-    repo,
+    repoIdentifier,
     resolvedParams.repo,
   ]);
 
@@ -1271,9 +1306,6 @@ export default function RepoLayoutClient({
       if (known.includes("github.com")) setHydratedGithubUrl(known);
       return;
     }
-
-    setHydratedGithubUrl("");
-    setGithubStarCount(null);
 
     let cancelled = false;
     let retryTimer: number | undefined;
@@ -1375,7 +1407,7 @@ export default function RepoLayoutClient({
     // Do NOT depend on githubUpstreamUrl — setting it after hydrate re-ran this
     // effect, cleared the session key, and cancelled the in-flight sync.
     subscribe,
-    defaultRelays?.join("|") ?? "",
+    defaultRelaysKey,
     refreshOpenIssuePrCounts,
   ]);
 
@@ -1995,7 +2027,7 @@ export default function RepoLayoutClient({
                   <DropdownMenuItem
                     key="nostr-star"
                     title={nostrStarButtonTitle}
-                    disabled={isStarring || resolvingRepoEventId}
+                    disabled={isStarring}
                     onClick={() => {
                       void handleNostrStar();
                     }}
@@ -2005,11 +2037,7 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    {resolvingRepoEventId
-                      ? "Looking up…"
-                      : isStarring
-                      ? "Signing…"
-                      : "Star"}
+                    {isStarring ? "Signing…" : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </DropdownMenuItem>
                   {sourceStarsDisplay ? (
@@ -2037,9 +2065,9 @@ export default function RepoLayoutClient({
               </DropdownMenu>
 
               <div className="flex justify-end">
-                <div className="hidden md:flex md:flex-row md:gap-2">
+                <div className="hidden md:flex md:flex-row md:items-center md:gap-2">
                   <Button
-                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                    className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
                     title={
                       !pubkey
@@ -2061,7 +2089,7 @@ export default function RepoLayoutClient({
                     }
                   >
                     <Button
-                      className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                      className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                       variant="outline"
                     >
                       <Zap className="mr-2 h-4 w-4" /> Zaps
@@ -2070,7 +2098,7 @@ export default function RepoLayoutClient({
                   </a>
                   {/* Relays status not yet implemented */}
                   <Button
-                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                    className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
                     title={
                       !pubkey
@@ -2084,7 +2112,7 @@ export default function RepoLayoutClient({
                     <Badge className="ml-2">{forkCount}</Badge>
                   </Button>
                   <Button
-                    className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
+                    className={`h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs ${
                       isNostrStarred ? "hover:bg-[#22262C]" : ""
                     } ${
                       !canStarOnNostr && !resolvingRepoEventId
@@ -2093,7 +2121,7 @@ export default function RepoLayoutClient({
                     }`}
                     variant="outline"
                     title={nostrStarButtonTitle}
-                    disabled={isStarring || resolvingRepoEventId}
+                    disabled={isStarring}
                     onClick={() => {
                       void handleNostrStar();
                     }}
@@ -2104,11 +2132,7 @@ export default function RepoLayoutClient({
                         isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                       }`}
                     />{" "}
-                    {resolvingRepoEventId
-                      ? "Looking up…"
-                      : isStarring
-                      ? "Signing…"
-                      : "Star"}
+                    {isStarring ? "Signing…" : "Star"}
                     <Badge className="ml-2">{nostrStarCount}</Badge>
                   </Button>
                   {sourceStarsDisplay ? (
@@ -2120,7 +2144,7 @@ export default function RepoLayoutClient({
                         title={sourceStarsDisplay.title}
                       >
                         <Button
-                          className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                          className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                           variant="outline"
                           type="button"
                         >
@@ -2133,7 +2157,7 @@ export default function RepoLayoutClient({
                       </a>
                     ) : (
                       <Button
-                        className="h-8 !border-[#383B42] bg-[#22262C] text-xs cursor-default"
+                        className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs cursor-default"
                         variant="outline"
                         type="button"
                         title={sourceStarsDisplay.title}
@@ -2148,7 +2172,7 @@ export default function RepoLayoutClient({
                     )
                   ) : null}
                   <Button
-                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                    className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
                     onClick={() => setShowRepoQR(true)}
                   >

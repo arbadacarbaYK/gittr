@@ -24,7 +24,7 @@ Production: web UI **`gittr.space`**, git SSH/HTTPS **`git.gittr.space`**.
 
 See [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main).
 
-Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`.
+Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README / openFile use the **first multifetch winner** immediately; extra clone successes must not cancel that README request.
 
 ## 3. Shared branch, Commits, Issues, PRs
 

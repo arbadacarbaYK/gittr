@@ -13,6 +13,7 @@ import {
 import { parseGiteaCompatibleRepo } from "@/lib/repos/gitea-forge";
 import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
+import { storedGithubSourceUnchanged } from "@/lib/repos/repo-page-chrome";
 import {
   type StoredRepo,
   loadStoredRepos,
@@ -242,6 +243,7 @@ export function persistGithubSourceOnRepo(
   };
   if (nextForked) next.forkedFrom = nextForked;
   else delete next.forkedFrom;
+  if (storedGithubSourceUnchanged(existing, next)) return;
   repos[idx] = next;
   saveStoredRepos(repos);
   if (typeof window !== "undefined") {

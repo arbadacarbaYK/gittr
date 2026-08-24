@@ -54,7 +54,7 @@ Same branch as the loaded tree: honor `?branch=` in the URL, then `repoData.file
 
 `shouldPreferUpstreamContent` is **forge-only** (GitHub / GitLab.com / Codeberg). GRASP-only / home `http://IP:port` clones are **not** treated as upstream, so README goes to bridge first instead of a 400/404 storm.
 
-Fallback order: local overrides → (forge upstream if any) → **`successfulSources` / winning clones first** (honor `resolvedBranch`) → bridge `file-content` only when no multifetch winner yet (sticky-skip after a full 404) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content. Tip README **size** is part of the reload key so bridge→GitHub listing upgrades re-fetch the body.
+Fallback order: local overrides → (forge upstream if any) → **`successfulSources` / winning clones first** (honor `resolvedBranch`) → bridge `file-content` only when no multifetch winner yet (sticky-skip after a full 404) → remaining `clone[]` (skips bare `http://IP` hosts; skipped entirely once multifetch already recorded successful sources) → cached `gittr_files` row content. Tip README **size** is part of the reload key so bridge→GitHub listing upgrades re-fetch the body. Do **not** restart that README load when extra clones succeed later (`successfulSources.length` must not be an effect dep) — the first winner is enough. If the tree listing is still empty or shallow, still GET `README.md` from that winner instead of waiting for the full multifetch race.
 
 ### Code-tab README matrix (all four content states)
 
@@ -169,6 +169,8 @@ After **Clear local / flush**, File Fetch must still hydrate the sidebar from th
 **Public profiles** (`GET /api/nostr/profile-repos`) query `PROFILE_REPOS_RELAYS` (stats pool + NIP-34 discovery: ngit, shakespeare, nostrhub, gitnostr, …). The slim `PLATFORM_STATS_RELAYS` set alone under-counts NostrHub publishers whose 30617s never land on `relay.gittr.space`.
 
 **One announcement lookup for chrome + files:** File fetch order (localStorage → published `clone[]`/`source` → bridge → forge) is unchanged. Star, Public/Private, Settings visibility, Refetch/forge Issues/PRs/Releases, Fork, Commits, and new Issue/PR publish must reuse that same 30617 (`resolveLiveRepoAnnouncement` / `fetchRepoCloneHintsFromProfile`). Do not rediscover the repo on the browser’s default relay list only — that is why a foreign GRASP repo can show files while Star says “not on relays yet”. The gittr bridge `GET /api/nostr/repo/files` **404s on purpose** when `clone[]` does not include `git.gittr.space`; the UI then reads the owner’s announced clone host. Do **not** add every foreign GRASP host to `KNOWN_GRASP_DOMAINS` just to make Commits work (known GRASP hosts that are not on the push allowlist are **dropped** from the sidebar).
+
+**Repo header Watch / Star / GitHub buttons:** those effects must depend on stable ids (`ownerPubkey`, repo slug, first GitHub spec), not the whole `repo` object. File fetch / README persist used to fire `gittr:repos-updated` on every identical `sourceUrl` write, which remounted Star as “Looking up…” every few seconds and unmounted the GitHub count. `persistGithubSourceOnRepo` no-ops when unchanged; Star keeps the “Star” label while an id is resolved in the background.
 
 ## Richer local tree vs SOURCE (64 vs 62)
 
