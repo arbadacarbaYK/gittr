@@ -2112,8 +2112,6 @@ export default function RepositoriesPage() {
             const announcedAtMs =
               typeof row.lastNostrEventCreatedAt === "number"
                 ? row.lastNostrEventCreatedAt * 1000
-                : typeof row.lastActivity === "number"
-                ? row.lastActivity
                 : undefined;
             // Flush/delete tombstones must survive profile-repos refill of old 30617s.
             if (
@@ -2193,12 +2191,15 @@ export default function RepositoriesPage() {
         );
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as {
-          repos?: Array<{ repo?: string; name?: string }>;
+          repos?: Array<{
+            repo?: string;
+            name?: string;
+            lastNostrEventId?: string;
+            lastNostrEventCreatedAt?: number;
+          }>;
         };
-        const liveNames = (data.repos || [])
-          .map((r) => (r.repo || r.name || "").trim())
-          .filter(Boolean);
-        if (liveNames.length === 0 || cancelled) return;
+        const liveRepos = data.repos || [];
+        if (liveRepos.length === 0 || cancelled) return;
 
         const signingCreds = await resolveSigningCredentials({
           remoteSigner,
@@ -2207,7 +2208,7 @@ export default function RepositoriesPage() {
 
         await healLocalSoftDeletesIfNeeded({
           ownerPubkey: pubkey,
-          liveRepoNames: liveNames,
+          liveRepos,
           signer: signingCreds.signer,
           publish,
           defaultRelays: defaultRelays || [],

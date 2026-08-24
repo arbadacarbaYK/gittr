@@ -93,9 +93,14 @@ export default async function handler(
         const unsub = subscribe(
           [
             {
-              kinds: [KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE],
+              kinds: [KIND_REPOSITORY_NIP34],
               authors: [ownerHex],
               limit: 500,
+            },
+            {
+              kinds: [KIND_REPOSITORY_STATE],
+              authors: [ownerHex],
+              limit: 200,
             },
           ],
           PROFILE_REPOS_RELAYS,

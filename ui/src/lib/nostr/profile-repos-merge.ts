@@ -202,24 +202,6 @@ function buildAnnounceRow(
   };
 }
 
-function stubRowFromState(
-  event: ProfileRepoEvent,
-  repoName: string
-): ProfileRepoRow {
-  const ts = event.created_at * 1000;
-  return {
-    entity: hexPubkeyToNpub(event.pubkey),
-    repo: repoName,
-    name: preferRepoDisplayName(undefined, undefined, repoName),
-    ownerPubkey: event.pubkey.toLowerCase(),
-    lastActivity: ts,
-    syncedFromNostr: true,
-    lastNostrEventCreatedAt: event.created_at,
-    stateEventId: event.id,
-    publicRead: true,
-  };
-}
-
 export function applyProfileRepoEvent(
   byKey: ProfileRepoAccumulator,
   event: ProfileRepoEvent
@@ -260,9 +242,11 @@ export function applyProfileRepoEvent(
 
   if (event.kind === KIND_REPOSITORY_STATE) {
     if (acc.announceDeleted) return;
-    if (!acc.row) {
-      acc.row = stubRowFromState(event, repoName);
-    } else if (ts >= acc.row.lastActivity) {
+    // A 30618 without a live 30617 is not a repo. After Settings → Delete the
+    // tombstone can miss the 500-event window while leftover state still arrives
+    // — listing that stub made My Repos nag “sign deletes again”.
+    if (!acc.row) return;
+    if (ts >= acc.row.lastActivity) {
       acc.row.lastActivity = ts;
       acc.row.stateEventId = event.id || acc.row.stateEventId;
     }

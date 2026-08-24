@@ -209,7 +209,9 @@ export function clearDeletedRepoTombstones(opts: {
  * Drop every tombstone owned by this pubkey (npub / hex / ownerPubkey field).
  * Used by "flush my own repos cache" so Nostr can refill the catalog.
  */
-export function clearDeletedRepoTombstonesForOwner(ownerPubkey: string): number {
+export function clearDeletedRepoTombstonesForOwner(
+  ownerPubkey: string
+): number {
   if (typeof window === "undefined") return 0;
   const owner = (ownerPubkey || "").trim().toLowerCase();
   if (!owner || !/^[0-9a-f]{64}$/i.test(owner)) return 0;
@@ -248,4 +250,82 @@ export function clearDeletedRepoTombstonesForOwner(ownerPubkey: string): number 
     /* ignore */
   }
   return 0;
+}
+
+export type LiveHealRepo = {
+  repo?: string;
+  name?: string;
+  lastNostrEventId?: string;
+  /** Unix seconds from the kind 30617, not 30618. */
+  lastNostrEventCreatedAt?: number;
+};
+
+/**
+ * Names that are hidden locally AND have a *newer live 30617* than deletedAt.
+ * An older announce or a 30618-only stub must not trigger “sign deletes again”.
+ */
+export function liveReposThatNeedSoftDeleteHeal(
+  ownerPubkey: string,
+  liveRepos: LiveHealRepo[],
+  tombstones: DeletedRepoTombstone[]
+): string[] {
+  const owner = ownerPubkey.trim().toLowerCase();
+  if (!owner || !/^[0-9a-f]{64}$/.test(owner)) return [];
+
+  const liveByName = new Map<string, LiveHealRepo>();
+  for (const row of liveRepos) {
+    const name = (row.repo || row.name || "").trim().toLowerCase();
+    if (!name) continue;
+    liveByName.set(name, row);
+  }
+
+  const out = new Set<string>();
+  for (const d of tombstones) {
+    const name = (d.repo || "").trim().toLowerCase();
+    if (!name) continue;
+    if (!tombstoneOwnedByOwner(d, owner)) continue;
+    const live = liveByName.get(name);
+    if (!live) continue;
+    if (
+      typeof live.lastNostrEventId !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(live.lastNostrEventId)
+    ) {
+      continue;
+    }
+    const announcedAtMs =
+      typeof live.lastNostrEventCreatedAt === "number" &&
+      Number.isFinite(live.lastNostrEventCreatedAt)
+        ? live.lastNostrEventCreatedAt * 1000
+        : undefined;
+    if (announcedAtMs === undefined) continue;
+    const deletedAt =
+      typeof d.deletedAt === "number" && Number.isFinite(d.deletedAt)
+        ? d.deletedAt
+        : 0;
+    if (announcedAtMs > deletedAt) out.add(name);
+  }
+  return [...out];
+}
+
+function tombstoneOwnedByOwner(
+  d: DeletedRepoTombstone,
+  owner: string
+): boolean {
+  if ((d.ownerPubkey || "").toLowerCase() === owner) return true;
+  const ent = (d.entity || "").trim().toLowerCase();
+  if (ent === owner) return true;
+  if (ent.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(d.entity!);
+      if (
+        decoded.type === "npub" &&
+        String(decoded.data).toLowerCase() === owner
+      ) {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
 }

@@ -2,11 +2,18 @@
  * Heal local-only deletes: `gittr_deleted_repos` hid repos in the browser but
  * Settings historically navigated away before the signer finished, so relays still
  * have a live kind 30617. Call from My Repos when the owner is signed in.
+ *
+ * Do not prompt just because a hidden name still appears in profile-repos — leftover
+ * 30618 state or an older live 30617 is not “delete never finished signing”.
  */
 import { appAlert, appConfirm } from "@/components/ui/app-dialog";
 import { publishRepoSoftDelete } from "@/lib/nostr/publish-repo-soft-delete";
 import type { ResolvedNostrSigner } from "@/lib/nostr/signer";
-import type { DeletedRepoTombstone } from "@/lib/repos/deleted-repo-tombstones";
+import {
+  type DeletedRepoTombstone,
+  type LiveHealRepo,
+  liveReposThatNeedSoftDeleteHeal,
+} from "@/lib/repos/deleted-repo-tombstones";
 
 const SESSION_KEY = "gittr_soft_delete_heal_prompted";
 
@@ -32,28 +39,14 @@ function tombstoneOwnedBy(
   return false;
 }
 
-/**
- * If local tombstones still have live (non-deleted) announces for this owner,
- * confirm once and publish soft-deletes + bridge wipe for each.
- *
- * `liveRepoNames` must come from `/api/nostr/profile-repos`, which treats a
- * repo as live only when the **latest kind 30617** is not soft-deleted
- * (kind 30618 state events must not resurrect a delete).
- */
 export async function healLocalSoftDeletesIfNeeded(opts: {
   ownerPubkey: string;
-  /** Live repo names from Nostr that are NOT marked deleted */
-  liveRepoNames: string[];
+  liveRepoNames?: string[];
+  liveRepos?: LiveHealRepo[];
   signer: ResolvedNostrSigner;
   publish: (event: any, relays: string[]) => void;
   defaultRelays: string[];
-  /** Skip session guard (tests / explicit button) */
   force?: boolean;
-  /**
-   * Explicit names to soft-delete (console / ops). When set, does not require
-   * a matching `gittr_deleted_repos` entry — still intersected with live names
-   * unless `forceEvenIfNotLive` is true.
-   */
   forceNames?: string[];
   forceEvenIfNotLive?: boolean;
 }): Promise<{ attempted: number; ok: number; failed: string[] }> {
@@ -72,9 +65,12 @@ export async function healLocalSoftDeletesIfNeeded(opts: {
     return { attempted: 0, ok: 0, failed: [] };
   }
 
+  const liveRepos: LiveHealRepo[] = (opts.liveRepos || []).concat(
+    (opts.liveRepoNames || []).map((n) => ({ repo: n }))
+  );
   const live = new Set(
-    (opts.liveRepoNames || [])
-      .map((n) => n.trim().toLowerCase())
+    liveRepos
+      .map((r) => (r.repo || r.name || "").trim().toLowerCase())
       .filter(Boolean)
   );
 
@@ -88,11 +84,11 @@ export async function healLocalSoftDeletesIfNeeded(opts: {
       ),
     ];
   } else {
-    const pending = readLocalTombstones()
-      .filter((d) => tombstoneOwnedBy(d, owner))
-      .map((d) => (d.repo || "").trim())
-      .filter((name) => name && live.has(name.toLowerCase()));
-    unique = [...new Set(pending.map((n) => n.toLowerCase()))];
+    unique = liveReposThatNeedSoftDeleteHeal(
+      owner,
+      liveRepos,
+      readLocalTombstones().filter((d) => tombstoneOwnedBy(d, owner))
+    );
   }
 
   if (unique.length === 0) {
@@ -104,10 +100,10 @@ export async function healLocalSoftDeletesIfNeeded(opts: {
   }
 
   const okConfirm = await appConfirm(
-    `${unique.length} repo(s) are hidden here but still live on Nostr (delete never finished signing).\n\n` +
-      `Publish soft-deletes now?\n\n${unique.slice(0, 12).join(", ")}${
+    `${unique.length} repo(s) have a live announcement newer than your last delete.\n\n` +
+      `Publish another soft-delete?\n\n${unique.slice(0, 12).join(", ")}${
         unique.length > 12 ? ", …" : ""
-      }\n\nAmber / your extension may ask once per repo.`,
+      }\n\nAmber / your extension may ask once per repo. Cancel will not ask again this session.`,
     "Repos still on Nostr"
   );
   if (!okConfirm) {

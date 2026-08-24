@@ -93,9 +93,9 @@ describe("profile-repos merge (latest 30617 wins)", () => {
     expect(repos[0]?.stateEventId).toBe("st-alive-1700000500");
   });
 
-  it("lists a 30618-only repo when no 30617 was seen", () => {
+  it("does not list a 30618-only repo (leftover state after a missed tombstone)", () => {
     const repos = rowsOf(state("state-only", 1_700_000_000));
-    expect(repos.map((r) => r.repo)).toEqual(["state-only"]);
+    expect(repos.map((r) => r.repo)).toEqual([]);
   });
 
   it("keeps a newer live announce over an older delete", () => {

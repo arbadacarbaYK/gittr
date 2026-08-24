@@ -5,6 +5,7 @@ import {
   clearDeletedRepoTombstones,
   clearDeletedRepoTombstonesForOwner,
   isDeletedRepoTombstoned,
+  liveReposThatNeedSoftDeleteHeal,
 } from "./deleted-repo-tombstones";
 
 const OWNER =
@@ -102,12 +103,14 @@ describe("clearDeletedRepoTombstones", () => {
       announcedAtMs: flushedAt - 60_000,
     });
     expect(removed).toBe(0);
-    expect(isDeletedRepoTombstoned({
-      entity: ENTITY,
-      repo: "gittr-mcp",
-      ownerPubkey: OWNER,
-      announcedAtMs: flushedAt - 60_000,
-    })).toBe(true);
+    expect(
+      isDeletedRepoTombstoned({
+        entity: ENTITY,
+        repo: "gittr-mcp",
+        ownerPubkey: OWNER,
+        announcedAtMs: flushedAt - 60_000,
+      })
+    ).toBe(true);
   });
 
   it("clears tombstone when relay announcement is newer than flush", () => {
@@ -154,7 +157,8 @@ describe("clearDeletedRepoTombstonesForOwner", () => {
           entity: "npub1other",
           repo: "someone-else",
           deletedAt: 1,
-          ownerPubkey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          ownerPubkey:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         },
       ])
     );
@@ -180,9 +184,7 @@ describe("addDeletedRepoTombstones", () => {
   it("adds new tombstones and skips duplicates by refreshing deletedAt", () => {
     localStorage.setItem(
       "gittr_deleted_repos",
-      JSON.stringify([
-        { entity: ENTITY, repo: "existing", deletedAt: 1 },
-      ])
+      JSON.stringify([{ entity: ENTITY, repo: "existing", deletedAt: 1 }])
     );
     const added = addDeletedRepoTombstones([
       { entity: ENTITY, repo: "existing" },
@@ -227,5 +229,60 @@ describe("addDeletedRepoTombstones", () => {
       localStorage.getItem("gittr_deleted_repos") || "[]"
     );
     expect(stored).toHaveLength(1);
+  });
+});
+
+describe("liveReposThatNeedSoftDeleteHeal", () => {
+  const eventId = "a".repeat(64);
+
+  it("does not nag when the live 30617 is older than the local delete", () => {
+    const names = liveReposThatNeedSoftDeleteHeal(
+      OWNER,
+      [
+        {
+          repo: "calendarapi",
+          lastNostrEventId: eventId,
+          lastNostrEventCreatedAt: 1_700_000_000,
+        },
+      ],
+      [
+        {
+          repo: "calendarapi",
+          ownerPubkey: OWNER,
+          deletedAt: 1_800_000_000_000,
+        },
+      ]
+    );
+    expect(names).toEqual([]);
+  });
+
+  it("does not nag on a 30618-only stub with no 30617 event id", () => {
+    const names = liveReposThatNeedSoftDeleteHeal(
+      OWNER,
+      [{ repo: "petrol-agent", lastNostrEventCreatedAt: 1_900_000_000 }],
+      [
+        {
+          repo: "petrol-agent",
+          ownerPubkey: OWNER,
+          deletedAt: 1,
+        },
+      ]
+    );
+    expect(names).toEqual([]);
+  });
+
+  it("nags only when a live 30617 is newer than the local delete", () => {
+    const names = liveReposThatNeedSoftDeleteHeal(
+      OWNER,
+      [
+        {
+          repo: "reopened",
+          lastNostrEventId: eventId,
+          lastNostrEventCreatedAt: 2_000_000_000,
+        },
+      ],
+      [{ repo: "reopened", ownerPubkey: OWNER, deletedAt: 1_000 }]
+    );
+    expect(names).toEqual(["reopened"]);
   });
 });
