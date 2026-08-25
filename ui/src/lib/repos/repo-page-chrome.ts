@@ -120,3 +120,24 @@ export function storedGithubSourceUnchanged(
     JSON.stringify(prev.clone || []) === JSON.stringify(next.clone || [])
   );
 }
+
+/**
+ * Header GitHub issue/PR hydrate. Retry when one side failed (rate limit).
+ * Do not retry when GitHub says the repo is gone/private — that 404 storm
+ * blocked first paint and spammed the console.
+ */
+export function githubHydrateShouldRetry(opts: {
+  attempt: number;
+  maxAttempts?: number;
+  sourceUrl?: string;
+  issuesOk?: boolean;
+  pullsOk?: boolean;
+  githubUnavailable?: boolean;
+}): boolean {
+  if (opts.githubUnavailable) return false;
+  if (!opts.sourceUrl) return false;
+  const max = opts.maxAttempts ?? 3;
+  if (opts.attempt >= max) return false;
+  if (!opts.issuesOk && !opts.pullsOk) return false;
+  return !opts.issuesOk || !opts.pullsOk;
+}

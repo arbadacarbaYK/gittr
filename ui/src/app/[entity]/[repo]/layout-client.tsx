@@ -54,7 +54,10 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
-import { repoPageChromeSignature } from "@/lib/repos/repo-page-chrome";
+import {
+  githubHydrateShouldRetry,
+  repoPageChromeSignature,
+} from "@/lib/repos/repo-page-chrome";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import {
   type StoredContributor,
@@ -1170,24 +1173,27 @@ export default function RepoLayoutClient({
       setResolvingRepoEventId(false);
       return true;
     };
+    if (alreadyKnown) applyId(cachedId);
 
     // Browser relay set often misses ngit/NostrHub announces that profile-repos
     // already found (that's how foreign files load). Query both; first 64-hex
     // id wins so Star is not blocked on an empty 8s subscribe.
-    const relayLookup = queryRepoAnnouncementEventId(
-      subscribe as RelaySubscribeFn,
-      relays,
-      ownerPubkey,
-      repoIdentifier,
-      {
-        timeoutMs: 8000,
-        repo: {
-          repositoryName: repoIdentifier,
-          repo: repoIdentifier,
-          slug: resolvedParams.repo,
-        },
-      }
-    ).then((id) => applyId(id));
+    const relayLookup = alreadyKnown
+      ? Promise.resolve(false)
+      : queryRepoAnnouncementEventId(
+          subscribe as RelaySubscribeFn,
+          relays,
+          ownerPubkey,
+          repoIdentifier,
+          {
+            timeoutMs: 8000,
+            repo: {
+              repositoryName: repoIdentifier,
+              repo: repoIdentifier,
+              slug: resolvedParams.repo,
+            },
+          }
+        ).then((id) => applyId(id));
     const profileLookup = resolveLiveRepoAnnouncement({
       ownerPubkey,
       repoName: repoIdentifier,
@@ -1322,18 +1328,23 @@ export default function RepoLayoutClient({
       );
       void (async () => {
         try {
-          const { sourceUrl, meta, synced, issuesOk, pullsOk } =
-            await hydrateRepoFromGithub(
-              resolvedParams.entity,
-              resolvedParams.repo,
-              {
-                repoRecord: record ?? null,
-                subscribe: subscribe ?? undefined,
-                defaultRelays: defaultRelays?.length
-                  ? defaultRelays
-                  : undefined,
-              }
-            );
+          const {
+            sourceUrl,
+            meta,
+            synced,
+            issuesOk,
+            pullsOk,
+            githubUnavailable,
+          } = await hydrateRepoFromGithub(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            {
+              repoRecord: record ?? null,
+              subscribe: subscribe ?? undefined,
+              defaultRelays: defaultRelays?.length ? defaultRelays : undefined,
+              badgeWarm: true,
+            }
+          );
           if (cancelled) return;
           if (sourceUrl?.includes("github.com")) {
             setHydratedGithubUrl(sourceUrl);
@@ -1354,23 +1365,29 @@ export default function RepoLayoutClient({
             loadRepoAndLogoRef.current();
             return;
           }
-          // Partial success: keep trying the failing side a couple times.
           if (
-            sourceUrl &&
-            attempt < 3 &&
-            !cancelled &&
-            (!issuesOk || !pullsOk)
+            githubHydrateShouldRetry({
+              attempt,
+              sourceUrl,
+              issuesOk,
+              pullsOk,
+              githubUnavailable,
+            })
           ) {
             retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2000);
             return;
           }
           if (sourceUrl) {
-            // Mark soft-done so we don't spin forever; tab open still re-hydrates.
-            githubHydrateKeyRef.current = `${routeKey}:partial`;
+            githubHydrateKeyRef.current = githubUnavailable
+              ? `${routeKey}:gone`
+              : `${routeKey}:partial`;
             loadRepoAndLogoRef.current();
           }
         } catch {
-          if (attempt < 3 && !cancelled) {
+          // Gone GitHub repos return githubUnavailable instead of throwing.
+          // One retry covers a transient proxy timeout; three retries of
+          // hung GitHub calls were the ~30s "gittr does not start" stall.
+          if (attempt < 1 && !cancelled) {
             retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2000);
           }
         } finally {

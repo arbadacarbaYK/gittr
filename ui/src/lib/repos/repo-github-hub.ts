@@ -25,6 +25,7 @@ import {
   resolveRepoUpstreamSource,
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
+import { markGithubBadgeWarm } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
@@ -34,6 +35,7 @@ import {
   syncGiteaPullsForRepo,
 } from "@/lib/utils/sync-gitea-repo-issues-prs";
 import {
+  type SyncGithubRepoOptions,
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
 } from "@/lib/utils/sync-github-repo-issues-prs";
@@ -254,14 +256,22 @@ export function persistGithubSourceOnRepo(
 export async function fetchGithubRepoMeta(
   sourceUrl: string
 ): Promise<GithubRepoMeta | null> {
+  const { meta } = await fetchGithubRepoMetaWithStatus(sourceUrl);
+  return meta;
+}
+
+async function fetchGithubRepoMetaWithStatus(
+  sourceUrl: string
+): Promise<{ meta: GithubRepoMeta | null; status: number }> {
   const spec = parseGitHubRepoSpec(sourceUrl);
-  if (!spec) return null;
+  if (!spec) return { meta: null, status: 0 };
   try {
     const endpoint = `/repos/${spec.owner}/${spec.repo}`;
     const r = await fetch(
-      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
-    if (!r.ok) return null;
+    if (!r.ok) return { meta: null, status: r.status };
     const j = (await r.json()) as {
       stargazers_count?: number;
       forks_count?: number;
@@ -288,19 +298,22 @@ export async function fetchGithubRepoMeta(
         ? j.parent.html_url.trim().replace(/\.git$/i, "")
         : undefined;
     return {
-      stars: typeof j.stargazers_count === "number" ? j.stargazers_count : 0,
-      forks: typeof j.forks_count === "number" ? j.forks_count : 0,
-      openIssues:
-        typeof j.open_issues_count === "number" ? j.open_issues_count : 0,
-      pushedAtMs,
-      updatedAtMs,
-      ...(description ? { description } : {}),
-      ...(typeof j.fork === "boolean" ? { isFork: j.fork } : {}),
-      ...(htmlUrl ? { htmlUrl } : {}),
-      ...(parentHtmlUrl ? { parentHtmlUrl } : {}),
+      status: r.status,
+      meta: {
+        stars: typeof j.stargazers_count === "number" ? j.stargazers_count : 0,
+        forks: typeof j.forks_count === "number" ? j.forks_count : 0,
+        openIssues:
+          typeof j.open_issues_count === "number" ? j.open_issues_count : 0,
+        pushedAtMs,
+        updatedAtMs,
+        description,
+        isFork: j.fork,
+        parentHtmlUrl,
+        htmlUrl,
+      },
     };
   } catch {
-    return null;
+    return { meta: null, status: 0 };
   }
 }
 
@@ -404,6 +417,8 @@ export async function hydrateRepoFromGithub(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     subscribe?: (...args: any[]) => () => void;
     defaultRelays?: string[];
+    /** Code-tab header: one page of open issues/PRs. Full tab sync stays on Issues/PRs. */
+    badgeWarm?: boolean;
   }
 ): Promise<{
   sourceUrl: string;
@@ -411,6 +426,7 @@ export async function hydrateRepoFromGithub(
   synced: boolean;
   issuesOk?: boolean;
   pullsOk?: boolean;
+  githubUnavailable?: boolean;
 }> {
   const record =
     opts.repoRecord ?? findStoredRepoForRoute(entity, repoSlug) ?? null;
@@ -440,12 +456,37 @@ export async function hydrateRepoFromGithub(
 
   writeUpstreamSourceSession(entity, repoSlug, sourceUrl);
 
+  const isGithub = sourceUrl.includes("github.com");
+  const probed = isGithub
+    ? await fetchGithubRepoMetaWithStatus(sourceUrl)
+    : { meta: null, status: 0 };
+  const meta = probed.meta;
+  if (
+    isGithub &&
+    (probed.status === 404 || probed.status === 410 || probed.status === 451)
+  ) {
+    // Deleted/private/renamed — do not follow up with issues/PRs/releases 404s,
+    // and skip the header's global GitHub badge warm for 6h.
+    markGithubBadgeWarm(entity, repoSlug);
+    return {
+      sourceUrl,
+      meta: null,
+      synced: false,
+      issuesOk: false,
+      pullsOk: false,
+      githubUnavailable: true,
+    };
+  }
+
+  const badgeOpts: SyncGithubRepoOptions | undefined = opts.badgeWarm
+    ? { maxPages: 1, openOnly: true }
+    : undefined;
   const gitea = parseGiteaCompatibleRepo(sourceUrl);
   const [issuesOk, pullsOk] = await Promise.all(
-    sourceUrl.includes("github.com")
+    isGithub
       ? [
-          syncGithubIssuesForRepo(entity, repoSlug, sourceUrl),
-          syncGithubPullsForRepo(entity, repoSlug, sourceUrl),
+          syncGithubIssuesForRepo(entity, repoSlug, sourceUrl, badgeOpts),
+          syncGithubPullsForRepo(entity, repoSlug, sourceUrl, badgeOpts),
         ]
       : gitea
       ? [
@@ -455,11 +496,10 @@ export async function hydrateRepoFromGithub(
       : [Promise.resolve(false), Promise.resolve(false)]
   );
   // Warm releases bucket (same soft-sync as Releases tab; safe if unused)
-  void syncGithubReleasesForRepo(entity, repoSlug, sourceUrl);
+  if (!opts.badgeWarm) {
+    void syncGithubReleasesForRepo(entity, repoSlug, sourceUrl);
+  }
 
-  const meta = sourceUrl.includes("github.com")
-    ? await fetchGithubRepoMeta(sourceUrl)
-    : null;
   const forkMeta = await fetchForgeRepoForkMeta(sourceUrl);
   if (meta?.pushedAtMs) {
     writeGithubPushedSession(entity, repoSlug, meta.pushedAtMs);

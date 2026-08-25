@@ -52,7 +52,8 @@ async function fetchGithubListPages(
       hasQuery ? "&" : "?"
     }per_page=100&page=${page}`;
     const res = await fetch(
-      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
     if (!res.ok) {
       if (page === 1) return null;

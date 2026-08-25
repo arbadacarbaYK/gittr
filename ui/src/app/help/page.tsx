@@ -953,8 +953,10 @@ export default function HelpPage() {
                   files, Public/Private, Refetch, and new issues — a foreign
                   GRASP clone still counts as published. The button stays{" "}
                   <strong>Star</strong> while that lookup runs in the background
-                  (it should not flicker to “Looking up…”). Also listed on your{" "}
-                  <strong>Stars</strong> page. Not the same as Watch.
+                  (it should not flicker to “Looking up…”). A GitHub source that
+                  was deleted or made private is skipped — it must not stall the
+                  page. Also listed on your <strong>Stars</strong> page. Not the
+                  same as Watch.
                 </li>
                 <li>
                   <strong>Zaps</strong> — shortcut to tip; totals combine Nostr

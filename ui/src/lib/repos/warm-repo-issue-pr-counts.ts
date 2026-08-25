@@ -46,7 +46,9 @@ function ghBadgeWarmMetaKey(entity: string, repo: string): string {
 
 function needsGithubBadgeWarm(entity: string, repo: string): boolean {
   try {
-    const last = Number(localStorage.getItem(ghBadgeWarmMetaKey(entity, repo)) || 0);
+    const last = Number(
+      localStorage.getItem(ghBadgeWarmMetaKey(entity, repo)) || 0
+    );
     if (Number.isFinite(last) && Date.now() - last < GH_BADGE_WARM_TTL_MS) {
       return false;
     }
@@ -64,7 +66,7 @@ function needsGithubBadgeWarm(entity: string, repo: string): boolean {
   }
 }
 
-function markGithubBadgeWarm(entity: string, repo: string): void {
+export function markGithubBadgeWarm(entity: string, repo: string): void {
   try {
     localStorage.setItem(ghBadgeWarmMetaKey(entity, repo), String(Date.now()));
   } catch {
@@ -346,18 +348,20 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
     for (const r of queue) {
       if (cancelled || !r?.githubSourceUrl) break;
       try {
-        await syncGithubIssuesForRepo(
+        const issuesOk = await syncGithubIssuesForRepo(
           r.entity,
           r.repo,
           r.githubSourceUrl,
           light
         );
-        await syncGithubPullsForRepo(
-          r.entity,
-          r.repo,
-          r.githubSourceUrl,
-          light
-        );
+        if (issuesOk) {
+          await syncGithubPullsForRepo(
+            r.entity,
+            r.repo,
+            r.githubSourceUrl,
+            light
+          );
+        }
         markGithubBadgeWarm(r.entity, r.repo);
       } catch {
         /* ignore per-repo failures */

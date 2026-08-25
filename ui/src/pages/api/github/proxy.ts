@@ -64,6 +64,9 @@ export default async function handler(
     const response = await fetch(url, {
       headers: headers as any,
       redirect: "error",
+      // Hang here used to occupy a gittr.space connection until GitHub
+      // answered — a deleted/private mirror then stalled first paint ~30s.
+      signal: AbortSignal.timeout(8000),
     });
 
     const data = await response.text();
@@ -90,6 +93,11 @@ export default async function handler(
 
     return res.status(response.status).send(data);
   } catch (error: any) {
+    const timedOut =
+      error?.name === "TimeoutError" || error?.name === "AbortError";
+    if (timedOut) {
+      return res.status(504).json({ error: "GitHub API timed out" });
+    }
     console.error("GitHub proxy error:", error);
     return res.status(500).json({
       error: "Failed to fetch from GitHub API",

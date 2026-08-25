@@ -5,6 +5,7 @@ import {
   firstSuccessfulSourceKey,
   folderReadmeFallbackPath,
   folderReadmeLoadPath,
+  githubHydrateShouldRetry,
   repoPageChromeSignature,
   storedGithubSourceUnchanged,
 } from "./repo-page-chrome";
@@ -122,6 +123,39 @@ describe("storedGithubSourceUnchanged", () => {
           "https://github.com/acme/widgets.git",
           "https://extra.example/x.git",
         ],
+      })
+    ).toBe(false);
+  });
+});
+
+describe("githubHydrateShouldRetry", () => {
+  it("retries when only one of issues/PRs failed", () => {
+    expect(
+      githubHydrateShouldRetry({
+        attempt: 0,
+        sourceUrl: "https://github.com/acme/widgets",
+        issuesOk: false,
+        pullsOk: true,
+      })
+    ).toBe(true);
+  });
+
+  it("does not retry a missing or private GitHub repo", () => {
+    expect(
+      githubHydrateShouldRetry({
+        attempt: 0,
+        sourceUrl: "https://github.com/acme/gone",
+        issuesOk: false,
+        pullsOk: false,
+        githubUnavailable: true,
+      })
+    ).toBe(false);
+    expect(
+      githubHydrateShouldRetry({
+        attempt: 0,
+        sourceUrl: "https://github.com/acme/gone",
+        issuesOk: false,
+        pullsOk: false,
       })
     ).toBe(false);
   });

@@ -35,7 +35,10 @@ function gitlabProjectPath(sourceUrl: string): string | null {
   }
   try {
     const url = new URL(href);
-    const parts = url.pathname.replace(/\.git$/i, "").split("/").filter(Boolean);
+    const parts = url.pathname
+      .replace(/\.git$/i, "")
+      .split("/")
+      .filter(Boolean);
     if (parts.length < 2) return null;
     return parts.join("/");
   } catch {
@@ -43,14 +46,17 @@ function gitlabProjectPath(sourceUrl: string): string | null {
   }
 }
 
-async function fetchGithubForkMeta(sourceUrl: string): Promise<ForgeForkMeta | null> {
+async function fetchGithubForkMeta(
+  sourceUrl: string
+): Promise<ForgeForkMeta | null> {
   const spec = parseGitHubRepoSpec(sourceUrl);
   if (!spec) return null;
   try {
     const r = await fetch(
       `/api/github/proxy?endpoint=${encodeURIComponent(
         `/repos/${spec.owner}/${spec.repo}`
-      )}`
+      )}`,
+      { signal: AbortSignal.timeout(8000) }
     );
     if (!r.ok) return null;
     const j = (await r.json()) as {
@@ -124,10 +130,9 @@ async function fetchGitlabForkMeta(
   if (!projectPath) return null;
   const encoded = encodeURIComponent(projectPath);
   try {
-    const r = await fetch(
-      `https://gitlab.com/api/v4/projects/${encoded}`,
-      { headers: { Accept: "application/json", "User-Agent": "gittr-space" } }
-    );
+    const r = await fetch(`https://gitlab.com/api/v4/projects/${encoded}`, {
+      headers: { Accept: "application/json", "User-Agent": "gittr-space" },
+    });
     if (!r.ok) return null;
     const j = (await r.json()) as {
       forked_from_project?: { web_url?: string; path_with_namespace?: string };
