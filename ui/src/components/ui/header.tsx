@@ -119,6 +119,7 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [openIssueTotal, setOpenIssueTotal] = useState(0);
   const [openPrTotal, setOpenPrTotal] = useState(0);
 
@@ -256,10 +257,18 @@ export function Header() {
   );
 
   const go = useCallback(
-    (href: string, e?: { preventDefault: () => void } | null) =>
-      appNavigate(href, router, pathname, e),
+    (href: string, e?: { preventDefault: () => void } | null) => {
+      // Header stays mounted on soft nav; Radix does not close if we
+      // preventDefault the item <a> click. Same as MobileNav: dismiss first.
+      setUserMenuOpen(false);
+      appNavigate(href, router, pathname, e);
+    },
     [router, pathname]
   );
+
+  useEffect(() => {
+    setUserMenuOpen(false);
+  }, [pathname]);
 
   const handleSignOut = useCallback(() => {
     if (signOut) {
@@ -280,7 +289,8 @@ export function Header() {
     <header
       data-repo-chrome
       className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8"
-    >      <div className="flex items-center gap-4">
+    >
+      <div className="flex items-center gap-4">
         <MainNav items={navItems} />
         {mounted && isLoggedIn && (
           <a
@@ -299,7 +309,7 @@ export function Header() {
       </div>
       <div className="hidden items-center md:inline">
         {mounted && isLoggedIn ? (
-          <DropdownMenu>
+          <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <DropdownMenuTrigger asChild>
               <div className="flex items-center cursor-pointer">
                 <Avatar className="w-8 h-8 overflow-hidden shrink-0">
