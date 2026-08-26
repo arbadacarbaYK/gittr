@@ -20,6 +20,7 @@ import {
   syncIssuesAndPRsFromNostr,
   syncUserCommitsFromBridge,
 } from "@/lib/activity-tracking";
+import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   enqueueFollowPublish,
@@ -34,14 +35,22 @@ import {
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
+  KIND_REPOSITORY_NIP34,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { profileRepoRelaysForClient } from "@/lib/nostr/nip34-discovery-relays";
 import {
   nip39IdentityDisplay,
   nip39PlatformDisplayName,
   nip39PlatformProfileUrl,
 } from "@/lib/nostr/nip39-identities";
+import {
+  type ProfileRepoAccumulator,
+  applyProfileRepoEvent,
+  profileRepoRowsFromAccumulator,
+} from "@/lib/nostr/profile-repos-merge";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -63,6 +72,8 @@ import {
   profileRepoCountLabel,
   profileRepoDisplayRole,
   profileRepoRowKey,
+  toProfileRepoCard,
+  unionProfileRepoCatalog,
 } from "@/lib/repos/merge-profile-repos";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
@@ -171,8 +182,8 @@ export default function EntityPage({
   /** Latest /api/nostr/profile-repos rows — re-applied after localStorage merges. */
   const networkProfileReposRef = useRef<any[]>([]);
   const profileHexLiveRef = useRef<string | null>(null);
-  /** True while the public profile-repos API is in flight (logged-out visitors need this). */
-  const [networkReposLoading, setNetworkReposLoading] = useState(false);
+  /** True until API + live 30617 scan settle. Start true so the first paint is "…" not 0. */
+  const [networkReposLoading, setNetworkReposLoading] = useState(true);
   /** True after the catalog request finished (success, empty, or error). */
   const [networkReposSettled, setNetworkReposSettled] = useState(false);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
@@ -189,7 +200,7 @@ export default function EntityPage({
     setVisibleRepoCount(REPO_LIST_PAGE_SIZE);
     setUserRepos([]);
     networkProfileReposRef.current = [];
-    setNetworkReposLoading(false);
+    setNetworkReposLoading(true);
     setNetworkReposSettled(false);
   }, [resolvedParams.entity]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(
@@ -1328,8 +1339,10 @@ export default function EntityPage({
             const deduplicatedUpdatedRepos = Array.from(dedupeMap.values());
 
             setUserRepos((prev) => {
+              const catalog = networkProfileReposRef.current;
+              if (catalog.length === 0) return prev;
               const next = enrichNetworkProfileRepos(
-                networkProfileReposRef.current,
+                catalog,
                 deduplicatedUpdatedRepos
               );
               if (
@@ -1576,10 +1589,9 @@ export default function EntityPage({
         }
 
         setUserRepos((prev) => {
-          const next = enrichNetworkProfileRepos(
-            networkProfileReposRef.current,
-            deduplicatedRepos
-          );
+          const catalog = networkProfileReposRef.current;
+          if (catalog.length === 0) return prev;
+          const next = enrichNetworkProfileRepos(catalog, deduplicatedRepos);
           if (
             prev.length === next.length &&
             prev.every(
@@ -2113,7 +2125,8 @@ export default function EntityPage({
   ]);
 
   // Network repo list for any visitor (logged-out and logged-in). Does not
-  // depend on session — /api/nostr/profile-repos is public.
+  // depend on session — /api/nostr/profile-repos is a first paint; the live
+  // 30617 subscribe on the same relays as file fetch is the source of truth.
   const profileHexForFetch = useMemo(() => {
     const entity = resolvedParams.entity;
     if (isHexPubkey(entity)) return entity.toLowerCase();
@@ -2127,8 +2140,33 @@ export default function EntityPage({
 
   profileHexLiveRef.current = profileHexForFetch;
 
+  const applyProfileCatalogRows = (incoming: any[]) => {
+    if (!Array.isArray(incoming) || incoming.length === 0) return;
+    const catalog = unionProfileRepoCatalog(
+      networkProfileReposRef.current,
+      incoming
+    );
+    networkProfileReposRef.current = catalog;
+    setUserRepos((prev) => {
+      const next = enrichNetworkProfileRepos(catalog, prev);
+      if (
+        prev.length === next.length &&
+        prev.every(
+          (r, i) => profileRepoRowKey(r) === profileRepoRowKey(next[i]!)
+        )
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
-    if (!isPubkey || !profileHexForFetch) return;
+    if (!isPubkey || !profileHexForFetch) {
+      setNetworkReposLoading(false);
+      setNetworkReposSettled(true);
+      return;
+    }
     const hex = profileHexForFetch;
 
     let cancelled = false;
@@ -2162,54 +2200,27 @@ export default function EntityPage({
         };
         if (profileHexLiveRef.current !== hex) return;
         if (!Array.isArray(data.repos) || data.repos.length === 0) {
-          networkProfileReposRef.current = [];
-          setUserRepos([]);
+          console.warn(
+            "[Profile] profile-repos API returned 0 — keeping live relay scan"
+          );
           return;
         }
-        const mapped = data.repos.map((row) => ({
-          slug: row.repo,
-          entity: row.entity,
-          repo: row.repo,
-          name: row.name || row.repo,
-          description: row.description || "",
-          ownerPubkey: row.ownerPubkey,
-          createdAt: row.lastActivity,
-          updatedAt: row.lastActivity,
-          lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
-          lastNostrEventId: row.lastNostrEventId,
-          syncedFromNostr: true,
-          fromNostr: true,
-          sourceUrl: row.sourceUrl,
-          forkedFrom: row.forkedFrom,
-          clone: row.clone,
-          // Kind 30617 author is this profile — not GitHub NIP-39.
-          userRole: profileAnnouncerRole({
-            forkedFrom: row.forkedFrom,
-            sourceUrl: row.sourceUrl,
-            clone: row.clone,
-          }),
-          // Preserve private status from relays after localStorage clear
-          publicRead: row.publicRead !== false,
-        }));
-        networkProfileReposRef.current = mapped;
-        setUserRepos((prev) => {
-          const next = enrichNetworkProfileRepos(mapped, prev);
-          if (
-            prev.length === next.length &&
-            prev.every(
-              (r, i) => profileRepoRowKey(r) === profileRepoRowKey(next[i]!)
-            )
-          ) {
-            return prev;
+        const mapped = data.repos.map((row) => toProfileRepoCard(row));
+        applyProfileCatalogRows(mapped);
+        console.log(
+          `[Profile] profile-repos API: ${mapped.length} announcement(s)`
+        );
+        // Cards are up; keep a short "+" while the live scan catches stragglers.
+        setTimeout(() => {
+          if (profileHexLiveRef.current === hex) {
+            setNetworkReposLoading(false);
           }
-          return next;
-        });
+        }, 4000);
       } catch (e) {
         console.warn("[Profile] profile-repos fetch failed:", e);
       } finally {
         if (!cancelled && profileHexLiveRef.current === hex) {
           setNetworkReposSettled(true);
-          setNetworkReposLoading(false);
         }
       }
     };
@@ -2219,6 +2230,89 @@ export default function EntityPage({
       cancelled = true;
     };
   }, [isPubkey, profileHexForFetch]);
+
+  // Same relay pool as Code-tab file fetch (app defaults + NIP-34 discovery).
+  // The server scan is a 6-relay shortcut and can finish with 0–1 rows.
+  useEffect(() => {
+    if (!isPubkey || !profileHexForFetch || !subscribe) {
+      if (!isPubkey || !profileHexForFetch) {
+        setNetworkReposLoading(false);
+        return;
+      }
+      const fallback = setTimeout(() => {
+        if (profileHexLiveRef.current === profileHexForFetch) {
+          setNetworkReposLoading(false);
+        }
+      }, 15_000);
+      return () => clearTimeout(fallback);
+    }
+    const hex = profileHexForFetch;
+    const relays = profileRepoRelaysForClient(
+      getAllRelays(defaultRelays || [])
+    );
+    const byKey: ProfileRepoAccumulator = new Map();
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastLogged = 0;
+
+    const flush = () => {
+      if (profileHexLiveRef.current !== hex) return;
+      const rows = profileRepoRowsFromAccumulator(byKey).map((row) =>
+        toProfileRepoCard(row)
+      );
+      if (rows.length === 0) return;
+      applyProfileCatalogRows(rows);
+      if (rows.length !== lastLogged) {
+        lastLogged = rows.length;
+        console.log(
+          `[Profile] live 30617 catalog: ${rows.length} from ${relays.length} relays`
+        );
+      }
+    };
+
+    const scheduleFlush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flush();
+      }, 120);
+    };
+
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_REPOSITORY_NIP34],
+          authors: [hex],
+          limit: 2000,
+        },
+      ],
+      relays,
+      (event) => {
+        if (event.kind !== KIND_REPOSITORY_NIP34) return;
+        if (String(event.pubkey || "").toLowerCase() !== hex) return;
+        if (isPublisherBlocklisted(event.pubkey)) return;
+        applyProfileRepoEvent(byKey, event);
+        scheduleFlush();
+      },
+      undefined
+    );
+
+    const settle = setTimeout(() => {
+      flush();
+      if (profileHexLiveRef.current === hex) {
+        setNetworkReposLoading(false);
+      }
+    }, 12_000);
+
+    return () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      clearTimeout(settle);
+      try {
+        unsub();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [isPubkey, profileHexForFetch, subscribe, defaultRelays]);
 
   /** Nostr rows often lack forkedFrom — hydrate from forge parent APIs on profile load. */
   const forkEnrichAttemptedRef = useRef(new Set<string>());

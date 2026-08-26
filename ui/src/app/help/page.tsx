@@ -3304,7 +3304,10 @@ export default function HelpPage() {
                     Repos
                   </Link>{" "}
                   page to see all repositories from Nostr (consistent across
-                  browsers).
+                  browsers). Someone&apos;s <strong>profile</strong> lists their
+                  public Nostr announcements the same way whether you are signed
+                  in or not — opening one of their repos does not become their
+                  whole catalog.
                 </p>
               </div>
             </HelpTopic>

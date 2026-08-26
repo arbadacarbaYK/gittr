@@ -7,6 +7,8 @@ import {
   preferRepoDisplayName,
   profileRepoCountLabel,
   profileRepoDisplayRole,
+  toProfileRepoCard,
+  unionProfileRepoCatalog,
 } from "./merge-profile-repos";
 
 describe("preferRepoDisplayName", () => {
@@ -151,6 +153,59 @@ describe("profileRepoCountLabel", () => {
 
   it("shows the final count after the catalog settles", () => {
     expect(profileRepoCountLabel(102, false)).toBe("102");
+  });
+});
+
+describe("unionProfileRepoCatalog", () => {
+  const owner =
+    "0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd";
+
+  it("keeps the larger catalog when a later scan returns fewer rows", () => {
+    const many = [
+      { repo: "ditto", ownerPubkey: owner, publicRead: true },
+      { repo: "shakespeare", ownerPubkey: owner, publicRead: true },
+    ];
+    const few = [{ repo: "ditto", ownerPubkey: owner, publicRead: true }];
+    expect(
+      unionProfileRepoCatalog(many, few)
+        .map((r) => r.repo)
+        .sort()
+    ).toEqual(["ditto", "shakespeare"]);
+  });
+
+  it("ignores an empty incoming scan instead of wiping", () => {
+    const current = [{ repo: "marlowe", ownerPubkey: owner, publicRead: true }];
+    expect(unionProfileRepoCatalog(current, [])).toHaveLength(1);
+    expect(unionProfileRepoCatalog([], [])).toEqual([]);
+  });
+
+  it("adds newly discovered announcements", () => {
+    const current = [{ repo: "marlowe", ownerPubkey: owner, publicRead: true }];
+    const incoming = [
+      { repo: "vidstr2", ownerPubkey: owner, publicRead: true },
+    ];
+    expect(
+      unionProfileRepoCatalog(current, incoming)
+        .map((r) => r.repo)
+        .sort()
+    ).toEqual(["marlowe", "vidstr2"]);
+  });
+});
+
+describe("toProfileRepoCard", () => {
+  it("marks a 30617 row as public and owned by the announcer", () => {
+    const card = toProfileRepoCard({
+      entity: "npub1example",
+      repo: "marlowe",
+      name: "Marlowe",
+      ownerPubkey: "aa".repeat(32),
+      lastActivity: 1,
+      publicRead: true,
+    });
+    expect(card.repo).toBe("marlowe");
+    expect(card.syncedFromNostr).toBe(true);
+    expect(card.publicRead).toBe(true);
+    expect(card.userRole).toBe("owner");
   });
 });
 

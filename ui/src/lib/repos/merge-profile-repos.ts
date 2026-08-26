@@ -275,6 +275,64 @@ export function profileRepoCountLabel(
 }
 
 /**
+ * Card shape used by the public profile grid. Shared by the profile-repos API
+ * mapper and the live browser 30617 subscribe.
+ */
+export function toProfileRepoCard(row: {
+  entity: string;
+  repo: string;
+  name?: string;
+  description?: string;
+  ownerPubkey: string;
+  lastActivity: number;
+  syncedFromNostr?: boolean;
+  lastNostrEventId?: string;
+  lastNostrEventCreatedAt?: number;
+  publicRead?: boolean;
+  sourceUrl?: string;
+  forkedFrom?: string;
+  clone?: string[];
+}): Record<string, unknown> {
+  return {
+    slug: row.repo,
+    entity: row.entity,
+    repo: row.repo,
+    name: row.name || row.repo,
+    description: row.description || "",
+    ownerPubkey: row.ownerPubkey,
+    createdAt: row.lastActivity,
+    updatedAt: row.lastActivity,
+    lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
+    lastNostrEventId: row.lastNostrEventId,
+    syncedFromNostr: true,
+    fromNostr: true,
+    sourceUrl: row.sourceUrl,
+    forkedFrom: row.forkedFrom,
+    clone: row.clone,
+    userRole: profileAnnouncerRole({
+      forkedFrom: row.forkedFrom,
+      sourceUrl: row.sourceUrl,
+      clone: row.clone,
+    }),
+    publicRead: row.publicRead !== false,
+  };
+}
+
+/**
+ * Grow the live catalog. An empty or smaller scan must not replace a larger
+ * one (truncated API / early EOSE used to paint 0–1 repos over 100+).
+ */
+export function unionProfileRepoCatalog(
+  current: any[],
+  incoming: any[]
+): any[] {
+  const have = (current || []).filter(isListedOnPublicProfile);
+  const add = (incoming || []).filter(isListedOnPublicProfile);
+  if (add.length === 0) return have;
+  return mergeProfileRepoList(have, add);
+}
+
+/**
  * The profile grid is the Nostr catalog for this npub — same list logged-in
  * or logged-out. localStorage may fill About text / logos on matching rows
  * but must not add cache-only repos.

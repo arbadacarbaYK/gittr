@@ -22,7 +22,7 @@ export type { ProfileRepoRow };
 /** Relays that store full 30617 history can fill a small `limit` with one busy repo. */
 const PROFILE_REPOS_ANNOUNCE_LIMIT = 2000;
 const PROFILE_REPOS_STATE_LIMIT = 500;
-const PROFILE_REPOS_SUBSCRIBE_MS = 12_000;
+const PROFILE_REPOS_SUBSCRIBE_MS = 15_000;
 
 async function resolveOwnerHex(
   input: string
@@ -71,8 +71,7 @@ export default async function handler(
 
     await withRelayPoolSubscribe(PROFILE_REPOS_RELAYS, async (subscribe) => {
       await new Promise<void>((resolve) => {
-        let eoseCount = 0;
-        const expectedEose = PROFILE_REPOS_RELAYS.length;
+        let eoseRelays = new Set<string>();
         let done = false;
 
         const finish = (fromTimeout = false) => {
@@ -116,9 +115,15 @@ export default async function handler(
           PROFILE_REPOS_RELAYS,
           (event) => upsert(event),
           undefined,
-          () => {
-            eoseCount++;
-            if (eoseCount >= expectedEose) setTimeout(() => finish(false), 200);
+          (relayUrl?: string) => {
+            // Count unique relays, not raw EOSE callbacks (2 filters can fire
+            // twice per relay and used to finish after ~3 of 6 hosts).
+            if (!relayUrl) return;
+            eoseRelays.add(relayUrl);
+            const allNamed = PROFILE_REPOS_RELAYS.every((url) =>
+              eoseRelays.has(url)
+            );
+            if (allNamed) setTimeout(() => finish(false), 400);
           },
           {}
         );
