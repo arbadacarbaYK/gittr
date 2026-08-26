@@ -10,7 +10,6 @@
  * Flight requests (isRscClientNavigation). startTransition keeps the chrome
  * responsive while the new segment streams in.
  */
-
 import { startTransition } from "react";
 
 function normalizePath(href: string): string {
@@ -82,6 +81,21 @@ function samePath(a: string, b: string): boolean {
 }
 
 /**
+ * Last-resort hard assign after a stalled soft push.
+ * Never yank home if the address bar already shows a repo Code tab —
+ * that is the replaceState/README hydrate desync, not a hung nav to `/`.
+ */
+export function shouldApplySoftNavHardFallback(
+  href: string,
+  currentPathname: string
+): boolean {
+  const targetPath = canonicalPath(href);
+  if (canonicalPath(currentPathname) === targetPath) return false;
+  if (targetPath === "/" && isRepoCodePath(currentPathname)) return false;
+  return true;
+}
+
+/**
  * Hard nav is reserved for rare stuck soft transitions — not for every leave
  * from Code/Explore (that remounted the whole app + bunker warm).
  */
@@ -115,14 +129,15 @@ export function appNavigate(
   }
   event?.preventDefault();
   if (router) {
-    const targetPath = canonicalPath(href);
     const gen = ++softNavGeneration;
     startTransition(() => {
       router.push(href);
     });
     window.setTimeout(() => {
       if (gen !== softNavGeneration) return;
-      if (canonicalPath(window.location.pathname) === targetPath) return;
+      if (!shouldApplySoftNavHardFallback(href, window.location.pathname)) {
+        return;
+      }
       // Soft RSC hung for 8s — last resort only.
       console.warn(
         "[appNavigate] Soft nav stalled; hard-assigning after",

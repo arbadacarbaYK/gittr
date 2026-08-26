@@ -194,6 +194,7 @@ import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
+import { pushAppUrl, replaceAppUrl } from "@/lib/utils/app-history";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   mergeOwnerPubkeyIntoContributors,
@@ -428,7 +429,7 @@ const createMarkdownHeadingComponents = (
         if (typeof window === "undefined") return;
         const url = new URL(window.location.href);
         url.hash = id;
-        window.history.replaceState(null, "", url.toString());
+        replaceAppUrl(`${url.pathname}${url.search}${url.hash}`);
         if (navigator?.clipboard?.writeText) {
           navigator.clipboard.writeText(url.toString()).catch(() => {});
         }
@@ -2642,8 +2643,16 @@ export function RepoCodePage() {
       // Keep repo navigation state updates client-only.
       // Using router.replace here can re-trigger route resolution and metadata fetches,
       // which causes request storms and visible UI flicker.
+      // Passing null to replaceState makes Next 15 ACTION_RESTORE the stale
+      // homepage tree during soft nav from `/` (README then bounce home).
       if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", newUrl);
+        if (!replaceAppUrl(newUrl)) {
+          window.setTimeout(() => {
+            replaceAppUrl(newUrl);
+            isUpdatingURLRef.current = false;
+          }, 250);
+          return;
+        }
       } else {
         router.replace(newUrl, { scroll: false });
       }
@@ -2704,7 +2713,10 @@ export function RepoCodePage() {
       else u.searchParams.delete("path");
       if (nextFile) u.searchParams.set("file", nextFile);
       else u.searchParams.delete("file");
-      window.history.pushState(null, "", `${u.pathname}${u.search}${u.hash}`);
+      const nextHref = `${u.pathname}${u.search}${u.hash}`;
+      if (!pushAppUrl(nextHref)) {
+        window.location.assign(nextHref);
+      }
       window.setTimeout(() => {
         updatingFromURLRef.current = false;
         isUpdatingURLRef.current = false;

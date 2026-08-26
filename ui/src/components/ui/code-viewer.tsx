@@ -9,6 +9,7 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
+import { replaceAppUrl } from "@/lib/utils/app-history";
 
 import { Share2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -88,7 +89,7 @@ export function CodeViewer({
           // Clear hash immediately - this must happen before hash parsing effect runs
           const url = new URL(window.location.href);
           url.hash = "";
-          window.history.replaceState(null, "", url.toString());
+          replaceAppUrl(`${url.pathname}${url.search}`);
           setCurrentHash("");
           lastHashRef.current = ""; // Clear hash ref immediately
         }
@@ -251,11 +252,7 @@ export function CodeViewer({
     const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
     isUserSelectionRef.current = true;
     lastHashRef.current = newHash;
-    window.history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search + newHash
-    );
+    replaceAppUrl(window.location.pathname + window.location.search + newHash);
     setCurrentHash(newHash);
   }, []);
 
@@ -428,9 +425,7 @@ export function CodeViewer({
         setRangeMode(false);
 
         const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
-        window.history.replaceState(
-          null,
-          "",
+        replaceAppUrl(
           window.location.pathname + window.location.search + newHash
         );
         scrollToActionBar();
@@ -445,9 +440,7 @@ export function CodeViewer({
         const newHash = `#L${lineNum}`;
         isUserSelectionRef.current = true;
         lastHashRef.current = newHash;
-        window.history.replaceState(
-          null,
-          "",
+        replaceAppUrl(
           window.location.pathname + window.location.search + newHash
         );
         scrollToActionBar();

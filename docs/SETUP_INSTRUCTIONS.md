@@ -109,6 +109,7 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 - **Logged out:** shared platform feed from the leaderboard snapshot / live Nostr scan (commits, PRs, issues, repo creates across the network).
 - **Logged in:** only activity on **repos you own or can write** (local `gittr_activities` merged with the platform feed filtered by owner/access). Title becomes **Your recent activity**.
 - Cards deep-link to the matching tab (`/pulls`, `/issues`, `/commits`, `/releases`, or a specific PR/issue id when known) and use a hard navigation to avoid soft-router crashes into heavy repo pages.
+- **Most Active Repos** and **Recent repositories** also use a full document load into the Code tab. A soft `<Link>` from `/` plus `history.replaceState(null)` while the README hydrated made Next 15 restore the homepage tree — repo loaded, README appeared, then a bounce back to `/` (worse on first visit / cold cache). Code-tab query updates now keep Next’s `__NA` history state (`replaceAppUrl`).
 
 ### Global `/issues` and `/pulls` list controls
 

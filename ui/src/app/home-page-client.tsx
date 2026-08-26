@@ -89,6 +89,13 @@ function formatLeaderboardUserLabel(raw: string, meta?: Metadata): string {
   return raw.replace(/\s*\(mirrored user from github\)\s*/gi, "").trim() || raw;
 }
 
+/** Full load into Code — soft Link + replaceState during README hydrate bounced home. */
+function goToRepoCode(event: { preventDefault: () => void }, href: string) {
+  event.preventDefault();
+  if (!href) return;
+  window.location.assign(href);
+}
+
 export type HomeInitialLeaderboard = {
   topRepos: RepoStats[];
   topUsers: UserStats[];
@@ -1211,9 +1218,10 @@ export default function HomePage({
                   const href = getRepoUrl(entity || "", repoName || "");
 
                   return (
-                    <Link
+                    <a
                       key={repo.repoId}
                       href={href}
+                      onClick={(e) => goToRepoCode(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1224,7 +1232,7 @@ export default function HomePage({
                           {repo.activityCount}
                         </span>
                       </div>
-                    </Link>
+                    </a>
                   );
                 })
               ) : (
@@ -1917,8 +1925,9 @@ export default function HomePage({
 
                   return (
                     <li key={`${entity}-${repo}`} className="py-3">
-                      <Link
+                      <a
                         href={href}
+                        onClick={(e) => goToRepoCode(e, href)}
                         className="flex items-center gap-3 sm:gap-4 rounded p-2 -m-2 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors"
                       >
                         {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
@@ -1991,7 +2000,7 @@ export default function HomePage({
                             ) : null;
                           })()}
                         </div>
-                      </Link>
+                      </a>
                     </li>
                   );
                 })}
