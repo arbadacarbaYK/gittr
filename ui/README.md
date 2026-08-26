@@ -420,18 +420,9 @@ UI
   - [ ] Single pull request page
   - [ ] New pull request page
 - [ ] Discussions
-- [ ] Insights
-  - [ ] Repo statistics
-    - Merged pull requests
-    - Open pull requests
-    - Closed issues
-    - New issues
-  - [ ] Tabs
-    - [ ] Contributors
-    - [ ] Commits
-    - [ ] Code frequency
-    - [ ] Dependency graph
-    - [ ] Forks
+- [x] Insights
+  - Files, stars (same Nostr count as the header Star button), forks, contributors, issues, PRs, commits, discussions
+  - Language bars when a file tree or import languages exist (hidden otherwise — no “coming soon”)
 - [ ] Settings
   - [ ] Edit repository name
   - [ ] Toggle features

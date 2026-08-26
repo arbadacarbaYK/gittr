@@ -11,6 +11,7 @@ import {
 import type { Event as NostrEvent } from "nostr-tools";
 import { nip44 as nip44v2 } from "nostr-tools-v2";
 
+import { waitForGitSourceHttpIdle } from "../repos/git-source-http-budget";
 import { isGraspServer } from "../utils/grasp-servers";
 
 import {
@@ -1753,6 +1754,7 @@ export class RemoteSignerManager {
           ? getSessionUriRelays(session)
           : dialTargets
       );
+      await waitForGitSourceHttpIdle(5000);
       await this.waitForMainPoolBunkerSlotsClear();
       await new Promise((r) => setTimeout(r, 600));
     }
@@ -1763,6 +1765,7 @@ export class RemoteSignerManager {
         "[RemoteSigner] Bunker warm empty — quiet retry after freeing main-pool slots"
       );
       this.claimBunkerHostsForDirectPool(dialTargets);
+      await waitForGitSourceHttpIdle(5000);
       await this.waitForMainPoolBunkerSlotsClear();
       await new Promise((r) => setTimeout(r, 1200));
       this.resetDirectPool();
@@ -2577,9 +2580,7 @@ export class RemoteSignerManager {
     );
 
     if (toDial.length > 0) {
-      const openUrls = [
-        ...(await this.listDirectOpenRelays(targets)),
-      ];
+      const openUrls = [...(await this.listDirectOpenRelays(targets))];
       const overallMs = BUNKER_RELAY_OPEN_BUDGET_MS + 1500;
       await new Promise<void>((resolve) => {
         let pending = toDial.length;
@@ -3251,10 +3252,7 @@ export class RemoteSignerManager {
           }
           // Phone never decrypted / never woke — fail fast (keep full 120s only
           // when inbound 24133 traffic shows Amber is talking).
-          if (
-            this.inboundDuringWait === 0 &&
-            waited >= SIGN_SILENT_ABORT_MS
-          ) {
+          if (this.inboundDuringWait === 0 && waited >= SIGN_SILENT_ABORT_MS) {
             finishListen();
             this.pending.delete(id);
             clearTimeout(timeout);

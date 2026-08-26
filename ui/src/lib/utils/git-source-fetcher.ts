@@ -1,6 +1,10 @@
 "use client";
 
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import {
+  noteGitSourceHttpEnd,
+  noteGitSourceHttpStart,
+} from "@/lib/repos/git-source-http-budget";
 import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
 import {
   hasOnlyHashtreeCloneUrls,
@@ -8,6 +12,12 @@ import {
   isHashtreeCloneUrl,
   parseHashtreeCloneUrl,
 } from "@/lib/utils/hashtree-clone";
+
+// Unknown git server
+import {
+  isGenericHttpsGitRemoteUrl,
+  isRefetchableUpstreamSourceUrl,
+} from "./upstream-git-url";
 
 export {
   hasOnlyHashtreeCloneUrls,
@@ -37,11 +47,6 @@ export type GitSourceType =
   | "self-hosted-git" // Gitea/Forgejo/self-hosted: https://git.example.com/owner/repo.git
   | "hashtree" // Iris Hashtree: htree://npub.../repo (needs git-remote-htree)
   | "unknown"; // Unknown git server
-
-import {
-  isGenericHttpsGitRemoteUrl,
-  isRefetchableUpstreamSourceUrl,
-} from "./upstream-git-url";
 
 export {
   isGenericHttpsGitRemoteUrl,
@@ -1990,534 +1995,547 @@ export async function fetchFilesFromMultipleSources(
     return { files: null, statuses };
   }
 
-  let prioritizedCloneUrls = cloneUrls;
+  noteGitSourceHttpStart();
+  try {
+    let prioritizedCloneUrls = cloneUrls;
 
-  // If user has GRASP list preferences, prioritize those servers
-  if (userPubkey && subscribe && defaultRelays && cloneUrls.length > 0) {
-    try {
-      const {
-        getUserGraspServers,
-        graspRelayUrlsToDomains,
-        prioritizeGraspServers,
-      } = await import("@/lib/utils/grasp-list");
-      const { getGraspServers, isGraspServer, isGraspCloneUrl } = await import(
-        "@/lib/utils/grasp-servers"
-      );
+    // If user has GRASP list preferences, prioritize those servers
+    if (userPubkey && subscribe && defaultRelays && cloneUrls.length > 0) {
+      try {
+        const {
+          getUserGraspServers,
+          graspRelayUrlsToDomains,
+          prioritizeGraspServers,
+        } = await import("@/lib/utils/grasp-list");
+        const { getGraspServers, isGraspServer, isGraspCloneUrl } =
+          await import("@/lib/utils/grasp-servers");
 
-      // Get user's GRASP list (non-blocking, with timeout)
-      const defaultGraspRelays = getGraspServers(defaultRelays);
-      const userGraspRelays = await Promise.race([
-        getUserGraspServers(
-          subscribe,
-          defaultRelays,
-          userPubkey,
-          defaultGraspRelays
-        ),
-        new Promise<string[]>((resolve) =>
-          setTimeout(() => resolve(defaultGraspRelays), 2000)
-        ), // 2s timeout
-      ]);
+        // Get user's GRASP list (non-blocking, with timeout)
+        const defaultGraspRelays = getGraspServers(defaultRelays);
+        const userGraspRelays = await Promise.race([
+          getUserGraspServers(
+            subscribe,
+            defaultRelays,
+            userPubkey,
+            defaultGraspRelays
+          ),
+          new Promise<string[]>((resolve) =>
+            setTimeout(() => resolve(defaultGraspRelays), 2000)
+          ), // 2s timeout
+        ]);
 
-      // Convert to domains for matching against clone URLs
-      const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
+        // Convert to domains for matching against clone URLs
+        const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
 
-      if (userGraspDomains.length > 0) {
-        // Separate clone URLs into GRASP (from user's list) and others
-        const graspCloneUrls: string[] = [];
-        const otherCloneUrls: string[] = [];
+        if (userGraspDomains.length > 0) {
+          // Separate clone URLs into GRASP (from user's list) and others
+          const graspCloneUrls: string[] = [];
+          const otherCloneUrls: string[] = [];
 
-        cloneUrls.forEach((url) => {
-          // Check if this clone URL is from a user-preferred GRASP server
-          const isUserPreferredGrasp = userGraspDomains.some((domain) => {
-            const urlDomain = url
-              ?.replace(/^https?:\/\//, "")
-              .replace(/^git@/, "")
-              .split("/")[0]
-              ?.split(":")[0];
-            if (!urlDomain || !domain) return false;
-            return (
-              urlDomain === domain ||
-              urlDomain.includes(domain) ||
-              domain.includes(urlDomain)
-            );
+          cloneUrls.forEach((url) => {
+            // Check if this clone URL is from a user-preferred GRASP server
+            const isUserPreferredGrasp = userGraspDomains.some((domain) => {
+              const urlDomain = url
+                ?.replace(/^https?:\/\//, "")
+                .replace(/^git@/, "")
+                .split("/")[0]
+                ?.split(":")[0];
+              if (!urlDomain || !domain) return false;
+              return (
+                urlDomain === domain ||
+                urlDomain.includes(domain) ||
+                domain.includes(urlDomain)
+              );
+            });
+
+            if (
+              isUserPreferredGrasp ||
+              isGraspCloneUrl(url) ||
+              isGraspServer(url)
+            ) {
+              graspCloneUrls.push(url);
+            } else {
+              otherCloneUrls.push(url);
+            }
           });
 
-          if (
-            isUserPreferredGrasp ||
-            isGraspCloneUrl(url) ||
-            isGraspServer(url)
-          ) {
-            graspCloneUrls.push(url);
-          } else {
-            otherCloneUrls.push(url);
-          }
-        });
+          // Prefer publisher remotes (GitHub / reachable self-hosted) before GRASP
+          // mirrors — but put bare http://IP:port home hosts LAST. Those often 502
+          // from gittr's servers while HTTPS GRASP + bridge already have the tree.
+          const looksLikeHomeHttpIp = (url: string): boolean => {
+            try {
+              const u = new URL(url.trim());
+              return (
+                u.protocol === "http:" &&
+                /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
+              );
+            } catch {
+              return false;
+            }
+          };
+          const reachableOther = otherCloneUrls.filter(
+            (u) => !looksLikeHomeHttpIp(u)
+          );
+          const homeHttpIp = otherCloneUrls.filter((u) =>
+            looksLikeHomeHttpIp(u)
+          );
+          prioritizedCloneUrls = [
+            ...reachableOther,
+            ...graspCloneUrls,
+            ...homeHttpIp,
+          ];
 
-        // Prefer publisher remotes (GitHub / reachable self-hosted) before GRASP
-        // mirrors — but put bare http://IP:port home hosts LAST. Those often 502
-        // from gittr's servers while HTTPS GRASP + bridge already have the tree.
-        const looksLikeHomeHttpIp = (url: string): boolean => {
-          try {
-            const u = new URL(url.trim());
-            return (
-              u.protocol === "http:" &&
-              /^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)
+          if (reachableOther.length > 0 && graspCloneUrls.length > 0) {
+            console.log(
+              `✅ [File Fetch] Preferring ${reachableOther.length} non-GRASP clone URL(s) before ${graspCloneUrls.length} GRASP mirror(s)`
             );
-          } catch {
-            return false;
+          } else if (homeHttpIp.length > 0 && graspCloneUrls.length > 0) {
+            console.log(
+              `✅ [File Fetch] Preferring ${graspCloneUrls.length} GRASP mirror(s) before ${homeHttpIp.length} home http://IP clone(s)`
+            );
+          } else if (graspCloneUrls.length > 0) {
+            console.log(
+              `✅ [File Fetch] Prioritized ${graspCloneUrls.length} clone URLs from user's preferred GRASP servers`
+            );
           }
-        };
-        const reachableOther = otherCloneUrls.filter(
-          (u) => !looksLikeHomeHttpIp(u)
-        );
-        const homeHttpIp = otherCloneUrls.filter((u) => looksLikeHomeHttpIp(u));
-        prioritizedCloneUrls = [
-          ...reachableOther,
-          ...graspCloneUrls,
-          ...homeHttpIp,
-        ];
-
-        if (reachableOther.length > 0 && graspCloneUrls.length > 0) {
-          console.log(
-            `✅ [File Fetch] Preferring ${reachableOther.length} non-GRASP clone URL(s) before ${graspCloneUrls.length} GRASP mirror(s)`
-          );
-        } else if (homeHttpIp.length > 0 && graspCloneUrls.length > 0) {
-          console.log(
-            `✅ [File Fetch] Preferring ${graspCloneUrls.length} GRASP mirror(s) before ${homeHttpIp.length} home http://IP clone(s)`
-          );
-        } else if (graspCloneUrls.length > 0) {
-          console.log(
-            `✅ [File Fetch] Prioritized ${graspCloneUrls.length} clone URLs from user's preferred GRASP servers`
-          );
         }
-      }
-    } catch (error) {
-      console.warn(
-        `⚠️ [File Fetch] Failed to prioritize by GRASP list, using original order:`,
-        error
-      );
-    }
-  }
-
-  const { prioritizeUpstreamCloneUrls } = await import(
-    "@/lib/repos/upstream-precedence"
-  );
-  prioritizedCloneUrls = prioritizeUpstreamCloneUrls(prioritizedCloneUrls);
-
-  const githubCloneUrl = prioritizedCloneUrls.find((u) =>
-    /github\.com/i.test(u)
-  );
-  let githubPreflightDone = false;
-  if (githubCloneUrl) {
-    const ghSource = parseGitSource(githubCloneUrl);
-    if (ghSource.type === "github") {
-      githubPreflightDone = true;
-      const ghStatus: FetchStatus = {
-        source: ghSource,
-        status: "fetching",
-      };
-      if (onStatusUpdate) onStatusUpdate(ghStatus);
-      try {
-        console.log(
-          `🐙 [Git Source] Trying GitHub first (upstream mirror): ${githubCloneUrl}`
-        );
-        const ghResult = await Promise.race([
-          fetchFilesFromSource(ghSource, branch, eventPublisherPubkey),
-          new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error("GitHub fetch timeout")), 20000)
-          ),
-        ]);
-        if (ghResult?.files && ghResult.files.length > 0) {
-          ghStatus.status = "success";
-          ghStatus.files = ghResult.files;
-          ghStatus.fetchedAt = Date.now();
-          if (ghResult.resolvedBranch) {
-            ghStatus.resolvedBranch = ghResult.resolvedBranch;
-          }
-          if (onStatusUpdate) onStatusUpdate(ghStatus);
-          console.log(
-            `✅ [Git Source] GitHub-first fetch succeeded: ${ghResult.files.length} files`
-          );
-          return { files: ghResult.files, statuses: [ghStatus] };
-        }
-        ghStatus.status = "failed";
-        ghStatus.error = "No files from GitHub (REST limited or empty)";
-        if (onStatusUpdate) onStatusUpdate(ghStatus);
-      } catch (e) {
-        ghStatus.status = "failed";
-        const msg = e instanceof Error ? e.message : "GitHub fetch failed";
-        ghStatus.error = msg.includes("rate limit")
-          ? "GitHub API rate limited"
-          : msg;
-        if (onStatusUpdate) onStatusUpdate(ghStatus);
-        console.warn("⚠️ [Git Source] GitHub-first fetch failed:", e);
-      }
-    }
-  }
-
-  let sources = dedupeGitSourcesByUrl(prioritizedCloneUrls.map(parseGitSource));
-  if (githubPreflightDone) {
-    sources = sources.filter((s) => s.type !== "github");
-  }
-
-  // Imported GitHub repos: avoid hammering every GRASP mirror when upstream exists
-  const hasGithubUpstream = prioritizedCloneUrls.some((u) =>
-    /github\.com/i.test(u)
-  );
-  if (hasGithubUpstream && sources.length > 6) {
-    const nonGrasp = sources.filter((s) => s.type !== "nostr-git");
-    const grasp = sources.filter((s) => s.type === "nostr-git").slice(0, 4);
-    sources = [...nonGrasp, ...grasp];
-    console.log(
-      `ℹ️ [Git Source] GitHub upstream present — probing ${sources.length} mirrors (not all ${prioritizedCloneUrls.length} clone URLs)`
-    );
-  }
-  const statuses: FetchStatus[] = sources.map((source) => ({
-    source,
-    status: "pending",
-  }));
-
-  // Update initial status
-  statuses.forEach((status) => {
-    if (onStatusUpdate) onStatusUpdate(status);
-  });
-
-  // Prefer parallel probes, but cap concurrency when Amber bunker warm needs
-  // browser WebSocket slots (unlimited storms starved sign_event).
-  const maxConcurrent = Math.max(
-    1,
-    Math.min(
-      sources.length || 1,
-      options?.maxConcurrent && options.maxConcurrent > 0
-        ? options.maxConcurrent
-        : sources.length || 1
-    )
-  );
-  const limit = createConcurrencyLimiter(maxConcurrent);
-  console.log(
-    `🚀 [Git Source] Starting fetch from ${sources.length} sources (concurrency ${maxConcurrent}):`,
-    sources.map((s) => s.displayName).join(", ")
-  );
-
-  // Track if we've already found files (to update UI immediately)
-  let firstSuccessFiles: Array<{
-    type: string;
-    path: string;
-    size?: number;
-  }> | null = null;
-
-  const fetchPromises = sources.map(async (source, index) =>
-    limit(async () => {
-    const status = statuses[index];
-    if (!status) {
-      console.error(`❌ [Git Source] No status found for index ${index}`);
-      return { source, files: undefined, success: false };
-    }
-
-    status.status = "fetching";
-    if (onStatusUpdate) onStatusUpdate(status);
-
-    try {
-      console.log(
-        `🔍 [Git Source] Starting fetch from ${source.displayName} (${source.type}):`,
-        {
-          url: source.url,
-          owner: source.owner,
-          repo: source.repo,
-          branch,
-        }
-      );
-      const fetchResult = await fetchFilesFromSource(
-        source,
-        branch,
-        eventPublisherPubkey
-      );
-      const files = fetchResult?.files;
-      if (fetchResult?.resolvedBranch) {
-        status.resolvedBranch = fetchResult.resolvedBranch;
-      }
-      if (fetchResult?.truncated) status.truncated = true;
-      if (fetchResult?.listing) status.listing = fetchResult.listing;
-      if (typeof fetchResult?.totalFileCount === "number") {
-        status.totalFileCount = fetchResult.totalFileCount;
-      }
-
-      if (files && files.length > 0) {
-        status.status = "success";
-        status.files = files;
-        status.fetchedAt = Date.now();
-        console.log(
-          `✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}` +
-            (status.resolvedBranch
-              ? ` (resolved branch: ${status.resolvedBranch})`
-              : "")
-        );
-
-        // CRITICAL: Update UI immediately when first source succeeds (don't wait for all)
-        if (!firstSuccessFiles) {
-          firstSuccessFiles = files;
-          console.log(
-            `🚀 [Git Source] First success! Using files from ${source.displayName} immediately (${files.length} files)`
-          );
-        }
-        // CRITICAL: Always call onStatusUpdate for successful fetches, not just the first one
-        // This ensures the UI is updated immediately when any source succeeds
-        if (onStatusUpdate) {
-          console.log(
-            `📢 [Git Source] Calling onStatusUpdate for success: ${source.displayName} (${files.length} files)`
-          );
-          onStatusUpdate(status);
-        }
-      } else {
-        status.status = "failed";
-        // More specific error: files were checked but not found (server responded, but no files)
-        // This means THIS source didn't return files, but files may exist from other sources
-        status.error = "No files from this source";
+      } catch (error) {
         console.warn(
-          `⚠️ [Git Source] No files returned from ${source.displayName}`
+          `⚠️ [File Fetch] Failed to prioritize by GRASP list, using original order:`,
+          error
         );
       }
-    } catch (error: any) {
-      status.status = "failed";
-      // Distinguish between network errors and other errors
-      const errorMessage = error.message || "Fetch failed";
-      if (
-        errorMessage.includes("fetch failed") ||
-        errorMessage.includes("ECONNREFUSED") ||
-        errorMessage.includes("ETIMEDOUT") ||
-        errorMessage.includes("ENOTFOUND") ||
-        errorMessage.includes("Network error") ||
-        errorMessage.includes("Unable to connect")
-      ) {
-        status.error = "Server unavailable";
-      } else if (errorMessage.includes("rate limit")) {
-        status.error = "Rate limit exceeded";
-      } else if (
-        errorMessage.includes("404") ||
-        errorMessage.includes("not found")
-      ) {
-        status.error = "Repository not found";
-      } else if (
-        errorMessage.includes("403") ||
-        errorMessage.includes("Forbidden")
-      ) {
-        status.error = "Access forbidden";
-      } else {
-        status.error =
-          errorMessage.length > 50
-            ? errorMessage.substring(0, 50) + "..."
-            : errorMessage;
-      }
-      console.error(
-        `❌ [Git Source] Fetch failed from ${source.displayName}:`,
-        error
-      );
     }
 
-    if (onStatusUpdate) onStatusUpdate(status);
-    return {
-      source,
-      files: status.files,
-      success: status.status === "success",
-    };
-    })
-  );
+    const { prioritizeUpstreamCloneUrls } = await import(
+      "@/lib/repos/upstream-precedence"
+    );
+    prioritizedCloneUrls = prioritizeUpstreamCloneUrls(prioritizedCloneUrls);
 
-  // CRITICAL: Use Promise.race to return as soon as first source succeeds (don't wait for all)
-  // Continue updating statuses in the background, but don't block the UI
-  const timeoutPromise = new Promise<{ files: null; statuses: FetchStatus[] }>(
-    (resolve) => {
+    const githubCloneUrl = prioritizedCloneUrls.find((u) =>
+      /github\.com/i.test(u)
+    );
+    let githubPreflightDone = false;
+    if (githubCloneUrl) {
+      const ghSource = parseGitSource(githubCloneUrl);
+      if (ghSource.type === "github") {
+        githubPreflightDone = true;
+        const ghStatus: FetchStatus = {
+          source: ghSource,
+          status: "fetching",
+        };
+        if (onStatusUpdate) onStatusUpdate(ghStatus);
+        try {
+          console.log(
+            `🐙 [Git Source] Trying GitHub first (upstream mirror): ${githubCloneUrl}`
+          );
+          const ghResult = await Promise.race([
+            fetchFilesFromSource(ghSource, branch, eventPublisherPubkey),
+            new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error("GitHub fetch timeout")), 20000)
+            ),
+          ]);
+          if (ghResult?.files && ghResult.files.length > 0) {
+            ghStatus.status = "success";
+            ghStatus.files = ghResult.files;
+            ghStatus.fetchedAt = Date.now();
+            if (ghResult.resolvedBranch) {
+              ghStatus.resolvedBranch = ghResult.resolvedBranch;
+            }
+            if (onStatusUpdate) onStatusUpdate(ghStatus);
+            console.log(
+              `✅ [Git Source] GitHub-first fetch succeeded: ${ghResult.files.length} files`
+            );
+            return { files: ghResult.files, statuses: [ghStatus] };
+          }
+          ghStatus.status = "failed";
+          ghStatus.error = "No files from GitHub (REST limited or empty)";
+          if (onStatusUpdate) onStatusUpdate(ghStatus);
+        } catch (e) {
+          ghStatus.status = "failed";
+          const msg = e instanceof Error ? e.message : "GitHub fetch failed";
+          ghStatus.error = msg.includes("rate limit")
+            ? "GitHub API rate limited"
+            : msg;
+          if (onStatusUpdate) onStatusUpdate(ghStatus);
+          console.warn("⚠️ [Git Source] GitHub-first fetch failed:", e);
+        }
+      }
+    }
+
+    let sources = dedupeGitSourcesByUrl(
+      prioritizedCloneUrls.map(parseGitSource)
+    );
+    if (githubPreflightDone) {
+      sources = sources.filter((s) => s.type !== "github");
+    }
+
+    // Imported GitHub repos: avoid hammering every GRASP mirror when upstream exists
+    const hasGithubUpstream = prioritizedCloneUrls.some((u) =>
+      /github\.com/i.test(u)
+    );
+    if (hasGithubUpstream && sources.length > 6) {
+      const nonGrasp = sources.filter((s) => s.type !== "nostr-git");
+      const grasp = sources.filter((s) => s.type === "nostr-git").slice(0, 4);
+      sources = [...nonGrasp, ...grasp];
+      console.log(
+        `ℹ️ [Git Source] GitHub upstream present — probing ${sources.length} mirrors (not all ${prioritizedCloneUrls.length} clone URLs)`
+      );
+    }
+    const statuses: FetchStatus[] = sources.map((source) => ({
+      source,
+      status: "pending",
+    }));
+
+    // Update initial status
+    statuses.forEach((status) => {
+      if (onStatusUpdate) onStatusUpdate(status);
+    });
+
+    // Prefer parallel probes, but cap concurrency when Amber bunker warm needs
+    // browser WebSocket slots (unlimited storms starved sign_event).
+    const maxConcurrent = Math.max(
+      1,
+      Math.min(
+        sources.length || 1,
+        options?.maxConcurrent && options.maxConcurrent > 0
+          ? options.maxConcurrent
+          : sources.length || 1
+      )
+    );
+    const limit = createConcurrencyLimiter(maxConcurrent);
+    console.log(
+      `🚀 [Git Source] Starting fetch from ${sources.length} sources (concurrency ${maxConcurrent}):`,
+      sources.map((s) => s.displayName).join(", ")
+    );
+
+    // Track if we've already found files (to update UI immediately)
+    let firstSuccessFiles: Array<{
+      type: string;
+      path: string;
+      size?: number;
+    }> | null = null;
+
+    const fetchPromises = sources.map(async (source, index) =>
+      limit(async () => {
+        const status = statuses[index];
+        if (!status) {
+          console.error(`❌ [Git Source] No status found for index ${index}`);
+          return { source, files: undefined, success: false };
+        }
+
+        status.status = "fetching";
+        if (onStatusUpdate) onStatusUpdate(status);
+
+        try {
+          console.log(
+            `🔍 [Git Source] Starting fetch from ${source.displayName} (${source.type}):`,
+            {
+              url: source.url,
+              owner: source.owner,
+              repo: source.repo,
+              branch,
+            }
+          );
+          const fetchResult = await fetchFilesFromSource(
+            source,
+            branch,
+            eventPublisherPubkey
+          );
+          const files = fetchResult?.files;
+          if (fetchResult?.resolvedBranch) {
+            status.resolvedBranch = fetchResult.resolvedBranch;
+          }
+          if (fetchResult?.truncated) status.truncated = true;
+          if (fetchResult?.listing) status.listing = fetchResult.listing;
+          if (typeof fetchResult?.totalFileCount === "number") {
+            status.totalFileCount = fetchResult.totalFileCount;
+          }
+
+          if (files && files.length > 0) {
+            status.status = "success";
+            status.files = files;
+            status.fetchedAt = Date.now();
+            console.log(
+              `✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}` +
+                (status.resolvedBranch
+                  ? ` (resolved branch: ${status.resolvedBranch})`
+                  : "")
+            );
+
+            // CRITICAL: Update UI immediately when first source succeeds (don't wait for all)
+            if (!firstSuccessFiles) {
+              firstSuccessFiles = files;
+              console.log(
+                `🚀 [Git Source] First success! Using files from ${source.displayName} immediately (${files.length} files)`
+              );
+            }
+            // CRITICAL: Always call onStatusUpdate for successful fetches, not just the first one
+            // This ensures the UI is updated immediately when any source succeeds
+            if (onStatusUpdate) {
+              console.log(
+                `📢 [Git Source] Calling onStatusUpdate for success: ${source.displayName} (${files.length} files)`
+              );
+              onStatusUpdate(status);
+            }
+          } else {
+            status.status = "failed";
+            // More specific error: files were checked but not found (server responded, but no files)
+            // This means THIS source didn't return files, but files may exist from other sources
+            status.error = "No files from this source";
+            console.warn(
+              `⚠️ [Git Source] No files returned from ${source.displayName}`
+            );
+          }
+        } catch (error: any) {
+          status.status = "failed";
+          // Distinguish between network errors and other errors
+          const errorMessage = error.message || "Fetch failed";
+          if (
+            errorMessage.includes("fetch failed") ||
+            errorMessage.includes("ECONNREFUSED") ||
+            errorMessage.includes("ETIMEDOUT") ||
+            errorMessage.includes("ENOTFOUND") ||
+            errorMessage.includes("Network error") ||
+            errorMessage.includes("Unable to connect")
+          ) {
+            status.error = "Server unavailable";
+          } else if (errorMessage.includes("rate limit")) {
+            status.error = "Rate limit exceeded";
+          } else if (
+            errorMessage.includes("404") ||
+            errorMessage.includes("not found")
+          ) {
+            status.error = "Repository not found";
+          } else if (
+            errorMessage.includes("403") ||
+            errorMessage.includes("Forbidden")
+          ) {
+            status.error = "Access forbidden";
+          } else {
+            status.error =
+              errorMessage.length > 50
+                ? errorMessage.substring(0, 50) + "..."
+                : errorMessage;
+          }
+          console.error(
+            `❌ [Git Source] Fetch failed from ${source.displayName}:`,
+            error
+          );
+        }
+
+        if (onStatusUpdate) onStatusUpdate(status);
+        return {
+          source,
+          files: status.files,
+          success: status.status === "success",
+        };
+      })
+    );
+
+    // CRITICAL: Use Promise.race to return as soon as first source succeeds (don't wait for all)
+    // Continue updating statuses in the background, but don't block the UI
+    const timeoutPromise = new Promise<{
+      files: null;
+      statuses: FetchStatus[];
+    }>((resolve) => {
       setTimeout(() => {
         console.log(
           `⏱️ [Git Source] Timeout waiting for first success, returning current statuses`
         );
         resolve({ files: null, statuses });
       }, 45000); // Wait longer for large trees (GitHub API can be slow)
-    }
-  );
+    });
 
-  // Wrap each fetch promise to resolve immediately on first success
-  // This allows Promise.race to return as soon as ANY promise succeeds
-  // We create a promise that never resolves for failures, so Promise.race only resolves on success
-  const successPromises = fetchPromises.map(async (p) => {
-    try {
-      const result = await p;
-      if (
-        result.success &&
-        result.files &&
-        Array.isArray(result.files) &&
-        result.files.length > 0
-      ) {
-        // This is a success - resolve immediately with files
-        console.log(
-          `✅ [Git Source] Promise resolved with success: ${result.files.length} files from ${result.source.displayName}`
-        );
-        return { files: result.files, statuses, success: true };
+    // Wrap each fetch promise to resolve immediately on first success
+    // This allows Promise.race to return as soon as ANY promise succeeds
+    // We create a promise that never resolves for failures, so Promise.race only resolves on success
+    const successPromises = fetchPromises.map(async (p) => {
+      try {
+        const result = await p;
+        if (
+          result.success &&
+          result.files &&
+          Array.isArray(result.files) &&
+          result.files.length > 0
+        ) {
+          // This is a success - resolve immediately with files
+          console.log(
+            `✅ [Git Source] Promise resolved with success: ${result.files.length} files from ${result.source.displayName}`
+          );
+          return { files: result.files, statuses, success: true };
+        }
+        // Not a success - wait forever (this promise will never resolve, so Promise.race will skip it)
+        await new Promise(() => {}); // Never resolves
+        return null; // Unreachable
+      } catch (error) {
+        // Error - wait forever (this promise will never resolve)
+        await new Promise(() => {}); // Never resolves
+        return null; // Unreachable
       }
-      // Not a success - wait forever (this promise will never resolve, so Promise.race will skip it)
-      await new Promise(() => {}); // Never resolves
-      return null; // Unreachable
-    } catch (error) {
-      // Error - wait forever (this promise will never resolve)
-      await new Promise(() => {}); // Never resolves
-      return null; // Unreachable
-    }
-  });
+    });
 
-  // Race all promises - the first one that succeeds will resolve immediately
-  // Promises that fail will never resolve, so they won't affect the race
-  const firstSuccessPromise = Promise.race(successPromises).then((result) => {
-    if (result && result.success && result.files) {
-      console.log(
-        `✅ [Git Source] First success found via Promise.race: ${result.files.length} files`
-      );
-
-      // CRITICAL: Ensure onStatusUpdate is called for the first success so UI updates immediately
-      // Find the status for the successful source and call onStatusUpdate
-      const successfulStatus = statuses.find(
-        (s) => s.status === "success" && s.files && s.files.length > 0
-      );
-      if (successfulStatus && onStatusUpdate) {
+    // Race all promises - the first one that succeeds will resolve immediately
+    // Promises that fail will never resolve, so they won't affect the race
+    const firstSuccessPromise = Promise.race(successPromises).then((result) => {
+      if (result && result.success && result.files) {
         console.log(
-          `🚀 [Git Source] Calling onStatusUpdate for first success: ${successfulStatus.source.displayName}`
+          `✅ [Git Source] First success found via Promise.race: ${result.files.length} files`
         );
-        onStatusUpdate(successfulStatus);
-      }
 
-      // Continue updating statuses in background (don't await - let it run in background)
-      Promise.allSettled(fetchPromises)
-        .then((allResults) => {
-          allResults.forEach((allResult, idx) => {
-            const status = statuses[idx];
-            if (!status) return;
+        // CRITICAL: Ensure onStatusUpdate is called for the first success so UI updates immediately
+        // Find the status for the successful source and call onStatusUpdate
+        const successfulStatus = statuses.find(
+          (s) => s.status === "success" && s.files && s.files.length > 0
+        );
+        if (successfulStatus && onStatusUpdate) {
+          console.log(
+            `🚀 [Git Source] Calling onStatusUpdate for first success: ${successfulStatus.source.displayName}`
+          );
+          onStatusUpdate(successfulStatus);
+        }
 
-            // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
-            const wasSuccess = status.status === "success";
-            if (wasSuccess) {
-              // Already succeeded, don't overwrite
-              return;
-            }
+        // Continue updating statuses in background (don't await - let it run in background)
+        Promise.allSettled(fetchPromises)
+          .then((allResults) => {
+            allResults.forEach((allResult, idx) => {
+              const status = statuses[idx];
+              if (!status) return;
 
-            if (allResult.status === "fulfilled") {
-              const value = allResult.value;
-              if (value.success && value.files) {
-                status.status = "success";
-                status.files = value.files;
-                status.fetchedAt = Date.now();
-              } else {
-                // Only set to failed if not already failed (preserve any existing status)
-                if (status.status !== "failed") {
+              // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
+              const wasSuccess = status.status === "success";
+              if (wasSuccess) {
+                // Already succeeded, don't overwrite
+                return;
+              }
+
+              if (allResult.status === "fulfilled") {
+                const value = allResult.value;
+                if (value.success && value.files) {
+                  status.status = "success";
+                  status.files = value.files;
+                  status.fetchedAt = Date.now();
+                } else {
+                  // Only set to failed if not already failed (preserve any existing status)
+                  if (status.status !== "failed") {
+                    status.status = "failed";
+                    status.error = "No files found";
+                  }
+                }
+              } else if (allResult.status === "rejected") {
+                // Only set to failed if not already success or failed (preserve success status)
+                // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
+                if (!wasSuccess && status.status !== "failed") {
                   status.status = "failed";
-                  status.error = "No files found";
+                  status.error = allResult.reason?.message || "Unknown error";
                 }
               }
-            } else if (allResult.status === "rejected") {
-              // Only set to failed if not already success or failed (preserve success status)
-              // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
-              if (!wasSuccess && status.status !== "failed") {
-                status.status = "failed";
-                status.error = allResult.reason?.message || "Unknown error";
-              }
-            }
 
-            if (onStatusUpdate) onStatusUpdate(status);
+              if (onStatusUpdate) onStatusUpdate(status);
+            });
+
+            console.log(
+              `📊 [Git Source] All fetches completed. Final statuses:`,
+              statuses
+                .map((s) => `${s.source.displayName}: ${s.status}`)
+                .join(", ")
+            );
+          })
+          .catch((error) => {
+            console.error(
+              `❌ [Git Source] Error processing background status updates:`,
+              error
+            );
           });
 
-          console.log(
-            `📊 [Git Source] All fetches completed. Final statuses:`,
-            statuses
-              .map((s) => `${s.source.displayName}: ${s.status}`)
-              .join(", ")
-          );
-        })
-        .catch((error) => {
-          console.error(
-            `❌ [Git Source] Error processing background status updates:`,
-            error
-          );
-        });
+        return result;
+      }
+      return null;
+    });
 
-      return result;
+    // Race between first success and timeout - return immediately when first succeeds
+    const raceResult = await Promise.race([
+      firstSuccessPromise,
+      timeoutPromise,
+    ]);
+    if (
+      raceResult &&
+      raceResult.files &&
+      Array.isArray(raceResult.files) &&
+      raceResult.files.length > 0
+    ) {
+      return raceResult;
     }
-    return null;
-  });
 
-  // Race between first success and timeout - return immediately when first succeeds
-  const raceResult = await Promise.race([firstSuccessPromise, timeoutPromise]);
-  if (
-    raceResult &&
-    raceResult.files &&
-    Array.isArray(raceResult.files) &&
-    raceResult.files.length > 0
-  ) {
-    return raceResult;
-  }
+    // Fallback: wait for all if no success yet
+    const results = await Promise.allSettled(fetchPromises);
 
-  // Fallback: wait for all if no success yet
-  const results = await Promise.allSettled(fetchPromises);
+    // Process results and find first successful fetch
+    let files: Array<{ type: string; path: string; size?: number }> | null =
+      null;
 
-  // Process results and find first successful fetch
-  let files: Array<{ type: string; path: string; size?: number }> | null = null;
+    results.forEach((result, index) => {
+      const status = statuses[index];
+      if (!status) return;
 
-  results.forEach((result, index) => {
-    const status = statuses[index];
-    if (!status) return;
+      // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
+      const wasSuccess = status.status === "success";
+      if (wasSuccess) {
+        // Already succeeded, skip processing
+        if (result.status === "fulfilled") {
+          const value = result.value;
+          if (value.success && value.files && !files) {
+            files = value.files;
+            console.log(
+              `✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`
+            );
+          }
+        }
+        return; // Don't update status, already success
+      }
 
-    // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
-    const wasSuccess = status.status === "success";
-    if (wasSuccess) {
-      // Already succeeded, skip processing
       if (result.status === "fulfilled") {
         const value = result.value;
-        if (value.success && value.files && !files) {
-          files = value.files;
-          console.log(
-            `✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`
-          );
+        if (value.success && value.files) {
+          if (!files) {
+            files = value.files;
+            console.log(
+              `✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`
+            );
+          }
+          status.status = "success";
+          status.files = value.files;
+          status.fetchedAt = Date.now();
+        } else {
+          // Only set to failed if not already failed (preserve any existing status)
+          if (status.status !== "failed") {
+            status.status = "failed";
+            status.error = "No files found";
+          }
         }
-      }
-      return; // Don't update status, already success
-    }
-
-    if (result.status === "fulfilled") {
-      const value = result.value;
-      if (value.success && value.files) {
-        if (!files) {
-          files = value.files;
-          console.log(
-            `✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`
-          );
-        }
-        status.status = "success";
-        status.files = value.files;
-        status.fetchedAt = Date.now();
-      } else {
-        // Only set to failed if not already failed (preserve any existing status)
-        if (status.status !== "failed") {
+      } else if (result.status === "rejected") {
+        // Only set to failed if not already success or failed (preserve success status)
+        // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
+        if (!wasSuccess && status.status !== "failed") {
           status.status = "failed";
-          status.error = "No files found";
+          status.error = result.reason?.message || "Unknown error";
+          console.error(
+            `❌ [Git Source] Fetch rejected for ${status.source.displayName}:`,
+            result.reason
+          );
         }
       }
-    } else if (result.status === "rejected") {
-      // Only set to failed if not already success or failed (preserve success status)
-      // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
-      if (!wasSuccess && status.status !== "failed") {
-        status.status = "failed";
-        status.error = result.reason?.message || "Unknown error";
-        console.error(
-          `❌ [Git Source] Fetch rejected for ${status.source.displayName}:`,
-          result.reason
-        );
-      }
-    }
 
-    if (onStatusUpdate) onStatusUpdate(status);
-  });
+      if (onStatusUpdate) onStatusUpdate(status);
+    });
 
-  console.log(
-    `📊 [Git Source] All fetches completed. Final statuses:`,
-    statuses.map((s) => `${s.source.displayName}: ${s.status}`).join(", ")
-  );
+    console.log(
+      `📊 [Git Source] All fetches completed. Final statuses:`,
+      statuses.map((s) => `${s.source.displayName}: ${s.status}`).join(", ")
+    );
 
-  return { files, statuses };
+    return { files, statuses };
+  } finally {
+    noteGitSourceHttpEnd();
+  }
 }

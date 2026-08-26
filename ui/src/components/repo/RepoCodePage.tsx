@@ -105,6 +105,7 @@ import {
   type AnnouncementCloneStatus,
   shouldInferGraspCloneUrls,
 } from "@/lib/repos/infer-grasp-clones";
+import { languageFromFilename } from "@/lib/repos/infer-languages-from-files";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import { isOpaqueBinaryDataUrl } from "@/lib/repos/opaque-binary-data-url";
 import {
@@ -5836,7 +5837,14 @@ export function RepoCodePage() {
           // Note: We don't use Nostr git server URLs (gittr.space, etc.) as sourceUrl
           // Those are handled by the multi-source fetcher or git-nostr-bridge
           // CRITICAL: Log if sourceUrl was found to help debug
-          if (matchingRepo && !sourceUrl) {
+          if (
+            matchingRepo &&
+            !sourceUrl &&
+            !(
+              Array.isArray(matchingRepo.clone) &&
+              matchingRepo.clone.length > 0
+            )
+          ) {
             console.warn(
               "⚠️ [File Fetch] Matching repo found but sourceUrl is missing:",
               {
@@ -5938,10 +5946,15 @@ export function RepoCodePage() {
       // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
       // MOST IMPORTANT: If we have cloneUrls but no files, we MUST try to fetch (don't skip!)
       const filesArray = initialRepoData?.files;
+      const liveStoredFiles = loadRepoFiles(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const liveRefFiles = repoDataRef.current?.files;
       const hasFiles =
-        filesArray !== undefined &&
-        Array.isArray(filesArray) &&
-        filesArray.length > 0;
+        (Array.isArray(liveRefFiles) && liveRefFiles.length > 0) ||
+        liveStoredFiles.length > 0 ||
+        (Array.isArray(filesArray) && filesArray.length > 0);
       const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
       const isInProgress = fileFetchInProgressRef.current;
       const hasCloneUrls = initialCloneUrls.length > 0;
@@ -5951,11 +5964,10 @@ export function RepoCodePage() {
         routeGithubSource,
         ...initialCloneUrls
       );
+      // GitHub/forge upstream only — GRASP-native npub repos must not keep
+      // re-fetching after a successful tree (that starved Amber bunker sockets).
       const mustRefreshInitial =
-        initialUpstream.includes("github.com") ||
-        !!routeGithubSource ||
-        (resolvedParams.entity || "").startsWith("npub") ||
-        /^[0-9a-f]{64}$/i.test(resolvedParams.entity || "");
+        initialUpstream.includes("github.com") || !!routeGithubSource;
 
       // CRITICAL: If we have cloneUrls but no files, we MUST fetch (don't skip even if attempted before)
       // Only skip if: (attempted AND has files) OR (in progress AND has files)
@@ -9062,10 +9074,15 @@ export function RepoCodePage() {
                 // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
                 // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
                 const filesArray = currentData?.files;
+                const liveStoredFiles = loadRepoFiles(
+                  resolvedParams.entity,
+                  resolvedParams.repo
+                );
+                const liveRefFiles = repoDataRef.current?.files;
                 const hasFiles =
-                  filesArray !== undefined &&
-                  Array.isArray(filesArray) &&
-                  filesArray.length > 0;
+                  (Array.isArray(liveRefFiles) && liveRefFiles.length > 0) ||
+                  liveStoredFiles.length > 0 ||
+                  (Array.isArray(filesArray) && filesArray.length > 0);
                 const hasAttempted =
                   fileFetchAttemptedRef.current === repoKeyWithBranch;
                 const hasCloneUrlsForEose = cloneUrls.length > 0;
@@ -9075,10 +9092,7 @@ export function RepoCodePage() {
                   currentData?.forkedFrom,
                   ...cloneUrls
                 );
-                const mustRefreshEose =
-                  eoseUpstream.includes("github.com") ||
-                  (resolvedParams.entity || "").startsWith("npub") ||
-                  /^[0-9a-f]{64}$/i.test(resolvedParams.entity || "");
+                const mustRefreshEose = eoseUpstream.includes("github.com");
                 // Match initial multi-source guard: never skip just because a fetch is in flight
                 // when we still have zero files — the first run may only have Nostr clone URLs;
                 // EOSE adds upstream sourceUrl (e.g. self-hosted git) required for a successful tree.
@@ -14111,64 +14125,7 @@ export function RepoCodePage() {
       for (const f of currentRepoData.files) {
         if (f.type !== "file") continue;
         const name = f.path.split("/").pop() || f.path;
-        const ext = name.includes(".")
-          ? name.split(".").pop()!.toLowerCase()
-          : "";
-        const lang = ((): string => {
-          switch (ext) {
-            case "ts":
-            case "tsx":
-              return "TypeScript";
-            case "js":
-            case "jsx":
-              return "JavaScript";
-            case "py":
-              return "Python";
-            case "rs":
-              return "Rust";
-            case "go":
-              return "Go";
-            case "rb":
-              return "Ruby";
-            case "php":
-              return "PHP";
-            case "java":
-              return "Java";
-            case "kt":
-              return "Kotlin";
-            case "swift":
-              return "Swift";
-            case "c":
-            case "h":
-              return "C";
-            case "cpp":
-            case "cc":
-            case "hpp":
-            case "hh":
-              return "C++";
-            case "cs":
-              return "C#";
-            case "scala":
-              return "Scala";
-            case "sh":
-            case "bash":
-            case "zsh":
-              return "Shell";
-            case "yaml":
-            case "yml":
-              return "YAML";
-            case "json":
-              return "JSON";
-            case "toml":
-              return "TOML";
-            case "md":
-              return "Markdown";
-            case "sql":
-              return "SQL";
-            default:
-              return ext ? ext.toUpperCase() : "Other";
-          }
-        })();
+        const lang = languageFromFilename(name);
         counts[lang] = (counts[lang] || 0) + (f.size || 1);
       }
       // Persist to localStorage and update state

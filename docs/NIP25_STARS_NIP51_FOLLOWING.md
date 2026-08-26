@@ -15,6 +15,7 @@ Following the [Nostr community discussion](https://github.com/nostr-protocol/nip
 - **Remote signer (NIP-46 / Amber):** Star, Watch, and **Follow** warm bunker sockets with `ensureRpcHealthy` at click start (same as Push), then sign via `resolveNostrSigner({ waitForRemote: true })`. After hydrate, sockets start CLOSED and `getState()` stays `"idle"` even after “Background bunker warm ready” — Follow used to treat that as “not ready” and fall back to nsec, so Amber-only users got “Remote signer not ready and no private key available” after the kind-3 list had already loaded. Keep Amber open/unlocked when starring or following. The Star button disables while a sign is in flight so double-clicks cannot thrash the bunker dial.
 - **NIP-07:** Works when there is **no** paired bunker session (extension owns `window.nostr`). With a stored NIP-46 session, gittr prefers Amber so the extension is not used for Star.
 - **GitHub** is a separate live/import stargazer count (GitHub icon) — it does not star on Nostr.
+- **Insights tab:** Stars use the same live NIP-25 count as the header Star button (not a stale `gittr_repos.stars` snapshot).
 - Branch tip (`?branch=`) does **not** affect starring; `main`↔`master` is only for file/tree loading.
 
 **Key Benefits:**

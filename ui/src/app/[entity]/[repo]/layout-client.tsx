@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { RepoChromeStatsContext } from "@/lib/repos/repo-chrome-stats";
+
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -2297,7 +2299,15 @@ export default function RepoLayoutClient({
 
         <hr className="w-full -mt-[17px] border-b-0 border-lightgray" />
 
-        {children}
+        <RepoChromeStatsContext.Provider
+          value={{
+            nostrStarCount,
+            githubStarCount,
+            forkCount,
+          }}
+        >
+          {children}
+        </RepoChromeStatsContext.Provider>
       </section>
       {showRepoQR && (
         <RepoQRShare
