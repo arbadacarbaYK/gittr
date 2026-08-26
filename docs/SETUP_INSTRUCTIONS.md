@@ -120,12 +120,13 @@ The aggregate Issues and Pulls pages use real menus (not decorative GitHub place
 
 Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo**; on first visit every repo section starts **collapsed** (expand/collapse choices are remembered afterward).
 
-### Profile repo list (logged-out visitors)
+### Profile repo list (same for everyone)
 
-Profile pages show repositories to **everyone** (no login required) via the server:
+Profile pages show repositories to **everyone** (no login required) via the server. Logged-in vs logged-out must **not** change the repo grid — only **Follow** and **In your network**. Unpublished / private rows belong on **My Repositories**, not the public profile.
 
 - **`GET /api/nostr/profile-repos?ownerPubkey=<64-char-hex>`** — fetches kind **30617/30618** for `authors: [pubkey]` on **`PROFILE_REPOS_RELAYS`** (stats relays + NIP-34 discovery: `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, …). Slim `PLATFORM_STATS_RELAYS` alone misses NostrHub/ngit-only announcements. Rows include `name` / `description` from 30617 tags when present; **30618** updates activity timestamps on **live** repos without wiping announcement text. A repo is **live** only when the **latest kind 30617** for that `d` tag is not soft-deleted — a later 30618 (or an older live 30617) must not keep a deleted repo in the list (My Repos heal popup uses this list). Repo chrome (Star event id, Public/Private, Refetch `source`, Commits clone URLs, new Issue/PR `d`) must use this same list via `resolveLiveRepoAnnouncement` — not a defaultRelays-only subscribe.
 - The profile page passes the decoded hex pubkey (npub URLs are decoded client-side; do not pass npub to this API).
+- **Visitor `gittr_repos` is not the catalog.** Do not paint the browser cache as the profile list (logged-in people often have a handful of that author). The grid is `enrichNetworkProfileRepos`: Nostr rows only; localStorage may fill About/logo on matching cards. `public-read:false` stays off the public profile (use My Repos). Kind **30617** query `limit` is **2000**; scan timeout **12s**; a timeout response is **`Cache-Control: no-store`**.
 - While that request is in flight the UI shows **“Loading repositories from Nostr…”** (and `…` in the count) instead of a fake **0** with no grid — the relay scan can take several seconds on a cold cache.
 - Response is **field-merged** with local repos (`mergeProfileRepoList`): sparse network rows must not erase About text, display names, or `userRole` (owner cards flipping to contributor green).
 - Below Repositories, the same profile also lists that person’s **Pages** (from **`GET /api/gittr-pages/status-sites`**, filtered by author pubkey / `npub…` site hostname) and **Apps** (from **`GET /api/nostr/software-catalog?author=<hex>`**, author-scoped NIP-82 scrape — not the full Zapstore catalog). Both sections start after browser idle so they do not fight `profile-repos` / metadata. UI: `ProfilePagesAppsSections`.

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  enrichNetworkProfileRepos,
   mergeProfileRepoFields,
   mergeProfileRepoList,
   preferRepoDisplayName,
+  profileRepoCountLabel,
   profileRepoDisplayRole,
 } from "./merge-profile-repos";
 
@@ -135,6 +137,79 @@ describe("mergeProfileRepoList", () => {
     );
     expect(merged[0]?.status).not.toBe("local");
     expect(merged[0]?.description).toBe("official backend");
+  });
+});
+
+describe("profileRepoCountLabel", () => {
+  it("shows an ellipsis while the first catalog rows are in flight", () => {
+    expect(profileRepoCountLabel(0, true)).toBe("…");
+  });
+
+  it("marks a partial catalog as incomplete while more rows may arrive", () => {
+    expect(profileRepoCountLabel(4, true)).toBe("4+");
+  });
+
+  it("shows the final count after the catalog settles", () => {
+    expect(profileRepoCountLabel(102, false)).toBe("102");
+  });
+});
+
+describe("enrichNetworkProfileRepos", () => {
+  const owner =
+    "0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd";
+
+  it("does not add visitor-cache repos that the catalog never announced", () => {
+    const local = [
+      { repo: "npkg", ownerPubkey: owner, description: "cached" },
+      { repo: "only-in-my-browser", ownerPubkey: owner },
+    ];
+    const network = [
+      {
+        repo: "npkg",
+        ownerPubkey: owner,
+        syncedFromNostr: true,
+        publicRead: true,
+      },
+      {
+        repo: "soapbox.pub",
+        ownerPubkey: owner,
+        syncedFromNostr: true,
+        publicRead: true,
+      },
+    ];
+    const merged = enrichNetworkProfileRepos(network, local);
+    expect(merged.map((r) => r.repo).sort()).toEqual(["npkg", "soapbox.pub"]);
+    expect(merged.find((r) => r.repo === "npkg")?.description).toBe("cached");
+  });
+
+  it("stays empty until the catalog returns — same for any visitor", () => {
+    expect(
+      enrichNetworkProfileRepos(
+        [],
+        [{ repo: "npkg", ownerPubkey: owner, description: "cached" }]
+      )
+    ).toEqual([]);
+  });
+
+  it("does not list private announcements on the public profile", () => {
+    const merged = enrichNetworkProfileRepos(
+      [
+        {
+          repo: "secret",
+          ownerPubkey: owner,
+          publicRead: false,
+          syncedFromNostr: true,
+        },
+        {
+          repo: "public",
+          ownerPubkey: owner,
+          publicRead: true,
+          syncedFromNostr: true,
+        },
+      ],
+      []
+    );
+    expect(merged.map((r) => r.repo)).toEqual(["public"]);
   });
 });
 

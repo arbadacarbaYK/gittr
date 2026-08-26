@@ -1038,7 +1038,11 @@ export default function HelpPage() {
                   while logged in already does that. The purple{" "}
                   <strong className="text-white">owner</strong> pill on a
                   profile is “this npub announced the repo,” not “GitHub
-                  confirmed.” Importing your own GitHub repo is still{" "}
+                  confirmed.” A profile’s repository grid is that npub’s Nostr
+                  announcements (including Shakespeare/ngit), the same list
+                  whether you are logged in or not — not GitHub and not the
+                  few repos your browser already cached. Importing your own
+                  GitHub repo is still{" "}
                   <strong className="text-white">owner</strong>. The purple{" "}
                   <strong className="text-white">forked</strong> pill is only
                   for a real upstream parent (someone else’s repo on any

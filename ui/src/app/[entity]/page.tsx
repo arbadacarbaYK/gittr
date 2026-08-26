@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  use,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProfilePagesAppsSections } from "@/components/profile/ProfilePagesAppsSections";
 import { Button } from "@/components/ui/button";
@@ -63,8 +57,10 @@ import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { isRealForkAttribution } from "@/lib/repos/fork-attribution";
 import {
+  enrichNetworkProfileRepos,
   mergeProfileRepoList,
   profileAnnouncerRole,
+  profileRepoCountLabel,
   profileRepoDisplayRole,
   profileRepoRowKey,
 } from "@/lib/repos/merge-profile-repos";
@@ -177,6 +173,8 @@ export default function EntityPage({
   const profileHexLiveRef = useRef<string | null>(null);
   /** True while the public profile-repos API is in flight (logged-out visitors need this). */
   const [networkReposLoading, setNetworkReposLoading] = useState(false);
+  /** True after the catalog request finished (success, empty, or error). */
+  const [networkReposSettled, setNetworkReposSettled] = useState(false);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -192,6 +190,7 @@ export default function EntityPage({
     setUserRepos([]);
     networkProfileReposRef.current = [];
     setNetworkReposLoading(false);
+    setNetworkReposSettled(false);
   }, [resolvedParams.entity]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>(
     {}
@@ -329,7 +328,9 @@ export default function EntityPage({
               `📡 [Profile] Fetching metadata for npub (decoded): ${normalized.slice(
                 0,
                 8
-              )}... (full length: ${normalized.length}, normalized to lowercase)`
+              )}... (full length: ${
+                normalized.length
+              }, normalized to lowercase)`
             );
           }
           pubkeys.add(normalized);
@@ -1326,12 +1327,21 @@ export default function EntityPage({
 
             const deduplicatedUpdatedRepos = Array.from(dedupeMap.values());
 
-            setUserRepos((prev) =>
-              mergeProfileRepoList(
-                mergeProfileRepoList(prev, deduplicatedUpdatedRepos),
-                networkProfileReposRef.current
-              )
-            );
+            setUserRepos((prev) => {
+              const next = enrichNetworkProfileRepos(
+                networkProfileReposRef.current,
+                deduplicatedUpdatedRepos
+              );
+              if (
+                prev.length === next.length &&
+                prev.every(
+                  (r, i) => profileRepoRowKey(r) === profileRepoRowKey(next[i]!)
+                )
+              ) {
+                return prev;
+              }
+              return next;
+            });
             console.log(
               `✅ [Profile] After sync: ${
                 deduplicatedUpdatedRepos.length
@@ -1566,9 +1576,9 @@ export default function EntityPage({
         }
 
         setUserRepos((prev) => {
-          const next = mergeProfileRepoList(
-            mergeProfileRepoList(prev, deduplicatedRepos),
-            networkProfileReposRef.current
+          const next = enrichNetworkProfileRepos(
+            networkProfileReposRef.current,
+            deduplicatedRepos
           );
           if (
             prev.length === next.length &&
@@ -2029,7 +2039,8 @@ export default function EntityPage({
               totalActivities: activities.length,
               commits: activities.filter((a) => a.type === "commit_created")
                 .length,
-              prsMerged: activities.filter((a) => a.type === "pr_merged").length,
+              prsMerged: activities.filter((a) => a.type === "pr_merged")
+                .length,
               bountiesClaimed: activities.filter(
                 (a) => a.type === "bounty_claimed"
               ).length,
@@ -2098,6 +2109,7 @@ export default function EntityPage({
     reposReloadToken,
     fullPubkeyForMeta,
     currentUserPubkey,
+    networkReposSettled,
   ]);
 
   // Network repo list for any visitor (logged-out and logged-in). Does not
@@ -2121,6 +2133,7 @@ export default function EntityPage({
 
     let cancelled = false;
     setNetworkReposLoading(true);
+    setNetworkReposSettled(false);
 
     const load = async () => {
       try {
@@ -2149,6 +2162,8 @@ export default function EntityPage({
         };
         if (profileHexLiveRef.current !== hex) return;
         if (!Array.isArray(data.repos) || data.repos.length === 0) {
+          networkProfileReposRef.current = [];
+          setUserRepos([]);
           return;
         }
         const mapped = data.repos.map((row) => ({
@@ -2178,7 +2193,7 @@ export default function EntityPage({
         }));
         networkProfileReposRef.current = mapped;
         setUserRepos((prev) => {
-          const next = mergeProfileRepoList(prev, mapped);
+          const next = enrichNetworkProfileRepos(mapped, prev);
           if (
             prev.length === next.length &&
             prev.every(
@@ -2193,6 +2208,7 @@ export default function EntityPage({
         console.warn("[Profile] profile-repos fetch failed:", e);
       } finally {
         if (!cancelled && profileHexLiveRef.current === hex) {
+          setNetworkReposSettled(true);
           setNetworkReposLoading(false);
         }
       }
@@ -3262,9 +3278,7 @@ export default function EntityPage({
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Repositories</span>
                 <span className="text-purple-400 font-semibold">
-                  {networkReposLoading && userRepos.length === 0
-                    ? "…"
-                    : userRepos.length}
+                  {profileRepoCountLabel(userRepos.length, networkReposLoading)}
                 </span>
               </div>
               {profilePagesCount > 0 ? (
@@ -3610,9 +3624,10 @@ export default function EntityPage({
               <div className="flex justify-between">
                 <span className="text-gray-400">Repositories</span>
                 <span className="text-purple-400">
-                  {networkReposLoading && userRepos.length === 0
-                    ? "…"
-                    : userRepos.length || 0}
+                  {profileRepoCountLabel(
+                    userRepos.length || 0,
+                    networkReposLoading
+                  )}
                 </span>
               </div>
             </div>
@@ -3624,8 +3639,14 @@ export default function EntityPage({
       {userRepos.length > 0 ? (
         <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
           <h2 className="text-2xl font-semibold mb-6">
-            Repositories ({userRepos.length})
+            Repositories (
+            {profileRepoCountLabel(userRepos.length, networkReposLoading)})
           </h2>
+          {networkReposLoading ? (
+            <p className="text-sm text-gray-400 -mt-4 mb-4">
+              Loading more repositories from Nostr…
+            </p>
+          ) : null}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {userRepos.slice(0, visibleRepoCount).map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)

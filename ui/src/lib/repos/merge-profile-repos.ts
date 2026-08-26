@@ -253,3 +253,41 @@ export function mergeProfileRepoList(prev: any[], next: any[]): any[] {
     (a, b) => profileRepoLatestMs(b) - profileRepoLatestMs(a)
   );
 }
+
+/** Public profile grid: live announcements only. Private stays on My Repos. */
+export function isListedOnPublicProfile(repo: {
+  publicRead?: boolean;
+  deleted?: boolean;
+  archived?: boolean;
+}): boolean {
+  if (repo?.deleted === true || repo?.archived === true) return false;
+  return repo?.publicRead !== false;
+}
+
+/** Header / stats count while the public catalog request is still running. */
+export function profileRepoCountLabel(
+  count: number,
+  networkLoading: boolean
+): string {
+  if (networkLoading && count === 0) return "…";
+  if (networkLoading) return `${count}+`;
+  return String(count);
+}
+
+/**
+ * The profile grid is the Nostr catalog for this npub — same list logged-in
+ * or logged-out. localStorage may fill About text / logos on matching rows
+ * but must not add cache-only repos.
+ */
+export function enrichNetworkProfileRepos(
+  networkRows: any[],
+  localRows: any[]
+): any[] {
+  const network = (networkRows || []).filter(isListedOnPublicProfile);
+  if (network.length === 0) return [];
+  const keys = new Set(network.map(profileRepoRowKey));
+  const overlap = (localRows || []).filter((r) =>
+    keys.has(profileRepoRowKey(r))
+  );
+  return mergeProfileRepoList(overlap, network);
+}

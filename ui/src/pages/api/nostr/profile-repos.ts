@@ -19,6 +19,11 @@ import { nip19 } from "nostr-tools";
 
 export type { ProfileRepoRow };
 
+/** Relays that store full 30617 history can fill a small `limit` with one busy repo. */
+const PROFILE_REPOS_ANNOUNCE_LIMIT = 2000;
+const PROFILE_REPOS_STATE_LIMIT = 500;
+const PROFILE_REPOS_SUBSCRIBE_MS = 12_000;
+
 async function resolveOwnerHex(
   input: string
 ): Promise<{ hex: string } | { error: string }> {
@@ -61,15 +66,19 @@ export default async function handler(
   try {
     const byKey: ProfileRepoAccumulator = new Map();
 
+    let finishedByTimeout = false;
+    let eventCount = 0;
+
     await withRelayPoolSubscribe(PROFILE_REPOS_RELAYS, async (subscribe) => {
       await new Promise<void>((resolve) => {
         let eoseCount = 0;
         const expectedEose = PROFILE_REPOS_RELAYS.length;
         let done = false;
 
-        const finish = () => {
+        const finish = (fromTimeout = false) => {
           if (done) return;
           done = true;
+          finishedByTimeout = fromTimeout;
           try {
             unsub();
           } catch {
@@ -87,6 +96,7 @@ export default async function handler(
           content?: string;
         }) => {
           if (isPublisherBlocklisted(event.pubkey)) return;
+          eventCount++;
           applyProfileRepoEvent(byKey, event);
         };
 
@@ -95,12 +105,12 @@ export default async function handler(
             {
               kinds: [KIND_REPOSITORY_NIP34],
               authors: [ownerHex],
-              limit: 500,
+              limit: PROFILE_REPOS_ANNOUNCE_LIMIT,
             },
             {
               kinds: [KIND_REPOSITORY_STATE],
               authors: [ownerHex],
-              limit: 200,
+              limit: PROFILE_REPOS_STATE_LIMIT,
             },
           ],
           PROFILE_REPOS_RELAYS,
@@ -108,20 +118,32 @@ export default async function handler(
           undefined,
           () => {
             eoseCount++;
-            if (eoseCount >= expectedEose) setTimeout(finish, 200);
+            if (eoseCount >= expectedEose) setTimeout(() => finish(false), 200);
           },
           {}
         );
 
-        setTimeout(finish, 8000);
+        setTimeout(() => finish(true), PROFILE_REPOS_SUBSCRIBE_MS);
       });
     });
 
     const repos = profileRepoRowsFromAccumulator(byKey);
 
+    if (finishedByTimeout) {
+      console.warn("[profile-repos] relay scan timed out", {
+        ownerHex: ownerHex.slice(0, 8),
+        eventCount,
+        unique: repos.length,
+      });
+    }
+
+    // A truncated scan (history flood on one relay, discovery relays still
+    // opening) must not be cached as "this person only has 4 repos".
     res.setHeader(
       "Cache-Control",
-      "public, max-age=60, stale-while-revalidate=120"
+      finishedByTimeout
+        ? "private, no-store"
+        : "public, max-age=60, stale-while-revalidate=120"
     );
     return res.status(200).json({ repos });
   } catch (e) {
