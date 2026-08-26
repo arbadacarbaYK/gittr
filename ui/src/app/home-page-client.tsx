@@ -373,7 +373,18 @@ export default function HomePage({
     const poll = async () => {
       try {
         const res = await fetch("/api/stats/platform-leaderboard");
-        if (!res.ok || cancelled || gen !== leaderboardFetchGen.current) return;
+        if (cancelled || gen !== leaderboardFetchGen.current) return;
+        if (!res.ok) {
+          // Local/cold boxes have no snapshot yet (503). Stop looking stuck;
+          // keep polling so cards fill in once the refresh job writes one.
+          setLeaderboardReady(true);
+          setLbTopReposReady(true);
+          setLbTopUsersReady(true);
+          setLbRecentReposReady(true);
+          setLbRecentActivitiesReady(true);
+          pollTimer = setTimeout(poll, 10_000);
+          return;
+        }
         const data = (await res.json()) as {
           topRepos?: RepoStats[];
           topUsers?: UserStats[];

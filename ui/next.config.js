@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Optional: GITTR_DIST_DIR for a side-build while `yarn dev` owns `.next`.
+  // This file is the config Next loads (not next.config.mjs).
+  distDir: process.env.GITTR_DIST_DIR || ".next",
   reactStrictMode: true,
   eslint: {
     // Warning: This allows production builds to successfully complete even if

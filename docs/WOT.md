@@ -15,7 +15,7 @@ gittr shows a **viewer-relative** trust badge next to Nostr identities when you 
 
 If the public oracle returns **502**, older code treated that like “no path” and showed **Outside your network** for everyone you don’t follow directly. Multi-hop friends looked “outside” even when you were connected.
 
-Now: HTTP/network failure → **Distance unknown**. Confirmed null hops from a healthy oracle → **Outside your network**. Direct follows still win first from kind-3 + local backup (even when the oracle is down).
+**Distance unknown** is expected when the public oracle (`wot-oracle.mappingbitcoin.com`) returns 502 and the profile is not in your kind-3 list. Direct follows still show **In your network** without the oracle — so a failed Follow click (Amber gated as “not ready”) also leaves the badge unknown until kind 3 is published.
 
 ### `/apps` TrustBadge stampede (fixed Aug 2026)
 

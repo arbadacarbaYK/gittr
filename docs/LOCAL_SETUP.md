@@ -21,6 +21,21 @@ yarn dev
 
 App: http://localhost:3000
 
+## If localhost flickers a Next.js error overlay
+
+`yarn dev` and `yarn build` share `ui/.next`. If a leftover `next dev` is still bound to port 3000 and you run a production build into the same folder, the next page load can 500 with `Cannot find module './NNNN.js'` and the overlay will flash as Next retries.
+
+Fix:
+
+```bash
+# stop whatever is on :3000, then:
+cd ui
+rm -rf .next
+yarn dev
+```
+
+Do not run `yarn build` in `ui/` while `yarn dev` is running — they share `ui/.next` unless you set `GITTR_DIST_DIR` (honored in `ui/next.config.js`). Homepage **Most Active** cards stay empty until a leaderboard snapshot exists (`ui/data/platform-leaderboard-snapshot.json`); that is expected on a fresh local box.
+
 ## Bridge (optional, for `git clone` / push)
 
 ```bash

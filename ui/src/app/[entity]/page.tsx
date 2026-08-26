@@ -54,7 +54,7 @@ import {
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
+  resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import {
   type ClaimedIdentity,
@@ -77,7 +77,6 @@ import {
 } from "@/lib/repos/merge-profile-repos";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
@@ -106,7 +105,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 
 // Force dynamic rendering - metadata.ts needs to run on each request
 export const dynamic = "force-dynamic";
@@ -2699,72 +2698,38 @@ export default function EntityPage({
     setFollowingLoading(true);
     try {
       await enqueueFollowPublish(async () => {
-        const signingCreds = await resolveSigningCredentials({ remoteSigner });
-        if (!signingCreds) {
+        // Same click-time warm as Push/Star/Watch. Hydrate leaves state "idle"
+        // even after "Background bunker warm ready" — do not gate on getState().
+        try {
+          await remoteSigner?.ensureRpcHealthy?.();
+        } catch (warmErr) {
+          const warmMsg =
+            warmErr instanceof Error ? warmErr.message : String(warmErr);
+          console.warn("[Follow] Remote signer warm before follow:", warmMsg);
+          alert(warmMsg);
+          return;
+        }
+
+        const resolved = await resolveNostrSigner({
+          remoteSigner,
+          waitForRemote: true,
+        });
+        if (!resolved) {
           alert(NO_SIGNING_METHOD_MESSAGE);
           return;
         }
-        const { hasNip07, privateKey } = signingCreds;
+
         let signerPubkey: string = currentUserPubkey;
-
-        // Check if remote signer is ready (for nowser/bunker)
-        const isRemoteSignerReady =
-          remoteSigner?.getSession()?.userPubkey &&
-          remoteSigner?.getState() === "ready";
-
-        if (hasNip07 && window.nostr) {
-          // Use NIP-07 extension or remote signer adapter - this will trigger a popup for the user to sign
-          try {
-            // For remote signer (nowser), check if it's ready before calling
-            if (isRemoteSignerReady || !remoteSigner) {
-              // Either remote signer is ready, or it's a regular NIP-07 extension
-              signerPubkey = await window.nostr.getPublicKey();
-            } else {
-              // Remote signer exists but not ready - fall through to private key
-              console.warn(
-                "⚠️ [Follow] Remote signer not ready, falling back to private key"
-              );
-              throw new Error("Remote signer not ready");
-            }
-          } catch (error: any) {
-            const errorMsg = error?.message || String(error);
-            // If it's a "not paired" error from remote signer, fall back gracefully
-            if (
-              errorMsg.includes("not paired") ||
-              errorMsg.includes("not ready")
-            ) {
-              console.warn(
-                "⚠️ [Follow] Remote signer not paired/ready, falling back to private key:",
-                errorMsg
-              );
-              // Fall through to private key
-            } else {
-              console.warn(
-                "⚠️ [Follow] Failed to get pubkey from NIP-07, using current user pubkey:",
-                error
-              );
-              // For other errors, just use current user pubkey and continue
-            }
-          }
+        try {
+          const pk = await resolved.getPublicKey();
+          if (pk) signerPubkey = pk;
+        } catch (error) {
+          console.warn(
+            "⚠️ [Follow] Failed to get pubkey from signer, using session pubkey:",
+            error
+          );
         }
-
-        let privateKeyCache: string | undefined | null = null;
-        const loadPrivateKey = async (): Promise<string | undefined> => {
-          if (privateKeyCache !== null) return privateKeyCache;
-          privateKeyCache = (await getNostrPrivateKey()) || undefined;
-          return privateKeyCache;
-        };
-
-        if (!hasNip07) {
-          const pk = await loadPrivateKey();
-          if (!pk) {
-            alert(
-              "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings."
-            );
-            return;
-          }
-          signerPubkey = getPublicKey(pk);
-        }
+        signerPubkey = signerPubkey.toLowerCase();
 
         // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
         // Always union ALL kind-3 events + backup + session + in-memory so a
@@ -2974,80 +2939,21 @@ export default function EntityPage({
           p: newContacts.map((pubkey) => [pubkey, "", "wss://relay.damus.io"]), // Format: [pubkey, relay, petname]
         };
 
-        const event = {
+        const unsigned = {
           kind: 3,
           created_at: Math.floor(Date.now() / 1000),
           tags: newContacts.map((pubkey) => ["p", pubkey]),
           content: JSON.stringify(contactListContent),
           pubkey: signerPubkey,
-          id: "",
-          sig: "",
         };
 
-        event.id = getEventHash(event);
-
-        // Sign with NIP-07/remote signer or private key
-        if (hasNip07 && window.nostr) {
-          // Use NIP-07 extension or remote signer adapter - this will open the signing modal
-          try {
-            // For remote signer (nowser), check if it's ready before calling
-            if (isRemoteSignerReady || !remoteSigner) {
-              // Either remote signer is ready, or it's a regular NIP-07 extension
-              const signedEvent = await window.nostr.signEvent(event);
-              event.sig = signedEvent.sig;
-            } else {
-              // Remote signer exists but not ready - fall back to private key
-              const pk = await loadPrivateKey();
-              if (pk) {
-                event.pubkey = getPublicKey(pk);
-                event.id = getEventHash(event);
-                event.sig = signEvent(event, pk);
-              } else {
-                throw new Error(
-                  "Remote signer not ready and no private key available"
-                );
-              }
-            }
-          } catch (error: any) {
-            const errorMsg = error?.message || String(error);
-            // If it's a "not paired" error from remote signer, fall back to private key
-            if (
-              errorMsg.includes("not paired") ||
-              errorMsg.includes("not ready")
-            ) {
-              console.warn(
-                "⚠️ [Follow] Remote signer not paired/ready, falling back to private key for signing"
-              );
-              const pk = await loadPrivateKey();
-              if (pk) {
-                event.pubkey = getPublicKey(pk);
-                event.id = getEventHash(event);
-                event.sig = signEvent(event, pk);
-              } else {
-                throw new Error(
-                  "Remote signer not ready and no private key available"
-                );
-              }
-            } else {
-              // Re-throw other errors (user cancellation, etc.)
-              throw error;
-            }
-          }
-        } else {
-          const pk = await loadPrivateKey();
-          if (!pk) {
-            throw new Error("No signing method available");
-          }
-          event.pubkey = getPublicKey(pk);
-          event.id = getEventHash(event);
-          event.sig = signEvent(event, pk);
-        }
+        const signedEvent = await resolved.signEvent(unsigned);
 
         // Publish and wait so the next Follow cannot race a stale kind 3
         await publishWithConfirmation(
           publish,
           subscribe,
-          event,
+          signedEvent,
           defaultRelays,
           12_000
         );
