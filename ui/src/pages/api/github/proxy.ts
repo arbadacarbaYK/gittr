@@ -77,11 +77,16 @@ export default async function handler(
 
     const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
     const rateLimitReset = response.headers.get("x-ratelimit-reset");
+    const githubLink = response.headers.get("link");
     if (rateLimitRemaining) {
       res.setHeader("X-RateLimit-Remaining", rateLimitRemaining);
     }
     if (rateLimitReset) {
       res.setHeader("X-RateLimit-Reset", rateLimitReset);
+    }
+    if (githubLink) {
+      res.setHeader("Link", githubLink);
+      res.setHeader("X-GitHub-Link", githubLink);
     }
 
     if (!response.ok) {

@@ -3,13 +3,16 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { inferLanguagesFromFiles } from "@/lib/repos/infer-languages-from-files";
+import { fetchGithubInsights } from "@/lib/repos/insights-github";
 import {
   type RepoInsightsSnapshot,
   loadRepoInsightsSnapshot,
 } from "@/lib/repos/insights-stats";
 import { useRepoChromeStats } from "@/lib/repos/repo-chrome-stats";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
@@ -77,6 +80,7 @@ export default function InsightsPage() {
   const [snapshot, setSnapshot] = useState<RepoInsightsSnapshot>(emptySnapshot);
   const [liveCommits, setLiveCommits] = useState<number | null>(null);
   const [liveFileCount, setLiveFileCount] = useState<number | null>(null);
+  const [liveForks, setLiveForks] = useState<number | null>(null);
   const [liveLanguages, setLiveLanguages] = useState<Record<
     string,
     number
@@ -110,13 +114,24 @@ export default function InsightsPage() {
         "main";
       if (!owner || !repoId) return;
       try {
-        const [commitRes, filesRes] = await Promise.all([
+        const ghSpec =
+          chrome?.githubOwner && chrome?.githubRepo
+            ? { owner: chrome.githubOwner, repo: chrome.githubRepo }
+            : (() => {
+                const ghUrl = resolveGithubUpstreamForTabs(
+                  entity,
+                  repoName,
+                  stored
+                );
+                return ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
+              })();
+        const [commitRes, filesRes, gh] = await Promise.all([
           fetchBridgeRead(
             `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
               owner
             )}&repo=${encodeURIComponent(repoId)}&branch=${encodeURIComponent(
               branch
-            )}&limit=500`
+            )}&limit=1`
           ),
           fetchBridgeRead(
             `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
@@ -125,11 +140,22 @@ export default function InsightsPage() {
               branch
             )}`
           ),
+          ghSpec
+            ? fetchGithubInsights(ghSpec.owner, ghSpec.repo, branch)
+            : Promise.resolve(null),
         ]);
         if (cancelled) return;
         if (commitRes.ok) {
-          const data = (await commitRes.json()) as { commits?: unknown[] };
-          const n = Array.isArray(data.commits) ? data.commits.length : 0;
+          const data = (await commitRes.json()) as {
+            commits?: unknown[];
+            totalCount?: number;
+          };
+          const n =
+            typeof data.totalCount === "number" && data.totalCount > 0
+              ? data.totalCount
+              : Array.isArray(data.commits)
+              ? data.commits.length
+              : 0;
           if (n > 0) setLiveCommits(n);
         }
         if (filesRes.ok) {
@@ -149,6 +175,18 @@ export default function InsightsPage() {
           const langs = inferLanguagesFromFiles(tree);
           if (Object.keys(langs).length > 0) setLiveLanguages(langs);
         }
+        if (gh) {
+          if (gh.commitCount > 0) {
+            setLiveCommits((prev) => Math.max(prev ?? 0, gh.commitCount));
+          }
+          if (gh.fileCount > 0) {
+            setLiveFileCount((prev) => Math.max(prev ?? 0, gh.fileCount));
+          }
+          if (gh.forks > 0) setLiveForks(gh.forks);
+          if (Object.keys(gh.languages).length > 0) {
+            setLiveLanguages(gh.languages);
+          }
+        }
       } catch {
         /* keep cached counts */
       }
@@ -158,10 +196,14 @@ export default function InsightsPage() {
     return () => {
       cancelled = true;
     };
-  }, [mounted, entity, repoName]);
+  }, [mounted, entity, repoName, chrome?.githubOwner, chrome?.githubRepo]);
 
   const starCount = chrome?.nostrStarCount ?? snapshot.storedStars;
-  const forkCount = Math.max(chrome?.forkCount ?? 0, snapshot.forks);
+  const forkCount = Math.max(
+    chrome?.forkCount ?? 0,
+    liveForks ?? 0,
+    snapshot.forks
+  );
   const commitCount = Math.max(liveCommits ?? 0, snapshot.commits);
   const fileCount = Math.max(liveFileCount ?? 0, snapshot.fileCount);
   const githubStars = chrome?.githubStarCount;

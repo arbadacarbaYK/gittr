@@ -322,8 +322,21 @@ export default async function handler(
       branchForMeta
     );
 
+    let totalCount = commits.length;
+    try {
+      const { stdout: countOut } = await execAsync(
+        `git --git-dir="${repoPath}" rev-list --count ${branchForMeta}`,
+        { timeout: 10000 }
+      );
+      const n = parseInt(countOut.trim(), 10);
+      if (Number.isFinite(n) && n >= 0) totalCount = n;
+    } catch {
+      /* keep commits.length */
+    }
+
     return res.status(200).json({
       commits,
+      totalCount,
       earliestUniqueCommit,
       branch: branchForMeta !== branchName ? branchForMeta : undefined,
     });

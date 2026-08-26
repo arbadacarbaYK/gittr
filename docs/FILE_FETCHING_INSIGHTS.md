@@ -1,6 +1,6 @@
 # File fetching (reference)
 
-This file is about **how Code-tab files load**. The repo **Insights** tab (`/{entity}/{repo}/insights`) is a different screen: it now reads the same file tree (`fileCount` / `gittr_files`), issue/PR stores, commit cache, and the header’s live Nostr star count. It does not use this fetch pipeline except for an optional commit-count refresh from `/api/nostr/repo/commits`.
+This file is about **how Code-tab files load**. The repo **Insights** tab (`/{entity}/{repo}/insights`) is a different screen: it reads the same file tree (`fileCount` / `gittr_files`), issue/PR stores, commit cache, and the header’s live Nostr star count. Live refresh also hits `/api/nostr/repo/files` + `/api/nostr/repo/commits` (including `totalCount` from `git rev-list --count`) and, when the header already knows a GitHub upstream, `/api/github/proxy` for languages, blob count, and commit totals. Language bars are hidden when empty — no “coming soon”.
 
 How the UI loads repo trees and file content. Implementation lives in:
 

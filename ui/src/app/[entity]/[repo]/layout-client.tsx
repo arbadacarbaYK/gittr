@@ -2304,6 +2304,8 @@ export default function RepoLayoutClient({
             nostrStarCount,
             githubStarCount,
             forkCount,
+            githubOwner: githubSpec?.owner ?? null,
+            githubRepo: githubSpec?.repo ?? null,
           }}
         >
           {children}

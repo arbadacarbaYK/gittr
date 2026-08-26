@@ -421,8 +421,8 @@ UI
   - [ ] New pull request page
 - [ ] Discussions
 - [x] Insights
-  - Files, stars (same Nostr count as the header Star button), forks, contributors, issues, PRs, commits, discussions
-  - Language bars when a file tree or import languages exist (hidden otherwise — no “coming soon”)
+  - Files (git tree / GitHub), stars (same Nostr count as the header Star button), forks, contributors, issues, PRs, commits, discussions
+  - Language bars from the file tree or GitHub linguist data (hidden when empty — no “coming soon”)
 - [ ] Settings
   - [ ] Edit repository name
   - [ ] Toggle features

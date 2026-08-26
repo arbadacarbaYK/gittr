@@ -7,6 +7,8 @@ export type RepoChromeStats = {
   nostrStarCount: number;
   githubStarCount: number | null;
   forkCount: number;
+  githubOwner: string | null;
+  githubRepo: string | null;
 };
 
 export const RepoChromeStatsContext = createContext<RepoChromeStats | null>(
