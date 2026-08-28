@@ -13,6 +13,7 @@ export default function Logo({ className }: { className?: string }) {
   return (
     <a
       href="/"
+      aria-label="Home"
       onClick={(e) => {
         e.stopPropagation(); // Prevent event from bubbling up to parent handlers
         appNavigate("/", router, pathname, e);

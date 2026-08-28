@@ -10,7 +10,7 @@ How search engines and social previews find gittr content. Marketing copy was up
 | Hub routes (`/pages`, `/apps`, `/explore`, `/new`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
 | Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
 | Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card: name, owner, About, corner badge; stats as **GitHub icon + ★ count**, fork icon + count, **N + ★** for Nostr (no “source stars” prose). Brand bottom-right (X uses bottom-left). |
-| `robots.txt` | `ui/src/app/robots.ts` | Allows `/` and explicitly `/new` (create/import social cards); disallows `/api/`, `/login`, `/signup`, `/settings/`, `/import`. `force-dynamic` so validators don’t keep a stale Disallow forever. |
+| `robots.txt` | `ui/src/app/robots.ts` | Allows `/` and explicitly `/new` (create/import social cards); disallows `/api/`, `/login`, `/signup`, `/settings/`, `/import`. **`meta-externalagent` / `Meta-ExternalFetcher` (Meta AI training/index) are Disallow: /**. Do **not** Disallow `facebookexternalhit` (share cards). Do **not** turn on Cloudflare “Block AI Scrapers” — that also hits Claude/GPT. Volume cap is nginx `meta_ai` zone, not a UA 403. `force-dynamic` so validators don’t keep a stale Disallow forever. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |
 | PWA manifest | `ui/public/site.webmanifest` | Short description for install prompts |
 | Canonical / `metadataBase` | `NEXT_PUBLIC_SITE_URL` | Must be `https://your.domain` in production |
@@ -39,7 +39,7 @@ The same snapshot **seeds `/explore`** when the browser cache is thin (`GET /api
 
 **Reverse forge lookup:** the SEO seed only stores `npub/repo` paths — **no** upstream URLs. To find whether a GitHub/GitLab/Codeberg/Gitea/… repo already has a Nostr announce (and get the **npub** to DM), use exact match on kind **30617** `source` / `forkedFrom`: MCP `findReposBySource` or `GET /api/nostr/repos-by-github?source=https://…`.
 
-**Client chrome on Explore:** leaving `/explore` uses soft `appNavigate` (`startTransition` + `router.push`) by default — hard `location.assign` remounted the whole app and felt like a ~10s tab freeze. Soft nav hard-assigns only after an 8s stall. Repo tab metadata uses an RSC fast path (no Nostr in `generateMetadata` on Flight requests). Search may still hard-assign into Explore when needed for a clean entry.
+**Client chrome on Explore:** leaving `/explore` uses soft `appNavigate` (`startTransition` + `router.push`) by default — hard `location.assign` remounted the whole app and felt like a ~10s tab freeze. Soft nav hard-assigns only after an 8s stall. Leaving a **Code** tab pushes urgently (hydrate `setState` starves the transition); the logo/home hard-loads `/` after ~1.2s only if that Code URL never changed. Repo tab metadata uses an RSC fast path (no Nostr in `generateMetadata` on Flight requests). Search may still hard-assign into Explore when needed for a clean entry.
 
 ```bash
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP

@@ -51,8 +51,6 @@ export function MainNav({ items, children }: MainNavProps) {
       e.preventDefault();
       return;
     }
-    // Soft nav elsewhere; hard assign on/from Explore (relay load stalls soft push).
-    // Hard path does not preventDefault — native href is the busy-thread fallback.
     appNavigate(href, router, pathname, e);
   };
 
