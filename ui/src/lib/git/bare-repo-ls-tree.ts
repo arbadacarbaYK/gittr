@@ -1,6 +1,8 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 
+import { isAbsurdRepoPath } from "../repos/repo-path-sanity";
+
 const execAsync = promisify(exec);
 
 export type BareTreeEntry = {
@@ -24,6 +26,7 @@ export function sanitizeRepoTreePath(
   ) {
     return null;
   }
+  if (isAbsurdRepoPath(trimmed)) return null;
   return trimmed;
 }
 

@@ -1,7 +1,7 @@
 /**
  * Guards against crawler / markdown-link traps that invent deeply nested
- * bogus repo paths (e.g. …/src/a/src/b/src/c or LICENSE/LICENSE/…).
- * Those URLs storm /api/git/file-content and overload Next → nginx 502s.
+ * bogus repo paths (e.g. …/src/a/src/b/src/c, nips/…/nips/…/nips, LICENSE/LICENSE).
+ * Those URLs storm repo pages + file APIs and can wedge Next → Cloudflare 504.
  */
 
 export const MAX_REPO_PATH_SEGMENTS = 16;
@@ -71,20 +71,44 @@ export function isAbsurdRepoPath(path: string): boolean {
     }
   }
 
-  // Motif: …/src/<x>/src/<y>/src/<z> (common crawler nest from root README fallback)
-  let srcHops = 0;
-  for (let i = 0; i < segments.length - 1; i++) {
-    if (segments[i]!.toLowerCase() === "src") srcHops += 1;
-  }
-  if (srcHops >= 3) return true;
-
-  // Same for docs/…/docs/…/docs/
-  let docsHops = 0;
+  // Same folder name 3+ times (nips/…/nips/…/nips, contributions/…, src/…).
+  // Special-casing only src/docs missed the nostrc crawler storm that wedged prod.
+  const hopCounts = new Map<string, number>();
   for (const seg of segments) {
-    if (seg.toLowerCase() === "docs") docsHops += 1;
+    const key = seg.toLowerCase();
+    const next = (hopCounts.get(key) ?? 0) + 1;
+    if (next >= 3) return true;
+    hopCounts.set(key, next);
   }
-  if (docsHops >= 3) return true;
 
+  return false;
+}
+
+/** True when ?path= or ?file= looks like a crawler nest. */
+export function searchParamsHaveAbsurdRepoPath(
+  searchParams: {
+    get(name: string): string | null;
+  } | null
+): boolean {
+  if (!searchParams) return false;
+  for (const key of ["path", "file"] as const) {
+    const value = searchParams.get(key);
+    if (value && isAbsurdRepoPath(value)) return true;
+  }
+  return false;
+}
+
+/** generateMetadata searchParams (string | string[]). */
+export function recordHasAbsurdRepoNav(
+  record: Record<string, string | string[] | undefined> | undefined
+): boolean {
+  if (!record) return false;
+  for (const key of ["path", "file"] as const) {
+    const raw = record[key];
+    const value =
+      typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
+    if (value && isAbsurdRepoPath(value)) return true;
+  }
   return false;
 }
 

@@ -17,6 +17,17 @@ export default function robots(): MetadataRoute.Robots {
         allow: ["/", "/new", "/new/"],
         disallow: ["/api/", "/settings/", "/import", "/login", "/signup"],
       },
+      // Meta AI training/index crawlers walked invented nips/nips/nips URL loops
+      // (28 Aug 2026) and wedged Next. Do NOT list facebookexternalhit / FacebookBot
+      // — those are share previews. Claude/GPT/TikTok stay under the * rule.
+      {
+        userAgent: [
+          "meta-externalagent",
+          "Meta-ExternalAgent",
+          "Meta-ExternalFetcher",
+        ],
+        disallow: ["/"],
+      },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,
   };

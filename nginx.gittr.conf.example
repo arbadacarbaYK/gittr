@@ -1,4 +1,5 @@
 # Example nginx shape for reference — adjust on the server.
+# Also include infra/nginx/gittr-bot-limits.conf in http {} (map + meta_ai zone).
 
 server {
     server_name gittr.space;
@@ -8,6 +9,17 @@ server {
     client_max_body_size 10M;
     
     location / {
+        # Crawler nest storms. Facebook encodes slashes as %2F so $arg_path
+        # does not contain "/" — match $request_uri (raw) for both forms.
+        # 404 not 429 (retries). Do not limit_req by IP: $remote_addr is CF edge.
+        if ($request_uri ~* "nips(%2F|/).+nips(%2F|/).+nips") { return 404; }
+        if ($request_uri ~* "src(%2F|/).+src(%2F|/).+src") { return 404; }
+        if ($request_uri ~* "docs(%2F|/).+docs(%2F|/).+docs") { return 404; }
+        if ($request_uri ~* "contributions(%2F|/).+contributions(%2F|/).+contributions") { return 404; }
+        if ($request_uri ~* "packaging(%2F|/).+packaging(%2F|/).+packaging") { return 404; }
+        # Meta AI volume cap — empty key skips everyone else (see gittr-bot-limits.conf).
+        limit_req_status 429;
+        limit_req zone=meta_ai burst=16 nodelay;
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -32,6 +44,13 @@ server {
     # Social media crawlers will get fresh metadata on each request
     # Matches: /npub1... or /npub1.../repo-name (user profiles and repositories)
     location ~ ^/(npub|note)[^/]*(/.*)?$ {
+        if ($request_uri ~* "nips(%2F|/).+nips(%2F|/).+nips") { return 404; }
+        if ($request_uri ~* "src(%2F|/).+src(%2F|/).+src") { return 404; }
+        if ($request_uri ~* "docs(%2F|/).+docs(%2F|/).+docs") { return 404; }
+        if ($request_uri ~* "contributions(%2F|/).+contributions(%2F|/).+contributions") { return 404; }
+        if ($request_uri ~* "packaging(%2F|/).+packaging(%2F|/).+packaging") { return 404; }
+        limit_req_status 429;
+        limit_req zone=meta_ai burst=16 nodelay;
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
