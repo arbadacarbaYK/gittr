@@ -1,0 +1,499 @@
+{
+  "title": "gittr.space platform map",
+  "source": "README.md — Where this sits (platform map)",
+  "openIn": "https://mr-r3b00t.github.io/net_draw/",
+  "how": "Open this JSON in NetDraw (Open button), then click Journey and walk the steps.",
+  "zones": [
+    {
+      "id": "z_people",
+      "x": 40,
+      "y": 90,
+      "w": 1540,
+      "h": 200,
+      "label": "People / agents",
+      "color": "#94a3b8"
+    },
+    {
+      "id": "z_platform",
+      "x": 40,
+      "y": 320,
+      "w": 1540,
+      "h": 430,
+      "label": "gittr platform · hostnames",
+      "color": "#22d3ee"
+    },
+    {
+      "id": "z_nostr",
+      "x": 40,
+      "y": 780,
+      "w": 1540,
+      "h": 210,
+      "label": "Nostr + remotes",
+      "color": "#a78bfa"
+    },
+    {
+      "id": "z_adjacent",
+      "x": 40,
+      "y": 1020,
+      "w": 1540,
+      "h": 210,
+      "label": "Same NIP-34 · other stacks (not gittr)",
+      "color": "#fbbf24"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "title",
+      "type": "process",
+      "x": 810,
+      "y": 42,
+      "label": "gittr.space",
+      "accent": "#14b8a6",
+      "owner": "web forge on Nostr",
+      "notes": "Git hosting and forge UI on Nostr: NIP-34 repos on GRASP relays, issues/PRs as signed events, optional Lightning bounties, static Pages, and an apps directory."
+    },
+    {
+      "id": "human",
+      "type": "laptop",
+      "x": 280,
+      "y": 195,
+      "label": "Human in browser",
+      "owner": "NIP-07 / Amber / nsec",
+      "disp": "friendly",
+      "notes": "Opens gittr.space. Relays carry issues, PRs, and repo announcements. Git bytes go through the bridge over HTTPS or SSH."
+    },
+    {
+      "id": "agent",
+      "type": "person",
+      "x": 810,
+      "y": 195,
+      "label": "AI agent via MCP",
+      "category": "Cursor / Claude / …",
+      "disp": "friendly",
+      "notes": "Same platform for agents. HTTP + Nostr against gittr.space (or a self-hosted gittr). Not SSH git. Tools live in gittr-mcp."
+    },
+    {
+      "id": "cli",
+      "type": "workstation",
+      "x": 1340,
+      "y": 195,
+      "label": "CLI: gn / git / ngit",
+      "owner": "terminal",
+      "disp": "friendly",
+      "notes": "gn publishes repo/key events to relays. git clone/push hits git.gittr.space over SSH or HTTPS. nostr:// needs git-remote-nostr (ngit ecosystem) — gittr does not ship ngit."
+    },
+    {
+      "id": "mcp",
+      "type": "apigateway",
+      "x": 250,
+      "y": 430,
+      "label": "gittr-mcp",
+      "dns": "HTTP + Nostr",
+      "ip": "agents, not SSH",
+      "accent": "#22d3ee",
+      "notes": "MCP server for AI hosts: push to the bridge, issues/PRs, stars, bounties. Same gittr + gitnostr surface as humans, without Amber or SSH."
+    },
+    {
+      "id": "ui",
+      "type": "webserver",
+      "x": 810,
+      "y": 430,
+      "label": "gittr Client ★",
+      "dns": "gittr.space",
+      "ip": "YOU ARE HERE",
+      "disp": "friendly",
+      "accent": "#14b8a6",
+      "notes": "This repo. Web UI: Code, Issues/PRs, Push, import, ToDo, Apps. Talks to relays for signed events and to the bridge for git bytes. Teal = you are here."
+    },
+    {
+      "id": "bridge",
+      "type": "server",
+      "x": 1370,
+      "y": 430,
+      "label": "gitnostr Bridge",
+      "dns": "git.gittr.space",
+      "ip": "SSH / HTTPS git",
+      "accent": "#22d3ee",
+      "notes": "Real git over SSH/HTTPS. Watches relays, stores bare repos, kind 52 SSH keys. Optional push_cost_sats paywall. Code: ui/gitnostr/ (MIT)."
+    },
+    {
+      "id": "pages",
+      "type": "cloud",
+      "x": 250,
+      "y": 630,
+      "label": "Pages / nsite",
+      "dns": "pages.gittr.space",
+      "provider": "nsite-gateway",
+      "accent": "#22d3ee",
+      "notes": "Static sites from Nostr (gittr Pages). Manifests and media sit on Blossom; site HTML is served here."
+    },
+    {
+      "id": "blossom",
+      "type": "nas",
+      "x": 620,
+      "y": 630,
+      "label": "Blossom",
+      "dns": "blossom.gittr.space",
+      "ip": "NIP-96 blobs",
+      "accent": "#22d3ee",
+      "notes": "Blob store for Pages manifests, /apps media, and large packs. Not git objects — those live on the bridge."
+    },
+    {
+      "id": "lightning",
+      "type": "process",
+      "x": 990,
+      "y": 630,
+      "label": "Lightning zaps",
+      "accent": "#fbbf24",
+      "owner": "LNbits / NWC / LNURL",
+      "notes": "Repo zaps (NIP-57) and issue bounties. Optional push_cost_sats paywall on GUI + SSH push. gittr does Lightning bounties; gitworkshop does not."
+    },
+    {
+      "id": "relay",
+      "type": "router",
+      "x": 1370,
+      "y": 630,
+      "label": "Pyramid relay",
+      "dns": "relay.gittr.space",
+      "ip": "wss · GRASP",
+      "accent": "#22d3ee",
+      "notes": "Open forge + discussion relay. GRASP-capable. Prefer publishing here plus other relays. Repo identities are npub + repo name, not a GitHub login."
+    },
+    {
+      "id": "relays",
+      "type": "internet",
+      "x": 280,
+      "y": 890,
+      "label": "Other Nostr relays",
+      "notes": "NIP-34 events (repo announcements, issues, PRs, keys). gittr, ngit, gitworkshop, gitplaza, and nak all read the same signed events — they do not share a codebase."
+    },
+    {
+      "id": "nip34",
+      "type": "document",
+      "x": 810,
+      "y": 890,
+      "label": "NIP-34 + GRASP",
+      "owner": "protocol, not an app",
+      "notes": "Signed repo/issue/PR events. Optional multi-mirror git hosts via GRASP clone URLs. Protocol → git server → UI/CLI. Not one app per bullet on awesome-nostr."
+    },
+    {
+      "id": "remotenostr",
+      "type": "cloud",
+      "x": 1340,
+      "y": 890,
+      "label": "git remote nostr",
+      "dns": "nostr://",
+      "provider": "ngit ecosystem",
+      "notes": "nostr:// remotes via git-remote-nostr. Other stack, same NIP-34 events. gittr publishes standard clone tags and shows nostr:// in the UI; day-to-day push on gittr.space is SSH/HTTPS to the bridge."
+    },
+    {
+      "id": "ngit",
+      "type": "workstation",
+      "x": 180,
+      "y": 1130,
+      "label": "ngit CLI",
+      "owner": "Dan Conway",
+      "notes": "ngit init, pr/ branches, nostr:// remotes. Different codebase from gitnostr. Pairs with gitworkshop, not with gittr."
+    },
+    {
+      "id": "gitworkshop",
+      "type": "webserver",
+      "x": 500,
+      "y": 1130,
+      "label": "gitworkshop",
+      "dns": "gitworkshop.dev",
+      "notes": "GRASP web client. Sparse git explorer. Fetches from ngit GRASP git mirrors. Repo zaps yes; no issue bounties, Pages, or /apps."
+    },
+    {
+      "id": "gitplaza",
+      "type": "laptop",
+      "x": 810,
+      "y": 1130,
+      "label": "gitplaza",
+      "owner": "Linux desktop",
+      "notes": "Desktop NIP-34 client (Rust/Iced): repos, issues, patches, releases, kanban. No git bridge — clone tags + GitWorkshop/ngit. Not a hosted forge."
+    },
+    {
+      "id": "nak",
+      "type": "process",
+      "x": 1120,
+      "y": 1130,
+      "label": "nak git",
+      "owner": "fiatjaf",
+      "notes": "General Nostr CLI. nak git clone/init/sync/fetch/pull/push on NIP-34 / GRASP repos. Not a web forge; not gitnostr or ngit. gitstr is the deprecated predecessor."
+    },
+    {
+      "id": "forges",
+      "type": "org",
+      "x": 1440,
+      "y": 1130,
+      "label": "GitHub / GitLab / Codeberg",
+      "category": "import / mirror",
+      "notes": "Import copies a forge (or Nostr-only) repo onto your npub — you are owner. Not a skin on another forge’s login. Sidebar Git Server stays that URL; gittr/ngit mirrors stay in the clone list."
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_human_ui",
+      "a": "human",
+      "b": "ui",
+      "label": "browser",
+      "style": "solid",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_agent_mcp",
+      "a": "agent",
+      "b": "mcp",
+      "label": "MCP tools",
+      "style": "solid",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_mcp_ui",
+      "a": "mcp",
+      "b": "ui",
+      "label": "same platform",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_cli_bridge",
+      "a": "cli",
+      "b": "bridge",
+      "label": "SSH / HTTPS",
+      "style": "solid",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_cli_nostr",
+      "a": "cli",
+      "b": "remotenostr",
+      "label": "nostr://",
+      "style": "dashed",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_relay",
+      "a": "ui",
+      "b": "relay",
+      "label": "wss",
+      "style": "solid",
+      "anim": true,
+      "arrows": "both"
+    },
+    {
+      "id": "e_ui_relays",
+      "a": "ui",
+      "b": "relays",
+      "label": "NIP-34",
+      "style": "solid",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_ui_bridge",
+      "a": "ui",
+      "b": "bridge",
+      "label": "git bytes",
+      "style": "solid",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_ui_pages",
+      "a": "ui",
+      "b": "pages",
+      "label": "publish",
+      "style": "solid",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_blossom",
+      "a": "ui",
+      "b": "blossom",
+      "label": "Pages / Apps blobs",
+      "style": "solid",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_ln",
+      "a": "ui",
+      "b": "lightning",
+      "label": "zaps / bounties",
+      "style": "dashed",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_pages_blossom",
+      "a": "pages",
+      "b": "blossom",
+      "label": "manifests",
+      "style": "solid",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_mcp_bridge",
+      "a": "mcp",
+      "b": "bridge",
+      "label": "pushToBridge",
+      "style": "solid",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_mcp_relay",
+      "a": "mcp",
+      "b": "relay",
+      "label": "events",
+      "style": "solid",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_bridge_relay",
+      "a": "bridge",
+      "b": "relay",
+      "label": "watch",
+      "style": "solid",
+      "anim": true,
+      "arrows": "both"
+    },
+    {
+      "id": "e_remote_relays",
+      "a": "remotenostr",
+      "b": "relays",
+      "label": "same events",
+      "style": "dashed",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_remote_bridge",
+      "a": "remotenostr",
+      "b": "bridge",
+      "label": "same events",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "both"
+    },
+    {
+      "id": "e_ngit_remote",
+      "a": "ngit",
+      "b": "remotenostr",
+      "label": "ships helper",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_workshop_relays",
+      "a": "gitworkshop",
+      "b": "relays",
+      "label": "",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_plaza_relays",
+      "a": "gitplaza",
+      "b": "relays",
+      "label": "",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_nak_relays",
+      "a": "nak",
+      "b": "relays",
+      "label": "",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_forges_ui",
+      "a": "forges",
+      "b": "ui",
+      "label": "import / mirror",
+      "style": "dashed",
+      "anim": false,
+      "arrows": "end"
+    }
+  ],
+  "journey": {
+    "steps": [
+      {
+        "note": "gittr.space is a web forge on Nostr. Repos, issues, and PRs are signed events. Git bytes live on a real git server. This walk is the README platform map — who talks to whom.",
+        "show": ["title"],
+        "highlight": ["title"],
+        "focus": true
+      },
+      {
+        "note": "Three ways in. A human in the browser. An AI agent through MCP. A terminal with gn, git, or ngit. Same platform, different doors.",
+        "show": ["z_people", "human", "agent", "cli"],
+        "highlight": ["human", "agent", "cli"],
+        "focus": true
+      },
+      {
+        "note": "You are here: the gittr Client. This repo. The web UI at gittr.space — Code, Issues, PRs, Push, import, ToDo, Apps. Teal on the README map.",
+        "show": ["z_platform", "ui"],
+        "highlight": ["ui"],
+        "focus": true
+      },
+      {
+        "note": "Around it, the hostnames. gittr-mcp for agents. The gitnostr bridge at git.gittr.space for real git. Pages, Blossom blobs, the Pyramid relay, and Lightning for zaps and bounties.",
+        "show": ["mcp", "bridge", "pages", "blossom", "lightning", "relay"],
+        "highlight": ["mcp", "bridge", "pages", "blossom", "lightning", "relay"],
+        "focus": true
+      },
+      {
+        "note": "A human opens the site. The UI reads and writes signed events on the relay, publishes Pages, stores blobs on Blossom, and pulls git bytes from the bridge. Zaps and issue bounties go out over Lightning.",
+        "show": ["e_human_ui", "e_ui_relay", "e_ui_pages", "e_ui_blossom", "e_ui_bridge", "e_ui_ln", "e_pages_blossom"],
+        "highlight": ["human", "ui", "relay", "pages", "blossom", "bridge", "lightning"],
+        "focus": true
+      },
+      {
+        "note": "From a terminal, git clone and git push hit the bridge over SSH or HTTPS. No local bridge install on gittr.space. The bridge watches the relay so keys and repo policy stay in sync.",
+        "show": ["e_cli_bridge", "e_bridge_relay"],
+        "highlight": ["cli", "bridge", "relay"],
+        "focus": true
+      },
+      {
+        "note": "Agents skip the browser and SSH. They call gittr-mcp, which is the same platform: talk to the UI surface, push to the bridge, publish events on the relay.",
+        "show": ["e_agent_mcp", "e_mcp_ui", "e_mcp_bridge", "e_mcp_relay"],
+        "highlight": ["agent", "mcp", "ui", "bridge", "relay"],
+        "focus": true
+      },
+      {
+        "note": "Underneath is Nostr, not a gittr database. NIP-34 (and GRASP for multi-host clone URLs) is the protocol. Other relays carry the same events. nostr:// is a different git transport — same events, ngit’s helper, not the gittr binary.",
+        "show": ["z_nostr", "relays", "nip34", "remotenostr", "e_ui_relays", "e_cli_nostr", "e_remote_relays", "e_remote_bridge"],
+        "highlight": ["relays", "nip34", "remotenostr"],
+        "focus": true
+      },
+      {
+        "note": "awesome-nostr lists more NIP-34 tools. They share events, not a codebase. ngit + gitworkshop are one stack. gitplaza is a Linux desktop app. nak git is a CLI. GitHub/GitLab/Codeberg are import sources — a mirror onto your npub, not a skin on their login.",
+        "show": ["z_adjacent", "ngit", "gitworkshop", "gitplaza", "nak", "forges", "e_ngit_remote", "e_workshop_relays", "e_plaza_relays", "e_nak_relays", "e_forges_ui"],
+        "highlight": ["ngit", "gitworkshop", "gitplaza", "nak", "forges"],
+        "focus": true
+      },
+      {
+        "note": "So: humans via the client, agents via MCP, git via the bridge, metadata on relays. gittr ≠ ngit. Click any box for the one-line job. Rec records the canvas if you want a walkthrough video.",
+        "show": [],
+        "highlight": ["ui", "bridge", "relay", "mcp"],
+        "focus": true
+      }
+    ]
+  }
+}

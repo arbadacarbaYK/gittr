@@ -5,6 +5,7 @@ Start here:
 | Doc | When |
 |-----|------|
 | [../README.md](../README.md) | What gittr is |
+| [gittr-platform.gif](gittr-platform.gif) / [gittr-platform.netdraw.json](gittr-platform.netdraw.json) | Platform map (README GIF + NetDraw file for talks) |
 | [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) | Production install |
 | [LOCAL_SETUP.md](LOCAL_SETUP.md) | Dev on localhost |
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Checklist, env table, backups |

@@ -8,53 +8,9 @@ Live: [gittr.space](https://gittr.space) · [Apps](https://gittr.space/apps) · 
 
 Super-high-level — who talks to whom. **You are here = gittr Client** (this repo, teal). Host URLs are the cyan-outlined host boxes (teal = this repo; cyan outline = host URLs). Detailed bridge diagrams live in [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).
 
-```mermaid
-flowchart TB
-  subgraph people["People / agents"]
-    Human["Human in browser"]
-    Agent["AI agent via MCP"]
-    CLI["CLI: gn / git / ngit"]
-  end
+![gittr platform map](docs/gittr-platform.gif)
 
-  subgraph gittr_stack["gittr platform · hostnames"]
-    UI["★ YOU ARE HERE · gittr Client<br/>this repo · web UI<br/>gittr.space"]
-    Pages["Pages / nsite<br/>pages.gittr.space"]
-    Blossom["Blossom<br/>blossom.gittr.space<br/>blob store for Pages / media"]
-    Bridge["gitnostr Bridge<br/>git.gittr.space<br/>SSH / HTTPS git"]
-    MCP["gittr-mcp<br/>tools for agents"]
-    RelayGittr["gittr Pyramid relay<br/>relay.gittr.space<br/>wss · open forge + GRASP"]
-  end
-
-  subgraph nostr_world["Nostr + remotes"]
-    Relays["Other Nostr relays<br/>NIP-34 events"]
-    RemoteNostr["git remote nostr<br/>nostr:// · ngit ecosystem"]
-  end
-
-  Human --> UI
-  Agent --> MCP
-  CLI --> Bridge
-  CLI --> RemoteNostr
-  UI --> RelayGittr
-  UI --> Relays
-  UI --> Bridge
-  UI --> Pages
-  UI -->|Pages / Apps blobs| Blossom
-  Pages --> Relays
-  Pages --> Blossom
-  MCP --> RelayGittr
-  MCP --> Relays
-  MCP --> Bridge
-  MCP --> UI
-  Bridge --> RelayGittr
-  Bridge --> Relays
-  RemoteNostr --> Relays
-  RemoteNostr -.->|same events| Bridge
-
-  classDef youAreHere fill:#0f766e,stroke:#5eead4,stroke-width:3px,color:#ecfdf5
-  classDef hostUrl fill:#164e63,stroke:#22d3ee,stroke-width:2px,color:#ecfeff
-  class UI youAreHere
-  class Bridge,Pages,Blossom,RelayGittr hostUrl
-```
+The GIF is the map with moving links (GitHub cannot embed the live canvas). For a talk, open [docs/gittr-platform.netdraw.json](docs/gittr-platform.netdraw.json) in [NetDraw](https://mr-r3b00t.github.io/net_draw/): **Open** → that file, then **Journey**. **Next** only appears at the bottom of the canvas after Journey is running — visiting NetDraw alone still shows their demo network, not gittr. Still frame: [docs/gittr-platform.png](docs/gittr-platform.png).
 
 | Piece | Host / repo | Job in one line |
 | --- | --- | --- |
