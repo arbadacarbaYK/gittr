@@ -2,7 +2,7 @@
 
 How **git-nostr-bridge** mirrors repos on disk and how **[gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main)** reads them.
 
-Canonical UI order (localStorage → embedded → **published `clone[]`/`source`** → bridge / `repo-files` → forge APIs; non-GRASP before GRASP; EOSE before inferred GRASP): **[`docs/FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main)**.
+Canonical UI order: latest **live** 30617 (soft-deleted → stop) → forge **`source`** tip when present (a stale bridge listing is replaced) → otherwise first non-empty `clone[]` listing. Full write-up: **[`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main)**.
 
 ## 1. Bridge + shared disk
 
@@ -22,9 +22,7 @@ Production: web UI **`gittr.space`**, git SSH/HTTPS **`git.gittr.space`**.
 
 ## 2. Code tab (file tree)
 
-The **browser** races clone URLs from the 30617 announcement. Sequence, hosts, and README order: gittr [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main).
-
-This bridge is one of the places those URLs can point (`git.gittr.space`). Implementation on the UI side: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README and openFile use the **first** non-empty tree; later clone successes do not restart that request.
+The **browser** uses that order. This bridge is one clone host (`git.gittr.space`). If the announcement has a GitHub (or other forge) **`source`**, the Code tab shows the **forge** tree even when this disk still has an older copy; Push with no local edits then `sync-from-source` so the bare repo matches. Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README and openFile follow that tree.
 
 ## 3. Shared branch, Commits, Issues, PRs
 
