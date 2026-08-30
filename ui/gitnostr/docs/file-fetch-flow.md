@@ -26,6 +26,8 @@ See [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p3
 
 Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README / openFile use the **first multifetch winner** immediately; extra clone successes must not cancel that README request.
 
+Picture of the race: gittr [`docs/file-fetch.netdraw.json`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/file-fetch.netdraw.json&branch=main) (GIF in that repo’s docs).
+
 ## 3. Shared branch, Commits, Issues, PRs
 
 - **One `?branch=`** across Code, Commits, Issues, PRs (`resolveSharedRepoBranch` in `ui/src/lib/repos/repo-file-tree-branch.ts`).
@@ -37,7 +39,7 @@ Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/rep
 
 ## 4. Bridge production features
 
-HTTP **`/api/event`**, deduplication, watch-all (`gitRepoOwners: []`): [gittr-enhancements.md](gittr-enhancements.md).
+HTTP **`/api/event`**, deduplication, watch-all (`gitRepoOwners: []`), retention (bare only if this host is in `clone[]`): [gittr-enhancements.md](gittr-enhancements.md). gittr’s Next.js **`/api/nostr/repo/clone`** blocks permanently mirroring **other** GRASP hosts onto this bridge.
 
 ## 5. Other Nostr git clients
 

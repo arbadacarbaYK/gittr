@@ -6,7 +6,7 @@ Nostr holds **discovery and policy** (repos, permissions, SSH keys). Your server
 
 | Component | Role |
 | --- | --- |
-| **`git-nostr-bridge`** | Subscribes to relays (kinds **50**, **51**, **52**, **30617**, **30618**, …). Updates SQLite, creates/updates bare repos under `repositoryDir`, refreshes `authorized_keys` from kind **52**. Optional **`POST /api/event`** when `BRIDGE_HTTP_PORT` is set (fast path for signed events). |
+| **`git-nostr-bridge`** | Subscribes to relays (kinds **50**, **51**, **52**, **30617**, **30618**, …). Updates SQLite, creates bare repos under `repositoryDir` **only when `clone[]` includes this host**, refreshes `authorized_keys` from kind **52**. Soft-deleted 30617 wipes disk. Optional **`POST /api/event`** when `BRIDGE_HTTP_PORT` is set (fast path for signed events, including deletes). |
 | **`git-nostr-db`** | SQLite cache of permissions, repo rows, SSH keys, push-paywall grants—so **`git-nostr-ssh`** can allow/deny when relays are slow or down. |
 | **`repositoryDir`** | Bare repos: `{pubkey}/{repo}.git`. Source of truth for bytes on disk. |
 | **`git-nostr-ssh`** | `sshd` forced command for `git-upload-pack` / `git-receive-pack`. Reads ACL (+ optional **`push_cost_sats`**) from SQLite. |
@@ -63,7 +63,7 @@ flowchart LR
 
 ## Production extras (gittr.space)
 
-HTTP **`/api/event`**, event deduplication, **watch-all** (`gitRepoOwners: []`): [gittr-enhancements.md](gittr-enhancements.md).
+HTTP **`/api/event`**, event deduplication, **watch-all** (`gitRepoOwners: []`), and **public GRASP retention** (bare only if `clone[]` has this host): [gittr-enhancements.md](gittr-enhancements.md).
 
 ## More detail
 

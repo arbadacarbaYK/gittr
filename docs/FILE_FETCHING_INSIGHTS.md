@@ -1,5 +1,9 @@
 # File fetching (reference)
 
+![Where Code-tab files come from](file-fetch.gif)
+
+The GIF is the race with moving links (GitHub cannot embed the live canvas). For a talk, open [file-fetch.netdraw.json](file-fetch.netdraw.json) in [NetDraw](https://mr-r3b00t.github.io/net_draw/): **Open** → that file, then **Journey**. Still frame: [file-fetch.png](file-fetch.png). Same picture lives in gitnostr, gittr-helper-tools, and gittr-mcp.
+
 This file is about **how Code-tab files load**. The repo **Insights** tab (`/{entity}/{repo}/insights`) is a different screen: it reads the same file tree (`fileCount` / `gittr_files`), issue/PR stores, commit cache, and the header’s live Nostr star count. Live refresh also hits `/api/nostr/repo/files` + `/api/nostr/repo/commits` (including `totalCount` from `git rev-list --count`) and, when the header already knows a GitHub upstream, `/api/github/proxy` for languages, blob count, and commit totals. Language bars are hidden when empty — no “coming soon”.
 
 How the UI loads repo trees and file content. Implementation lives in:

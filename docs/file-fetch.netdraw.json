@@ -1,0 +1,417 @@
+{
+  "title": "gittr file fetch — where files come from",
+  "source": "docs/FILE_FETCHING_INSIGHTS.md",
+  "openIn": "https://mr-r3b00t.github.io/net_draw/",
+  "how": "Open this JSON in NetDraw (Open button), then click Journey and walk the steps.",
+  "zones": [
+    {
+      "id": "z_ask",
+      "x": 40,
+      "y": 90,
+      "w": 1540,
+      "h": 180,
+      "label": "Who's asking",
+      "color": "#94a3b8"
+    },
+    {
+      "id": "z_lookup",
+      "x": 40,
+      "y": 300,
+      "w": 1540,
+      "h": 220,
+      "label": "How we find out",
+      "color": "#22d3ee"
+    },
+    {
+      "id": "z_bytes",
+      "x": 40,
+      "y": 550,
+      "w": 1540,
+      "h": 260,
+      "label": "Where the bytes live",
+      "color": "#a78bfa"
+    },
+    {
+      "id": "z_code",
+      "x": 40,
+      "y": 840,
+      "w": 1540,
+      "h": 200,
+      "label": "Code that implements this (not hosts)",
+      "color": "#fbbf24"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "title",
+      "type": "process",
+      "x": 810,
+      "y": 42,
+      "label": "Where do files come from?",
+      "accent": "#14b8a6",
+      "owner": "Code tab + MCP reads",
+      "notes": "Opening a repo on gittr does not mean the files live on gittr.space. The Code tab races announced clone URLs. First non-empty tree wins. This map is that race."
+    },
+    {
+      "id": "human",
+      "type": "laptop",
+      "x": 320,
+      "y": 185,
+      "label": "Human · Code tab",
+      "owner": "gittr.space",
+      "disp": "friendly",
+      "notes": "Opens /npub/repo. Wants a file list and README. Does not git clone on the laptop — the gittr server fetches."
+    },
+    {
+      "id": "agent",
+      "type": "person",
+      "x": 810,
+      "y": 185,
+      "label": "AI agent",
+      "category": "Cursor / Claude / …",
+      "disp": "friendly",
+      "notes": "Does not run the Code-tab race. Calls gittr-mcp getFile or bridgeListFiles — a shorter path, not full UI parity."
+    },
+    {
+      "id": "cli",
+      "type": "workstation",
+      "x": 1300,
+      "y": 185,
+      "label": "git clone / SSH",
+      "owner": "your laptop",
+      "disp": "friendly",
+      "notes": "Bypasses the Code tab. Talks straight to git.gittr.space (or another clone host). Same bytes, different door."
+    },
+    {
+      "id": "local",
+      "type": "nas",
+      "x": 220,
+      "y": 410,
+      "label": "Browser drafts",
+      "dns": "localStorage / IndexedDB",
+      "ip": "step 1",
+      "accent": "#14b8a6",
+      "notes": "Owned edits, uploads, and large GIFs live in the tab first. If you already rewrote a file, that body wins over the network. Clearing storage does not delete a published repo."
+    },
+    {
+      "id": "ui",
+      "type": "webserver",
+      "x": 810,
+      "y": 410,
+      "label": "gittr Client ★",
+      "dns": "gittr.space",
+      "ip": "orchestrator",
+      "disp": "friendly",
+      "accent": "#14b8a6",
+      "notes": "git-source-fetcher.ts + RepoCodePage. Waits for kind 30617. Then races clone[] / source. Prefers GitHub/GitLab/Codeberg/self-hosted before GRASP. First non-empty tree wins. README follows that winner immediately."
+    },
+    {
+      "id": "relays",
+      "type": "cloud",
+      "x": 1400,
+      "y": 410,
+      "label": "Nostr 30617",
+      "dns": "relay.gittr.space + others",
+      "ip": "clone[] / source tags",
+      "accent": "#22d3ee",
+      "notes": "The announcement says where git lives. Published clone[] and source are authoritative. gittr does not invent git.gittr.space while the event is still in flight. Well-known GRASP mirrors are inferred only after EOSE if clone[] is still empty."
+    },
+    {
+      "id": "forge",
+      "type": "org",
+      "x": 180,
+      "y": 680,
+      "label": "GitHub / GitLab / Codeberg",
+      "category": "source tag",
+      "accent": "#22d3ee",
+      "notes": "Forge upstream. Tried first when mixed with GRASP so we do not burn ~45s on a dead ngit host. Fetched via GET /api/git/repo-files and /api/git/file-content on the gittr server — not raw.githubusercontent.com from the browser (no CORS)."
+    },
+    {
+      "id": "selfhost",
+      "type": "server",
+      "x": 500,
+      "y": 680,
+      "label": "Self-hosted / Freebox",
+      "dns": "home git · NAS",
+      "ip": "repo-files only",
+      "accent": "#22d3ee",
+      "notes": "Non-GRASP hosts, including /npub/… on a home box. parseGitSource type self-hosted-git. Only GET /api/git/repo-files. The host must be reachable from gittr.space — *.local and 192.168.* are rejected."
+    },
+    {
+      "id": "bridge",
+      "type": "server",
+      "x": 810,
+      "y": 680,
+      "label": "gitnostr Bridge",
+      "dns": "git.gittr.space",
+      "ip": "bare repos on disk",
+      "accent": "#14b8a6",
+      "disp": "friendly",
+      "notes": "GET /api/nostr/repo/files reads repositoryDir/{pubkey}/{repo}.git. 404 is normal when clone[] is not this host. Bare trees are kept only if clone[] lists this host. SSH/HTTPS git clone hits the same disk."
+    },
+    {
+      "id": "grasp",
+      "type": "cloud",
+      "x": 1120,
+      "y": 680,
+      "label": "Other GRASP",
+      "dns": "ngit · shakespeare · gitnostr.com",
+      "ip": "published clone[]",
+      "accent": "#a78bfa",
+      "notes": "Foreign GRASP HTTPS. Race: bridge files → GET /api/git/repo-files?sourceUrl= that clone → optional POST /api/nostr/repo/clone. First non-empty tree wins. gittr will not permanently mirror someone else's GRASP host onto git.gittr.space."
+    },
+    {
+      "id": "hashtree",
+      "type": "process",
+      "x": 1440,
+      "y": 680,
+      "label": "Iris Hashtree",
+      "owner": "htree://  (not HTTPS git)",
+      "notes": "Recognized as type hashtree. Bridge cannot clone it. Code tab shows an Iris link + copyable git clone htree://… and skips the HTTPS race. Needs git-remote-htree / Iris Git."
+    },
+    {
+      "id": "gittrcode",
+      "type": "webserver",
+      "x": 250,
+      "y": 940,
+      "label": "gittr (this repo)",
+      "dns": "git-source-fetcher.ts",
+      "ip": "full race",
+      "accent": "#14b8a6",
+      "notes": "Canonical implementation. FILE_FETCHING_INSIGHTS.md. npm run test:regressions in ui/. Companion repos copy docs/snippets from here."
+    },
+    {
+      "id": "mcp",
+      "type": "apigateway",
+      "x": 620,
+      "y": 940,
+      "label": "gittr-mcp",
+      "dns": "getFile · bridgeListFiles",
+      "ip": "shortcut, not full race",
+      "accent": "#22d3ee",
+      "notes": "getFile: bridge file-content, then a few hardcoded GRASP /raw/ hosts. Not the Code-tab order (no 30617 clone[] race, no home Freebox repo-files). Prefer bridgeListFiles after importRemoteToBridge / mirrorRepo."
+    },
+    {
+      "id": "gitnostr",
+      "type": "server",
+      "x": 990,
+      "y": 940,
+      "label": "gitnostr (standalone)",
+      "dns": "ui/gitnostr/ + public repo",
+      "ip": "disk + SSH",
+      "accent": "#22d3ee",
+      "notes": "Public standalone of the bridge. Same Go as gittr's ui/gitnostr/. Stores the bare repos the APIs read. file-fetch-flow.md is the bridge half of this picture."
+    },
+    {
+      "id": "helper",
+      "type": "process",
+      "x": 1360,
+      "y": 940,
+      "label": "gittr-helper-tools",
+      "owner": "snippets/file-fetching",
+      "notes": "Integrator copy of parseGitSource — not a live host. Teaching extract: GRASP vs self-hosted /npub/, EOSE before inferred mirrors. Keep in sync with git-source-fetcher.ts (including htree://)."
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_human_ui",
+      "a": "human",
+      "b": "ui",
+      "label": "open repo",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_local",
+      "a": "ui",
+      "b": "local",
+      "label": "drafts first",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_relays",
+      "a": "ui",
+      "b": "relays",
+      "label": "wait for 30617",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_relays_ui",
+      "a": "relays",
+      "b": "ui",
+      "label": "clone[] / source",
+      "style": "dashed",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_forge",
+      "a": "ui",
+      "b": "forge",
+      "label": "prefer first",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_self",
+      "a": "ui",
+      "b": "selfhost",
+      "label": "repo-files",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_bridge",
+      "a": "ui",
+      "b": "bridge",
+      "label": "/api/nostr/repo/files",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_ui_grasp",
+      "a": "ui",
+      "b": "grasp",
+      "label": "race clones",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_hashtree",
+      "a": "ui",
+      "b": "hashtree",
+      "label": "skip HTTPS",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_cli_bridge",
+      "a": "cli",
+      "b": "bridge",
+      "label": "SSH / HTTPS git",
+      "style": "dashed",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_agent_mcp",
+      "a": "agent",
+      "b": "mcp",
+      "label": "MCP tools",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_mcp_bridge",
+      "a": "mcp",
+      "b": "bridge",
+      "label": "bridge first",
+      "style": "dashed",
+      "anim": true,
+      "arrows": "end"
+    },
+    {
+      "id": "e_mcp_grasp",
+      "a": "mcp",
+      "b": "grasp",
+      "label": "hardcoded /raw/",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_code_ui",
+      "a": "gittrcode",
+      "b": "ui",
+      "label": "",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_gn_bridge",
+      "a": "gitnostr",
+      "b": "bridge",
+      "label": "",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    },
+    {
+      "id": "e_helper_ui",
+      "a": "helper",
+      "b": "ui",
+      "label": "parser snippet",
+      "style": "dotted",
+      "anim": false,
+      "arrows": "end"
+    }
+  ],
+  "journey": {
+    "steps": [
+      {
+        "note": "Where do Code-tab files come from? Not 'from gittr' as a blob store. gittr races the clone URLs on the Nostr announcement. First non-empty tree wins.",
+        "show": ["title"],
+        "highlight": ["title"],
+        "focus": true
+      },
+      {
+        "note": "Three doors. A human opens the Code tab. An agent calls MCP. A laptop runs git clone. Same bytes on disk — different paths.",
+        "show": ["z_ask", "human", "agent", "cli"],
+        "highlight": ["human", "agent", "cli"],
+        "focus": true
+      },
+      {
+        "note": "You are here: the gittr Client. It orchestrates the race. It does not keep a second copy of every repo — it reads announced hosts (and the local bridge when clone[] says so).",
+        "show": ["z_lookup", "ui"],
+        "highlight": ["ui"],
+        "focus": true
+      },
+      {
+        "note": "Step 1 — browser drafts. localStorage and IndexedDB win if you already edited or uploaded. Large GIFs live in IDB so they do not blow the 5 MB quota.",
+        "show": ["local", "e_human_ui", "e_ui_local"],
+        "highlight": ["human", "ui", "local"],
+        "focus": true
+      },
+      {
+        "note": "Step 2 — ask Nostr. Kind 30617 clone[] and source tags are the map. Do not invent git.gittr.space while the announcement is still in flight. Infer well-known GRASP only after EOSE if clone[] is still empty.",
+        "show": ["relays", "e_ui_relays", "e_relays_ui"],
+        "highlight": ["ui", "relays"],
+        "focus": true
+      },
+      {
+        "note": "Step 3 — race those URLs. Prefer GitHub / GitLab / Codeberg / self-hosted before GRASP so a dead ngit host does not stall the tree for ~45s. The gittr server does the fetch — your NAS must be public, not 192.168.*",
+        "show": ["z_bytes", "forge", "selfhost", "e_ui_forge", "e_ui_self"],
+        "highlight": ["ui", "forge", "selfhost"],
+        "focus": true
+      },
+      {
+        "note": "Same race includes the gitnostr bridge (bare repo on git.gittr.space) and other GRASP clones (ngit, shakespeare, …). First non-empty tree wins. README and click-to-open follow that winner — do not wait for slower mirrors.",
+        "show": ["bridge", "grasp", "e_ui_bridge", "e_ui_grasp", "e_cli_bridge"],
+        "highlight": ["ui", "bridge", "grasp"],
+        "focus": true
+      },
+      {
+        "note": "htree:// is Iris Hashtree — not HTTPS git. gittr labels it and skips the race. Open Iris Git or clone with git-remote-htree. The bridge cannot fetch it.",
+        "show": ["hashtree", "e_hashtree"],
+        "highlight": ["hashtree"],
+        "focus": true
+      },
+      {
+        "note": "Agents skip the Code-tab race. gittr-mcp getFile hits the bridge first, then a few hardcoded GRASP /raw/ URLs. That is a shortcut — not Freebox, not clone[] order. Prefer bridgeListFiles after you imported or mirrored.",
+        "show": ["mcp", "e_agent_mcp", "e_mcp_bridge", "e_mcp_grasp"],
+        "highlight": ["agent", "mcp", "bridge"],
+        "focus": true
+      },
+      {
+        "note": "The code lives in four repos. gittr runs the full race. gitnostr is the disk. gittr-mcp is the agent shortcut. helper-tools is the parseGitSource snippet for other clients — not a host. Click any box for the one-line job.",
+        "show": ["z_code", "gittrcode", "mcp", "gitnostr", "helper", "e_code_ui", "e_gn_bridge", "e_helper_ui"],
+        "highlight": ["gittrcode", "mcp", "gitnostr", "helper"],
+        "focus": true
+      }
+    ]
+  }
+}
