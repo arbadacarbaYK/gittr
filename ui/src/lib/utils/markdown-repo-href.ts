@@ -16,7 +16,8 @@ export function normalizeRepoPath(path: string): string {
   return normalizeRepoPathSegments(path).join("/");
 }
 
-function resolveRepoRelativePath(
+/** Join `./foo.gif` against the markdown file path (GitHub README semantics). */
+export function resolveRepoRelativePath(
   targetPath: string,
   basePath?: string | null
 ): string {
@@ -67,10 +68,7 @@ function splitHash(href: string): { path: string; hash: string } {
 }
 
 /** Old gittr URLs used path segments for files; normalize to ?path= (preserve #L… hash). */
-function rewriteGittrRepoPath(
-  href: string,
-  ctx?: MarkdownHrefContext
-): string {
+function rewriteGittrRepoPath(href: string, ctx?: MarkdownHrefContext): string {
   const { path: pathOnly, hash } = splitHash(href);
   let working = pathOnly;
 

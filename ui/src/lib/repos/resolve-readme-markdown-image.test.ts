@@ -14,6 +14,18 @@ describe("resolveReadmeMarkdownImage", () => {
       "docs/assets/a.png"
     );
     expect(normalizeRepoRelPath("../secret")).toBe("");
+    expect(
+      normalizeRepoRelPath("file-fetch.gif", "snippets/file-fetching/README.md")
+    ).toBe("snippets/file-fetching/file-fetch.gif");
+    expect(
+      normalizeRepoRelPath(
+        "./file-fetch.png",
+        "snippets/file-fetching/README.md"
+      )
+    ).toBe("snippets/file-fetching/file-fetch.png");
+    expect(
+      normalizeRepoRelPath("../secret.png", "snippets/file-fetching/README.md")
+    ).toBe("snippets/secret.png");
   });
 
   it("keeps absolute https URLs", () => {
@@ -40,6 +52,23 @@ describe("resolveReadmeMarkdownImage", () => {
     expect(r?.repoPath).toBe("docs/assets/dashboard-map.png");
     expect(r?.ownerPubkey).toHaveLength(64);
     expect(r?.repoName).toBe("lab-kit");
+  });
+
+  it("joins GitHub relative images to the README directory, not repo root", () => {
+    const r = resolveReadmeMarkdownImage({
+      src: "file-fetch.gif",
+      branch: "main",
+      markdownFilePath: "snippets/file-fetching/README.md",
+      forgeSourceUrl: "https://github.com/arbadacarbaYK/gittr-helper-tools.git",
+      ownerPubkey:
+        "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      repoName: "gittr-helper-tools",
+    });
+    expect(r?.preferApi).toBe(false);
+    expect(r?.repoPath).toBe("snippets/file-fetching/file-fetch.gif");
+    expect(r?.primarySrc).toBe(
+      "https://raw.githubusercontent.com/arbadacarbaYK/gittr-helper-tools/main/snippets/file-fetching/file-fetch.gif"
+    );
   });
 
   it("prefers bridge API for forge SVG so wrong fork/branch cannot break logos", () => {

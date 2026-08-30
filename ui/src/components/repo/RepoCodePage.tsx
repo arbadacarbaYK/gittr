@@ -5841,8 +5841,7 @@ export function RepoCodePage() {
             matchingRepo &&
             !sourceUrl &&
             !(
-              Array.isArray(matchingRepo.clone) &&
-              matchingRepo.clone.length > 0
+              Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0
             )
           ) {
             console.warn(
@@ -19100,6 +19099,7 @@ export function RepoCodePage() {
                       }
                       repoName={decodedRepo}
                       entity={resolvedParams.entity}
+                      markdownFilePath={markdownReadmeBasePath}
                     />
                   </article>
                 </div>
@@ -19719,6 +19719,9 @@ export function RepoCodePage() {
                                     ownerPubkey={ownerPk}
                                     repoName={decodedRepo}
                                     entity={resolvedParams.entity}
+                                    markdownFilePath={
+                                      selectedFile || "README.md"
+                                    }
                                   />
                                 </div>
                               );

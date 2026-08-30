@@ -1,10 +1,15 @@
+import { resolveRepoRelativePath } from "../utils/markdown-repo-href";
+
 /**
  * Resolve README / markdown image src for forge + Nostr-native (GRASP) repos.
  * Relative paths like `docs/assets/foo.png` must show on gittr without Blossom.
+ * Same-folder names (`file-fetch.gif`) are joined to the markdown file's directory.
  */
 export type ReadmeImageResolveInput = {
   src: string;
   branch: string;
+  /** Path of the markdown file being rendered (e.g. `snippets/file-fetching/README.md`). */
+  markdownFilePath?: string | null;
   /** Upstream forge URL when known (GitHub / GitLab / Codeberg). */
   forgeSourceUrl?: string | null;
   /** clone: tags — may include https://git.gittr.space/npub…/repo.git */
@@ -47,11 +52,28 @@ const FORGE_RAW: Array<{
   },
 ];
 
-export function normalizeRepoRelPath(src: string): string {
+export function normalizeRepoRelPath(
+  src: string,
+  markdownFilePath?: string | null
+): string {
   let p = (src || "").trim();
-  if (p.startsWith("./")) p = p.slice(2);
-  if (p.startsWith("/")) p = p.slice(1);
-  // Block path escape theater
+  if (!p) return "";
+  if (markdownFilePath) {
+    p = resolveRepoRelativePath(p, markdownFilePath);
+    if (
+      p.startsWith("http://") ||
+      p.startsWith("https://") ||
+      p.startsWith("data:") ||
+      p.startsWith("mailto:")
+    ) {
+      return "";
+    }
+  } else {
+    if (p.startsWith("./")) p = p.slice(2);
+    if (p.startsWith("/")) p = p.slice(1);
+  }
+  p = p.replace(/^\/+/, "");
+  // Remaining `..` after join is still an escape; resolved `../a.png` is fine.
   if (p.includes("..") || p.startsWith("~")) return "";
   return p;
 }
@@ -84,7 +106,7 @@ export function resolveReadmeMarkdownImage(
     return { primarySrc: src, preferApi: false };
   }
 
-  const repoPath = normalizeRepoRelPath(src);
+  const repoPath = normalizeRepoRelPath(src, input.markdownFilePath);
   if (!repoPath) return null;
 
   const branch = input.branch || "main";
@@ -106,9 +128,7 @@ export function resolveReadmeMarkdownImage(
       const preferBridgeSvg =
         /\.svg(\?|#|$)/i.test(repoPath) && !!(ownerPubkey && repoName);
       return {
-        primarySrc: preferBridgeSvg
-          ? ""
-          : f.raw(owner, repo, branch, repoPath),
+        primarySrc: preferBridgeSvg ? "" : f.raw(owner, repo, branch, repoPath),
         repoPath,
         sourceUrl: forge,
         ownerPubkey,

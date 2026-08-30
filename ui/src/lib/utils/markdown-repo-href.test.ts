@@ -16,6 +16,17 @@ describe("resolveRepoMarkdownHref", () => {
     expect(href).not.toMatch(/\?path=LICENSE$/);
   });
 
+  it("resolves same-folder media from a nested README", () => {
+    const href = resolveRepoMarkdownHref("file-fetch.gif", {
+      ...ctx,
+      basePath: "snippets/file-fetching/README.md",
+    });
+    expect(href).toContain("file=");
+    expect(href).toContain(
+      encodeURIComponent("snippets/file-fetching/file-fetch.gif")
+    );
+  });
+
   it("refuses absurd nested paths from a deep basePath", () => {
     const deep = resolveRepoMarkdownHref("src/merchant", {
       ...ctx,

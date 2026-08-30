@@ -79,7 +79,7 @@ Folder preview and click-to-open **must** show the same body. Winners after over
 
 Presentation: normal READMEs (~≤200 KB) idle-auto-format; only enormous bodies need **Show formatted README** (e.g. fiatjaf/nak ~87 KB must auto-format — the old 48 KB gate left it as a raw stub).
 
-**README / in-repo media:** relative images (gif/png/…) must prefer `gittr_overrides` via `localOverrideDisplayUrl` before forge raw or bridge tip — otherwise an Upload overwrite looks “stuck” on the old asset until Push (and forge mirrors never show the draft). Same for Code-tab `openFile` (binary by extension; do not require `repo.files.isBinary` after upload strips that array).
+**README / in-repo media:** relative images (gif/png/…) must prefer `gittr_overrides` via `localOverrideDisplayUrl` before forge raw or bridge tip — otherwise an Upload overwrite looks “stuck” on the old asset until Push (and forge mirrors never show the draft). Same for Code-tab `openFile` (binary by extension; do not require `repo.files.isBinary` after upload strips that array). Join `![…](file-fetch.gif)` against the **README’s folder** (`snippets/file-fetching/file-fetch.gif`), not repo-root `file-fetch.gif` — GitHub already does this; gittr must too or nested READMEs show a broken image.
 
 **Large / binary Upload drafts:** bodies that would blow the ~5 MB `localStorage` quota (GIFs, folder packs) are stored in IndexedDB (`gittr-overrides-v1`); `gittr_overrides__*` only keeps a small `__gittr_idb__:mime` pointer. Flush own/others also drops matching IDB blobs. Push / Pages publish expand pointers via `loadRepoOverridesResolved`. “Flush emptied the catalog but upload still QuotaExceeded” was this path — not a failed flush.
 

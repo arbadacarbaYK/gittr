@@ -20,6 +20,8 @@ type Props = {
   repoName?: string | null;
   /** Entity (npub) — required to prefer unpushed local media overrides. */
   entity?: string | null;
+  /** Markdown file being rendered — relative `src` is joined to this directory. */
+  markdownFilePath?: string | null;
   className?: string;
 };
 
@@ -108,6 +110,7 @@ export function ReadmeMarkdownImage({
   ownerPubkey,
   repoName,
   entity,
+  markdownFilePath,
   className = "max-w-full h-auto rounded",
 }: Props) {
   const [displaySrc, setDisplaySrc] = useState("");
@@ -116,6 +119,7 @@ export function ReadmeMarkdownImage({
     resolveReadmeMarkdownImage({
       src,
       branch,
+      markdownFilePath,
       forgeSourceUrl,
       cloneUrls,
       ownerPubkey,
@@ -127,6 +131,7 @@ export function ReadmeMarkdownImage({
     const next = resolveReadmeMarkdownImage({
       src,
       branch,
+      markdownFilePath,
       forgeSourceUrl,
       cloneUrls,
       ownerPubkey,
@@ -161,7 +166,16 @@ export function ReadmeMarkdownImage({
     return () => {
       cancelled = true;
     };
-  }, [src, branch, forgeSourceUrl, cloneUrls, ownerPubkey, repoName, entity]);
+  }, [
+    src,
+    branch,
+    markdownFilePath,
+    forgeSourceUrl,
+    cloneUrls,
+    ownerPubkey,
+    repoName,
+    entity,
+  ]);
 
   useEffect(() => {
     if (!meta?.repoPath || apiTried) return;

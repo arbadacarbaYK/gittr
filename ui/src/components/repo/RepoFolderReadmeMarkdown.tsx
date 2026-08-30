@@ -40,6 +40,7 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   ownerPubkey,
   repoName,
   entity,
+  markdownFilePath,
 }: {
   markdown: string;
   headingComponents: Record<string, unknown>;
@@ -51,6 +52,7 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
   ownerPubkey: string | null;
   repoName: string;
   entity: string;
+  markdownFilePath?: string | null;
 }) {
   const deferred = useDeferredValue(markdown);
   const needsManual = (deferred?.length || 0) > MANUAL_MARKDOWN_MIN_CHARS;
@@ -206,6 +208,7 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
                   ownerPubkey={ownerPubkey}
                   repoName={repoName}
                   entity={entity}
+                  markdownFilePath={markdownFilePath}
                 />
               </div>
             );
