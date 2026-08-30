@@ -12,7 +12,7 @@ Super-high-level — who talks to whom. **You are here = gittr Client** (this re
 
 Who talks to whom on this deployment. Interactive map: [docs/gittr-platform.netdraw.json](docs/gittr-platform.netdraw.json) · still frame [docs/gittr-platform.png](docs/gittr-platform.png).
 
-**Where Code-tab files come from** — the Code tab races clone URLs from the repo’s Nostr announcement (gittr does not store every blob itself):
+**Where Code-tab files come from** — latest live 30617 is the map; a forge `source` is the tree when present; otherwise clone hosts are tried until one returns files:
 
 ![Where Code-tab files come from](docs/file-fetch.gif)
 

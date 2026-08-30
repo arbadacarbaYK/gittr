@@ -21,24 +21,33 @@ Implementation:
 
 ## Timeline (Code tab)
 
-What happens in order when a human opens a repo in the browser:
+Two different “newest”s:
+
+| Layer | What wins |
+| --- | --- |
+| **Is this repo live?** | The latest kind **30617**. If that event is soft-deleted, file fetch stops and the repo is deleted. A newer live 30617 beats an older deleted one. Kind **30618** (state / SHAs) never brings a deleted repo back. |
+| **Which file tree?** | If the live announcement has a forge **`source`** (GitHub, GitLab, Codeberg, …) and you have no unpushed drafts, that **forge tip** is the tree — including files removed upstream. Only when there is no forge, or the forge fetch fails, do remaining `clone[]` hosts race: **first non-empty listing**. gittr does not compare commit SHAs across `git.gittr.space` vs ngit vs GitHub. |
+
+**Bridge already has files, GitHub (or another `source`) is newer:** the old tree can show for a moment from this browser. Then the forge listing is fetched and **replaces** it. Push with no local edits runs `sync-from-source` so the bridge bare repo catches up, then 30618 announces those SHAs. Unpushed Upload/edits stay on top until you Push.
 
 ```mermaid
 flowchart TD
-  open[Open Code tab] --> local{This browser already has a tree}
-  local -->|yes| showLocal[Show it immediately]
-  local -->|no| waitNostr[Ask relays for kind 30617]
-  showLocal --> waitNostr
-  waitNostr --> tags[Read clone and source tags]
-  tags --> empty{Announcement has clone URLs}
-  empty -->|yes| sort[Sort: forge and self-hosted first, then GRASP]
-  empty -->|no after query| infer[Fill well-known GRASP HTTPS URLs]
-  infer --> sort
-  sort --> race[Ask those URLs in parallel]
-  race --> win[First non-empty tree wins]
-  win --> persist[Show tree and remember it]
-  persist --> readme[Folder README and open-file use that same winner]
-  readme --> bytes[Overrides, then winner tip, then bridge or forge]
+  open[Open Code tab] --> cache[Show this browser's tree if any]
+  cache --> nostr[Ask relays for kind 30617]
+  nostr --> live{Latest 30617 is live}
+  live -->|soft-deleted| gone[Stop — repo is deleted]
+  live -->|yes| tags[clone and source from that event]
+  tags --> drafts{Unpushed local edits}
+  drafts -->|yes| keep[Keep drafts on top]
+  drafts -->|no| forge{Announcement has a forge source}
+  forge -->|yes| gh[Fetch that forge tip]
+  gh -->|got a tree| showSrc[Show the forge tree]
+  gh -->|empty or failed| race[Race remaining clone URLs]
+  forge -->|no forge| race
+  race --> first[First non-empty listing among those remotes]
+  keep --> readme[README and open-file follow that tree]
+  showSrc --> readme
+  first --> readme
 ```
 
 **Other ways to get files** (not this race):
@@ -67,12 +76,12 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 2. **Embedded files** in a Nostr repo event (legacy / small repos).
 3. **Kind 30617** on relays — published **`clone[]` and `source` tags are the map**. Query includes the viewer’s relays plus NIP-34 discovery (`relay.gittr.space`, `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, `nos.lol`).
 4. **Timers:** after ~3s, multifetch and bridge fallback start even if tags are still arriving (the subscription stays open). After **20s**, the metadata sub closes. Well-known GRASP URLs are filled in only when a matching 30617 has **empty** `clone[]`, or as last resort if **no** 30617 arrived by EOSE.
-5. **Parallel race** (`fetchFilesFromMultipleSources`) over those URLs, **45s** for the first success:
-   - Forge and self-hosted HTTPS before GRASP (so a dead ngit host does not burn the whole wait).
-   - Bare `http://IP:port` home clones after HTTPS GRASP (a dead LAN host does not win).
-   - GitHub / `source` can be pulled further ahead (`prioritizeUpstreamCloneUrls`); a successful GitHub preflight (up to 20s) can return immediately.
-   - **Winner = first non-empty tree.** A 502 from one mirror does not block another.
-   - With Amber / NIP-46 paired, HTTP concurrency is **2** so bunker WebSockets stay healthy.
+5. **Which tree:**
+   - Forge **`source`** and no local drafts: fetch that forge first (`/api/git/repo-files`). That listing is the Code tab (smaller than the bridge is OK — upstream deletes).
+   - Otherwise **parallel race** over `clone[]` (**45s** for the first success). **Winner among those remotes = first non-empty listing.** A 502 from one mirror does not block another.
+   - Forge and self-hosted HTTPS are asked before GRASP; bare `http://IP:port` last.
+   - GitHub in the URL list is preflighted up to 20s; success returns immediately.
+   - With Amber / NIP-46 paired, HTTP concurrency is **2**.
 6. **Per URL** (`parseGitSource`):
    - **GRASP** (`nostr-git`): bridge `GET /api/nostr/repo/files` → if empty, `GET /api/git/repo-files?sourceUrl=` → optional `POST /api/nostr/repo/clone` (~12s) + bridge retry.
    - **Self-hosted** (including a non-GRASP host with `/npub1…/repo`): **`repo-files` only**.
@@ -142,9 +151,10 @@ The gittr bridge **404s** `GET /api/nostr/repo/files` when this host is not in `
 
 | Question | Behaviour |
 |----------|-----------|
-| Newest **Nostr announcement** (30617)? | Yes — latest `created_at`; `clone[]` / `relays` come from that event. |
-| Newest **tree across every GRASP mirror**? | No — first successful fetch in the race (after forge / GitHub-first when applicable). Kind **30618** is not compared across hosts. |
-| GitHub / `source` upstream? | Yes when present — tried first via `/api/git/repo-files`. |
+| Newest **live announcement** (30617)? | Yes — highest `created_at`. Soft-deleted latest 30617 → no files, repo is deleted. |
+| Newest **git commit across every clone host**? | No. Kind **30618** is not compared across `git.gittr.space` / ngit / GitHub to pick a tip. |
+| Forge **`source`** vs stale bridge listing? | The forge listing is the Code tab (no local drafts). Push then syncs the bridge to that tip. |
+| Several GRASP clones, no forge? | First non-empty listing among those URLs. |
 
 Star, Watch, Public/Private, Refetch, Commits, and new Issue/PR use the **same** 30617 as file fetch (`resolveLiveRepoAnnouncement`).
 
