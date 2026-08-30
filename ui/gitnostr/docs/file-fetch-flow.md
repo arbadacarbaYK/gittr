@@ -22,18 +22,16 @@ Production: web UI **`gittr.space`**, git SSH/HTTPS **`git.gittr.space`**.
 
 ## 2. Code tab (file tree)
 
-See [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main).
+The **browser** races clone URLs from the 30617 announcement. Sequence, hosts, and README order: gittr [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main).
 
-Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README / openFile use the **first multifetch winner** immediately; extra clone successes must not cancel that README request.
-
-Picture of the race: gittr [`docs/file-fetch.netdraw.json`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/file-fetch.netdraw.json&branch=main) (GIF in that repo’s docs).
+This bridge is one of the places those URLs can point (`git.gittr.space`). Implementation on the UI side: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/repo/RepoCodePage.tsx`. Folder README and openFile use the **first** non-empty tree; later clone successes do not restart that request.
 
 ## 3. Shared branch, Commits, Issues, PRs
 
 - **One `?branch=`** across Code, Commits, Issues, PRs (`resolveSharedRepoBranch` in `ui/src/lib/repos/repo-file-tree-branch.ts`).
 - **Commits tab:** resolve npub/hex owner → soft-refresh every visit (localStorage is optimistic only, not authoritative) → **`/api/nostr/repo/commits`** / mirror from `clone[]` / GRASP → GitHub via `resolveGithubUpstreamForTabs`; keep the richest list so a 1-commit GRASP tip cannot wipe fuller history.
 - **Issues / PRs:** Nostr events on relays; file bytes use the Code-tab paths when needed.
-- **Push to Nostr:** with a forge `source` and no local edits, sync the bare tip from upstream then publish **30617 / 30618** (do not invent empty “Push from gittr” commits). SSH/`git push` already writes real tips into the bare repo.
+- **Push to Nostr:** with a forge `source` and no local edits, sync the bare tip from upstream then publish **30617 / 30618**. SSH/`git push` already writes real tips into the bare repo.
 - **Clone URL sidebar:** shows forge `source` plus all pushable GRASP hosts from the event (not primary-only).
 - **File list dates:** `tree-last-commits` for the selected `?branch=` tip.
 

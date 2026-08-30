@@ -10,9 +10,13 @@ Super-high-level — who talks to whom. **You are here = gittr Client** (this re
 
 ![gittr platform map](docs/gittr-platform.gif)
 
-The GIF is the map with moving links (GitHub cannot embed the live canvas). For a talk, open [docs/gittr-platform.netdraw.json](docs/gittr-platform.netdraw.json) in [NetDraw](https://mr-r3b00t.github.io/net_draw/): **Open** → that file, then **Journey**. **Next** only appears at the bottom of the canvas after Journey is running — visiting NetDraw alone still shows their demo network, not gittr. Still frame: [docs/gittr-platform.png](docs/gittr-platform.png).
+Who talks to whom on this deployment. Interactive map: [docs/gittr-platform.netdraw.json](docs/gittr-platform.netdraw.json) · still frame [docs/gittr-platform.png](docs/gittr-platform.png).
 
-**Where Code-tab files come from** (the clone-URL race, not “gittr stores every blob”): ![file fetch](docs/file-fetch.gif) — [docs/file-fetch.netdraw.json](docs/file-fetch.netdraw.json) · write-up [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md).
+**Where Code-tab files come from** — the Code tab races clone URLs from the repo’s Nostr announcement (gittr does not store every blob itself):
+
+![Where Code-tab files come from](docs/file-fetch.gif)
+
+Timeline and details: [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md).
 
 | Piece | Host / repo | Job in one line |
 | --- | --- | --- |

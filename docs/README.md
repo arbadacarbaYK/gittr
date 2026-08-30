@@ -5,8 +5,8 @@ Start here:
 | Doc | When |
 |-----|------|
 | [../README.md](../README.md) | What gittr is |
-| [gittr-platform.gif](gittr-platform.gif) / [gittr-platform.netdraw.json](gittr-platform.netdraw.json) | Platform map (README GIF + NetDraw file for talks) |
-| [file-fetch.gif](file-fetch.gif) / [file-fetch.netdraw.json](file-fetch.netdraw.json) | Where Code-tab files come from (race of clone URLs) |
+| [gittr-platform.gif](gittr-platform.gif) / [gittr-platform.netdraw.json](gittr-platform.netdraw.json) | Platform map — who talks to whom |
+| [file-fetch.gif](file-fetch.gif) / [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md) | Where Code-tab files come from (map + fetch timeline) |
 | [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) | Production install |
 | [LOCAL_SETUP.md](LOCAL_SETUP.md) | Dev on localhost |
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Checklist, env table, backups |

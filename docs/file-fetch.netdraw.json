@@ -114,7 +114,7 @@
       "dns": "relay.gittr.space + others",
       "ip": "clone[] / source tags",
       "accent": "#22d3ee",
-      "notes": "The announcement says where git lives. Published clone[] and source are authoritative. gittr does not invent git.gittr.space while the event is still in flight. Well-known GRASP mirrors are inferred only after EOSE if clone[] is still empty."
+      "notes": "The announcement says where git lives. Published clone[] and source tags are the map. If that event has no clone URLs after the relay query finishes, well-known GRASP HTTPS URLs are filled in."
     },
     {
       "id": "forge",
@@ -124,7 +124,7 @@
       "label": "GitHub / GitLab / Codeberg",
       "category": "source tag",
       "accent": "#22d3ee",
-      "notes": "Forge upstream. Tried first when mixed with GRASP so we do not burn ~45s on a dead ngit host. Fetched via GET /api/git/repo-files and /api/git/file-content on the gittr server — not raw.githubusercontent.com from the browser (no CORS)."
+      "notes": "Forge upstream. Tried first when mixed with GRASP. Fetched via GET /api/git/repo-files and /api/git/file-content on the gittr server."
     },
     {
       "id": "selfhost",
@@ -377,7 +377,7 @@
         "focus": true
       },
       {
-        "note": "Step 2 — ask Nostr. Kind 30617 clone[] and source tags are the map. Do not invent git.gittr.space while the announcement is still in flight. Infer well-known GRASP only after EOSE if clone[] is still empty.",
+        "note": "Step 2 — ask Nostr. Kind 30617 clone[] and source tags are the map. Well-known GRASP HTTPS is filled in after the relay query if that event has no clone URLs.",
         "show": ["relays", "e_ui_relays", "e_relays_ui"],
         "highlight": ["ui", "relays"],
         "focus": true
@@ -389,7 +389,7 @@
         "focus": true
       },
       {
-        "note": "Same race includes the gitnostr bridge (bare repo on git.gittr.space) and other GRASP clones (ngit, shakespeare, …). First non-empty tree wins. README and click-to-open follow that winner — do not wait for slower mirrors.",
+        "note": "Same race includes the gitnostr bridge (bare repo on git.gittr.space) and other GRASP clones (ngit, shakespeare, …). First non-empty tree wins. README and click-to-open follow that winner.",
         "show": ["bridge", "grasp", "e_ui_bridge", "e_ui_grasp", "e_cli_bridge"],
         "highlight": ["ui", "bridge", "grasp"],
         "focus": true
