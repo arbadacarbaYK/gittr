@@ -4,7 +4,7 @@ Run **`git-nostr-bridge`** and **`git-nostr-ssh`** on your server so any Nostr g
 
 ## 1. Prerequisites
 
-- **Go 1.20+** (`go.mod`; gittr stacks often use Go 1.21+)
+- **Go 1.25+** (`ui/gitnostr/go.mod`)
 - **Git 2.34+**
 - **Linux** host with a dedicated **`git-nostr`** user (the bridge manages that user’s `authorized_keys`)
 

@@ -16,6 +16,7 @@ Start here:
 | Doc | When |
 |-----|------|
 | [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) | Bridge only |
+| [GO_MODULE_EXPLANATION.md](GO_MODULE_EXPLANATION.md) | Why the module path looks like GitHub; websocket / x/mod pins |
 | [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) | Terminal git |
 | [GRASP_RELAY_SETUP.md](GRASP_RELAY_SETUP.md) | Relay kinds / GRASP |
 | [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md) | How files load in the UI |

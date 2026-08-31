@@ -98,3 +98,5 @@ Deeper internals: [Architecture](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35
 make git-nostr-bridge git-nostr-ssh
 make git-nostr-cli   # gn
 ```
+
+Go module security pins (gorilla/websocket, `golang.org/x/mod`) are documented in gittr [GO_MODULE_EXPLANATION.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/GO_MODULE_EXPLANATION.md&branch=main).

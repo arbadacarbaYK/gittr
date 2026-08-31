@@ -28,14 +28,14 @@ Install gittr (Next.js UI + API) and **git-nostr-bridge** on a Linux server. Pat
 ## Prerequisites
 
 - Ubuntu 20.04+ (or similar), sudo
-- **Node 18+**, **yarn** (preferred; `ui/yarn.lock` is canonical)
-- **Go 1.21+** to build the bridge (or use Docker — [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md))
+- **Node 18+**, **yarn** (preferred; `ui/yarn.lock` is canonical). Keep `ui/package.json` `resolutions.postcss` at `^8.5.23` or newer (CVE-2026-69153); the declared `devDependencies.postcss` range must not go below that.
+- **Go 1.25+** to build the bridge (matches `ui/gitnostr/go.mod`; or use Docker — [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md))
 - **git**, **openssh-server**, **nginx**, **certbot**
 - DNS for your web host (and optionally `git.` + `pages.` subdomains)
 
 ```bash
 node --version   # >= 18
-go version       # >= 1.21
+go version       # >= 1.25
 git --version
 ```
 

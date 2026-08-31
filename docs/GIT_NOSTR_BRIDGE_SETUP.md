@@ -13,7 +13,7 @@ Use dedicated user **`git-nostr`**.
 
 ## Build
 
-**Go 1.21+**, **git**, **make**.
+**Go 1.25+**, **git**, **make**.
 
 ```bash
 sudo useradd --create-home --shell /bin/bash git-nostr

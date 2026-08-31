@@ -7,7 +7,7 @@ so that any Nostr-aware Git frontend can use it.
 
 ## 1. Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 - Git 2.34+
 - A dedicated Linux user (recommended) whose `~/.ssh/authorized_keys` the bridge may manage
 
