@@ -236,9 +236,11 @@ export default function HelpPage() {
             same tree.
           </li>
           <li id="gittr-pages" className="scroll-mt-24">
-            <strong className="text-white">Nostr Pages</strong> — Publish static
-            sites from a repo (site file + README block + Push to Nostr /
-            Blossom); browse the directory at{" "}
+            <strong className="text-white">Nostr Pages</strong> — Publish a
+            static site from a repo (root{" "}
+            <code className="text-purple-200">index.html</code> then{" "}
+            <strong>Push Manifest</strong>). README pagelink and custom site
+            name are optional. Browse the directory at{" "}
             <Link
               href="/pages"
               className="text-purple-400 hover:text-purple-300"
@@ -1040,12 +1042,11 @@ export default function HelpPage() {
                   profile is “this npub announced the repo,” not “GitHub
                   confirmed.” A profile’s repository grid is that npub’s Nostr
                   announcements (including Shakespeare/ngit), the same list
-                  whether you are logged in or not — not GitHub and not the
-                  few repos your browser already cached. Importing your own
-                  GitHub repo is still{" "}
-                  <strong className="text-white">owner</strong>. The purple{" "}
-                  <strong className="text-white">forked</strong> pill is only
-                  for a real upstream parent (someone else’s repo on any
+                  whether you are logged in or not — not GitHub and not the few
+                  repos your browser already cached. Importing your own GitHub
+                  repo is still <strong className="text-white">owner</strong>.
+                  The purple <strong className="text-white">forked</strong> pill
+                  is only for a real upstream parent (someone else’s repo on any
                   supported forge) or a gittr Fork — not “this has a forge URL.”
                 </li>
                 <li>
@@ -3039,12 +3040,17 @@ export default function HelpPage() {
             <HelpTopic title={<>Nostr Pages (static sites)</>}>
               <p>
                 Owners publish a static site from the repo Code sidebar →{" "}
-                <strong className="text-white">Nostr Pages</strong>: add a root
-                entry file (for example{" "}
-                <code className="text-purple-200">index.html</code>), keep the
-                README Pages block in sync, <strong>Push to Nostr</strong>, then{" "}
+                <strong className="text-white">Nostr Pages</strong>. Required: a
+                root <code className="text-purple-200">index.html</code>, then{" "}
                 <strong>Push Manifest</strong> (uploads to Blossom and publishes
-                kind <strong>35128</strong>). Browse live sites at{" "}
+                kind <strong>35128</strong>). That is what puts the page online
+                — it is not a git push and not an issue. Optional: a custom site
+                name (1–13 characters in the live URL; longer names like{" "}
+                <code className="text-purple-200">conference-loop</code> become{" "}
+                <code className="text-purple-200">conference-lo</code>) and a
+                README pagelink for repo visitors. If you changed files or the
+                README, <strong>Push to Nostr</strong> first, then Push
+                Manifest. Browse live sites at{" "}
                 <Link
                   href="/pages"
                   className="text-purple-400 hover:text-purple-300"

@@ -1,6 +1,6 @@
-import { slugToNsiteDTag } from "@/lib/nsite/nsite-url";
-import type { StoredRepo } from "@/lib/repos/storage";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { slugToNsiteDTag } from "../nsite/nsite-url";
+import type { StoredRepo } from "../repos/storage";
+import { findRepoByEntityAndName } from "../utils/repo-finder";
 
 /**
  * Slugs we never allow as the public Pages segment (scams + gittr product surface).
@@ -87,7 +87,9 @@ export function normalizePagesSiteSlugInput(raw: string): string {
 
 /**
  * Effective named-site `d` tag for URLs and manifests: optional `pagesSiteSlug`
- * on the stored repo, otherwise derived from the URL repo segment.
+ * on the stored repo (this *is* the public Pages hostname segment, 1–13 chars),
+ * otherwise derived from the URL repo segment (truncated, e.g. conference-loop
+ * → conference-lo).
  */
 export function resolveRepoPagesDTag(
   decodedRepoSlug: string,

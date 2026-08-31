@@ -37,7 +37,7 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 
 - **Mirror / backup** — Push or import a repo. Files live on the **gitnostr** bridge (`git-nostr-bridge`, and/or upstream); metadata on relays.
 - **Issues & PRs on Nostr** — Same workflow as a normal forge. Events are NIP-34 and related kinds
-- **Pages** — Owners publish static sites from a repo with **Push Manifest**. The `/pages` directory shows a first page of sites, then Load more — it does not wait to draw every card at once.
+- **Pages** — Owners publish a static site with **Push Manifest** (required). A README pagelink and custom site name are optional. The `/pages` directory shows a first page of sites, then Load more.
 - **Apps** — Browse NIP-82 / Zapstore apps at [/apps](https://gittr.space/apps). Owners can **Announce app** from a repo (forge Release APK URLs; optional sibling binaries). gittr does not host the installers. See [Help → Releases](https://gittr.space/help#releases) for what lives where.
 - **Releases tab** — Lists forge Release assets (GitHub / Codeberg / GitLab). Separate from Push to Nostr and from Apps announce.
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.

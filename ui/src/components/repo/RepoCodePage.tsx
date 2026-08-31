@@ -49,6 +49,16 @@ import {
   evaluatePagesSiteSlugInput,
   resolveRepoPagesDTag,
 } from "@/lib/gittr-pages/pages-public-slug";
+import {
+  loadPagesAutoReadme,
+  loadPagesSiteSlugBackup,
+  savePagesAutoReadme,
+  savePagesSiteSlugBackup,
+} from "@/lib/gittr-pages/pages-site-slug-store";
+import {
+  mergeRepoStateWithStorage,
+  withPreservedPagesSiteSlug,
+} from "@/lib/repos/merge-repo-state-with-storage";
 import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-manifest";
 import {
   buildGittrPagesReadmeAppend,
@@ -484,15 +494,6 @@ const createMarkdownHeadingComponents = (
 };
 
 /** Prefer live `repoData` fields but keep `sourceUrl` / `clone` / etc. from localStorage when state is sparse (e.g. foreign repo view). */
-function mergeRepoStateWithStorage<T extends object>(
-  repoData: T | null | undefined,
-  repoFromStorage: T | null | undefined
-): T | null {
-  if (repoData && repoFromStorage) {
-    return { ...repoFromStorage, ...repoData };
-  }
-  return repoData ?? repoFromStorage ?? null;
-}
 
 /** Merge NIP-34 / multi-source clone URLs into repo state (dedupe, drop localhost). */
 function mergeDiscoverableCloneUrls(
@@ -888,6 +889,12 @@ export function RepoCodePage() {
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
   /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push proceeds without enforcing that block. */
   const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    setGittrPagesAutoReadme(
+      loadPagesAutoReadme(resolvedParams.entity, decodedRepo)
+    );
+  }, [mounted, resolvedParams.entity, decodedRepo]);
   const [pagesSiteListedByGateway, setPagesSiteListedByGateway] = useState<
     boolean | null
   >(null);
@@ -1066,7 +1073,10 @@ export function RepoCodePage() {
       process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space"
     ).replace(/\/$/, "");
     const dTag = resolveRepoPagesDTag(decodedRepo, {
-      pagesSiteSlug: repoData?.pagesSiteSlug ?? repoForPages.pagesSiteSlug,
+      pagesSiteSlug:
+        repoData?.pagesSiteSlug ??
+        repoForPages.pagesSiteSlug ??
+        loadPagesSiteSlugBackup(resolvedParams.entity, decodedRepo),
       repo: repoForPages.repo,
       slug: repoForPages.slug,
       name: repoForPages.name,
@@ -2016,6 +2026,7 @@ export function RepoCodePage() {
     decodedRepo,
     repoData?.hasUnpushedEdits,
     repoData?.lastNostrEventId,
+    (repoData as { pagesSiteSlug?: string } | null)?.pagesSiteSlug,
     (repoData as { status?: string } | null)?.status,
   ]);
 
@@ -3832,43 +3843,55 @@ export function RepoCodePage() {
         }
       );
 
-      setRepoData({
-        entity: normalizedRepoEntityForDisplay || repo.entity,
-        repo: repo.repo || resolvedParams.repo,
-        readme: preferUpstreamContent ? "" : repo.readme || "",
-        description: repo.description || "",
-        files: resolvedFiles,
-        sourceUrl: repo.sourceUrl,
-        forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
-          sourceUrl: repo.sourceUrl,
-          clone: (repo as { clone?: string[] }).clone,
-        }),
-        entityDisplayName: repo.entityDisplayName,
-        name: repo.name,
-        createdAt: repo.createdAt,
-        stars: repo.stars,
-        forks: repo.forks,
-        languages: repo.languages,
-        topics: repo.topics,
-        branches: repo.branches || [],
-        tags: repo.tags || [],
-        issues: repo.issues || [],
-        pulls: repo.pulls || [],
-        commits: repo.commits || [],
-        contributors,
-        links: removeStaleAutoLinks(
-          repo.links || [],
-          repo.sourceUrl
-        ) as RepoLink[],
-        defaultBranch: repo.defaultBranch || "main",
-        clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
-        relays: (repo as any).relays || [],
-        ownerPubkey: ownerPubkey || repo.ownerPubkey,
-        lastNostrEventId:
-          (repo as any).lastNostrEventId || (repo as any).nostrEventId,
-        publicRead: publicRead, // CRITICAL: Default to true for old repos
-        publicWrite: publicWrite,
-      } as any);
+      setRepoData(
+        withPreservedPagesSiteSlug(
+          {
+            entity: normalizedRepoEntityForDisplay || repo.entity,
+            repo: repo.repo || resolvedParams.repo,
+            readme: preferUpstreamContent ? "" : repo.readme || "",
+            description: repo.description || "",
+            files: resolvedFiles,
+            sourceUrl: repo.sourceUrl,
+            forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
+              sourceUrl: repo.sourceUrl,
+              clone: (repo as { clone?: string[] }).clone,
+            }),
+            entityDisplayName: repo.entityDisplayName,
+            name: repo.name,
+            createdAt: repo.createdAt,
+            stars: repo.stars,
+            forks: repo.forks,
+            languages: repo.languages,
+            topics: repo.topics,
+            branches: repo.branches || [],
+            tags: repo.tags || [],
+            issues: repo.issues || [],
+            pulls: repo.pulls || [],
+            commits: repo.commits || [],
+            contributors,
+            links: removeStaleAutoLinks(
+              repo.links || [],
+              repo.sourceUrl
+            ) as RepoLink[],
+            defaultBranch: repo.defaultBranch || "main",
+            clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
+            relays: (repo as any).relays || [],
+            ownerPubkey: ownerPubkey || repo.ownerPubkey,
+            lastNostrEventId:
+              (repo as any).lastNostrEventId || (repo as any).nostrEventId,
+            publicRead: publicRead, // CRITICAL: Default to true for old repos
+            publicWrite: publicWrite,
+          },
+          repo,
+          repoDataRef.current,
+          {
+            pagesSiteSlug: loadPagesSiteSlugBackup(
+              resolvedParams.entity,
+              decodedRepo
+            ),
+          }
+        ) as any
+      );
       // Drop GRASP/mirror URLs wrongly stored as forkedFrom (e.g. shakespeare)
       {
         const cleanedFork = sanitizeForkedFromField(repo.forkedFrom, {
@@ -4219,33 +4242,45 @@ export function RepoCodePage() {
               : (d.description || repo.description || "").trim();
 
             // Now set repoData with all contributors
-            setRepoData({
-              entity: normalizedRepoEntity || repo.entity,
-              repo: repo.repo || resolvedParams.repo,
-              readme: d.readme || "",
-              files: resolvedFiles, // Preserve fetched files if localStorage has none
-              sourceUrl: repo.sourceUrl,
-              forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
-                sourceUrl: repo.sourceUrl,
-                clone: (repo as { clone?: string[] }).clone,
-              }),
-              entityDisplayName: repo.entityDisplayName,
-              name: repo.name,
-              createdAt: repo.createdAt,
-              description: importDescription,
-              stars: d.stars,
-              forks: d.forks,
-              languages: d.languages,
-              contributors: contributors, // CRITICAL: Include processed contributors
-              issues: (d.issues || []) as unknown[],
-              pulls: (d.pulls || []) as unknown[],
-              commits: (d.commits || []) as unknown[],
-              topics: d.topics,
-              defaultBranch: d.defaultBranch,
-              branches: (d.branches || []) as string[],
-              tags: (d.tags || []) as string[],
-              links: (repo.links || d.links || []) as RepoLink[],
-            });
+            setRepoData(
+              withPreservedPagesSiteSlug(
+                {
+                  entity: normalizedRepoEntity || repo.entity,
+                  repo: repo.repo || resolvedParams.repo,
+                  readme: d.readme || "",
+                  files: resolvedFiles, // Preserve fetched files if localStorage has none
+                  sourceUrl: repo.sourceUrl,
+                  forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
+                    sourceUrl: repo.sourceUrl,
+                    clone: (repo as { clone?: string[] }).clone,
+                  }),
+                  entityDisplayName: repo.entityDisplayName,
+                  name: repo.name,
+                  createdAt: repo.createdAt,
+                  description: importDescription,
+                  stars: d.stars,
+                  forks: d.forks,
+                  languages: d.languages,
+                  contributors: contributors, // CRITICAL: Include processed contributors
+                  issues: (d.issues || []) as unknown[],
+                  pulls: (d.pulls || []) as unknown[],
+                  commits: (d.commits || []) as unknown[],
+                  topics: d.topics,
+                  defaultBranch: d.defaultBranch,
+                  branches: (d.branches || []) as string[],
+                  tags: (d.tags || []) as string[],
+                  links: (repo.links || d.links || []) as RepoLink[],
+                },
+                repo,
+                repoDataRef.current,
+                {
+                  pagesSiteSlug: loadPagesSiteSlugBackup(
+                    resolvedParams.entity,
+                    decodedRepo
+                  ),
+                }
+              ) as typeof repoData
+            );
             const branches =
               d.branches && d.branches.length > 0
                 ? d.branches
@@ -4542,12 +4577,13 @@ export function RepoCodePage() {
           suggestions: ev.suggestions,
         };
       }
-      markRepoAsEdited(decodedRepo, resolvedParams.entity);
+      // Site name is a Pages URL setting, not a git edit — do not dirty Push.
+      savePagesSiteSlugBackup(resolvedParams.entity, decodedRepo, ev.stored);
       setRepoData((prev: any) => {
         if (!prev) return prev;
-        const next = { ...prev, hasUnpushedEdits: true } as StoredRepo;
+        const next = { ...prev } as StoredRepo;
         if (ev.stored === undefined) {
-          delete (next as { pagesSiteSlug?: string }).pagesSiteSlug;
+          next.pagesSiteSlug = "";
         } else {
           next.pagesSiteSlug = ev.stored;
         }
@@ -4560,10 +4596,7 @@ export function RepoCodePage() {
             r.entity === resolvedParams.entity
         );
         if (idx >= 0) {
-          const row = {
-            ...(repos[idx] as StoredRepo),
-            hasUnpushedEdits: true,
-          } as StoredRepo;
+          const row = { ...(repos[idx] as StoredRepo) } as StoredRepo;
           if (ev.stored === undefined) {
             delete (row as { pagesSiteSlug?: string }).pagesSiteSlug;
           } else {
@@ -22954,13 +22987,24 @@ export function RepoCodePage() {
                                 isOwnerSession
                                 pagesSiteSlug={
                                   (repoData as StoredRepo | null | undefined)
-                                    ?.pagesSiteSlug ?? repo.pagesSiteSlug
+                                    ?.pagesSiteSlug ??
+                                  repo.pagesSiteSlug ??
+                                  loadPagesSiteSlugBackup(
+                                    resolvedParams.entity,
+                                    decodedRepo
+                                  ) ??
+                                  null
                                 }
                                 onCommitPagesSiteSlug={commitRepoPagesSiteSlug}
                                 autoReadmeOnPush={gittrPagesAutoReadme}
-                                onAutoReadmeOnPushChange={
-                                  setGittrPagesAutoReadme
-                                }
+                                onAutoReadmeOnPushChange={(value) => {
+                                  setGittrPagesAutoReadme(value);
+                                  savePagesAutoReadme(
+                                    resolvedParams.entity,
+                                    decodedRepo,
+                                    value
+                                  );
+                                }}
                                 onFocusSiteFiles={() => {
                                   document
                                     .getElementById("gittr-repo-main")

@@ -1,6 +1,4 @@
-import { validateReadmeGittrPagesBlock } from "@/lib/gittr-pages/readme-section";
-
-/** True when the repo tree has a root entry file for static Pages. */
+/** True when the repo tree has a root index.html (same gate as Push Manifest). */
 export function hasGittrPagesEntryFile(
   files: Array<{ path?: string }> | undefined
 ): boolean {
@@ -13,7 +11,7 @@ export function hasGittrPagesEntryFile(
       .toLowerCase();
     // Root-level only: nested docs/site index files must not unlock Pages actions.
     if (!p || p.includes("/")) return false;
-    return p === "index.html" || p === "404.html" || p === "index.md";
+    return p === "index.html";
   });
 }
 
@@ -24,13 +22,9 @@ export type GittrPagesReadinessCore = {
   namedUrl: string;
 };
 
-/** README block valid or auto-maintain on push; site has entry file. */
+/** Homepage file is required. A README pagelink is optional. */
 export function gittrPagesPushPreconditionsMet(
   r: GittrPagesReadinessCore
 ): boolean {
-  const readmeOk =
-    r.autoReadmeOnPush ||
-    validateReadmeGittrPagesBlock(r.readme, r.namedUrl).ok;
-  const siteOk = hasGittrPagesEntryFile(r.files);
-  return readmeOk && siteOk;
+  return hasGittrPagesEntryFile(r.files);
 }

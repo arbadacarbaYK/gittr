@@ -170,7 +170,7 @@ A richer local tree is kept for **Nostr-only** repos (so a thin GRASP listing ca
 
 **Hollow extras:** path-only rows (no file bytes) — often leftover `dist/*` from import — do **not** count as a richer tree and do **not** block persist. Real local uploads with bodies are kept. A stuck `hasUnpushedEdits` flag plus empty `dist/` stubs was making Push look like it skipped the already-published repo and never refreshed README.
 
-**Pages:** owners use **Push Manifest** (Blossom + kind 35128, same signer as Push — including Amber). **Click to create manifest** is a tracking issue for non-owners only; it is not a pull request and does not publish the site.
+**Pages:** owners go live with **Push Manifest** (Blossom + kind 35128, same signer as Push — including Amber). A README pagelink and custom site name are optional. **Open a tracking issue** is for non-owners only; it is not a pull request and does not publish the site. A custom Pages name is stored in the browser (not on kind 30617); hydrate must not wipe it. NIP-5A names are 1–13 characters (`conference-loop` → `conference-lo`).
 
 ## Sidebar: Git Server and Clone URL
 

@@ -14,6 +14,7 @@ import {
   buildGittrPagesManifestIssueDraft,
 } from "@/lib/gittr-pages/gittr-pages-issue-draft";
 import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
+import { normalizePagesSiteSlugInput } from "@/lib/gittr-pages/pages-public-slug";
 import { validateReadmeGittrPagesBlock } from "@/lib/gittr-pages/readme-section";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ type RepoGittrPagesPanelProps = {
   canChainNostrRefetch?: boolean;
   /** Update README gittr Pages block then trigger Push to Nostr (same session). */
   onReadmeThenPush?: () => void | Promise<void>;
-  /** Optional: refetch from relays first (reload), then Re/push Page — use when local may be stale. */
+  /** Optional: refetch from relays first (reload), then push README — use when local may be stale. */
   onRefetchThenReadmeThenPush?: () => void;
   /** Owner: show checklist (site file, readme, push state) vs manual manifest outside gittr. */
   pagesReadiness?: GittrPagesReadiness | null;
@@ -154,6 +155,7 @@ export function RepoGittrPagesPanel({
   const [slugError, setSlugError] = useState<string | null>(null);
   const [slugSuggestions, setSlugSuggestions] = useState<string[]>([]);
   const [slugBusy, setSlugBusy] = useState(false);
+  const [slugSaved, setSlugSaved] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
 
   useEffect(() => {
@@ -181,7 +183,7 @@ export function RepoGittrPagesPanel({
       (pagesReadiness.hasUnpushedEdits || !pagesReadiness.hasEverPushedToNostr)
   );
   const gittrStepsReady = Boolean(
-    pagesReadiness && readmeOk && siteOk && !pagesReadiness.hasUnpushedEdits
+    pagesReadiness && siteOk && !pagesReadiness.hasUnpushedEdits
   );
   /** Manifest should match what is already on relays — require a site tree and a clean push state. */
   const manifestPublishBlocked = Boolean(
@@ -226,6 +228,12 @@ export function RepoGittrPagesPanel({
       cancelled = true;
     };
   }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag]);
+
+  const slugPreview = slugDraft.trim()
+    ? normalizePagesSiteSlugInput(slugDraft)
+    : pagesReadiness?.dTag || "";
+  const slugWillShorten =
+    Boolean(slugDraft.trim()) && slugPreview !== slugDraft.trim().toLowerCase();
 
   const openManifestIssue = () => {
     if (!hasGittrPagesEntryFile(pagesReadiness?.files)) {
@@ -297,6 +305,17 @@ export function RepoGittrPagesPanel({
         ) : null}
 
         {pagesReadiness && isOwnerSession ? (
+          <p className="text-[11px] leading-relaxed text-zinc-400">
+            Publishing a{" "}
+            <strong className="font-medium text-zinc-200">live page</strong> is
+            not the same as pushing git.{" "}
+            <strong className="font-medium text-zinc-200">Push Manifest</strong>{" "}
+            puts the site online. The README pagelink and a custom site name are
+            optional.
+          </p>
+        ) : null}
+
+        {pagesReadiness && isOwnerSession ? (
           <div
             className={cn(
               "overflow-hidden rounded-xl border",
@@ -308,14 +327,14 @@ export function RepoGittrPagesPanel({
             <div className="divide-y divide-zinc-800/80 px-1 py-0.5">
               <ChecklistRow
                 ok={siteOk}
-                title="Site entry"
+                title="Homepage index.html — required"
                 onClick={
                   onFocusSiteFiles ? () => onFocusSiteFiles() : undefined
                 }
               />
               <ChecklistRow
                 ok={readmeOk}
-                title="README & live URL"
+                title="README pagelink — optional"
                 onClick={
                   canManageReadme
                     ? () => {
@@ -335,7 +354,7 @@ export function RepoGittrPagesPanel({
               <ChecklistRow
                 ok={gatewayListsSite === true}
                 warning={gatewayListsSite === false}
-                title="Directory"
+                title="Live in the Pages directory — after Push Manifest"
                 onClick={
                   isOwnerSession &&
                   onPublishNamedSiteManifest &&
@@ -371,7 +390,11 @@ export function RepoGittrPagesPanel({
               <ChecklistRow
                 ok={pushClean}
                 warning={pushNeeded}
-                title="Repo pushed"
+                title={
+                  pushNeeded
+                    ? "Repo files on Nostr — push the repo if you changed files or README"
+                    : "Repo files on Nostr"
+                }
               />
             </div>
           </div>
@@ -379,10 +402,17 @@ export function RepoGittrPagesPanel({
 
         {isOwnerSession && pagesReadiness && onCommitPagesSiteSlug ? (
           <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/80 p-3">
-            <SectionLabel>Site name</SectionLabel>
+            <SectionLabel>Site name — optional</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
-              Optional short display name for your page listing; it does not
-              change the real live URL.
+              This is the public Pages address (1–13 letters, numbers, or
+              hyphens). Longer names are shortened —{" "}
+              <code className="text-zinc-400">conference-loop</code> becomes{" "}
+              <code className="text-zinc-400">conference-lo</code>. Saving does
+              not push git. After the site is live, use{" "}
+              <strong className="font-medium text-zinc-300">
+                Push Manifest
+              </strong>{" "}
+              again so visitors get the new address.
             </p>
             {pagesReadiness?.namedUrl ? (
               <div className="flex items-center gap-1.5 text-[10px]">
@@ -427,14 +457,21 @@ export function RepoGittrPagesPanel({
                 setSlugDraft(e.target.value);
                 setSlugError(null);
               }}
-              placeholder="(repo slug)"
+              placeholder="leave empty to use the repo name"
               disabled={slugBusy || chainActionsDisabled}
               className="h-9 border-[var(--color-border)] bg-black/30 text-xs text-zinc-100"
-              maxLength={32}
+              maxLength={13}
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
             />
+            {slugPreview ? (
+              <p className="text-[10px] leading-relaxed text-zinc-500">
+                Public name:{" "}
+                <code className="text-zinc-300">{slugPreview}</code>
+                {slugWillShorten ? " (shortened to fit the Pages limit)" : null}
+              </p>
+            ) : null}
             {slugError ? (
               <p className="text-[10px] text-rose-300/95">{slugError}</p>
             ) : null}
@@ -474,6 +511,9 @@ export function RepoGittrPagesPanel({
                       if (!res.ok) {
                         setSlugError(res.message);
                         setSlugSuggestions(res.suggestions ?? []);
+                      } else {
+                        setSlugSaved(true);
+                        setTimeout(() => setSlugSaved(false), 1600);
                       }
                     } finally {
                       setSlugBusy(false);
@@ -481,7 +521,7 @@ export function RepoGittrPagesPanel({
                   })();
                 }}
               >
-                {slugBusy ? "Saving…" : "Save"}
+                {slugBusy ? "Saving…" : slugSaved ? "Saved" : "Save"}
               </Button>
               <Button
                 type="button"
@@ -519,7 +559,19 @@ export function RepoGittrPagesPanel({
 
         {(isOwnerSession && onPublishNamedSiteManifest) || issueDraft ? (
           <div className="space-y-2 rounded-xl border border-amber-900/20 bg-amber-950/[0.07] p-3">
-            <SectionLabel>Manifest</SectionLabel>
+            <SectionLabel>Publish live page — required</SectionLabel>
+            <p className="text-[10px] leading-relaxed text-zinc-500">
+              Uploads the homepage to Blossom and publishes the Pages manifest.
+              This is the step that makes the site openable. It is not a git
+              push and not an issue.
+            </p>
+            {manifestPublishBlocked ? (
+              <p className="text-[10px] leading-relaxed text-amber-200/90">
+                {!siteOk
+                  ? "Add a root index.html first."
+                  : "You have unpushed file or README edits. Use Push to Nostr, then come back here."}
+              </p>
+            ) : null}
             <div className="flex flex-col gap-2">
               {issueDraft && !(isOwnerSession && onPublishNamedSiteManifest) ? (
                 <Button
@@ -535,7 +587,7 @@ export function RepoGittrPagesPanel({
                 >
                   <FileText className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="min-w-0 font-medium">
-                    Click to create manifest
+                    Open a tracking issue (does not publish)
                   </span>
                 </Button>
               ) : null}
@@ -551,7 +603,9 @@ export function RepoGittrPagesPanel({
                   }
                   title={
                     manifestPublishBlocked
-                      ? "Add a site entry file and Push to Nostr first (no unpushed edits), then publish the manifest."
+                      ? !siteOk
+                        ? "Add a root index.html first."
+                        : "Push to Nostr first (unpushed file or README edits), then publish the page."
                       : undefined
                   }
                   className={cn(
@@ -587,7 +641,7 @@ export function RepoGittrPagesPanel({
 
         {canManageReadme ? (
           <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/80 p-3">
-            <SectionLabel>README &amp; page</SectionLabel>
+            <SectionLabel>README pagelink — optional</SectionLabel>
             {isOwnerSession && onAutoReadmeOnPushChange ? (
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300 transition hover:border-[var(--color-accent-primary)]/40">
                 <input
@@ -624,7 +678,7 @@ export function RepoGittrPagesPanel({
                 >
                   <BookOpen className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="min-w-0 text-left font-medium">
-                    {busy ? "Working…" : "Click to create Pagelink in Readme"}
+                    {busy ? "Working…" : "Add pagelink to README"}
                   </span>
                 </Button>
                 <Button
@@ -642,7 +696,7 @@ export function RepoGittrPagesPanel({
                 >
                   <Upload className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="min-w-0 text-left font-medium">
-                    Re/push Page
+                    Push README to Nostr
                   </span>
                 </Button>
                 {canChainNostrRefetch && onRefetchThenReadmeThenPush ? (
@@ -659,7 +713,7 @@ export function RepoGittrPagesPanel({
                   >
                     <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
                     <span className="min-w-0 text-left font-medium">
-                      Refetch → Re/push Page
+                      Refetch, then push README
                     </span>
                   </Button>
                 ) : null}
@@ -685,7 +739,7 @@ export function RepoGittrPagesPanel({
               >
                 <BookOpen className="h-4 w-4 shrink-0" aria-hidden />
                 <span className="min-w-0 text-left font-medium">
-                  {busy ? "Working…" : "Click to create Pagelink in Readme"}
+                  {busy ? "Working…" : "Add pagelink to README"}
                 </span>
               </Button>
             )}
