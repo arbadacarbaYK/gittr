@@ -1,4 +1,4 @@
-/** Default page size for in-memory card lists (Explore / My Repos / Profile / Pages). */
+/** Default page size for in-memory card lists (Explore / My Repos / Profile / Pages / Apps). */
 export const REPO_LIST_PAGE_SIZE = 48;
 
 /**

@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
 import {
   parseGitHubRepoSpec,
   repositoryUrlToReleasesHref,
 } from "@/lib/nostr/nip82-repository-links";
-import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
@@ -33,6 +34,10 @@ import {
   type Metadata,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
+import {
+  REPO_LIST_PAGE_SIZE,
+  clampVisibleCount,
+} from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
 
 import {
@@ -269,17 +274,44 @@ export function AppsDirectoryClient() {
     });
   }, []);
 
-  const mergeReleaseEvent = useCallback((event: NostrEventLike) => {
-    if (isPublisherBlocklisted(event.pubkey)) return;
-    if (event.id && deletedEventIdsRef.current.has(event.id)) return;
-    const r = parseSoftwareRelease(event);
-    if (!r) return;
-    const key = appDedupKey(r.pubkey, r.appId);
-    upsertReleaseInMap(releasesRef.current, key, r);
-    upsertReleaseInMap(releasesByAppIdRef.current, r.appId, r);
-    setReleasesByApp(new Map(releasesRef.current));
-    setReleasesByAppId(new Map(releasesByAppIdRef.current));
-  }, []);
+  const catalogFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const catalogNeedsAppsRef = useRef(false);
+  const catalogNeedsReleasesRef = useRef(false);
+
+  const flushCatalogUi = useCallback(() => {
+    catalogFlushTimerRef.current = null;
+    if (catalogNeedsAppsRef.current) {
+      catalogNeedsAppsRef.current = false;
+      refreshAppsFromRef();
+    }
+    if (catalogNeedsReleasesRef.current) {
+      catalogNeedsReleasesRef.current = false;
+      setReleasesByApp(new Map(releasesRef.current));
+      setReleasesByAppId(new Map(releasesByAppIdRef.current));
+    }
+  }, [refreshAppsFromRef]);
+
+  const scheduleCatalogFlush = useCallback(() => {
+    if (catalogFlushTimerRef.current != null) return;
+    catalogFlushTimerRef.current = setTimeout(flushCatalogUi, 280);
+  }, [flushCatalogUi]);
+
+  const mergeReleaseEvent = useCallback(
+    (event: NostrEventLike) => {
+      if (isPublisherBlocklisted(event.pubkey)) return;
+      if (event.id && deletedEventIdsRef.current.has(event.id)) return;
+      const r = parseSoftwareRelease(event);
+      if (!r) return;
+      const key = appDedupKey(r.pubkey, r.appId);
+      upsertReleaseInMap(releasesRef.current, key, r);
+      upsertReleaseInMap(releasesByAppIdRef.current, r.appId, r);
+      catalogNeedsReleasesRef.current = true;
+      scheduleCatalogFlush();
+    },
+    [scheduleCatalogFlush]
+  );
 
   const applyServerCatalog = useCallback(
     (data: {
@@ -339,21 +371,6 @@ export function AppsDirectoryClient() {
       return false;
     }
   }, [applyServerCatalog]);
-
-  const profilePubkeys = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of apps) {
-      if (/^[0-9a-f]{64}$/i.test(a.pubkey)) {
-        s.add(a.pubkey.toLowerCase());
-      }
-      for (const p of a.attributedPubkeys) {
-        s.add(p);
-      }
-    }
-    return Array.from(s);
-  }, [apps]);
-
-  const metadataMap = useContributorMetadata(profilePubkeys);
 
   const githubRepoKeys = useMemo(() => {
     const ordered: string[] = [];
@@ -509,7 +526,8 @@ export function AppsDirectoryClient() {
               }
               if (!isPublisherBlocklisted(event.pubkey)) {
                 rawAppEventsRef.current.push(event);
-                refreshAppsFromRef();
+                catalogNeedsAppsRef.current = true;
+                scheduleCatalogFlush();
               }
               finishLoading();
               return;
@@ -527,6 +545,10 @@ export function AppsDirectoryClient() {
     return () => {
       cancelled = true;
       clearTimeout(stopTimer);
+      if (catalogFlushTimerRef.current != null) {
+        clearTimeout(catalogFlushTimerRef.current);
+        catalogFlushTimerRef.current = null;
+      }
       unsub();
       assetSubUnsubsRef.current.forEach((u) => {
         try {
@@ -545,6 +567,7 @@ export function AppsDirectoryClient() {
     refreshAppsFromRef,
     pruneDeletedReleases,
     mergeReleaseEvent,
+    scheduleCatalogFlush,
   ]);
 
   useEffect(() => {
@@ -568,38 +591,11 @@ export function AppsDirectoryClient() {
     [releasesByApp, releasesByAppId]
   );
 
-  useEffect(() => {
-    if (!subscribe || apps.length === 0) return;
-    setAssetFetchSettled(false);
-    const ids = new Set<string>();
-    const hintRelays = new Set<string>();
-    for (const app of apps) {
-      const list = releasesForApp(app);
-      const best = pickLatestMainRelease(list);
-      if (!best) continue;
-      const { ids: assetIds, relayHints } =
-        assetIdsAndRelayHintsFromRelease(best);
-      for (const id of assetIds) {
-        if (id) ids.add(id);
-      }
-      for (const h of relayHints) hintRelays.add(h);
-    }
-    requestAssetBatch(Array.from(ids), Array.from(hintRelays));
-    const settleTimer = setTimeout(() => setAssetFetchSettled(true), 14000);
-    return () => clearTimeout(settleTimer);
-  }, [
-    subscribe,
-    apps,
-    releasesByApp,
-    releasesByAppId,
-    requestAssetBatch,
-    releasesForApp,
-  ]);
-
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [topicsFilterOpen, setTopicsFilterOpen] = useState(false);
   const [topicChipQuery, setTopicChipQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
 
   useEffect(() => {
     const fromUrl = searchParams?.get("q")?.trim();
@@ -611,12 +607,6 @@ export function AppsDirectoryClient() {
     let list = apps;
     if (q) {
       list = list.filter((a) => {
-        const pk = a.pubkey.toLowerCase();
-        const meta = metadataMap[pk];
-        const authorLabel = profileDisplayName(meta, shortNpub(a.pubkey));
-        const contribLabels = a.attributedPubkeys
-          .map((hex) => profileDisplayName(metadataMap[hex], shortNpub(hex)))
-          .join(" ");
         const hay = [
           a.name,
           a.summary,
@@ -626,9 +616,6 @@ export function AppsDirectoryClient() {
           a.content,
           a.license,
           shortNpub(a.pubkey),
-          authorLabel,
-          meta?.nip05,
-          contribLabels,
           ...a.topics,
           ...a.platformHints.map((h) => platformHintToLabel(h) ?? h),
         ]
@@ -647,14 +634,59 @@ export function AppsDirectoryClient() {
       );
     }
     return list;
+  }, [apps, query, activeTag, releasesByApp, releasesByAppId, assetsById]);
+
+  useEffect(() => {
+    setVisibleCount(REPO_LIST_PAGE_SIZE);
+  }, [query, activeTag]);
+
+  const shownCount = clampVisibleCount(visibleCount, filteredApps.length);
+  const visibleApps = useMemo(
+    () => filteredApps.slice(0, shownCount),
+    [filteredApps, shownCount]
+  );
+
+  const profilePubkeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of visibleApps) {
+      if (/^[0-9a-f]{64}$/i.test(a.pubkey)) {
+        s.add(a.pubkey.toLowerCase());
+      }
+      for (const p of a.attributedPubkeys) {
+        s.add(p);
+      }
+    }
+    return Array.from(s);
+  }, [visibleApps]);
+
+  const metadataMap = useContributorMetadata(profilePubkeys);
+
+  useEffect(() => {
+    if (!subscribe || visibleApps.length === 0) return;
+    setAssetFetchSettled(false);
+    const ids = new Set<string>();
+    const hintRelays = new Set<string>();
+    for (const app of visibleApps) {
+      const list = releasesForApp(app);
+      const best = pickLatestMainRelease(list);
+      if (!best) continue;
+      const { ids: assetIds, relayHints } =
+        assetIdsAndRelayHintsFromRelease(best);
+      for (const id of assetIds) {
+        if (id) ids.add(id);
+      }
+      for (const h of relayHints) hintRelays.add(h);
+    }
+    requestAssetBatch(Array.from(ids), Array.from(hintRelays));
+    const settleTimer = setTimeout(() => setAssetFetchSettled(true), 14000);
+    return () => clearTimeout(settleTimer);
   }, [
-    apps,
-    query,
-    activeTag,
+    subscribe,
+    visibleApps,
     releasesByApp,
     releasesByAppId,
-    assetsById,
-    metadataMap,
+    requestAssetBatch,
+    releasesForApp,
   ]);
 
   const platformFilterOptions = useMemo(
@@ -876,7 +908,7 @@ export function AppsDirectoryClient() {
         <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {loading && apps.length === 0
             ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
-            : filteredApps.map((app) => {
+            : visibleApps.map((app) => {
                 const key = appDedupKey(app.pubkey, app.appId);
                 const relList = releasesForApp(app);
                 const latest = pickLatestMainRelease(relList);
@@ -1154,6 +1186,12 @@ export function AppsDirectoryClient() {
                 );
               })}
         </ul>
+        <LoadMoreButton
+          visibleCount={shownCount}
+          totalCount={filteredApps.length}
+          pageSize={REPO_LIST_PAGE_SIZE}
+          onLoadMore={() => setVisibleCount((n) => n + REPO_LIST_PAGE_SIZE)}
+        />
 
         <div className="mt-12 flex flex-wrap gap-3 border-t border-[#383B42] pt-10">
           <Link

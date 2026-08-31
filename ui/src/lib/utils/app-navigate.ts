@@ -67,6 +67,15 @@ export function isExploreHref(href: string): boolean {
 }
 
 /**
+ * Hub lists that paint hundreds of cards and starve `startTransition`
+ * (same class as Code-tab setState storms).
+ */
+export function isHeavyDirectoryPath(pathname: string): boolean {
+  const path = canonicalPath(pathname || "");
+  return path === "/apps" || path === "/pages";
+}
+
+/**
  * Repo Code tab: `/{entity}/{repo}` with no further segment.
  * Excludes reserved app routes like `/settings/profile`.
  */
@@ -96,7 +105,10 @@ export function softNavHardFallbackMs(
   href: string,
   currentPathname: string
 ): number {
-  if (canonicalPath(href) === "/" && isRepoCodePath(currentPathname)) {
+  if (
+    canonicalPath(href) === "/" &&
+    (isRepoCodePath(currentPathname) || isHeavyDirectoryPath(currentPathname))
+  ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
   }
   return SOFT_NAV_HARD_FALLBACK_MS;
@@ -165,7 +177,7 @@ export function appNavigate(
     };
     // Code-tab setState (tree/README) starves startTransition; leave urgently
     // so the logo and tabs actually commit instead of waiting forever.
-    if (isRepoCodePath(startedOn)) {
+    if (isRepoCodePath(startedOn) || isHeavyDirectoryPath(startedOn)) {
       push();
     } else {
       startTransition(push);

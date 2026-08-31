@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS,
   SOFT_NAV_HARD_FALLBACK_MS,
+  isHeavyDirectoryPath,
   isRepoCodePath,
   shouldApplySoftNavHardFallback,
   shouldHardNavigate,
@@ -32,6 +33,15 @@ describe("appNavigate Code path detection", () => {
       shouldHardNavigate("/npub1a/cargo-limit/issues", "/npub1a/cargo-limit")
     ).toBe(false);
     expect(shouldHardNavigate("/explore", "/")).toBe(false);
+  });
+});
+
+describe("isHeavyDirectoryPath", () => {
+  it("treats /apps and /pages as heavy hubs", () => {
+    expect(isHeavyDirectoryPath("/apps")).toBe(true);
+    expect(isHeavyDirectoryPath("/pages")).toBe(true);
+    expect(isHeavyDirectoryPath("/explore")).toBe(false);
+    expect(isHeavyDirectoryPath(CODE_PATH)).toBe(false);
   });
 });
 
@@ -65,6 +75,15 @@ describe("shouldApplySoftNavHardFallback", () => {
 describe("softNavHardFallbackMs", () => {
   it("recovers home from Code in about a second, not eight", () => {
     expect(softNavHardFallbackMs("/", CODE_PATH)).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+  });
+
+  it("recovers home from Apps and Pages the same way", () => {
+    expect(softNavHardFallbackMs("/", "/apps")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/", "/pages")).toBe(
       SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
     );
   });

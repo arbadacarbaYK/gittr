@@ -19,7 +19,7 @@ If the public oracle returns **502**, older code treated that like “no path”
 
 ### `/apps` TrustBadge stampede (fixed Aug 2026)
 
-Logged-in `/apps` mounts a TrustBadge on every card (~hundreds). Without throttling that fan-out hit `/api/wot/distance` once per card whenever the public oracle was 502, flooding the browser console and our proxy.
+Logged-in `/apps` used to mount a TrustBadge on every card (~hundreds). Without throttling that fan-out hit `/api/wot/distance` once per card whenever the public oracle was 502, flooding the browser console and our proxy. The directory now paints 48 cards first (Load more), which also keeps the Home button from waiting ~8s on a starved soft navigation.
 
 Client `wot.ts` now: (1) coalesces in-flight requests for the same `(from,to)`, (2) caps concurrent oracle HTTP to 2, (3) opens a **60s circuit** after the first oracle failure so remaining badges return **Distance unknown** without more HTTP. Independent of NIP-46 / Amber bunker sockets.
 
