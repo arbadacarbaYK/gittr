@@ -55,6 +55,37 @@ flowchart LR
 
 **Addressing:** on disk, owner dirs are **hex pubkey**; HTTPS clone tags use **npub** via `npub → hex` symlinks on **`git.gittr.space`** (NIP-34-friendly). SSH accepts hex or npub.
 
+**Where the Code tab gets files:** latest live **30617** is the map; a forge **`source`** is the tree when present (stale files on this bridge are replaced); otherwise first non-empty `clone[]` listing. Write-up: gittr [FILE_FETCHING_INSIGHTS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main). This repo’s piece is the **on-disk mirror**: [file-fetch-flow.md](docs/file-fetch-flow.md).
+
+## gitnostr vs ngit
+
+They speak the same **[NIP-34](https://github.com/nostr-protocol/nips/blob/master/34.md)** language on relays (repo announcement **30617**, state **30618**, issues, PRs). They are **not the same software**.
+
+- **gitnostr** (this repo) is a **git server**. It keeps bare repos on disk and serves them over **SSH and HTTPS**. The matching website is [gittr](https://gittr.space).
+- **[ngit](https://ngit.dev)** is a **CLI** plus **`git-remote-nostr`**. You clone `nostr://…`; the actual git bytes live on **[GRASP](https://ngit.dev/grasp/)** hosts (HTTPS git and a relay on the same hostname). The matching website is [gitworkshop](https://gitworkshop.dev).
+- Running a GRASP host yourself means **ngit-grasp** (Rust), not this Go bridge. Same *kind* of job (store git, speak Nostr), different protocol and **no SSH**.
+
+**Name trap:** [gitnostr.com](https://gitnostr.com) is a public **GRASP** host on the ngit stack. It is **not** this repository.
+
+| | **gitnostr** (this bridge) | **ngit** + `git-remote-nostr` |
+| --- | --- | --- |
+| What it is | Git **server** you run (`git-nostr-bridge`, `git-nostr-ssh`, `gn`) | Git **client** on your laptop |
+| Day-to-day git | SSH / HTTPS (`git@git.gittr.space:<npub>/repo.git`) | `git clone nostr://<npub>/<repo>` |
+| Where files live | Bare repos on **your** host (e.g. `git.gittr.space`) | On the GRASP / `clone[]` hosts you listed (e.g. `relay.ngit.dev`) |
+| Who may push | SSH keys from Nostr kind **52**, plus HTTPS ACL | Signed kind **30618** (repo state); helper then pushes git over HTTPS |
+| Kind **52** SSH keys | **Yes** → `authorized_keys` | No |
+| Lightning paywall on `git push` | **Yes** (`push_cost_sats`) | No |
+| Watches relays and creates/deletes mirrors | **Yes** | No (it is not a server) |
+| `nostr://` remotes | Interop — install ngit’s helper if you want them | **Native** |
+| Pull requests | Normal git branches; issues/PRs in **gittr** | `pr/` branches → kinds **1618** / **1619**; `ngit send` / `ngit pr` |
+| Issues from the terminal | Limited (`gn`); rest is gittr | `ngit issue` |
+| Self-host the git store | This repo | Deploy **ngit-grasp**, or pick a public GRASP host |
+| Pairs with | **[gittr.space](https://gittr.space)** | **[gitworkshop.dev](https://gitworkshop.dev)** |
+
+Web-forge extras (GitHub import, Pages, bounties, `/apps`) live in **gittr**, not in this bridge. ngit extras (`ngit merge`, stacked PRs, GRASP-06 contributor push) live in the **ngit CLI**, not here.
+
+Day-to-day on gittr.space: **SSH/HTTPS to this bridge**, not the ngit binary. Install [git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) only if you want `nostr://` as well.
+
 Deeper internals: [Architecture](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=docs/ARCHITECTURE.md&branch=main) (more detailed than this map).
 
 **Docs on gittr:** [Architecture](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=docs/ARCHITECTURE.md&branch=main) · [README](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) · [SSH guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=SSH_GIT_GUIDE.md&branch=main)

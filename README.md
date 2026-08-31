@@ -61,7 +61,7 @@ The [awesome-nostr](https://github.com/aljazceru/awesome-nostr#git) list names s
 | Desktop                 | **[gitplaza](https://gitplaza.netlify.app)** ([Codeberg](https://codeberg.org/dluvian/gitplaza))       | Linux desktop NIP-34 client (Rust/Iced): repos, issues, **patches** (diffs), releases, kanban, inbox. **No git bridge**—clone tags + [GitWorkshop](https://gitworkshop.dev) / [ngit](https://ngit.dev) per upstream README |
 
 
-**gittr ≠ ngit:** gittr ships and runs **gitnostr**. **ngit** is Dan Conway’s CLI + `git-remote-nostr`. They interoperate on the **same Nostr events** (kinds 30617/30618, issues, PRs); day-to-day **git push/pull** on gittr.space uses **SSH/HTTPS to the bridge**, not the ngit binary.
+**gittr ≠ ngit:** gittr ships and runs **gitnostr**. **ngit** is Dan Conway’s CLI + `git-remote-nostr`. They interoperate on the **same Nostr events** (kinds 30617/30618, issues, PRs); day-to-day **git push/pull** on gittr.space uses **SSH/HTTPS to the bridge**, not the ngit binary. Feature-by-feature (SSH, paywall, `nostr://`, PRs): [gitnostr README — gitnostr vs ngit](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).
 
 ### More on [awesome-nostr § git](https://github.com/aljazceru/awesome-nostr#git)
 
