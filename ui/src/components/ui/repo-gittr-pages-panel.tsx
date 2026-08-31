@@ -48,7 +48,7 @@ type RepoGittrPagesPanelProps = {
   onAutoReadmeOnPushChange?: (value: boolean) => void;
   onAppendReadme: () => void | Promise<void>;
   issueDraft?: GittrPagesIssueDraftInput | null;
-  /** Owner: upload static files to Blossom (NIP-07) then publish kind 35128 to relays. */
+  /** Owner: upload static files to Blossom then publish kind 35128 (NIP-07 or Amber). */
   onPublishNamedSiteManifest?: () => void | Promise<void>;
   /** Disables chained README / refetch actions while push or refetch is in flight. */
   chainActionsDisabled?: boolean;
@@ -337,14 +337,11 @@ export function RepoGittrPagesPanel({
                 warning={gatewayListsSite === false}
                 title="Directory"
                 onClick={
-                  issueDraft &&
+                  isOwnerSession &&
+                  onPublishNamedSiteManifest &&
                   gatewayListsSite !== true &&
-                  !chainActionsDisabled
-                    ? openManifestIssue
-                    : onPublishNamedSiteManifest &&
-                      gatewayListsSite === false &&
-                      !chainActionsDisabled &&
-                      !manifestPublishBlocked
+                  !chainActionsDisabled &&
+                  !manifestPublishBlocked
                     ? () => {
                         void (async () => {
                           setManifestBusy(true);
@@ -355,6 +352,11 @@ export function RepoGittrPagesPanel({
                           }
                         })();
                       }
+                    : !isOwnerSession &&
+                      issueDraft &&
+                      gatewayListsSite !== true &&
+                      !chainActionsDisabled
+                    ? openManifestIssue
                     : undefined
                 }
                 disabled={
@@ -519,7 +521,7 @@ export function RepoGittrPagesPanel({
           <div className="space-y-2 rounded-xl border border-amber-900/20 bg-amber-950/[0.07] p-3">
             <SectionLabel>Manifest</SectionLabel>
             <div className="flex flex-col gap-2">
-              {issueDraft ? (
+              {issueDraft && !(isOwnerSession && onPublishNamedSiteManifest) ? (
                 <Button
                   type="button"
                   size="sm"

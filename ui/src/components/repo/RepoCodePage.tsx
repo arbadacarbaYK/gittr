@@ -125,8 +125,6 @@ import {
   repoDefaultBranch,
   resolveActiveRepoBranch,
   resolveContentBranch,
-  shouldApplyFetchedFileTree,
-  shouldMergeFetchedFileTree,
   shouldSyncBranchFromFetch,
   writeUserPickedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
@@ -177,7 +175,11 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import {
-  allowShrinkToSourceUpstreamTree,
+  localExtrasAreHollowOnly,
+  overlayLocalBodiesOnRemoteTree,
+} from "@/lib/repos/file-inline-body";
+import { prepareFetchedFileTree } from "@/lib/repos/incoming-file-tree";
+import {
   hasForgeUpstreamMirror,
   hasGithubUpstreamMirror,
   isSourceUpstreamFetchStatus,
@@ -1269,6 +1271,17 @@ export function RepoCodePage() {
     return repoIsOwner || currentRepo?.hasUnpushedEdits === true;
   }, [repoIsOwner]);
 
+  const overlayPathsForRepo = useCallback((): string[] => {
+    const storageRepo = resolveRepoStorageAlias(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    return Object.keys({
+      ...loadRepoOverrides(resolvedParams.entity, storageRepo),
+      ...loadRepoOverrides(resolvedParams.entity, resolvedParams.repo),
+    });
+  }, [resolvedParams.entity, resolvedParams.repo]);
+
   const persistRepoFiles = useCallback(
     (
       files: RepoFileEntry[],
@@ -1289,22 +1302,6 @@ export function RepoCodePage() {
       if (!ownerOrLocalEdits && isPrivateRepoListing) return;
       const isNetworkTreePersist =
         context.includes("[File Fetch]") || context === "[Refetch]";
-      // While the owner has unpushed local deletes/uploads, never replace
-      // gittr_files with a bridge/network listing (except explicit Refresh).
-      if (
-        currentRepo?.hasUnpushedEdits === true &&
-        context !== "[Refetch]" &&
-        opts?.allowShrink !== true &&
-        (context === "[Bridge Fetch]" ||
-          context === "[Bridge Fetch merged partial]" ||
-          context === "[File Fetch]" ||
-          context.startsWith("[File Fetch]"))
-      ) {
-        console.warn(
-          `⏭️ ${context} Skipping persist: repo has unpushed local edits`
-        );
-        return;
-      }
       let filesToSave: RepoFileEntry[] = files;
       try {
         const storageRepo = resolveRepoStorageAlias(
@@ -1334,6 +1331,18 @@ export function RepoCodePage() {
           existingIndexed,
           existingIndexedAlt
         );
+        const inMemoryFiles = Array.isArray(currentRepo?.files)
+          ? (currentRepo.files as RepoFileEntry[])
+          : [];
+        const existingWithMemory = mergeRepoFileIndexes(
+          existingMerged,
+          inMemoryFiles
+        );
+        const overridePaths = overlayPathsForRepo();
+        const hollowExtrasOnly = localExtrasAreHollowOnly(
+          existingWithMemory,
+          files
+        );
         if (
           !allowShrink &&
           (context === "[Bridge Fetch]" ||
@@ -1344,22 +1353,17 @@ export function RepoCodePage() {
           files.length > 0 &&
           files.length < existingCount
         ) {
-          // Keep the richer path set, but still overlay sizes/shas from the
-          // thinner listing (common after GitHub 502 → bridge-only tree).
-          const metaMerged = mergeRepoFileIndexes(existingMerged, files);
-          const prevSized = existingMerged.filter((f) => f.size != null).length;
-          const nextSized = metaMerged.filter((f) => f.size != null).length;
-          if (nextSized > prevSized) {
-            console.log(
-              `🔀 ${context} Overlaying sizes from thinner listing (${files.length}) onto kept tree (${existingCount}) → ${nextSized} sized`
-            );
-            filesToSave = metaMerged;
-          } else {
-            console.warn(
-              `⏭️ ${context} Skipping persist: got ${files.length} file(s) but storage/UI already has ${existingCount} (avoid wiping tree).`
-            );
-            return;
-          }
+          // Remote listing is the base. Keep real local uploads; drop hollow
+          // extras (empty dist/*) that used to block persist/README refresh.
+          filesToSave = overlayLocalBodiesOnRemoteTree(
+            files,
+            existingWithMemory,
+            overridePaths
+          ) as RepoFileEntry[];
+          console.log(
+            `🔀 ${context} Overlaying local bodies onto thinner listing (${files.length}) → ${filesToSave.length} file(s)` +
+              (hollowExtrasOnly ? " (dropped hollow extras)" : "")
+          );
         } else {
           const normPersistPath = (p: string) =>
             String(p || "")
@@ -1527,11 +1531,51 @@ export function RepoCodePage() {
     [
       clearForeignReposFromStorage,
       effectiveUserPubkey,
+      overlayPathsForRepo,
       resolvedParams.entity,
       resolvedParams.repo,
       repoIsOwner,
       setFilesTreeBump,
     ]
+  );
+
+  const prepareIncomingFetchTree = useCallback(
+    (
+      incoming: RepoFileEntry[],
+      incomingBranch: string,
+      sourceType?: string | null
+    ) => {
+      const storageRepo = resolveRepoStorageAlias(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const indexed = mergeRepoFileIndexes(
+        loadRepoFiles(resolvedParams.entity, storageRepo),
+        loadRepoFiles(resolvedParams.entity, resolvedParams.repo)
+      );
+      const inMemory = Array.isArray(repoDataRef.current?.files)
+        ? (repoDataRef.current.files as RepoFileEntry[])
+        : [];
+      const local = mergeRepoFileIndexes(inMemory, indexed);
+      return prepareFetchedFileTree({
+        incoming,
+        local,
+        overridePaths: overlayPathsForRepo(),
+        hasUnpushedEdits: repoDataRef.current?.hasUnpushedEdits === true,
+        sourceType,
+        sourceUrl: repoDataRef.current?.sourceUrl,
+        forkedFrom: repoDataRef.current?.forkedFrom,
+        clone: (repoDataRef.current as { clone?: string[] })?.clone,
+        incomingBranch,
+        activeBranch: resolveActiveRepoBranch(
+          repoDataRef.current,
+          selectedBranchRef.current
+        ),
+        existingNestedCount: nestedFilePathCount(local),
+        incomingNestedCount: nestedFilePathCount(incoming),
+      });
+    },
+    [overlayPathsForRepo, resolvedParams.entity, resolvedParams.repo]
   );
 
   const foreignAutoCleanupRef = useRef(false);
@@ -6169,67 +6213,26 @@ export function RepoCodePage() {
               status.files &&
               status.files.length > 0
             ) {
-              const currentFiles = repoDataRef.current?.files;
-              const indexedFiles = loadRepoFiles(
-                resolvedParams.entity,
-                resolveRepoStorageAlias(
-                  resolvedParams.entity,
-                  resolvedParams.repo
-                )
-              );
-              const indexedCount = indexedFiles.length;
-              const existingCount = Math.max(
-                Array.isArray(currentFiles) ? currentFiles.length : 0,
-                indexedCount
-              );
-              const existingNested = Math.max(
-                nestedFilePathCount(currentFiles),
-                nestedFilePathCount(indexedFiles)
-              );
               const branchFromFetch =
                 status.resolvedBranch ||
                 resolveActiveRepoBranch(
                   repoDataRef.current,
                   selectedBranchRef.current
                 );
-              const activeBranch = resolveActiveRepoBranch(
-                repoDataRef.current,
-                selectedBranchRef.current
-              );
               const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchFromFetch}:${status.files.length}`;
               if (lastAppliedFileTreeKeyRef.current === applyKey) {
                 return;
               }
-              // Forge listings may shrink (deleted upstream). GRASP partials must not.
-              const allowShrink = allowShrinkToSourceUpstreamTree({
-                hasUnpushedEdits:
-                  repoDataRef.current?.hasUnpushedEdits === true,
-                sourceType: status.source?.type,
-                sourceUrl: repoDataRef.current?.sourceUrl,
-                forkedFrom: repoDataRef.current?.forkedFrom,
-                clone: (repoDataRef.current as { clone?: string[] })?.clone,
-              });
-              // Never replace a richer local/index tree with a smaller GRASP/clone
-              // listing — that wiped folder uploads after Push + hard refresh.
-              const shouldApplyTree = shouldApplyFetchedFileTree(
+              const prepared = prepareIncomingFetchTree(
+                status.files as RepoFileEntry[],
                 branchFromFetch,
-                existingCount,
-                activeBranch,
-                status.files.length,
-                {
-                  allowShrink,
-                  existingNestedCount: existingNested,
-                  incomingNestedCount: nestedFilePathCount(status.files),
-                }
+                status.source?.type
               );
-              if (
-                !shouldApplyTree &&
-                shouldMergeFetchedFileTree(existingCount, status.files.length, {
-                  allowShrink,
-                })
-              ) {
+              const shouldApplyTree = prepared.apply;
+              const filesToApply = prepared.files as RepoFileEntry[];
+              if (!shouldApplyTree) {
                 console.warn(
-                  `⏭️ [File Fetch] Keeping richer local tree (${existingCount}) instead of smaller remote (${status.files.length}) from ${status.source.displayName}`
+                  `⏭️ [File Fetch] Keeping local tree instead of remote (${status.files.length}) from ${status.source.displayName}`
                 );
               }
 
@@ -6245,9 +6248,9 @@ export function RepoCodePage() {
                   )
                 );
                 console.log(
-                  `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
+                  `🚀 [File Fetch] First source succeeded! Updating files immediately: ${filesToApply.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
                 );
-                setBridgeFiles(status.files);
+                setBridgeFiles(filesToApply);
                 setFilesTreeBump((b) => b + 1);
                 if (
                   status.listing === "shallow" ||
@@ -6272,7 +6275,7 @@ export function RepoCodePage() {
                     const updated = prev
                       ? {
                           ...prev,
-                          files: status.files,
+                          files: filesToApply,
                           filesBranch: branchFromFetch,
                           clone: mergedClone,
                           // CRITICAL: Store successful sources as array for fallback during file opening
@@ -6292,7 +6295,7 @@ export function RepoCodePage() {
                         }
                       : {
                           // Create minimal repoData if it doesn't exist yet
-                          files: status.files,
+                          files: filesToApply,
                           filesBranch: branchFromFetch,
                           defaultBranch: "main",
                           clone: mergedClone,
@@ -6411,17 +6414,6 @@ export function RepoCodePage() {
             `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs (immediate fetch)`
           );
           // CRITICAL: Only update if we haven't already updated from the first success callback
-          const currentFiles = repoDataRef.current?.files;
-          const indexedFiles = loadRepoFiles(
-            resolvedParams.entity,
-            resolveRepoStorageAlias(resolvedParams.entity, resolvedParams.repo)
-          );
-          const indexedCount = indexedFiles.length;
-          const existingCount = Math.max(
-            Array.isArray(currentFiles) ? currentFiles.length : 0,
-            indexedCount
-          );
-          // Collect all successful sources for fallback during file opening
           const successfulStatuses = statuses.filter(
             (s: any) => s.status === "success" && s.files && s.files.length > 0
           );
@@ -6444,37 +6436,17 @@ export function RepoCodePage() {
             !!sourceSuccess &&
             Array.isArray(sourceSuccess.files) &&
             sourceSuccess.files.length === files.length;
-          const allowShrink =
-            filesFromSource &&
-            allowShrinkToSourceUpstreamTree({
-              hasUnpushedEdits: repoDataRef.current?.hasUnpushedEdits === true,
-              sourceType: sourceSuccess?.source?.type,
-              sourceUrl: repoDataRef.current?.sourceUrl,
-              forkedFrom: repoDataRef.current?.forkedFrom,
-            });
-          // Never let a smaller GRASP listing wipe a richer local/folder tree.
-          // Forge + no local edits may shrink (deleted files on GitHub).
-          const shouldReplaceFileTree = shouldApplyFetchedFileTree(
+          const preparedFinalize = prepareIncomingFetchTree(
+            files as RepoFileEntry[],
             branchFromFetch,
-            existingCount,
-            activeBranch,
-            files.length,
-            {
-              allowShrink,
-              existingNestedCount: Math.max(
-                nestedFilePathCount(currentFiles),
-                nestedFilePathCount(indexedFiles)
-              ),
-              incomingNestedCount: nestedFilePathCount(files),
-            }
+            filesFromSource ? sourceSuccess?.source?.type : "nostr-git"
           );
-          if (
-            !shouldReplaceFileTree &&
-            existingCount > 0 &&
-            files.length < existingCount
-          ) {
+          const allowShrink = preparedFinalize.allowShrink;
+          const shouldReplaceFileTree = preparedFinalize.apply;
+          const filesToApply = preparedFinalize.files as RepoFileEntry[];
+          if (!shouldReplaceFileTree) {
             console.warn(
-              `⏭️ [File Fetch] Finalize: keeping richer local tree (${existingCount}) instead of remote (${files.length})`
+              `⏭️ [File Fetch] Finalize: keeping local tree instead of remote (${files.length})`
             );
           }
 
@@ -6495,7 +6467,7 @@ export function RepoCodePage() {
               prev
                 ? {
                     ...prev,
-                    files,
+                    files: filesToApply,
                     ...(firstResolvedBranch
                       ? { filesBranch: firstResolvedBranch }
                       : {}),
@@ -6574,7 +6546,7 @@ export function RepoCodePage() {
 
           // Only persist when we actually replaced the in-memory tree
           if (shouldReplaceFileTree) {
-            persistRepoFiles(files, "[File Fetch]", { allowShrink });
+            persistRepoFiles(filesToApply, "[File Fetch]", { allowShrink });
           }
 
           // Update localStorage - only store fileCount, not full files array —
@@ -9263,70 +9235,26 @@ export function RepoCodePage() {
                           status.files &&
                           status.files.length > 0
                         ) {
-                          const currentFiles = repoDataRef.current?.files;
-                          const indexedFiles = loadRepoFiles(
-                            resolvedParams.entity,
-                            resolveRepoStorageAlias(
-                              resolvedParams.entity,
-                              resolvedParams.repo
-                            )
-                          );
-                          const indexedCount = indexedFiles.length;
-                          const existingCount = Math.max(
-                            Array.isArray(currentFiles)
-                              ? currentFiles.length
-                              : 0,
-                            indexedCount
-                          );
                           const branchFromFetch =
                             status.resolvedBranch ||
                             resolveActiveRepoBranch(
                               repoDataRef.current,
                               selectedBranchRef.current
                             );
-                          const activeBranch = resolveActiveRepoBranch(
-                            repoDataRef.current,
-                            selectedBranchRef.current
-                          );
                           const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchFromFetch}:${status.files.length}`;
                           if (lastAppliedFileTreeKeyRef.current === applyKey) {
                             return;
                           }
-                          const allowShrink = allowShrinkToSourceUpstreamTree({
-                            hasUnpushedEdits:
-                              repoDataRef.current?.hasUnpushedEdits === true,
-                            sourceType: status.source?.type,
-                            sourceUrl: repoDataRef.current?.sourceUrl,
-                            forkedFrom: repoDataRef.current?.forkedFrom,
-                            clone: (repoDataRef.current as { clone?: string[] })
-                              ?.clone,
-                          });
-                          const shouldApplyTree = shouldApplyFetchedFileTree(
+                          const prepared = prepareIncomingFetchTree(
+                            status.files as RepoFileEntry[],
                             branchFromFetch,
-                            existingCount,
-                            activeBranch,
-                            status.files.length,
-                            {
-                              allowShrink,
-                              existingNestedCount: Math.max(
-                                nestedFilePathCount(currentFiles),
-                                nestedFilePathCount(indexedFiles)
-                              ),
-                              incomingNestedCount: nestedFilePathCount(
-                                status.files
-                              ),
-                            }
+                            status.source?.type
                           );
-                          if (
-                            !shouldApplyTree &&
-                            shouldMergeFetchedFileTree(
-                              existingCount,
-                              status.files.length,
-                              { allowShrink }
-                            )
-                          ) {
+                          const shouldApplyTree = prepared.apply;
+                          const filesToApply = prepared.files as RepoFileEntry[];
+                          if (!shouldApplyTree) {
                             console.warn(
-                              `⏭️ [File Fetch] Keeping richer local tree (${existingCount}) instead of smaller remote (${status.files.length}) from ${status.source.displayName}`
+                              `⏭️ [File Fetch] Keeping local tree instead of remote (${status.files.length}) from ${status.source.displayName}`
                             );
                           }
 
@@ -9342,9 +9270,9 @@ export function RepoCodePage() {
                               )
                             );
                             console.log(
-                              `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
+                              `🚀 [File Fetch] First source succeeded! Updating files immediately: ${filesToApply.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
                             );
-                            setBridgeFiles(status.files);
+                            setBridgeFiles(filesToApply);
                             setFilesTreeBump((b) => b + 1);
                             if (
                               status.listing === "shallow" ||
@@ -9364,7 +9292,7 @@ export function RepoCodePage() {
                               const updated = prev
                                 ? {
                                     ...prev,
-                                    files: status.files,
+                                    files: filesToApply,
                                     filesBranch: branchFromFetch,
                                     // CRITICAL: Store successful sources as array for fallback during file opening
                                     successfulSources: [
@@ -9395,7 +9323,7 @@ export function RepoCodePage() {
                                   }
                                 : {
                                     // Create minimal repoData if it doesn't exist yet
-                                    files: status.files,
+                                    files: filesToApply,
                                     filesBranch: branchFromFetch,
                                     defaultBranch: "main",
                                     successfulSources: [
@@ -9510,19 +9438,6 @@ export function RepoCodePage() {
                       `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs`
                     );
                     // Only update if we haven't already updated from the first success callback
-                    const currentFiles = repoDataRef.current?.files;
-                    const indexedFilesEose = loadRepoFiles(
-                      resolvedParams.entity,
-                      resolveRepoStorageAlias(
-                        resolvedParams.entity,
-                        resolvedParams.repo
-                      )
-                    );
-                    const existingCountEose = Math.max(
-                      Array.isArray(currentFiles) ? currentFiles.length : 0,
-                      indexedFilesEose.length
-                    );
-                    // Collect all successful sources for fallback during file opening
                     const successfulStatuses = statuses.filter(
                       (s) =>
                         s.status === "success" && s.files && s.files.length > 0
@@ -9538,15 +9453,6 @@ export function RepoCodePage() {
                       !!sourceSuccessEose &&
                       Array.isArray(sourceSuccessEose.files) &&
                       sourceSuccessEose.files.length === files.length;
-                    const allowShrinkEose =
-                      filesFromSourceEose &&
-                      allowShrinkToSourceUpstreamTree({
-                        hasUnpushedEdits:
-                          repoDataRef.current?.hasUnpushedEdits === true,
-                        sourceType: sourceSuccessEose?.source?.type,
-                        sourceUrl: repoDataRef.current?.sourceUrl,
-                        forkedFrom: repoDataRef.current?.forkedFrom,
-                      });
                     const activeBranchEose = resolveActiveRepoBranch(
                       repoDataRef.current,
                       selectedBranchRef.current
@@ -9554,28 +9460,19 @@ export function RepoCodePage() {
                     const branchFromFetchEose =
                       successfulStatuses.find((s) => s.resolvedBranch)
                         ?.resolvedBranch || activeBranchEose;
-                    const shouldReplaceEose = shouldApplyFetchedFileTree(
+                    const preparedEose = prepareIncomingFetchTree(
+                      files as RepoFileEntry[],
                       branchFromFetchEose,
-                      existingCountEose,
-                      activeBranchEose,
-                      files.length,
-                      {
-                        allowShrink: allowShrinkEose,
-                        existingNestedCount: Math.max(
-                          nestedFilePathCount(currentFiles),
-                          nestedFilePathCount(indexedFilesEose)
-                        ),
-                        incomingNestedCount: nestedFilePathCount(files),
-                      }
+                      filesFromSourceEose
+                        ? sourceSuccessEose?.source?.type
+                        : "nostr-git"
                     );
+                    const allowShrinkEose = preparedEose.allowShrink;
+                    const shouldReplaceEose = preparedEose.apply;
+                    const filesToApplyEose =
+                      preparedEose.files as RepoFileEntry[];
 
-                    if (
-                      shouldReplaceEose &&
-                      (!currentFiles ||
-                        !Array.isArray(currentFiles) ||
-                        currentFiles.length === 0 ||
-                        allowShrinkEose)
-                    ) {
+                    if (shouldReplaceEose) {
                       const successfulSourcesArray = successfulStatuses.map(
                         (s) => ({
                           source: s.source,
@@ -9594,7 +9491,7 @@ export function RepoCodePage() {
                         prev
                           ? {
                               ...prev,
-                              files,
+                              files: filesToApplyEose,
                               ...(firstResolvedBranch
                                 ? { filesBranch: firstResolvedBranch }
                                 : {}),
@@ -9677,7 +9574,7 @@ export function RepoCodePage() {
 
                     // Persist forge shrink / empty-local replace; never persist a GRASP shrink over fat cache
                     if (shouldReplaceEose) {
-                      persistRepoFiles(files, "[File Fetch]", {
+                      persistRepoFiles(filesToApplyEose, "[File Fetch]", {
                         allowShrink: allowShrinkEose,
                       });
                     }
@@ -10046,56 +9943,19 @@ export function RepoCodePage() {
                     Array.isArray(status.files) &&
                     status.files.length > 0
                   ) {
-                    const currentFiles = repoDataRef.current?.files;
-                    const indexedFiles = loadRepoFiles(
-                      resolvedParams.entity,
-                      resolveRepoStorageAlias(
-                        resolvedParams.entity,
-                        resolvedParams.repo
-                      )
-                    );
-                    const indexedCount = indexedFiles.length;
-                    const existingCount = Math.max(
-                      Array.isArray(currentFiles) ? currentFiles.length : 0,
-                      indexedCount
-                    );
                     const branchFromFetch =
                       status.resolvedBranch ||
                       resolveActiveRepoBranch(
                         repoDataRef.current,
                         selectedBranchRef.current
                       );
-                    const activeBranch = resolveActiveRepoBranch(
-                      repoDataRef.current,
-                      selectedBranchRef.current
+                    const prepared = prepareIncomingFetchTree(
+                      status.files as RepoFileEntry[],
+                      branchFromFetch,
+                      status.source?.type
                     );
-                    const allowShrink = allowShrinkToSourceUpstreamTree({
-                      hasUnpushedEdits:
-                        repoDataRef.current?.hasUnpushedEdits === true,
-                      sourceType: status.source?.type,
-                      sourceUrl: repoDataRef.current?.sourceUrl,
-                      forkedFrom: repoDataRef.current?.forkedFrom,
-                      clone: (repoDataRef.current as { clone?: string[] })
-                        ?.clone,
-                    });
-                    if (
-                      shouldApplyFetchedFileTree(
-                        branchFromFetch,
-                        existingCount,
-                        activeBranch,
-                        status.files.length,
-                        {
-                          allowShrink,
-                          existingNestedCount: Math.max(
-                            nestedFilePathCount(currentFiles),
-                            nestedFilePathCount(indexedFiles)
-                          ),
-                          incomingNestedCount: nestedFilePathCount(
-                            status.files
-                          ),
-                        }
-                      )
-                    ) {
+                    if (prepared.apply) {
+                      const filesToApply = prepared.files as RepoFileEntry[];
                       // CRITICAL: Extract sourceUrl from successful source for GitHub/GitLab/Codeberg
                       // This allows fetchGithubRaw to fetch individual file content
                       let sourceUrlToSet: string | undefined = undefined;
@@ -10114,13 +9974,13 @@ export function RepoCodePage() {
                       }
 
                       console.log(
-                        `🚀 [File Fetch] Immediately updating repoData with ${status.files.length} files from ${status.source.displayName}`
+                        `🚀 [File Fetch] Immediately updating repoData with ${filesToApply.length} files from ${status.source.displayName}`
                       );
                       setRepoData((prev: any) => {
                         const updated = prev
                           ? {
                               ...prev,
-                              files: status.files,
+                              files: filesToApply,
                               filesBranch: branchFromFetch,
                               clone: mergeDiscoverableCloneUrls(
                                 prev.clone,
@@ -10133,7 +9993,7 @@ export function RepoCodePage() {
                                 prev.sourceUrl,
                             }
                           : {
-                              files: status.files,
+                              files: filesToApply,
                               filesBranch: branchFromFetch,
                               sourceUrl: sourceUrlToSet,
                               clone: mergeDiscoverableCloneUrls([], cloneUrls),
@@ -10144,7 +10004,7 @@ export function RepoCodePage() {
                       if (repoDataRef.current) {
                         repoDataRef.current = {
                           ...repoDataRef.current,
-                          files: status.files,
+                          files: filesToApply,
                           filesBranch: branchFromFetch,
                           clone: mergeDiscoverableCloneUrls(
                             repoDataRef.current.clone,
@@ -22706,6 +22566,34 @@ export function RepoCodePage() {
                                                 e
                                               );
                                             }
+                                            try {
+                                              const storageRepoRm =
+                                                resolveRepoStorageAlias(
+                                                  resolvedParams.entity,
+                                                  resolvedParams.repo
+                                                );
+                                              const mergedOverrides = {
+                                                ...loadRepoOverrides(
+                                                  resolvedParams.entity,
+                                                  storageRepoRm
+                                                ),
+                                                ...loadRepoOverrides(
+                                                  resolvedParams.entity,
+                                                  resolvedParams.repo
+                                                ),
+                                                "README.md": nextRm,
+                                              };
+                                              saveRepoOverrides(
+                                                resolvedParams.entity,
+                                                storageRepoRm,
+                                                mergedOverrides
+                                              );
+                                            } catch (e) {
+                                              console.error(
+                                                "Failed to store README override before push",
+                                                e
+                                              );
+                                            }
                                           }
                                         }
                                       }
@@ -23223,6 +23111,24 @@ export function RepoCodePage() {
                                         repo as { defaultBranch: string }
                                       ).defaultBranch.trim()) ||
                                     "main";
+                                  const signer = await resolveNostrSigner({
+                                    remoteSigner,
+                                  });
+                                  if (!signer) {
+                                    await appAlert(
+                                      NO_SIGNING_METHOD_MESSAGE,
+                                      "gittr Pages"
+                                    );
+                                    return;
+                                  }
+                                  try {
+                                    await remoteSigner?.ensureRpcHealthy?.();
+                                  } catch (warmErr) {
+                                    console.warn(
+                                      "[gittr Pages manifest] Remote signer warm:",
+                                      warmErr
+                                    );
+                                  }
                                   const r = await publishNamedSiteManifest({
                                     entity: resolvedParams.entity,
                                     repo: resolvedParams.repo,
@@ -23236,6 +23142,8 @@ export function RepoCodePage() {
                                     publish,
                                     subscribe,
                                     defaultRelays,
+                                    signEvent: signer.signEvent,
+                                    getPublicKey: signer.getPublicKey,
                                     onProgress: (m) =>
                                       console.log(
                                         `[gittr Pages manifest] ${m}`

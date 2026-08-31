@@ -52,6 +52,8 @@ import {
 import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
 import { syncBridgeFromSource } from "./sync-bridge-from-source";
 
+export { formatPushRepoSuccessAlert } from "./push-repo-success-alert";
+
 function resolveWssRelayForGitHost(domain: string): string {
   const host = domain.trim().toLowerCase().replace(/\/+$/, "");
   return host.startsWith("wss://") ? host.replace(/\/+$/, "") : `wss://${host}`;
@@ -198,41 +200,9 @@ export type PushRepoResult = {
   confirmed: boolean;
   error?: string;
   filesForBridge?: BridgeFilePayload[];
+  /** Paths skipped because no bytes were available (hollow index / 404). */
+  excludedFromPush?: string[];
 };
-
-/** Shared success/partial popup copy for repo page and My Repositories. */
-export function formatPushRepoSuccessAlert(result: {
-  eventId?: string;
-  stateEventId?: string;
-  confirmed: boolean;
-}): string {
-  const announcementId = result.eventId?.slice(0, 16) || "unknown";
-  if (result.confirmed && result.stateEventId) {
-    const stateId = result.stateEventId.slice(0, 16) || "unknown";
-    return (
-      `✅ Repository pushed to Nostr!\n\n` +
-      `✅ Announcement event (30617): ${announcementId}...\n` +
-      `✅ State event (30618): ${stateId}...\n\n` +
-      `Both events published and confirmed.\n\n` +
-      `Note: older PR/issue events on relays are still there unchanged. If you changed files before this push, reopen Nostr PRs in gittr to be sure they still match the repo you just published.`
-    );
-  }
-  if (result.stateEventId) {
-    const stateId = result.stateEventId.slice(0, 16) || "unknown";
-    return (
-      `⚠️ Repository published but awaiting confirmation.\n\n` +
-      `✅ Announcement event (30617): ${announcementId}...\n` +
-      `✅ State event (30618): ${stateId}...\n\n` +
-      `Both events published - confirmation may take a few moments.\n\n` +
-      `Note: older PR/issue events on relays are unchanged—reopen Nostr PRs if file changes might make them stale.`
-    );
-  }
-  return (
-    `⚠️ Repository partially published.\n\n` +
-    `Event ID: ${announcementId}...\n\n` +
-    `Second signature may not have completed. Please try pushing again.`
-  );
-}
 
 /**
  * Push repository to Nostr with all current state
@@ -1031,6 +1001,7 @@ export async function pushRepoToNostr(
     const bridgeFilesMap = new Map<string, BridgeFilePayload>();
     const filesForBridge: any[] = [];
     const filesNeedingContent: any[] = [];
+    const excludedFromPush: string[] = [];
 
     if (!deferToBridgeSourceClone) {
       const setBridgeEntry = (
@@ -1578,6 +1549,9 @@ export async function pushRepoToNostr(
               }
 
               // If we still couldn't fetch, exclude the file
+              if (file?.path) {
+                excludedFromPush.push(String(file.path));
+              }
               console.warn(
                 `⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`
               );
@@ -3389,6 +3363,7 @@ export async function pushRepoToNostr(
               error:
                 "State event signature cancelled - both announcement and state events are required per NIP-34",
               filesForBridge,
+              excludedFromPush,
             };
           }
           throw signError; // Re-throw if not a cancellation
@@ -3681,6 +3656,7 @@ export async function pushRepoToNostr(
         stateEventId: stateResult.eventId, // State event ID (for verification)
         confirmed: result.confirmed && stateResult.confirmed, // Both events must be confirmed
         filesForBridge,
+        excludedFromPush,
       };
     } else {
       // First event was published but we couldn't continue to second signature
@@ -3706,6 +3682,7 @@ export async function pushRepoToNostr(
         eventId: result.eventId,
         confirmed: false,
         filesForBridge,
+        excludedFromPush,
       };
     }
   } catch (error: any) {

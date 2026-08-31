@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import {
   authorSearchTokens,
   cardAuthorPrimary,
   cardAuthorTooltip,
 } from "@/lib/gittr-pages/author-card-label";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
+import {
+  REPO_LIST_PAGE_SIZE,
+  clampVisibleCount,
+} from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
 
 import { ExternalLink, Globe, Loader2, Search, Zap } from "lucide-react";
@@ -20,6 +25,8 @@ type ApiPayload = {
   manifestsUrl?: string;
   source?: "json" | "html";
   sites: GatewayStatusSiteRow[];
+  total?: number;
+  hasMore?: boolean;
   meta: { siteCount: number | null; generatedAt: string | null };
   error?: string;
 };
@@ -40,22 +47,57 @@ function CardSkeleton() {
 
 export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
   const [loading, setLoading] = useState(true);
+  const [hydrating, setHydrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<ApiPayload | null>(null);
   const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch("/api/gittr-pages/status-sites")
+    setVisibleCount(REPO_LIST_PAGE_SIZE);
+
+    const apply = (data: ApiPayload) => {
+      if (cancelled) return;
+      setPayload(data);
+    };
+
+    // First page only so cards can paint without waiting on ~2000 rows.
+    fetch(`/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}`)
       .then(async (res) => {
         const data = (await res.json()) as ApiPayload & { error?: string };
         if (!res.ok) {
           throw new Error(data.error || `Request failed (${res.status})`);
         }
+        apply(data);
         if (!cancelled) {
-          setPayload(data);
+          setLoading(false);
+        }
+        if (data.hasMore === false) {
+          return;
+        }
+        if (!cancelled) {
+          setHydrating(true);
+        }
+        try {
+          const rest = await fetch("/api/gittr-pages/status-sites");
+          const full = (await rest.json()) as ApiPayload & { error?: string };
+          if (!rest.ok) {
+            console.warn(
+              "[pages] Full directory hydrate failed:",
+              full.error || rest.status
+            );
+            return;
+          }
+          apply(full);
+        } catch (hydrateErr) {
+          console.warn("[pages] Full directory hydrate failed:", hydrateErr);
+        } finally {
+          if (!cancelled) {
+            setHydrating(false);
+          }
         }
       })
       .catch((e: unknown) => {
@@ -66,12 +108,17 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          setHydrating(false);
         }
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setVisibleCount(REPO_LIST_PAGE_SIZE);
+  }, [query]);
 
   const filtered = useMemo(() => {
     const sites = payload?.sites ?? [];
@@ -94,9 +141,13 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
     });
   }, [payload, query]);
 
+  const shownCount = clampVisibleCount(visibleCount, filtered.length);
+  const visible = filtered.slice(0, shownCount);
+
   const base = pagesBase.replace(/\/$/, "");
   const statusPageUrl = `${base}/status`;
-  const count = payload?.meta?.siteCount ?? payload?.sites?.length;
+  const count =
+    payload?.meta?.siteCount ?? payload?.total ?? payload?.sites?.length;
 
   return (
     <div className="min-h-[70vh]">
@@ -214,6 +265,12 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             Loading from gateway…
           </div>
         )}
+        {!loading && hydrating ? (
+          <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading the rest of the directory…
+          </div>
+        ) : null}
 
         {error && (
           <div
@@ -227,13 +284,16 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         {!loading && !error && filtered.length === 0 && (
           <p className="text-sm text-gray-500">
             No sites match your search. Clear the box to see the full list.
+            {hydrating
+              ? " Still loading remaining sites — try again in a moment."
+              : ""}
           </p>
         )}
 
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
-            : filtered.map((s) => {
+            : visible.map((s) => {
                 const authorPrimary = cardAuthorPrimary(s);
                 const authorTip = cardAuthorTooltip(s);
                 return (
@@ -300,6 +360,16 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                 );
               })}
         </ul>
+
+        {!loading && !error ? (
+          <LoadMoreButton
+            visibleCount={shownCount}
+            totalCount={filtered.length}
+            pageSize={REPO_LIST_PAGE_SIZE}
+            onLoadMore={() => setVisibleCount((n) => n + REPO_LIST_PAGE_SIZE)}
+            className="mt-8 flex justify-center"
+          />
+        ) : null}
 
         <div className="mt-12 flex flex-wrap gap-3 border-t border-[#383B42] pt-10">
           <Link

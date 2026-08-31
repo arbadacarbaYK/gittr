@@ -17,7 +17,11 @@ import {
   resolveRepoStorageAlias,
 } from "@/lib/repos/storage";
 
-import { getEventHash } from "nostr-tools";
+import {
+  type Event as NostrEvent,
+  type UnsignedEvent,
+  getEventHash,
+} from "nostr-tools";
 
 /** Must stay ≤ `MAX_BYTES` in `blossom-proxy-upload` (currently 4 MiB per POST body). */
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -506,6 +510,12 @@ export type PublishNamedSiteManifestOptions = {
   ) => () => void;
   defaultRelays: string[];
   onProgress?: (message: string) => void;
+  /**
+   * Amber / NIP-46 / nsec via `resolveNostrSigner`. When omitted, falls back
+   * to `window.nostr` (NIP-07) only.
+   */
+  signEvent?: (event: UnsignedEvent | NostrEvent) => Promise<NostrEvent>;
+  getPublicKey?: () => Promise<string>;
 };
 
 export type PublishNamedSiteManifestResult =
@@ -520,8 +530,9 @@ export type PublishNamedSiteManifestResult =
   | { ok: false; error: string };
 
 /**
- * Uploads static site files to Blossom (via same-origin proxy + NIP-07 kind 24242),
- * then signs and publishes NIP-5A named-site manifest kind 35128 with NIP-07.
+ * Uploads static site files to Blossom (via same-origin proxy + kind 24242),
+ * then signs and publishes NIP-5A named-site manifest kind 35128.
+ * Signing uses `signEvent`/`getPublicKey` when provided (Amber/NIP-46), else NIP-07.
  */
 export async function publishNamedSiteManifest(
   opts: PublishNamedSiteManifestOptions
@@ -540,6 +551,8 @@ export async function publishNamedSiteManifest(
     subscribe,
     defaultRelays,
     onProgress,
+    signEvent: signEventOpt,
+    getPublicKey: getPublicKeyOpt,
   } = opts;
 
   const defaultBranch =
@@ -550,11 +563,19 @@ export async function publishNamedSiteManifest(
   if (typeof window === "undefined") {
     return { ok: false, error: "Publish manifest runs in the browser only." };
   }
-  if (!window.nostr?.signEvent || !window.nostr?.getPublicKey) {
-    return { ok: false, error: "NIP-07 signer not available in this browser." };
+
+  const getPublicKey =
+    getPublicKeyOpt || window.nostr?.getPublicKey?.bind(window.nostr);
+  const signEvent = signEventOpt || window.nostr?.signEvent?.bind(window.nostr);
+  if (!getPublicKey || !signEvent) {
+    return {
+      ok: false,
+      error:
+        "No signing method available for Pages. Use a NIP-07 extension, pair Amber (NIP-46), or configure a key in Settings.",
+    };
   }
 
-  const signerPk = (await window.nostr.getPublicKey()).toLowerCase();
+  const signerPk = (await getPublicKey()).toLowerCase();
   if (signerPk !== ownerPubkeyHex.toLowerCase()) {
     return {
       ok: false,
@@ -693,7 +714,7 @@ export async function publishNamedSiteManifest(
   auth.id = getEventHash(auth);
   let signedAuth: typeof auth;
   try {
-    signedAuth = (await window.nostr.signEvent(auth)) as typeof auth;
+    signedAuth = (await signEvent(auth)) as typeof auth;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
@@ -846,7 +867,7 @@ export async function publishNamedSiteManifest(
 
   onProgress?.("Signing NIP-5A manifest (kind 35128)…");
   try {
-    manifest = (await window.nostr.signEvent(manifest)) as typeof manifest;
+    manifest = (await signEvent(manifest)) as typeof manifest;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `Manifest signing cancelled or failed: ${msg}` };
@@ -900,7 +921,7 @@ export async function publishNamedSiteManifest(
     };
     serverListEvent.id = getEventHash(serverListEvent);
     try {
-      const signedServerList = (await window.nostr.signEvent(
+      const signedServerList = (await signEvent(
         serverListEvent
       )) as typeof serverListEvent;
       const serverListPub = await publishWithConfirmation(

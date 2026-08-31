@@ -73,7 +73,7 @@ function upstreamContentType(candidate: unknown): string {
 
 /**
  * Server-side PUT to the configured Blossom origin (avoids browser CORS to the CDN).
- * Client must sign kind 24242 with NIP-07 and send the full signed event + body + sha256.
+ * Client must send a signed kind 24242 (NIP-07 or Amber/NIP-46) plus body + sha256.
  */
 export async function POST(req: Request) {
   let body: {
@@ -186,7 +186,10 @@ export async function POST(req: Request) {
     // Forward 4xx/5xx from Blossom so the client can distinguish 401 vs 503 vs 502.
     const outStatus = st >= 400 && st < 600 ? st : 502;
     let hint: string | undefined;
-    if (st === 415) {
+    if (st === 401) {
+      hint =
+        "401 = Blossom rejected the upload token (kind 24242). Sign with the same key as the repo owner. Amber / NIP-46 works; a NIP-07-only token from a different extension will fail here.";
+    } else if (st === 415) {
       const bodyHasNostr = text.toLowerCase().includes("nostr.build");
       const envLooksNostr = isMediaOnlyNostrBuildBlossom(
         rawGittrPagesBlossomEnvOrigin()

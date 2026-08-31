@@ -119,10 +119,36 @@ function mergePair(
 /**
  * Collapse gateway duplicates: same author + same description, or portal + npub-style
  * site label, or identical titles. Then one card per hostname for edge cases.
+ *
+ * Pairwise merge is only within the same author. A full n² pass over ~2000
+ * directory rows was a large part of `/pages` waiting on status-sites.
  */
 function mergeDuplicateGatewayRows(
   sites: GatewayStatusSiteRow[]
 ): GatewayStatusSiteRow[] {
+  const order: string[] = [];
+  const buckets = new Map<string, GatewayStatusSiteRow[]>();
+  let anon = 0;
+  for (const s of sites) {
+    const pk = normalizeAuthorPk(s.authorPubkeyHex);
+    const key = pk || `\0anon:${anon++}`;
+    if (!buckets.has(key)) {
+      order.push(key);
+      buckets.set(key, []);
+    }
+    buckets.get(key)!.push(s);
+  }
+  const out: GatewayStatusSiteRow[] = [];
+  for (const key of order) {
+    out.push(...mergeDuplicateGatewayRowsWithin(buckets.get(key) || []));
+  }
+  return out;
+}
+
+function mergeDuplicateGatewayRowsWithin(
+  sites: GatewayStatusSiteRow[]
+): GatewayStatusSiteRow[] {
+  if (sites.length <= 1) return sites.slice();
   let list = [...sites];
   let changed = true;
   while (changed) {

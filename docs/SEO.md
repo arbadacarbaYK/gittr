@@ -94,7 +94,7 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 
 ## SEO strategy (practical)
 
-- **Index what matters:** Home, explore, help, public repo pages, Pages directory — via sitemap + internal links.
+- **Index what matters:** Home, explore, help, public repo pages, Pages directory — via sitemap + internal links. The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
 - **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
 - **Keywords:** Prefer “nostr git”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository” — still accurate, less likely to trip naive “fake GitHub” heuristics than “github alternative”.
 - **Import is a feature, not the headline:** README and meta mention importing from GitHub/GitLab/Codeberg under **mirror / backup**, not as the product identity.
