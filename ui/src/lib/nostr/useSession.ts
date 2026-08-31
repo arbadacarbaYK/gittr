@@ -1,6 +1,7 @@
 import { nip19 } from "nostr-tools";
 
 import { useNostrContext } from "./NostrContext";
+import { pickProfileDisplayName } from "./kind0-profile-fields";
 import { useContributorMetadata } from "./useContributorMetadata";
 
 export enum PermissionLevel {
@@ -19,24 +20,20 @@ const useSession = () => {
     pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : []
   );
   const metadata =
-    pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? metadataMap[pubkey] || {} : {};
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey)
+      ? metadataMap[pubkey.toLowerCase()] || metadataMap[pubkey] || {}
+      : {};
 
   // If we have a pubkey, we're logged in
   // authInitialized is mainly for preventing flickering during initial load when checking extensions
   // But if pubkey already exists (from localStorage), we're definitely logged in
   const isLoggedIn = !!pubkey;
 
-  // Prioritize display_name, then name
-  // If no metadata, show npub format (not shortened pubkey) for better UX
+  // display_name, camelCase displayName, then name — then short npub
   let name: string;
-  if (metadata.display_name && metadata.display_name.trim().length > 0) {
-    name = metadata.display_name;
-  } else if (
-    metadata.name &&
-    metadata.name.trim().length > 0 &&
-    metadata.name !== "Anonymous Nostrich"
-  ) {
-    name = metadata.name;
+  const profileName = pickProfileDisplayName(metadata);
+  if (profileName) {
+    name = profileName;
   } else if (isLoggedIn && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
     // Show npub format instead of shortened pubkey
     try {

@@ -51,7 +51,6 @@ function NewRepoPageContent() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
-  const [readme, setReadme] = useState("");
   const [importing, setImporting] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -131,8 +130,6 @@ function NewRepoPageContent() {
           }
           return base;
         });
-        const sourceWithReadme = source as StoredRepo & { readme?: string };
-        if (sourceWithReadme.readme) setReadme(sourceWithReadme.readme);
       } else {
         setForkSource({
           entity: forkEntity,
@@ -302,6 +299,7 @@ function NewRepoPageContent() {
 
     if (importCandidates.length > 0) {
       setImporting(true);
+      let leftForRepo = false;
       try {
         let d: any = null;
         let used: ForkImportCandidate | null = null;
@@ -335,7 +333,6 @@ function NewRepoPageContent() {
             return;
           }
           setStatus(`Imported ${entityInfo.entitySlug}/${importedRepoSlug}`);
-          setReadme(d.readme || "");
 
           let importedFileCount = 0;
           // store repo locally for listing - always use current user's Nostr pubkey as entity
@@ -548,10 +545,10 @@ function NewRepoPageContent() {
             const next =
               isForkIntent && importedFileCount === 0
                 ? `/${entityInfo.entitySlug}/${importedRepoSlug}/upload`
-                : isForkIntent
-                ? `/${entityInfo.entitySlug}/${importedRepoSlug}`
-                : "/repositories";
-            setTimeout(() => router.push(next), 600);
+                : `/${entityInfo.entitySlug}/${importedRepoSlug}`;
+            setStatus("Imported — opening the repository…");
+            leftForRepo = true;
+            router.push(next);
             return;
           } else {
             setStatus(
@@ -585,7 +582,7 @@ function NewRepoPageContent() {
           }). Trying a local copy…`
         );
       } finally {
-        setImporting(false);
+        if (!leftForRepo) setImporting(false);
       }
     }
 
@@ -970,6 +967,10 @@ function NewRepoPageContent() {
             {status}
           </div>
         )}
+        <p className="text-xs mt-2 text-gray-400">
+          One click imports the repo and opens it. The README is on the Code tab
+          — not a second Import step.
+        </p>
       </div>
 
       <div className="mb-6 p-4 bg-gray-800/50 border border-gray-700 rounded">
@@ -1080,12 +1081,6 @@ function NewRepoPageContent() {
           </div>
           <div className="text-gray-400 mt-2">Display Name:</div>
           <div className="text-purple-400">{userName || "Anonymous"}</div>
-        </div>
-      )}
-      {readme && (
-        <div className="mt-4 border p-2">
-          <h2 className="font-semibold mb-2">README.md</h2>
-          <pre className="whitespace-pre-wrap">{readme}</pre>
         </div>
       )}
     </div>

@@ -172,7 +172,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Tags**: `i` — `["i", "platform:identity", "<proof>"]` (proof optional but recommended)
 - **Replaceable**: one latest kind **10011** per pubkey
 - **Dual-layer with kind 0 (important)**:
-  - Kind **0** = profile card (name, display_name, picture, banner, about, nip05, lud16, …)
+  - Kind **0** = profile card (`name`, `display_name`, and camelCase `displayName` some clients write; gittr reads all three before falling back to npub)
   - Kind **10011** = external identity claims only
   - gittr **always reads and merges both**. A 10011 event must never wipe or block kind-0 name/avatar.
   - Legacy clients that put `i` on kind **0** are still read; claims are **unioned** with 10011 (same `platform:identity` prefers 10011 / proof).

@@ -636,6 +636,10 @@ export default function HelpPage() {
                       </code>
                     </li>
                     <li>Files are fetched and stored in your browser</li>
+                    <li>
+                      One click — you land on the repo. The README is the Code
+                      tab, not a second Import button below the form.
+                    </li>
                   </ul>
                 </HelpSubTopic>
 

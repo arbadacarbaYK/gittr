@@ -9,6 +9,10 @@ import {
   KIND_REPOSITORY,
   KIND_REPOSITORY_NIP34,
 } from "@/lib/nostr/events";
+import {
+  applyKind0NameFields,
+  pickProfileDisplayName,
+} from "@/lib/nostr/kind0-profile-fields";
 import { aggregateRepoStarReactions } from "@/lib/nostr/repo-stars";
 import {
   fetchRepoLogoUrlFromNostr,
@@ -495,7 +499,16 @@ async function fetchOwnerProfile(
           (event: { content?: string }) => {
             clearTimeout(timer);
             try {
-              finish(JSON.parse(event.content || "{}"));
+              finish(
+                applyKind0NameFields(
+                  JSON.parse(event.content || "{}") as {
+                    name?: string;
+                    display_name?: string;
+                    displayName?: string;
+                    picture?: string;
+                  }
+                )
+              );
             } catch {
               finish(null);
             }
@@ -507,15 +520,7 @@ async function fetchOwnerProfile(
       }
     });
     if (!meta) return fallback;
-    let label = fallback.label;
-    if (typeof meta.name === "string" && meta.name.trim()) {
-      label = meta.name.trim();
-    } else if (
-      typeof meta.display_name === "string" &&
-      meta.display_name.trim()
-    ) {
-      label = meta.display_name.trim();
-    }
+    const label = pickProfileDisplayName(meta) || fallback.label;
     const pictureUrl =
       typeof meta.picture === "string" && meta.picture.startsWith("https://")
         ? meta.picture.trim()

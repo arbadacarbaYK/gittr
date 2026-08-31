@@ -7,6 +7,7 @@ import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
 import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
 import {
   parseGitHubRepoSpec,
@@ -79,12 +80,7 @@ function profileDisplayName(
   meta: Metadata | undefined,
   fallbackNpubShort: string
 ): string {
-  if (!meta) return fallbackNpubShort;
-  const d = meta.display_name?.trim();
-  const n = meta.name?.trim();
-  if (d) return d;
-  if (n) return n;
-  return fallbackNpubShort;
+  return pickProfileDisplayName(meta) || fallbackNpubShort;
 }
 
 function npubForTitle(hex: string): string {

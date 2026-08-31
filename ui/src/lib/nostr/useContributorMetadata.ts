@@ -3,6 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNostrContext } from "./NostrContext";
 import { getAllRelays } from "./getAllRelays";
 import {
+  applyKind0NameFields,
+  pickProfileDisplayName,
+} from "./kind0-profile-fields";
+import {
   KIND_NIP39_IDENTITIES,
   parseNip39ITags,
   preferNip39Identities,
@@ -54,12 +58,7 @@ function contributorMetaVerbose(): boolean {
 
 /** True when cache has a real display name — not just identities or empty stubs. */
 function hasUsableProfileName(meta?: Metadata | null): boolean {
-  if (!meta) return false;
-  const raw = String(meta.display_name || meta.name || "").trim();
-  if (!raw || raw === "Anonymous Nostrich") return false;
-  if (raw.startsWith("npub")) return false;
-  if (/^[0-9a-f]{8,64}$/i.test(raw)) return false;
-  return true;
+  return !!pickProfileDisplayName(meta);
 }
 
 /** Lightning receive fields used for zaps / invoices. */
@@ -79,6 +78,7 @@ function mergeKind0OntoExisting(
   incoming: Metadata,
   incomingCreatedAt?: number
 ): Metadata {
+  incoming = applyKind0NameFields(incoming);
   const incomingTime = incomingCreatedAt ?? incoming.created_at ?? 0;
   const existingTime = existing?.created_at ?? 0;
   const existingIncomplete = !hasUsableProfileName(existing);
@@ -151,7 +151,7 @@ async function fetchProfilesHttp(
         profiles?: Record<string, Metadata>;
       };
       for (const [pk, meta] of Object.entries(data.profiles || {})) {
-        out[pk.toLowerCase()] = meta;
+        out[pk.toLowerCase()] = applyKind0NameFields(meta);
       }
     } catch {
       /* ignore batch errors */
@@ -650,7 +650,9 @@ export function useContributorMetadata(pubkeys: string[]) {
                   );
                 }
                 try {
-                  const data = JSON.parse(event.content) as Metadata;
+                  const data = applyKind0NameFields(
+                    JSON.parse(event.content) as Metadata
+                  );
 
                   // kind 0 content sometimes includes a non-array `identities` field —
                   // that must not reach UI helpers that call .find on it.

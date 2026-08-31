@@ -4,6 +4,8 @@
  */
 import { nip19 } from "nostr-tools";
 
+import { applyKind0NameFields } from "./kind0-profile-fields";
+
 /** Prefer gittr/own relays for SSR — Damus auto-reconnect leaks memory when races abandon pools. */
 const DEFAULT_RELAYS = [
   "wss://relay.gittr.space",
@@ -78,7 +80,13 @@ export async function fetchUserMetadata(
           }
 
           try {
-            const metadata = JSON.parse(event.content || "{}");
+            const metadata = applyKind0NameFields(
+              JSON.parse(event.content || "{}") as Record<string, unknown>
+            ) as {
+              lud16?: string;
+              lnurl?: string;
+              [key: string]: unknown;
+            };
             resolve({
               lud16: metadata.lud16,
               lnurl: metadata.lnurl,

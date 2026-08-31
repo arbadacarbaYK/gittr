@@ -94,7 +94,7 @@ For each contributor, the system uses this priority:
 3. GitHub avatar (fallback)
 
 **Display Name:**
-1. Nostr `display_name` or `name` (if identity found)
+1. Nostr `display_name`, camelCase `displayName`, or `name` (if identity found)
 2. GitHub login (fallback)
 
 ## How Users Link Their GitHub Identity

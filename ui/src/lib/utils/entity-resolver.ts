@@ -12,6 +12,8 @@
  * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with other Nostr git clients
  * - Full 64-char hex pubkeys
  */
+import { pickProfileDisplayName } from "../nostr/kind0-profile-fields";
+
 import { nip05, nip19 } from "nostr-tools";
 
 /**
@@ -153,11 +155,11 @@ export function getEntityDisplayName(
   // CRITICAL: Normalize pubkey to lowercase for metadata lookup (metadata is stored in lowercase)
   const normalizedPubkey = pubkey.toLowerCase();
 
-  // Use Nostr metadata if available
+  // Use Nostr metadata if available (display_name, displayName, then name)
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
   if (meta) {
-    const raw = meta.display_name || meta.name;
-    if (raw && raw.trim().length > 0 && raw !== "Anonymous Nostrich") {
+    const raw = pickProfileDisplayName(meta);
+    if (raw) {
       // identities must be an array — some kind-0 payloads store an object/string
       const identities = Array.isArray(meta.identities) ? meta.identities : [];
       const githubHandle = identities.find(

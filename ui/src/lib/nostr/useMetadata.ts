@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useNostrContext } from "./NostrContext";
+import { applyKind0NameFields } from "./kind0-profile-fields";
 
 export type Metadata = {
   banner?: string;
@@ -39,7 +40,9 @@ const useMetadata = (relays: string[] = []) => {
         (event, isAfterEose, relayURL) => {
           if (!isAfterEose && event.kind === 0) {
             try {
-              const data = JSON.parse(event.content) as Metadata;
+              const data = applyKind0NameFields(
+                JSON.parse(event.content) as Metadata
+              );
               setMetadata(data);
             } catch (e) {
               console.error("Failed to parse metadata:", e);

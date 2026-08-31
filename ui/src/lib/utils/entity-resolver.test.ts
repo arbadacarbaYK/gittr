@@ -34,4 +34,20 @@ describe("getEntityDisplayName identities hardening", () => {
     );
     expect(name).toBe("cool-dev");
   });
+
+  it("uses camelCase displayName when display_name is missing", () => {
+    expect(
+      getEntityDisplayName(
+        pubkey,
+        { [pubkey]: { displayName: "BBakker" } as any },
+        undefined
+      )
+    ).toBe("BBakker");
+  });
+
+  it("uses name when display fields are empty", () => {
+    expect(
+      getEntityDisplayName(pubkey, { [pubkey]: { name: "BBakker" } }, undefined)
+    ).toBe("BBakker");
+  });
 });

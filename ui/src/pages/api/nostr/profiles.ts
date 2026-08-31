@@ -1,3 +1,5 @@
+import { applyKind0NameFields } from "@/lib/nostr/kind0-profile-fields";
+import { fetchPrimalUserProfiles } from "@/lib/nostr/primal-user-profile";
 import { BoundedTtlCache } from "@/lib/utils/bounded-ttl-cache";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -19,6 +21,8 @@ type ProfileMeta = {
 };
 
 const RELAYS = [
+  "wss://purplepag.es",
+  "wss://user.kindpag.es",
   "wss://relay.gittr.space",
   "wss://nos.lol",
   "wss://relay.nostr.band",
@@ -74,7 +78,9 @@ async function fetchProfilesBatch(
           const pk = String(event.pubkey || "").toLowerCase();
           if (!pending.has(pk)) return;
           try {
-            const data = JSON.parse(event.content || "{}") as ProfileMeta;
+            const data = applyKind0NameFields(
+              JSON.parse(event.content || "{}") as ProfileMeta
+            );
             const existing = out[pk];
             if (
               !existing ||
@@ -150,22 +156,42 @@ export default async function handler(
     try {
       const fetched = await fetchProfilesBatch(missing);
       for (const pk of missing) {
-        const meta = fetched[pk] || null;
-        memoryCache.set(pk, meta);
-        if (meta) profiles[pk] = meta;
+        const meta = fetched[pk];
+        if (meta) {
+          memoryCache.set(pk, meta);
+          profiles[pk] = meta;
+        }
       }
     } catch (e) {
       console.warn("[api/nostr/profiles] batch fetch failed:", e);
     }
+    const stillMissing = missing.filter((pk) => !profiles[pk]);
+    if (stillMissing.length > 0) {
+      try {
+        const fromIndex = await fetchPrimalUserProfiles(stillMissing);
+        for (const pk of stillMissing) {
+          const meta = fromIndex[pk];
+          if (!meta) continue;
+          memoryCache.set(pk, meta);
+          profiles[pk] = meta;
+        }
+      } catch (e) {
+        console.warn("[api/nostr/profiles] primal fallback failed:", e);
+      }
+    }
   }
 
+  const returned = Object.keys(profiles).length;
+  // Never CDN-cache a miss — empty kind-0 used to stick as npub for minutes.
   res.setHeader(
     "Cache-Control",
-    "public, s-maxage=60, stale-while-revalidate=300"
+    returned >= pubkeys.length
+      ? "public, s-maxage=60, stale-while-revalidate=300"
+      : "no-store"
   );
   return res.status(200).json({
     profiles,
     requested: pubkeys.length,
-    returned: Object.keys(profiles).length,
+    returned,
   });
 }
