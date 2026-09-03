@@ -1,4 +1,7 @@
-import { applyKind0NameFields, pickProfileDisplayName } from "./kind0-profile-fields";
+import {
+  applyKind0NameFields,
+  pickProfileDisplayName,
+} from "./kind0-profile-fields";
 
 export type ClaimedIdentity = {
   platform: string;
@@ -24,6 +27,35 @@ export type Metadata = {
 
 function hasUsableProfileName(meta?: Metadata | null): boolean {
   return !!pickProfileDisplayName(meta);
+}
+
+function pickIdentities(
+  existing?: Metadata,
+  incoming?: Metadata
+): ClaimedIdentity[] | undefined {
+  const fromExisting = existing?.identities;
+  if (Array.isArray(fromExisting) && fromExisting.length > 0) {
+    return fromExisting;
+  }
+  const fromIncoming = incoming?.identities;
+  if (Array.isArray(fromIncoming) && fromIncoming.length > 0) {
+    return fromIncoming;
+  }
+  return undefined;
+}
+
+function applyPaymentField(
+  next: Metadata,
+  key: "lud16" | "lnurl" | "nwcRecv",
+  incomingValue: string | undefined,
+  existingValue: string | undefined,
+  replace: boolean
+): void {
+  if (typeof incomingValue !== "string") return;
+  const chosen = replace ? incomingValue : existingValue;
+  const trimmed = chosen?.trim() ?? "";
+  if (trimmed) next[key] = trimmed;
+  else delete next[key];
 }
 
 /**
@@ -54,13 +86,7 @@ export function mergeKind0OntoExisting(
     ? { ...existing, ...incoming }
     : { ...incoming, ...existing };
 
-  const identities =
-    Array.isArray(existing?.identities) && existing.identities.length > 0
-      ? existing.identities
-      : Array.isArray(incoming.identities) && incoming.identities.length > 0
-        ? incoming.identities
-        : undefined;
-
+  const identities = pickIdentities(existing, incoming);
   const created_at = Math.max(existingTime, incomingTime) || undefined;
 
   const next: Metadata = {
@@ -86,46 +112,27 @@ export function mergeKind0OntoExisting(
   // value must not permanently hide a newer kind-0 update, and we must not clobber
   // a newer cache with an older payload.
   const shouldReplacePayments = incomingTime >= existingTime;
-
-  if (typeof incoming.lud16 === "string") {
-    if (shouldReplacePayments) {
-      const trimmed = incoming.lud16.trim();
-      if (trimmed) next.lud16 = trimmed;
-      else delete next.lud16;
-    } else {
-      const trimmedExisting =
-        typeof existing?.lud16 === "string" ? existing.lud16.trim() : "";
-      if (trimmedExisting) next.lud16 = trimmedExisting;
-      else delete next.lud16;
-    }
-  }
-
-  if (typeof incoming.lnurl === "string") {
-    if (shouldReplacePayments) {
-      const trimmed = incoming.lnurl.trim();
-      if (trimmed) next.lnurl = trimmed;
-      else delete next.lnurl;
-    } else {
-      const trimmedExisting =
-        typeof existing?.lnurl === "string" ? existing.lnurl.trim() : "";
-      if (trimmedExisting) next.lnurl = trimmedExisting;
-      else delete next.lnurl;
-    }
-  }
-
-  if (typeof incoming.nwcRecv === "string") {
-    if (shouldReplacePayments) {
-      const trimmed = incoming.nwcRecv.trim();
-      if (trimmed) next.nwcRecv = trimmed;
-      else delete next.nwcRecv;
-    } else {
-      const trimmedExisting =
-        typeof existing?.nwcRecv === "string" ? existing.nwcRecv.trim() : "";
-      if (trimmedExisting) next.nwcRecv = trimmedExisting;
-      else delete next.nwcRecv;
-    }
-  }
+  applyPaymentField(
+    next,
+    "lud16",
+    incoming.lud16,
+    existing?.lud16,
+    shouldReplacePayments
+  );
+  applyPaymentField(
+    next,
+    "lnurl",
+    incoming.lnurl,
+    existing?.lnurl,
+    shouldReplacePayments
+  );
+  applyPaymentField(
+    next,
+    "nwcRecv",
+    incoming.nwcRecv,
+    existing?.nwcRecv,
+    shouldReplacePayments
+  );
 
   return next;
 }
-
