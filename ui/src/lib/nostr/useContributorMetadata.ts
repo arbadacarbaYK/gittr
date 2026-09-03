@@ -106,7 +106,8 @@ export function mergeKind0OntoExisting(
     Array.isArray(existingIdentities) &&
     (existingIdentities?.length ?? 0) > 0
       ? existingIdentities
-      : Array.isArray(incoming.identities) && incoming.identities.length > 0
+      : Array.isArray(incoming.identities) &&
+        (incoming.identities?.length ?? 0) > 0
         ? incoming.identities
         : undefined;
 
