@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
 import { nip19 } from "nostr-tools";
+import { describe, expect, it } from "vitest";
 
+import { parseContactListPubkeys } from "./contact-list";
+import { type Metadata, mergeKind0OntoExisting } from "./kind0-merge";
 import {
   applyKind0NameFields,
   pickProfileDisplayName,
 } from "./kind0-profile-fields";
-import { parseContactListPubkeys } from "./contact-list";
-import { mergeKind0OntoExisting, type Metadata } from "./kind0-merge";
 
 describe("pickProfileDisplayName", () => {
   it("prefers display_name over name", () => {
@@ -68,9 +68,27 @@ describe("payment + social parsing sanity", () => {
   });
 
   it("mergeKind0OntoExisting keeps lud16 when incoming is older", () => {
-    const existing: Metadata = { lud16: "old@example.com", created_at: 20 };
-    const incoming: Metadata = { lud16: "new@example.com" };
+    const existing: Metadata = {
+      name: "Ada",
+      lud16: "old@example.com",
+      created_at: 20,
+    };
+    const incoming: Metadata = { name: "Ada", lud16: "new@example.com" };
     const out = mergeKind0OntoExisting(existing, incoming, 10);
     expect(out.lud16).toBe("old@example.com");
+  });
+
+  it("mergeKind0OntoExisting overwrites lud16 when cache created_at is in the future", () => {
+    const existing: Metadata = {
+      name: "BBakker",
+      lud16: "old@getalby.com",
+      created_at: Date.now(),
+    };
+    const incoming: Metadata = {
+      name: "BBakker",
+      lud16: "new@madeflow.nl",
+    };
+    const out = mergeKind0OntoExisting(existing, incoming, 1_788_449_962);
+    expect(out.lud16).toBe("new@madeflow.nl");
   });
 });

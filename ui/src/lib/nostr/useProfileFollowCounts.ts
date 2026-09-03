@@ -28,9 +28,18 @@ export type ProfileFollowCounts = {
   followers: number | null;
 };
 
+type ContactListEvent = {
+  pubkey?: string;
+  created_at?: number;
+  tags?: string[][] | null;
+  content?: string | null;
+  kind?: number;
+};
+
 /**
  * Public social graph sizes for a profile (works logged out).
- * Following = profile’s kind 3. Followers = authors of kind 3 with `#p` = profile.
+ * Following = profile’s kind 3 (relays + Primal HTTP cache).
+ * Followers = authors of kind 3 with `#p` = profile.
  */
 export function useProfileFollowCounts(
   profileHex: string | null | undefined,
@@ -42,7 +51,7 @@ export function useProfileFollowCounts(
 
   useEffect(() => {
     const hex = normalizeContactPubkey(profileHex || "");
-    if (!hex || !subscribe || !defaultRelays?.length) {
+    if (!hex) {
       setFollowing(null);
       setFollowers(null);
       return;
@@ -51,71 +60,91 @@ export function useProfileFollowCounts(
     setFollowing(null);
     setFollowers(null);
 
-    const relays = getAllRelays(defaultRelays);
-    const followingEvents: Array<{
-      tags?: string[][] | null;
-      content?: string | null;
-      created_at?: number;
-    }> = [];
-    const followerEvents: Array<{
-      pubkey?: string;
-      created_at?: number;
-      tags?: string[][] | null;
-      content?: string | null;
-    }> = [];
+    const relays = defaultRelays?.length ? getAllRelays(defaultRelays) : [];
+    const followingEvents: ContactListEvent[] = [];
+    const followerEvents: ContactListEvent[] = [];
 
     let cancelled = false;
-    let followingSettled = false;
-    let followersSettled = false;
+    let followingWsSettled = !subscribe || relays.length === 0;
+    let followingHttpSettled = false;
+    let followersSettled = !subscribe || relays.length === 0;
 
     const publishFollowing = () => {
       if (cancelled) return;
-      setFollowing(followingCountFromContactEvents(followingEvents));
+      const count = followingCountFromContactEvents(followingEvents);
+      if (count > 0) {
+        setFollowing(count);
+        return;
+      }
+      if (followingWsSettled && followingHttpSettled) {
+        setFollowing(0);
+      }
     };
     const publishFollowers = () => {
       if (cancelled) return;
       setFollowers(followersCountFromContactEvents(hex, followerEvents));
     };
 
-    const unsubFollowing = subscribe(
-      [{ kinds: [3], authors: [hex], limit: 20 }],
-      relays,
-      (event) => {
-        if (cancelled || event?.kind !== 3) return;
-        followingEvents.push(event);
-        publishFollowing();
-      },
-      8_000,
-      () => {
-        followingSettled = true;
-        publishFollowing();
-        if (followingEvents.length === 0) setFollowing(0);
-      }
-    );
+    const unsubFollowing =
+      subscribe && relays.length
+        ? subscribe(
+            [{ kinds: [3], authors: [hex], limit: 20 }],
+            relays,
+            (event) => {
+              if (cancelled || event?.kind !== 3) return;
+              followingEvents.push(event);
+              publishFollowing();
+            },
+            8_000,
+            () => {
+              followingWsSettled = true;
+              publishFollowing();
+            }
+          )
+        : undefined;
 
-    const unsubFollowers = subscribe(
-      [{ kinds: [3], "#p": [hex], limit: 400 }],
-      relays,
-      (event) => {
-        if (cancelled || event?.kind !== 3) return;
-        // Cheap filter: must still mention target in this event
-        if (!parseContactListPubkeys(event).includes(hex)) return;
-        followerEvents.push(event);
-        publishFollowers();
-      },
-      12_000,
-      () => {
-        followersSettled = true;
-        publishFollowers();
-        if (followerEvents.length === 0) setFollowers(0);
-      }
-    );
+    const unsubFollowers =
+      subscribe && relays.length
+        ? subscribe(
+            [{ kinds: [3], "#p": [hex], limit: 400 }],
+            relays,
+            (event) => {
+              if (cancelled || event?.kind !== 3) return;
+              if (!parseContactListPubkeys(event).includes(hex)) return;
+              followerEvents.push(event);
+              publishFollowers();
+            },
+            12_000,
+            () => {
+              followersSettled = true;
+              publishFollowers();
+              if (followerEvents.length === 0) setFollowers(0);
+            }
+          )
+        : undefined;
+
+    const ac = new AbortController();
+    void fetch(`/api/nostr/contact-list?pubkey=${encodeURIComponent(hex)}`, {
+      signal: ac.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as { event?: ContactListEvent | null };
+        if (cancelled || !body?.event) return;
+        followingEvents.push(body.event);
+      })
+      .catch(() => {
+        /* relays may still have the list */
+      })
+      .finally(() => {
+        followingHttpSettled = true;
+        publishFollowing();
+      });
 
     const safety = window.setTimeout(() => {
-      if (!followingSettled) {
-        publishFollowing();
-        if (followingEvents.length === 0) setFollowing(0);
-      }
+      if (!followingWsSettled) followingWsSettled = true;
+      if (!followingHttpSettled) followingHttpSettled = true;
+      publishFollowing();
       if (!followersSettled) {
         publishFollowers();
         if (followerEvents.length === 0) setFollowers(0);
@@ -124,6 +153,7 @@ export function useProfileFollowCounts(
 
     return () => {
       cancelled = true;
+      ac.abort();
       window.clearTimeout(safety);
       try {
         unsubFollowing?.();

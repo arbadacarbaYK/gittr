@@ -29,6 +29,14 @@ function hasUsableProfileName(meta?: Metadata | null): boolean {
   return !!pickProfileDisplayName(meta);
 }
 
+/** Drop future / millisecond stamps that blocked newer kind-0 lud16 merges. */
+function saneEventTime(t: number): number {
+  if (!t || t <= 0) return 0;
+  const now = Math.floor(Date.now() / 1000);
+  if (t > now + 86400) return 0;
+  return t;
+}
+
 function pickIdentities(
   existing?: Metadata,
   incoming?: Metadata
@@ -71,8 +79,10 @@ export function mergeKind0OntoExisting(
   incomingCreatedAt?: number
 ): Metadata {
   incoming = applyKind0NameFields(incoming);
-  const incomingTime = incomingCreatedAt ?? incoming.created_at ?? 0;
-  const existingTime = existing?.created_at ?? 0;
+  const incomingTime = saneEventTime(
+    incomingCreatedAt ?? incoming.created_at ?? 0
+  );
+  const existingTime = saneEventTime(existing?.created_at ?? 0);
   const existingIncomplete = !hasUsableProfileName(existing);
   const incomingHasName = hasUsableProfileName(incoming);
 
@@ -87,7 +97,10 @@ export function mergeKind0OntoExisting(
     : { ...incoming, ...existing };
 
   const identities = pickIdentities(existing, incoming);
-  const created_at = Math.max(existingTime, incomingTime) || undefined;
+  // Kind-0 created_at only — never Math.max with a poisoned cache stamp.
+  const created_at = preferIncoming
+    ? incomingTime || existingTime || undefined
+    : existingTime || incomingTime || undefined;
 
   const next: Metadata = {
     ...base,
@@ -110,8 +123,9 @@ export function mergeKind0OntoExisting(
 
   // Payment fields are replaceable updates (LUD-16, lnurl, NWC receive). A cached old
   // value must not permanently hide a newer kind-0 update, and we must not clobber
-  // a newer cache with an older payload.
-  const shouldReplacePayments = incomingTime >= existingTime;
+  // a newer cache with an older payload. Incomplete stubs always take incoming payments.
+  const shouldReplacePayments =
+    !existing || existingIncomplete || incomingTime >= existingTime;
   applyPaymentField(
     next,
     "lud16",

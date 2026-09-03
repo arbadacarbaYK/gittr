@@ -29,7 +29,7 @@ On every public profile (`/{npub}`), gittr shows **Following** and **Followers**
 
 | Stat | Source |
 |------|--------|
-| **Following** | That profile’s NIP-02 kind **3** contact list (`p` tags, union across relays) |
+| **Following** | That profile’s NIP-02 kind **3** contact list (`p` tags, union across relays). If relays have no kind 3, gittr uses Primal’s HTTP `contact_list` cache (`GET /api/nostr/contact-list`) so profiles that only exist in that index (e.g. 16 follows, 0 on websocket) still show a count. |
 | **Followers** | Distinct authors of kind **3** events that tag this pubkey (`#p`), using each author’s **newest** list so unfollows drop off |
 
 Follower totals are **relay-dependent lower bounds**, not a global census — still useful for WoT-style legitimacy next to repos. Tooltips explain this. The logged-in **TrustBadge** (hops from *you*) remains separate.

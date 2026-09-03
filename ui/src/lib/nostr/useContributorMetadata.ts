@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useNostrContext } from "./NostrContext";
 import { getAllRelays } from "./getAllRelays";
+import { mergeKind0OntoExisting as mergeKind0OntoExistingHelper } from "./kind0-merge";
 import {
   applyKind0NameFields,
   pickProfileDisplayName,
 } from "./kind0-profile-fields";
-import { mergeKind0OntoExisting as mergeKind0OntoExistingHelper } from "./kind0-merge";
 import {
   KIND_NIP39_IDENTITIES,
   parseNip39ITags,
@@ -131,7 +131,8 @@ function loadMetadataCache(): Record<string, Metadata> {
   try {
     const savedAtRaw = localStorage.getItem(METADATA_CACHE_SAVED_AT_KEY);
     const savedAt = savedAtRaw ? Number(savedAtRaw) : 0;
-    if (savedAt && now - savedAt > LOCAL_STORAGE_CACHE_MAX_AGE_MS) {
+    // Missing savedAt = pre-expiry cache (can pin an old lud16 forever).
+    if (!savedAt || now - savedAt > LOCAL_STORAGE_CACHE_MAX_AGE_MS) {
       moduleCache = {};
       cacheLoadTime = now;
       return {};
@@ -247,10 +248,7 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
         let toSave = pendingMetadata;
         try {
           localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
-          localStorage.setItem(
-            METADATA_CACHE_SAVED_AT_KEY,
-            String(Date.now())
-          );
+          localStorage.setItem(METADATA_CACHE_SAVED_AT_KEY, String(Date.now()));
         } catch (err) {
           if (!isQuotaExceeded(err)) throw err;
           // Keep zap-relevant profiles; drop the rest so future loads still work.
@@ -407,27 +405,18 @@ export function useContributorMetadata(pubkeys: string[]) {
       });
     }
 
-    const missingFromCache = validPubkeys.filter((p) => {
-      const normalized = p.toLowerCase();
-      const cached = metadataMap[normalized] || currentCache[normalized];
-      // Usable name alone is not enough — zaps need lud16/lnurl. Stale cache
-      // used to skip refetch forever when only a display name was stored.
-      const needsName = !hasUsableProfileName(cached);
-      const needsPayment = !hasPaymentReceiveFields(cached);
-      if (!needsName && !needsPayment) return false;
-      if (profileFetchAttempted.has(normalized)) return false;
-      return true;
-    });
+    // Always live-fetch once per session even when cache already has a name +
+    // lud16. Hard refresh does not clear localStorage; a complete cache used
+    // to skip HTTP and pin the old Lightning address.
+    const pubkeysToSubscribe = validPubkeys.filter(
+      (p) => !profileFetchAttempted.has(p.toLowerCase())
+    );
 
-    // Warm cache: mark key handled and skip relay work (still merge cache above).
-    if (missingFromCache.length === 0) {
+    if (pubkeysToSubscribe.length === 0) {
       pubkeysKeyRef.current = pubkeysKey;
       hasFetchedOnMountRef.current = true;
       return;
     }
-
-    // Only fetch missing / incomplete pubkeys — never thrash usable ones.
-    const pubkeysToSubscribe = missingFromCache;
 
     const now = Date.now();
     const timeSinceLastSubscription = now - lastSubscriptionTimeRef.current;

@@ -31,10 +31,7 @@ const RELAYS = [
 ];
 
 /** Cap unique pubkey metas — unbounded Map grew under explore/home traffic. */
-const memoryCache = new BoundedTtlCache<ProfileMeta | null>(
-  30 * 60 * 1000,
-  4000
-);
+const memoryCache = new BoundedTtlCache<ProfileMeta | null>(60 * 1000, 4000);
 const MAX_PUBKEYS = 80;
 
 function normalizePubkey(p: string): string | null {
