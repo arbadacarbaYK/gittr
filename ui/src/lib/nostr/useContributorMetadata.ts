@@ -6,6 +6,7 @@ import {
   applyKind0NameFields,
   pickProfileDisplayName,
 } from "./kind0-profile-fields";
+import { mergeKind0OntoExisting as mergeKind0OntoExistingHelper } from "./kind0-merge";
 import {
   KIND_NIP39_IDENTITIES,
   parseNip39ITags,
@@ -35,6 +36,10 @@ export type Metadata = {
 };
 
 const METADATA_CACHE_KEY = "gittr_metadata_cache";
+const METADATA_CACHE_SAVED_AT_KEY = `${METADATA_CACHE_KEY}_saved_at`;
+// localStorage cache is best-effort. We refresh periodically so replaceable
+// kind-0 updates (like LUD-16 changes) don't get stuck forever.
+const LOCAL_STORAGE_CACHE_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
  * Pubkeys we already tried to fetch this page session.
@@ -73,11 +78,13 @@ function hasPaymentReceiveFields(meta?: Metadata | null): boolean {
  * even when their stamped created_at is newer than kind 0 — that was poisoning
  * Firefox so the UI kept showing the raw npub.
  */
-function mergeKind0OntoExisting(
+export function mergeKind0OntoExisting(
   existing: Metadata | undefined,
   incoming: Metadata,
   incomingCreatedAt?: number
 ): Metadata {
+  return mergeKind0OntoExistingHelper(existing, incoming, incomingCreatedAt);
+
   incoming = applyKind0NameFields(incoming);
   const incomingTime = incomingCreatedAt ?? incoming.created_at ?? 0;
   const existingTime = existing?.created_at ?? 0;
@@ -121,13 +128,47 @@ function mergeKind0OntoExisting(
     if (incoming.website) next.website = incoming.website;
   }
 
-  // Always backfill payment fields — a cached name must not permanently hide lud16.
-  if (!next.lud16?.trim() && incoming.lud16?.trim())
-    next.lud16 = incoming.lud16;
-  if (!next.lnurl?.trim() && incoming.lnurl?.trim())
-    next.lnurl = incoming.lnurl;
-  if (!next.nwcRecv?.trim() && incoming.nwcRecv?.trim()) {
-    next.nwcRecv = incoming.nwcRecv;
+  // Payment fields are replaceable updates (LUD-16, lnurl, NWC receive). A
+  // cached old value must not permanently hide a newer kind-0 update.
+  const shouldReplacePayments = incomingTime >= existingTime;
+
+  if (typeof incoming.lud16 === "string") {
+    if (shouldReplacePayments) {
+      const trimmed = incoming.lud16.trim();
+      if (trimmed) next.lud16 = trimmed;
+      else delete next.lud16;
+    } else {
+      const trimmedExisting =
+        typeof existing?.lud16 === "string" ? existing.lud16.trim() : "";
+      if (trimmedExisting) next.lud16 = trimmedExisting;
+      else delete next.lud16;
+    }
+  }
+
+  if (typeof incoming.lnurl === "string") {
+    if (shouldReplacePayments) {
+      const trimmed = incoming.lnurl.trim();
+      if (trimmed) next.lnurl = trimmed;
+      else delete next.lnurl;
+    } else {
+      const trimmedExisting =
+        typeof existing?.lnurl === "string" ? existing.lnurl.trim() : "";
+      if (trimmedExisting) next.lnurl = trimmedExisting;
+      else delete next.lnurl;
+    }
+  }
+
+  if (typeof incoming.nwcRecv === "string") {
+    if (shouldReplacePayments) {
+      const trimmed = incoming.nwcRecv.trim();
+      if (trimmed) next.nwcRecv = trimmed;
+      else delete next.nwcRecv;
+    } else {
+      const trimmedExisting =
+        typeof existing?.nwcRecv === "string" ? existing.nwcRecv.trim() : "";
+      if (trimmedExisting) next.nwcRecv = trimmedExisting;
+      else delete next.nwcRecv;
+    }
   }
 
   return next;
@@ -176,6 +217,14 @@ function loadMetadataCache(): Record<string, Metadata> {
   }
 
   try {
+    const savedAtRaw = localStorage.getItem(METADATA_CACHE_SAVED_AT_KEY);
+    const savedAt = savedAtRaw ? Number(savedAtRaw) : 0;
+    if (savedAt && now - savedAt > LOCAL_STORAGE_CACHE_MAX_AGE_MS) {
+      moduleCache = {};
+      cacheLoadTime = now;
+      return {};
+    }
+
     const cached = localStorage.getItem(METADATA_CACHE_KEY);
     if (cached) {
       const parsed = JSON.parse(cached) as Record<string, Metadata>;
@@ -286,12 +335,20 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
         let toSave = pendingMetadata;
         try {
           localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+          localStorage.setItem(
+            METADATA_CACHE_SAVED_AT_KEY,
+            String(Date.now())
+          );
         } catch (err) {
           if (!isQuotaExceeded(err)) throw err;
           // Keep zap-relevant profiles; drop the rest so future loads still work.
           toSave = pruneMetadataForQuota(toSave, 0.4);
           try {
             localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+            localStorage.setItem(
+              METADATA_CACHE_SAVED_AT_KEY,
+              String(Date.now())
+            );
             console.warn(
               `⚠️ [useContributorMetadata] localStorage full — pruned metadata cache to ${
                 Object.keys(toSave).length
@@ -301,6 +358,7 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
             if (isQuotaExceeded(err2)) {
               try {
                 localStorage.removeItem(METADATA_CACHE_KEY);
+                localStorage.removeItem(METADATA_CACHE_SAVED_AT_KEY);
                 console.warn(
                   "⚠️ [useContributorMetadata] localStorage full — cleared metadata cache so zaps can still use in-memory profiles"
                 );

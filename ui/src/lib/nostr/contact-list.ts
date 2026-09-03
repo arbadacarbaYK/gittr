@@ -6,6 +6,8 @@
  * Always merge onto the largest known list before signing.
  */
 
+import { nip19 } from "nostr-tools";
+
 const BACKUP_PREFIX = "gittr_contact_list_backup_";
 const SESSION_PREFIX = "gittr_contact_list_session_";
 
@@ -33,8 +35,26 @@ export function enqueueFollowPublish<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export function normalizeContactPubkey(raw: string): string | null {
-  const hex = (raw || "").toLowerCase().trim();
-  return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+  const s = (raw || "").trim();
+  if (!s) return null;
+
+  // Hex pubkey fast path (common case).
+  const hex = s.toLowerCase();
+  if (/^[0-9a-f]{64}$/.test(hex)) return hex;
+
+  // Some clients (non-compliant) may encode `p` tags using npub bech32.
+  if (s.toLowerCase().startsWith("npub1")) {
+    try {
+      const decoded = nip19.decode(s) as { type?: string; data?: string };
+      if (decoded?.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data.toLowerCase();
+      }
+    } catch {
+      /* ignore invalid bech32 */
+    }
+  }
+
+  return null;
 }
 
 export function uniqContactPubkeys(pubkeys: string[]): string[] {
@@ -72,10 +92,10 @@ export function parseContactListPubkeys(event: {
       if (
         Array.isArray(tag) &&
         tag[0] === "p" &&
-        typeof tag[1] === "string" &&
-        /^[0-9a-f]{64}$/i.test(tag[1])
+        typeof tag[1] === "string"
       ) {
-        out.add(tag[1].toLowerCase());
+        const pk = normalizeContactPubkey(tag[1]);
+        if (pk) out.add(pk);
       }
     }
   }
@@ -86,7 +106,7 @@ export function parseContactListPubkeys(event: {
       const data = JSON.parse(trimmed) as { p?: unknown };
       if (Array.isArray(data.p)) {
         for (const entry of data.p) {
-          const pk =
+          const rawPk =
             typeof entry === "string"
               ? entry
               : Array.isArray(entry)
@@ -96,8 +116,10 @@ export function parseContactListPubkeys(event: {
                 typeof (entry as { pubkey?: string }).pubkey === "string"
               ? (entry as { pubkey: string }).pubkey
               : "";
-          if (typeof pk === "string" && /^[0-9a-f]{64}$/i.test(pk)) {
-            out.add(pk.toLowerCase());
+          const pk =
+            typeof rawPk === "string" ? normalizeContactPubkey(rawPk) : null;
+          if (pk) {
+            out.add(pk);
           }
         }
       }

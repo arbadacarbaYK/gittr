@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { nip19 } from "nostr-tools";
 
 import {
   followersCountFromContactEvents,
@@ -35,6 +36,29 @@ describe("parseContactListPubkeys", () => {
       parseContactListPubkeys({
         tags: [["p", a]],
         content: JSON.stringify({ p: [[b, "", "wss://x"]] }),
+      }).sort()
+    ).toEqual([a, b].sort());
+  });
+
+  it("accepts npub1... in p tags", () => {
+    const a = "a".repeat(64);
+    const aNpub = nip19.npubEncode(a);
+    expect(
+      parseContactListPubkeys({
+        tags: [["p", aNpub]],
+        content: "",
+      }).sort()
+    ).toEqual([a].sort());
+  });
+
+  it("accepts npub1... inside gittr JSON content", () => {
+    const a = "a".repeat(64);
+    const b = "b".repeat(64);
+    const bNpub = nip19.npubEncode(b);
+    expect(
+      parseContactListPubkeys({
+        tags: [["p", a]],
+        content: JSON.stringify({ p: [[bNpub, "", "wss://x"]] }),
       }).sort()
     ).toEqual([a, b].sort());
   });
