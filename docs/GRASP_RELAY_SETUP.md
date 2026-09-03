@@ -29,6 +29,7 @@ Restart the relay after changes.
 
 ## Pyramid (`relay.gittr.space`) notes
 
+- **Web dashboard vs `wss://`:** `https://relay.gittr.space/` is Pyramid’s Tailwind UI (invite tree, login, settings). **`wss://relay.gittr.space`** is the Nostr relay. An unstyled “90s HTML” page (huge Giza photo, default blue links) means **`/static/styles.css` 404** — the binary was built without Tailwind. CSS is gitignored and embedded at compile time; rebuild from [arbadacarbaYK/pyramid](https://github.com/arbadacarbaYK/pyramid) with `just build` or `easy.sh` (npm + tailwind before `go build`). Check: `curl -sI https://relay.gittr.space/static/styles.css` should be **200**, not 404. The git clone host (`git.gittr.space`) is separate and has no website.
 - **`limits.max_indexable_tags`:** set to **64** (upstream default **14**). Larger NIP-65 kind `10002` lists and forge events with many single-letter tags otherwise get `blocked: too many indexable tags`.
 - **`open_kinds_spec`:** includes forge + social kinds (and `10002` / `10050`). “Members” on Pyramid is **not** a write whitelist for these kinds — anyone can publish open kinds.
 - **gittr Settings → Relays:** **Your Relays (NIP-65)** is the logged-in user’s kind `10002` (status, edit, publish with their signer). Platform defaults are read-only.
