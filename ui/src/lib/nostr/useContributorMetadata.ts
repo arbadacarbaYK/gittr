@@ -101,12 +101,13 @@ export function mergeKind0OntoExisting(
     ? { ...existing, ...incoming }
     : { ...incoming, ...existing };
 
+  const existingIdentities = existing?.identities;
   const identities =
-    Array.isArray(existing?.identities) && existing.identities.length > 0
-      ? existing.identities
+    Array.isArray(existingIdentities) && existingIdentities.length > 0
+      ? existingIdentities
       : Array.isArray(incoming.identities) && incoming.identities.length > 0
-      ? incoming.identities
-      : undefined;
+        ? incoming.identities
+        : undefined;
 
   const created_at = Math.max(existingTime, incomingTime) || undefined;
 
