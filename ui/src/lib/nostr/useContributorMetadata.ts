@@ -137,7 +137,7 @@ export function mergeKind0OntoExisting(
 
   if (typeof incoming.lud16 === "string") {
     if (shouldReplacePayments) {
-      const trimmed = incoming.lud16.trim();
+      const trimmed = incoming.lud16!.trim();
       if (trimmed) next.lud16 = trimmed;
       else delete next.lud16;
     } else {
@@ -150,7 +150,7 @@ export function mergeKind0OntoExisting(
 
   if (typeof incoming.lnurl === "string") {
     if (shouldReplacePayments) {
-      const trimmed = incoming.lnurl.trim();
+      const trimmed = incoming.lnurl!.trim();
       if (trimmed) next.lnurl = trimmed;
       else delete next.lnurl;
     } else {
@@ -163,7 +163,7 @@ export function mergeKind0OntoExisting(
 
   if (typeof incoming.nwcRecv === "string") {
     if (shouldReplacePayments) {
-      const trimmed = incoming.nwcRecv.trim();
+      const trimmed = incoming.nwcRecv!.trim();
       if (trimmed) next.nwcRecv = trimmed;
       else delete next.nwcRecv;
     } else {
