@@ -187,7 +187,7 @@ export async function pinForgeReleaseAssetToNgitBlossom(args: {
   }
 
   const { validateEvent, verifySignature } = await import("nostr-tools");
-  const ev = args.authEvent as Parameters<typeof validateEvent>[0];
+  const ev = args.authEvent as import("nostr-tools").Event;
   if (!validateEvent(ev) || !verifySignature(ev)) {
     return {
       ok: false,
