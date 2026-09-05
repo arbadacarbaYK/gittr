@@ -268,11 +268,13 @@ export default function HelpPage() {
             </Link>
             . Repo owners use the Code sidebar{" "}
             <strong className="text-white">Nostr Apps</strong> panel to list an
-            Android app from a GitHub / Codeberg / GitLab{" "}
-            <strong className="text-white">Release</strong> that has an{" "}
-            <code className="text-purple-200">.apk</code> (Zapstore). Other
+            app from a GitHub / Codeberg / GitLab{" "}
+            <strong className="text-white">Release</strong> (APK preferred for
+            Zapstore Android; tar.gz / AppImage / DMG / … also work). Other
             binaries on that same tag can be linked as extra NIP-82 assets;
-            files stay on the forge. Zapstore listing is optional and free — see{" "}
+            files stay on the forge. An optional pin copies the installer onto
+            public Blossom hosts (never gittr’s Pages Blossom). Zapstore listing
+            is optional and free — see{" "}
             <Link
               href="#publish-pages-apps"
               className="text-purple-400 hover:text-purple-300"
@@ -1834,8 +1836,9 @@ export default function HelpPage() {
                         <code className="bg-black/40 px-1 rounded text-xs">
                           url
                         </code>{" "}
-                        usually still points at the forge download. Listing
-                        appears on{" "}
+                        usually still points at the forge download. Owners can
+                        optionally pin a copy onto public Blossom hosts (not
+                        gittr’s Pages Blossom). Listing appears on{" "}
                         <Link
                           href="/apps"
                           className="text-purple-400 hover:text-purple-300"
@@ -1845,11 +1848,10 @@ export default function HelpPage() {
                         and your profile Apps section.
                       </td>
                       <td className="p-3 align-top text-amber-200/90">
-                        The announce stays discoverable; the download may 404 if
-                        the forge is gone. Hashes on the event do not replace a
-                        live file unless you also host the blob elsewhere
-                        (Blossom / CDN). Pages (kind 35128) are different —
-                        those files are uploaded to Blossom.
+                        The announce stays discoverable; the forge download may
+                        404 if GitHub/Codeberg/GitLab is gone. Optional pin onto
+                        public Blossom hosts keeps a copy off gittr. Pages (kind
+                        35128) still upload to gittr’s Pages Blossom — not Apps.
                       </td>
                     </tr>
                     <tr className="bg-slate-900/40">
@@ -2945,11 +2947,12 @@ export default function HelpPage() {
                       <td className="p-3 align-top">
                         Owner-only, explicit step from the Code sidebar →{" "}
                         <strong className="text-white">Nostr Apps</strong>.
-                        Needs a forge Release with an{" "}
-                        <code className="text-purple-200">.apk</code> for
-                        Zapstore. Other verified platform files on the same tag
-                        can be linked as extra NIP-82 assets. You choose this —
-                        it never runs on ordinary{" "}
+                        Needs a forge Release with an announceable installer
+                        (APK, AppImage, DMG, tar.gz, …). An{" "}
+                        <code className="text-purple-200">.apk</code> is
+                        preferred for Zapstore Android. Other verified platform
+                        files on the same tag can be linked as extra NIP-82
+                        assets. You choose this — it never runs on ordinary{" "}
                         <Link
                           href="#push-to-nostr"
                           className="text-purple-400 hover:text-purple-300"
@@ -3104,7 +3107,11 @@ export default function HelpPage() {
                 then <strong>Publish on Nostr</strong> (NIP-82). Zapstore needs
                 the APK; other binaries on the same Release tag (DMG, AppImage,
                 MSI/EXE, …) can be linked as extra NIP-82 assets on that
-                version. Files stay on the forge; gittr only announces. The repo{" "}
+                version. Files stay on the forge by default; gittr only
+                announces. An optional checkbox pins a copy onto public Blossom
+                hosts (Primal, Ditto, Haven) — never{" "}
+                <code className="text-purple-200">blossom.gittr.space</code>{" "}
+                (that host is for Pages). The repo{" "}
                 <strong className="text-white">Releases</strong> tab lists all
                 forge download assets (not only APKs). How Releases, forge
                 files, and announces fit together:{" "}

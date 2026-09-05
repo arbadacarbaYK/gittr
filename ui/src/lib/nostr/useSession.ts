@@ -29,18 +29,15 @@ const useSession = () => {
   // But if pubkey already exists (from localStorage), we're definitely logged in
   const isLoggedIn = !!pubkey;
 
-  // display_name, camelCase displayName, then name — then short npub
-  let name: string;
   const profileName = pickProfileDisplayName(metadata);
+  let name: string;
   if (profileName) {
     name = profileName;
   } else if (isLoggedIn && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-    // Show npub format instead of shortened pubkey
     try {
       const npub = nip19.npubEncode(pubkey);
-      name = npub.substring(0, 16) + "..."; // Show first 16 chars of npub
-    } catch (error) {
-      // Fallback to shortened pubkey only if npub encoding fails
+      name = npub.substring(0, 16) + "...";
+    } catch {
       name = pubkey.slice(0, 8);
     }
   } else {
@@ -58,6 +55,8 @@ const useSession = () => {
     isLoggedIn,
     permissionLevel: isLoggedIn ? PermissionLevel.Read : PermissionLevel.None,
     name,
+    /** Kind-0 display name, or null when we only have the npub fallback. */
+    profileName,
     initials,
     picture: metadata.picture,
     banner: metadata.banner,

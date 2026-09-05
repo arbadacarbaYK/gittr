@@ -2,9 +2,9 @@
  * Build and publish Zapstore-compatible NIP-82 events (32267 / 30063 / 3063)
  * pointing asset `url` at forge download URLs — gittr does not host binaries.
  *
- * Zapstore (Android) still requires an APK. Extra NIP-82 MIME assets (DMG,
- * AppImage, MSI/EXE, IPA) on the same release tag are also published when
- * sha256 is available — protocol allows multiple `e` tags on kind 30063.
+ * Zapstore Android still prefers an APK. Extra NIP-82 MIME assets (DMG,
+ * AppImage, tar.gz, MSI/EXE, IPA) on the same release tag are also published
+ * when sha256 is available — protocol allows multiple `e` tags on kind 30063.
  */
 import type { Event as NostrEvent } from "nostr-tools";
 
@@ -22,6 +22,7 @@ import {
 export {
   buildSoftwareAnnounceEvents,
   pickAnnounceApk,
+  pickAnnouncePrimaryAsset,
   pickSiblingNip82Assets,
   type BuiltSoftwareAnnounce,
   type SoftwareAnnounceInput,

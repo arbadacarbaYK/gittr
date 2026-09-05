@@ -54,8 +54,26 @@ export function pickProfileDisplayName(
 ): string | null {
   const { name, display_name } = normalizeKind0NameFields(meta);
   const raw = (display_name || name || "").trim();
-  if (!raw || raw === "Anonymous Nostrich") return null;
-  if (raw.startsWith("npub")) return null;
-  if (/^[0-9a-f]{8,64}$/i.test(raw)) return null;
+  if (!raw || isNpubOrHexStub(raw)) return null;
   return raw;
+}
+
+/** True for empty / npub / hex / "Anonymous Nostrich" — not a profile handle. */
+export function isNpubOrHexStub(value: string | null | undefined): boolean {
+  const raw = (value || "").trim();
+  if (!raw || raw === "Anonymous Nostrich") return true;
+  if (raw.startsWith("npub")) return true;
+  if (/^[0-9a-f]{8,64}$/i.test(raw)) return true;
+  return false;
+}
+
+/**
+ * NIP-01 `name` (the handle) for Profile Settings. Never the session npub fallback.
+ */
+export function profileHandleFromMetadata(
+  meta: Kind0NameSource | null | undefined
+): string {
+  const { name } = normalizeKind0NameFields(meta);
+  if (!name || isNpubOrHexStub(name)) return "";
+  return name;
 }

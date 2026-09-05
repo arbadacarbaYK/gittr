@@ -6,11 +6,11 @@ import type { NextApiRequest, NextApiResponse } from "next";
 /**
  * GET /api/repo/forge-releases?sourceUrl=…&hash=1&tag=v1.2.3
  *
- * Returns a forge Release with APK assets for Zapstore announce.
+ * Returns a forge Release with NIP-82-announceable binaries (APK preferred).
  * Omit `tag` → latest non-draft (Code sidebar). With `tag` → that Release.
- * Missing forge / bad request → 4xx. no_releases / no_apk → 200 with ok:false
- * (expected for most repos; avoids red Network noise on owner page load).
- * Optional hash=1 streams APKs (+ NIP-82 siblings) to compute sha256 (not stored).
+ * Missing forge / bad request → 4xx. no_releases / no_apk / no_announceable_asset
+ * → 200 with ok:false (expected for most repos; avoids red Network noise).
+ * Optional hash=1 streams announceable files to compute sha256 (not stored).
  */
 export default async function handler(
   req: NextApiRequest,
@@ -67,14 +67,16 @@ export default async function handler(
   });
 
   if (!result.ok) {
-    // no_releases / no_apk are expected for most repos (Apps announce only).
+    // Empty announce cases are expected for most repos (Apps announce only).
     // Return 200 so the Network tab isn't a red "error" on every owner page load.
     const status =
       result.code === "missing_source" || result.code === "invalid_request"
         ? 400
         : result.code === "unsupported_forge"
         ? 422
-        : result.code === "no_releases" || result.code === "no_apk"
+        : result.code === "no_releases" ||
+          result.code === "no_apk" ||
+          result.code === "no_announceable_asset"
         ? 200
         : 502;
     return res.status(status).json(result);

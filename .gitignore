@@ -36,6 +36,7 @@ nginx.gittr.conf.example
 /upload_*.sh
 PUSH_VERIFICATION_SUMMARY.md
 docs/ELEVATOR_PITCH.md
+docs/presentations/
 RELEASE_ASSETS_BLOSSOM_PLAN.md
 413_REQUEST_ENTITY_TOO_LARGE_ERROR.md
 413_ERROR_FIX.md

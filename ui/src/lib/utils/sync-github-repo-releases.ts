@@ -1,6 +1,6 @@
 /**
  * Soft-refresh forge Releases (GitHub / Codeberg / GitLab) into gittr_releases__*.
- * All release assets are listed — independent of App announce (APK-gated).
+ * All release assets are listed — independent of App announce (NIP-82 MIME gate).
  */
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { resolveForgeFromSourceUrl } from "@/lib/repo/forge-releases";

@@ -91,9 +91,38 @@ describe("nip82MimeForAssetName", () => {
     });
   });
 
-  it("returns null for display-only files (zip, deb, checksums)", () => {
+  it("maps linux tarballs and debs (Dan-style musl tar.gz)", () => {
+    expect(
+      nip82MimeForAssetName(
+        "ngit-grasp-3.0.1-x86_64-unknown-linux-musl.tar.gz"
+      )
+    ).toEqual({
+      mime: "application/gzip",
+      f: "linux-amd64",
+    });
+    expect(
+      nip82MimeForAssetName("tool-aarch64-unknown-linux-musl.tar.gz")
+    ).toEqual({
+      mime: "application/gzip",
+      f: "linux-arm64",
+    });
+    expect(nip82MimeForAssetName("tool-arm64.tgz")).toEqual({
+      mime: "application/gzip",
+      f: "linux-arm64",
+    });
+    expect(nip82MimeForAssetName("tool-x86_64.tar.xz")).toEqual({
+      mime: "application/x-xz",
+      f: "linux-amd64",
+    });
+    expect(nip82MimeForAssetName("Thing_amd64.deb")).toEqual({
+      mime: "application/vnd.debian.binary-package",
+      f: "linux-amd64",
+    });
+  });
+
+  it("returns null for display-only files (zip, source tarball, checksums)", () => {
     expect(nip82MimeForAssetName("source.zip")).toBeNull();
-    expect(nip82MimeForAssetName("Thing.deb")).toBeNull();
+    expect(nip82MimeForAssetName("project-source.tar.gz")).toBeNull();
     expect(nip82MimeForAssetName("SHA256SUMS.txt")).toBeNull();
     expect(nip82MimeForAssetName("notes.md")).toBeNull();
   });

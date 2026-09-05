@@ -13,7 +13,7 @@ export const SITE_DESCRIPTION_DEFAULT =
 
 /** Hub routes: keep these distinct from the homepage card so Telegram/X previews match the link. */
 export const APPS_DESCRIPTION =
-  "Browse NIP-82 / Zapstore-style apps on Nostr — Android APKs announced from gittr repos, not a git hosting page.";
+  "Browse NIP-82 / Zapstore-style apps on Nostr — installers announced from gittr repos, not a git hosting page.";
 
 export const PAGES_DESCRIPTION =
   "Published static sites on Nostr (gittr Pages / nsite) — open each site on pages.gittr.space. Separate from git clone and the Apps catalog.";

@@ -6,6 +6,7 @@ import { type Metadata, mergeKind0OntoExisting } from "./kind0-merge";
 import {
   applyKind0NameFields,
   pickProfileDisplayName,
+  profileHandleFromMetadata,
 } from "./kind0-profile-fields";
 
 describe("pickProfileDisplayName", () => {
@@ -36,6 +37,24 @@ describe("pickProfileDisplayName", () => {
     expect(pickProfileDisplayName({ name: "a".repeat(64) })).toBeNull();
     expect(pickProfileDisplayName({ name: "Anonymous Nostrich" })).toBeNull();
     expect(pickProfileDisplayName({})).toBeNull();
+  });
+});
+
+describe("profileHandleFromMetadata", () => {
+  it("uses kind-0 name and ignores a truncated npub session fallback", () => {
+    expect(
+      profileHandleFromMetadata({
+        name: "arbadacarba",
+        display_name: "arbadacarba",
+      })
+    ).toBe("arbadacarba");
+    expect(
+      profileHandleFromMetadata({
+        name: "npub1n2ph08n4pqz...",
+        display_name: "arbadacarba",
+      })
+    ).toBe("");
+    expect(profileHandleFromMetadata({})).toBe("");
   });
 });
 
@@ -90,5 +109,16 @@ describe("payment + social parsing sanity", () => {
     };
     const out = mergeKind0OntoExisting(existing, incoming, 1_788_449_962);
     expect(out.lud16).toBe("new@madeflow.nl");
+  });
+
+  it("still takes name/picture from a clock-skewed (future) kind 0 onto an empty cache", () => {
+    const incoming: Metadata = {
+      name: "arbadacarba",
+      display_name: "arbadacarba",
+      picture: "https://nostr.build/i/x.jpg",
+    };
+    const out = mergeKind0OntoExisting(undefined, incoming, 1_788_457_182);
+    expect(out.name).toBe("arbadacarba");
+    expect(out.picture).toBe("https://nostr.build/i/x.jpg");
   });
 });

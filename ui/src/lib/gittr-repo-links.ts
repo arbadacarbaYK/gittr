@@ -23,7 +23,7 @@ export const GITTR_REPO_GITNOSTR = gittrRepoBrowse("gitnostr");
 export const GITTR_REPO_HELPER_TOOLS = gittrRepoBrowse("gittr-helper-tools");
 export const GITTR_REPO_NSITE_GATEWAY = gittrRepoBrowse("nsite-gateway");
 
-/** Pages / Apps blob host (not a gittr git repo). */
+/** Pages nsite blob host — never pin Apps / APKs here. */
 export const GITTR_BLOSSOM_ORIGIN = "https://blossom.gittr.space";
 
 /** Upstream nsite-gateway we forked/adapted (hzrd146). */

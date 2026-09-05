@@ -48,6 +48,9 @@ const LOCAL_STORAGE_CACHE_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
  * empty stubs (common Firefox poison after kind-10011-only events).
  */
 const profileFetchAttempted = new Set<string>();
+/** Extra HTTP passes when the first attempt returns no usable name (relay remount / flake). */
+const profileFetchRetryCount = new Map<string, number>();
+const MAX_PROFILE_HTTP_RETRIES = 2;
 
 /** Set `localStorage.gittr_verbose_contributor_meta = "1"` for noisy subscription / kind-0 logs. */
 function contributorMetaVerbose(): boolean {
@@ -457,19 +460,12 @@ export function useContributorMetadata(pubkeys: string[]) {
     }
 
     // Fast path: server-side batch (browser WS to many relays often fills ~0 profiles).
+    let httpApplied = false;
     const httpAbort = { cancelled: false };
     void (async () => {
       try {
         const profiles = await fetchProfilesHttp(pubkeysToSubscribe);
-        if (httpAbort.cancelled) return;
-        if (Object.keys(profiles).length === 0) {
-          // Network miss — allow another try later (don't poison the session).
-          for (const p of pubkeysToSubscribe) {
-            profileFetchAttempted.delete(p.toLowerCase());
-          }
-          return;
-        }
-        setMetadataMap((prev) => {
+        const applyProfiles = (prev: Record<string, Metadata>) => {
           const next = { ...prev };
           for (const [pk, meta] of Object.entries(profiles)) {
             const key = pk.toLowerCase();
@@ -481,15 +477,52 @@ export function useContributorMetadata(pubkeys: string[]) {
           }
           saveMetadataCache(next);
           return next;
-        });
-        // Allow a later retry only for pubkeys this batch completely missed.
+        };
+        if (Object.keys(profiles).length === 0) {
+          // Network miss — allow another try later (don't poison the session).
+          for (const p of pubkeysToSubscribe) {
+            profileFetchAttempted.delete(p.toLowerCase());
+          }
+          return;
+        }
+        httpApplied = true;
+        // Always persist, even if this effect instance unmounted. Relay-list /
+        // RemoteSigner remounts used to discard the only successful HTTP fill
+        // while leaving profileFetchAttempted set — welcome then stuck on npub.
+        if (!httpAbort.cancelled) {
+          setMetadataMap(applyProfiles);
+        } else {
+          applyProfiles(loadMetadataCache());
+        }
+        // Allow a later retry only for pubkeys this batch completely missed,
+        // or that came back without a usable name (empty kind 0 / identities stub).
+        const retry: string[] = [];
         for (const p of pubkeysToSubscribe) {
           const key = p.toLowerCase();
-          if (!profiles[key]) profileFetchAttempted.delete(key);
+          const meta = profiles[key];
+          if (!meta) {
+            profileFetchAttempted.delete(key);
+            retry.push(p);
+            continue;
+          }
+          if (!hasUsableProfileName(meta)) {
+            const n = profileFetchRetryCount.get(key) ?? 0;
+            if (n < MAX_PROFILE_HTTP_RETRIES) {
+              profileFetchRetryCount.set(key, n + 1);
+              profileFetchAttempted.delete(key);
+              retry.push(p);
+            }
+          }
+        }
+        if (retry.length > 0 && retry.length <= 8 && !httpAbort.cancelled) {
+          window.setTimeout(() => setSubscribeTick((t) => t + 1), 2000);
         }
       } catch (e) {
         if (contributorMetaVerbose()) {
           console.warn("[useContributorMetadata] HTTP profiles failed:", e);
+        }
+        for (const p of pubkeysToSubscribe) {
+          profileFetchAttempted.delete(p.toLowerCase());
         }
       }
     })();
@@ -770,6 +803,11 @@ export function useContributorMetadata(pubkeys: string[]) {
 
     return () => {
       httpAbort.cancelled = true;
+      if (!httpApplied) {
+        for (const p of pubkeysToSubscribe) {
+          profileFetchAttempted.delete(p.toLowerCase());
+        }
+      }
       // Clean up all batch subscriptions and timeouts
       if (contributorMetaVerbose()) {
         console.log(

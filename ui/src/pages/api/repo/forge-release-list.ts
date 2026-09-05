@@ -7,7 +7,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
  * GET /api/repo/forge-release-list?sourceUrl=…
  *
  * Full release list + all assets for the repo Releases tab.
- * No APK gate (unlike /api/repo/forge-releases used for Zapstore announce).
+ * No announceable-binary gate (unlike /api/repo/forge-releases used for NIP-82 announce).
  */
 export default async function handler(
   req: NextApiRequest,

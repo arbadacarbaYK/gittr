@@ -1,6 +1,7 @@
 /**
- * Fetch forge Releases (GitHub / Codeberg / GitLab / Forgejo) for Zapstore-compatible announce.
- * gittr does not host APKs — only returns public download URLs (+ optional sha256).
+ * Fetch forge Releases (GitHub / Codeberg / GitLab / Forgejo) for NIP-82 announce.
+ * gittr does not host binaries — only returns public download URLs (+ optional sha256).
+ * Zapstore Android still prefers an APK; other NIP-82 MIME files can be the primary asset.
  */
 import { parseGiteaCompatibleRepo } from "../repos/gitea-forge";
 
@@ -43,6 +44,7 @@ export type ForgeReleasesErr = {
     | "unsupported_forge"
     | "no_releases"
     | "no_apk"
+    | "no_announceable_asset"
     | "forge_error"
     | "invalid_request";
   message: string;
@@ -50,7 +52,9 @@ export type ForgeReleasesErr = {
 
 export type ForgeReleasesResult = ForgeReleasesOk | ForgeReleasesErr;
 
-const MAX_APK_HASH_BYTES = 200 * 1024 * 1024;
+/** Hash / pin cap — gittr never stores the bytes. */
+export const FORGE_ASSET_HASH_MAX_BYTES = 200 * 1024 * 1024;
+const MAX_APK_HASH_BYTES = FORGE_ASSET_HASH_MAX_BYTES;
 
 export function isApkAssetName(name: string, contentType?: string): boolean {
   const n = (name || "").toLowerCase();
@@ -196,6 +200,28 @@ function githubHeaders(): Record<string, string> {
   return headers;
 }
 
+/** Headers for streaming a public forge Release asset (hash or Blossom pin). */
+export function forgeAssetDownloadHeaders(
+  downloadUrl: string
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/octet-stream",
+    "User-Agent": "gittr-space-forge-releases",
+  };
+  try {
+    const host = new URL(downloadUrl).hostname.toLowerCase();
+    const github =
+      host === "github.com" ||
+      host.endsWith(".githubusercontent.com") ||
+      host === "objects.githubusercontent.com";
+    const token = process.env.GITHUB_PLATFORM_TOKEN || "";
+    if (github && token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  return headers;
+}
+
 async function sha256OfUrl(
   url: string,
   maxBytes = MAX_APK_HASH_BYTES
@@ -206,7 +232,7 @@ async function sha256OfUrl(
     const res = await fetch(url, {
       signal: ctrl.signal,
       redirect: "follow",
-      headers: { "User-Agent": "gittr-space-forge-releases" },
+      headers: forgeAssetDownloadHeaders(url),
     });
     if (!res.ok || !res.body) return undefined;
     const len = Number(res.headers.get("content-length") || 0);
@@ -511,7 +537,7 @@ export async function listForgeReleasesForDisplay(options: {
 }
 
 /**
- * Resolve a forge release with APK assets for Zapstore/NIP-82 announce.
+ * Resolve a forge release with at least one NIP-82-announceable binary.
  * Optional `tag` selects that Release; omit for latest non-draft (sidebar default).
  * Returns structured ForgeReleasesErr for expected empty cases (never throws those).
  */
@@ -560,17 +586,18 @@ export async function fetchForgeReleasesForAnnounce(options: {
         ok: false,
         code: "no_releases",
         message:
-          "This forge repository has no Releases yet. Create a Release with an .apk asset on GitHub/Codeberg/GitLab first — announce uses forge Releases, not a git branch.",
+          "This forge repository has no Releases yet. Create a Release with an installer (APK, AppImage, DMG, tar.gz, …) on GitHub/Codeberg/GitLab first — announce uses forge Releases, not a git branch.",
       };
     }
 
-    if (release.apkAssets.length === 0) {
+    const announceable = announceableForgeAssets(release.assets);
+    if (announceable.length === 0) {
       return {
         ok: false,
-        code: "no_apk",
+        code: "no_announceable_asset",
         message: wantedTag
-          ? `Release “${release.tag}” has no .apk assets (Zapstore needs an APK on that tag).`
-          : `Your repo or latest release has no .apk assets.`,
+          ? `Release “${release.tag}” has no announceable binaries (APK, AppImage, DMG, tar.gz, MSI/EXE, IPA, …). Zapstore Android still needs an APK.`
+          : "Your repo or latest release has no announceable binaries (APK, AppImage, DMG, tar.gz, MSI/EXE, IPA, …).",
       };
     }
 
@@ -637,9 +664,25 @@ async function maybeHashPublishableAssets(
   return out;
 }
 
+/** Files NIP-82 announce can carry (hashed later). GitHub auto source zip/tarball are not in assets[]. */
+export function announceableForgeAssets(
+  assets: ForgeReleaseAsset[]
+): ForgeReleaseAsset[] {
+  return assets.filter((a) => Boolean(nip82MimeForAssetName(a.name)));
+}
+
+function looksLikeSourceArchiveName(n: string): boolean {
+  const base = n.replace(/\.(tar\.(gz|xz|bz2)|tgz)$/i, "");
+  return /(^|[._-])(src|source|sources)([._-]|$)/i.test(base);
+}
+
+function linuxPlatformFromAssetName(n: string): string {
+  return /aarch64|arm64/.test(n) ? "linux-arm64" : "linux-amd64";
+}
+
 /**
  * NIP-82 MIME (+ optional f) for announceable binaries.
- * Returns null for files we only show on Releases (zips, checksums, deb, …).
+ * Returns null for files we only show on Releases (zips, checksums, source tarballs).
  */
 export function nip82MimeForAssetName(
   name: string
@@ -670,6 +713,21 @@ export function nip82MimeForAssetName(
     return {
       mime: "application/vnd.microsoft.portable-executable",
       f: "windows-amd64",
+    };
+  }
+  if (n.endsWith(".deb")) {
+    return {
+      mime: "application/vnd.debian.binary-package",
+      f: linuxPlatformFromAssetName(n),
+    };
+  }
+  if (
+    (n.endsWith(".tar.gz") || n.endsWith(".tgz") || n.endsWith(".tar.xz")) &&
+    !looksLikeSourceArchiveName(n)
+  ) {
+    return {
+      mime: n.endsWith(".tar.xz") ? "application/x-xz" : "application/gzip",
+      f: linuxPlatformFromAssetName(n),
     };
   }
   return null;

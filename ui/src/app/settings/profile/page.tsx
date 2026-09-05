@@ -21,6 +21,10 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import {
+  pickProfileDisplayName,
+  profileHandleFromMetadata,
+} from "@/lib/nostr/kind0-profile-fields";
 import { getUserMetadata } from "@/lib/utils/entity-resolver";
 
 import {
@@ -53,7 +57,7 @@ export default function ProfilePage() {
   );
   // CRITICAL: Use centralized metadata lookup function for consistent behavior across all pages
   const metadata = getUserMetadata(pubkey, metadataMap);
-  const { picture, name } = useSession();
+  const { picture } = useSession();
   const [updating, setUpdating] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string>("");
   const [identities, setIdentities] = useState<ClaimedIdentity[]>([]);
@@ -69,62 +73,19 @@ export default function ProfilePage() {
   // Use actual username, avoiding "Anonymous Nostrich" and shortened pubkeys
   // CRITICAL: Get picture from metadata if session doesn't have it
   const actualPicture = picture || metadata.picture || "";
-  // CRITICAL: Never show shortened pubkey - prefer metadata name/display_name, or use npub
-  const actualName = (() => {
-    if (
-      name &&
-      name !== "Anonymous Nostrich" &&
-      name.length > 8 &&
-      !/^[0-9a-f]{8,64}$/i.test(name)
-    ) {
-      return name;
-    }
-    if (
-      metadata.name &&
-      metadata.name.trim().length > 0 &&
-      metadata.name !== "Anonymous Nostrich"
-    ) {
-      return metadata.name;
-    }
-    if (metadata.display_name && metadata.display_name.trim().length > 0) {
-      return metadata.display_name;
-    }
-    // Last resort: show npub (not shortened pubkey)
-    if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-      try {
-        return nip19.npubEncode(pubkey).substring(0, 16) + "...";
-      } catch {}
-    }
-    return "";
-  })();
-
-  // CRITICAL: Get the actual username from metadata (not the fallback npub)
-  const actualUserName = (() => {
-    // Priority 1: Use metadata.name if it's a real username (not npub or pubkey)
-    if (
-      metadata.name &&
-      metadata.name.trim().length > 0 &&
-      metadata.name !== "Anonymous Nostrich" &&
-      !metadata.name.startsWith("npub") &&
-      !/^[0-9a-f]{8,64}$/i.test(metadata.name)
-    ) {
-      return metadata.name;
-    }
-    // Priority 2: Use session name if it's valid
-    if (
-      name &&
-      name !== "Anonymous Nostrich" &&
-      name.length > 8 &&
-      !/^[0-9a-f]{8,64}$/i.test(name)
-    ) {
-      return name;
-    }
-    // Priority 3: Use metadata.display_name
-    if (metadata.display_name && metadata.display_name.trim().length > 0) {
-      return metadata.display_name;
-    }
-    return "";
-  })();
+  const actualName =
+    pickProfileDisplayName(metadata) ||
+    (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)
+      ? (() => {
+          try {
+            return nip19.npubEncode(pubkey).substring(0, 16) + "...";
+          } catch {
+            return "";
+          }
+        })()
+      : "");
+  // Kind-0 `name` only — never the session npub fallback (that used to fill Username).
+  const actualUserName = profileHandleFromMetadata(metadata);
 
   const {
     register,
@@ -328,29 +289,7 @@ export default function ProfilePage() {
     });
 
     // Recompute actualUserName for the reset
-    const newActualUserName = (() => {
-      if (
-        metadata.name &&
-        metadata.name.trim().length > 0 &&
-        metadata.name !== "Anonymous Nostrich" &&
-        !metadata.name.startsWith("npub") &&
-        !/^[0-9a-f]{8,64}$/i.test(metadata.name)
-      ) {
-        return metadata.name;
-      }
-      if (
-        name &&
-        name !== "Anonymous Nostrich" &&
-        name.length > 8 &&
-        !/^[0-9a-f]{8,64}$/i.test(name)
-      ) {
-        return name;
-      }
-      if (metadata.display_name && metadata.display_name.trim().length > 0) {
-        return metadata.display_name;
-      }
-      return "";
-    })();
+    const newActualUserName = profileHandleFromMetadata(metadata);
 
     // Create a key from metadata to detect actual changes
     const metadataKey = JSON.stringify({
@@ -431,7 +370,7 @@ export default function ProfilePage() {
         }
       }
     }
-  }, [metadata, name, reset, formValues, pubkey]);
+  }, [metadata, reset, formValues, pubkey]);
 
   const onSubmit: SubmitHandler<ProfileFormInputs> = async (data) => {
     console.log("🔄 [Profile Settings] onSubmit called", {
@@ -1403,13 +1342,17 @@ export default function ProfilePage() {
             <Label htmlFor="profile-picture">Profile Picture</Label>
             {/* eslint-disable-next-line @next/next/no-img-element*/}
             <img
-              src={actualPicture || "/default-avatar.png"}
+              src={actualPicture || "/logo.svg"}
               alt="Profile"
               suppressHydrationWarning
               className="my-4 rounded-full w-52 h-52 max-w-52 max-h-52 object-cover"
               style={{ maxWidth: "13rem", maxHeight: "13rem" }}
+              referrerPolicy="no-referrer"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = "/default-avatar.png";
+                const el = e.target as HTMLImageElement;
+                if (!el.src.endsWith("/logo.svg")) {
+                  el.src = "/logo.svg";
+                }
               }}
             />
           </div>
