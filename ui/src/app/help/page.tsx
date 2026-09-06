@@ -267,14 +267,16 @@ export default function HelpPage() {
               /apps
             </Link>
             . Repo owners use the Code sidebar{" "}
-            <strong className="text-white">Nostr Apps</strong> panel to list an
-            app from a GitHub / Codeberg / GitLab{" "}
-            <strong className="text-white">Release</strong> (APK preferred for
-            Zapstore Android; tar.gz / AppImage / DMG / … also work). Other
-            binaries on that same tag can be linked as extra NIP-82 assets;
-            files stay on the forge. An optional pin copies the installer onto
-            public Blossom hosts (never gittr’s Pages Blossom). Zapstore listing
-            is optional and free — see{" "}
+            <strong className="text-white">Nostr Apps</strong> panel to announce
+            the <em>latest</em> GitHub / Codeberg / GitLab{" "}
+            <strong className="text-white">Release</strong> tag (never a listing
+            without a version). APK preferred for Zapstore Android; tar.gz /
+            AppImage / DMG / … also work. Other binaries on that same tag can be
+            linked as extra NIP-82 assets; files stay on the forge. Pick a
+            specific tag on the repo{" "}
+            <strong className="text-white">Releases</strong> tab. An optional
+            pin copies the installer onto public Blossom hosts (never gittr’s
+            Pages Blossom). Zapstore listing is optional and free — see{" "}
             <Link
               href="#publish-pages-apps"
               className="text-purple-400 hover:text-purple-300"
@@ -294,14 +296,14 @@ export default function HelpPage() {
             >
               /apps
             </Link>
-            ). Creating or announcing a release is <em>not</em> the same as{" "}
+            ). A local listing, announcing a tagged installer, and{" "}
             <Link
               href="#push-to-nostr"
               className="text-purple-400 hover:text-purple-300"
             >
               Push to Nostr
-            </Link>
-            . Details:{" "}
+            </Link>{" "}
+            are three different steps. Details:{" "}
             <Link
               href="#releases"
               className="text-purple-400 hover:text-purple-300"
@@ -2924,9 +2926,8 @@ export default function HelpPage() {
                         gittr &quot;New release&quot;
                       </td>
                       <td className="p-3 align-top">
-                        Optional notes / tag label in the browser for this repo.
-                        Does <em>not</em> upload binaries yet (Blossom upload is
-                        planned), and does <em>not</em> publish to{" "}
+                        Optional notes / tag in this browser. Does <em>not</em>{" "}
+                        attach files, does not publish to Nostr or{" "}
                         <Link
                           href="/apps"
                           className="text-purple-400 hover:text-purple-300"
@@ -2945,14 +2946,20 @@ export default function HelpPage() {
                         Nostr Apps announce
                       </td>
                       <td className="p-3 align-top">
-                        Owner-only, explicit step from the Code sidebar →{" "}
-                        <strong className="text-white">Nostr Apps</strong>.
-                        Needs a forge Release with an announceable installer
+                        Owner-only. Same NIP-82 events from Code sidebar →{" "}
+                        <strong className="text-white">Nostr Apps</strong>{" "}
+                        (always the <em>latest</em> forge Release tag) or
+                        Releases →{" "}
+                        <strong className="text-white">
+                          Announce on Nostr
+                        </strong>{" "}
+                        on a chosen tag. Needs a hashed installer on that tag
                         (APK, AppImage, DMG, tar.gz, …). An{" "}
                         <code className="text-purple-200">.apk</code> is
                         preferred for Zapstore Android. Other verified platform
                         files on the same tag can be linked as extra NIP-82
-                        assets. You choose this — it never runs on ordinary{" "}
+                        assets. Never a tagless app listing. It never runs on
+                        ordinary{" "}
                         <Link
                           href="#push-to-nostr"
                           className="text-purple-400 hover:text-purple-300"
@@ -3006,11 +3013,13 @@ export default function HelpPage() {
                     should appear after a soft refresh from the forge.
                   </li>
                   <li>
-                    (Optional) On that forge tag, click{" "}
-                    <strong className="text-white">Announce on Nostr</strong>{" "}
-                    (same Zapstore rules as Code sidebar →{" "}
-                    <strong className="text-white">Nostr Apps</strong>): verify
-                    APK → <strong>Publish on Nostr</strong> for{" "}
+                    (Optional) Owner clicks{" "}
+                    <strong className="text-white">Announce on Nostr</strong> on
+                    that tag, or uses Code sidebar →{" "}
+                    <strong className="text-white">Nostr Apps</strong> as a
+                    shortcut to the <em>latest</em> forge tag (same Zapstore
+                    rules): verify the installer →{" "}
+                    <strong>Publish on Nostr</strong> for{" "}
                     <Link
                       href="/apps"
                       className="text-purple-400 hover:text-purple-300"
@@ -3099,13 +3108,16 @@ export default function HelpPage() {
 
             <HelpTopic title={<>Nostr Apps &amp; Zapstore</>}>
               <p>
-                Owners list an Android app from the Code sidebar →{" "}
-                <strong className="text-white">Nostr Apps</strong>: link a
-                GitHub / Codeberg / GitLab source URL, pick a{" "}
-                <strong className="text-white">Release</strong> that includes an{" "}
-                <code className="text-purple-200">.apk</code>, verify the APK,
-                then <strong>Publish on Nostr</strong> (NIP-82). Zapstore needs
-                the APK; other binaries on the same Release tag (DMG, AppImage,
+                Owners list an app from the Code sidebar →{" "}
+                <strong className="text-white">Nostr Apps</strong> (latest forge
+                Release tag) or from the{" "}
+                <strong className="text-white">Releases</strong> tab on a chosen
+                tag. Link a GitHub / Codeberg / GitLab source URL. The chosen
+                Release must include an announceable binary (an{" "}
+                <code className="text-purple-200">.apk</code> is preferred for
+                Zapstore Android). Verify the file, then{" "}
+                <strong>Publish on Nostr</strong> (NIP-82). Zapstore needs the
+                APK; other binaries on the same Release tag (DMG, AppImage,
                 MSI/EXE, …) can be linked as extra NIP-82 assets on that
                 version. Files stay on the forge by default; gittr only
                 announces. An optional checkbox pins a copy onto public Blossom

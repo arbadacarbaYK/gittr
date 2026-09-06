@@ -38,8 +38,8 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 - **Mirror / backup** — Push or import a repo. Files live on the **gitnostr** bridge (`git-nostr-bridge`, and/or upstream); metadata on relays.
 - **Issues & PRs on Nostr** — Same workflow as a normal forge. Events are NIP-34 and related kinds
 - **Pages** — Owners publish a static site with **Push Manifest** (required). A README pagelink and custom site name are optional. The `/pages` directory shows a first page of sites, then Load more.
-- **Apps** — Browse NIP-82 / Zapstore apps at [/apps](https://gittr.space/apps). The directory paints a first page of cards, then Load more — same idea as `/pages`, so the Home button stays clickable. Owners can **Announce app** from a repo (forge Release download URLs by default; optional pin of a copy onto public Blossom hosts — never gittr’s Pages Blossom). See [Help → Releases](https://gittr.space/help#releases) for what lives where.
-- **Releases tab** — Lists forge Release assets (GitHub / Codeberg / GitLab). Separate from Push to Nostr and from Apps announce.
+- **Apps** — Browse NIP-82 / Zapstore apps at [/apps](https://gittr.space/apps). The directory paints a first page of cards, then Load more — same idea as `/pages`, so the Home button stays clickable. Owners **Announce** a concrete forge Release tag (Code sidebar **Nostr Apps** = latest tag; Releases tab picks a tag). Download URLs stay on the forge by default; optional pin of a copy onto public Blossom hosts — never gittr’s Pages Blossom. See [Help → Releases](https://gittr.space/help#releases) for what lives where.
+- **Releases tab** — Lists forge Release assets (GitHub / Codeberg / GitLab) and any NIP-82 / Blossom releases already on Nostr. **New listing** is notes in this browser only — not an app announce. Separate from Push to Nostr.
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.
 
 Sitemap/SEO: dynamic from relays — [docs/SEO.md](docs/SEO.md).

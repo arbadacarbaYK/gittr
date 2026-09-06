@@ -8,12 +8,6 @@ import { RepoAppAnnouncePanel } from "@/components/ui/repo-app-announce-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
-  KIND_SOFTWARE_ASSET,
-  KIND_SOFTWARE_RELEASE,
-  type NostrEventLike,
-  type ParsedSoftwareAsset,
-} from "@/lib/nostr/nip82-software";
-import {
   type RepoReleaseListItem,
   assetIdsAndRelayHintsFromRelease,
   mapSoftwareReleaseToRepoRelease,
@@ -22,9 +16,11 @@ import {
   parseMatchingRepoReleases,
 } from "@/lib/nostr/nip82-repo-releases";
 import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
+  KIND_SOFTWARE_ASSET,
+  KIND_SOFTWARE_RELEASE,
+  type NostrEventLike,
+  type ParsedSoftwareAsset,
+} from "@/lib/nostr/nip82-software";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useMetadata from "@/lib/nostr/useMetadata";
@@ -50,19 +46,10 @@ import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
 
-import { Package, Plus, Upload, X } from "lucide-react";
+import { Package, Plus } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
-
-type ReleaseAsset = {
-  name: string;
-  platform: string;
-  url?: string;
-  size?: number;
-  contentType?: string;
-  sha256?: string;
-};
 
 type Release = RepoReleaseListItem;
 
@@ -90,7 +77,6 @@ export default function RepoReleasesPage({
   const { name: userName, isLoggedIn, picture: userPicture } = useSession();
   const {
     pubkey: currentUserPubkey,
-    remoteSigner,
     subscribe,
     defaultRelays,
   } = useNostrContext();
@@ -217,9 +203,6 @@ export default function RepoReleasesPage({
   const [notesInput, setNotesInput] = useState("");
   const [creating, setCreating] = useState(false);
   const [isPrerelease, setIsPrerelease] = useState(false);
-  const [assets, setAssets] = useState<ReleaseAsset[]>([]);
-  const [assetName, setAssetName] = useState("");
-  const [assetPlatform, setAssetPlatform] = useState("linux");
 
   const buildNostrReleaseRows = useCallback((): Release[] => {
     if (!ownerPubkeyHex || !/^[0-9a-f]{64}$/.test(ownerPubkeyHex)) return [];
@@ -330,11 +313,7 @@ export default function RepoReleasesPage({
     } catch {
       /* keep prior state */
     }
-  }, [
-    resolvedParams.entity,
-    resolvedParams.repo,
-    buildNostrReleaseRows,
-  ]);
+  }, [resolvedParams.entity, resolvedParams.repo, buildNostrReleaseRows]);
 
   useEffect(() => {
     reloadRepoReleasesFromStorage();
@@ -434,8 +413,8 @@ export default function RepoReleasesPage({
           event,
         ];
       } else if (event.created_at >= prev.created_at) {
-        nostrReleaseEventsRef.current = nostrReleaseEventsRef.current.map(
-          (e) => (e.id === event.id ? event : e)
+        nostrReleaseEventsRef.current = nostrReleaseEventsRef.current.map((e) =>
+          e.id === event.id ? event : e
         );
       } else {
         return;
@@ -452,7 +431,9 @@ export default function RepoReleasesPage({
     const uniqueRelays = Array.from(new Set(relays.filter(Boolean)));
     const assetUnsubs: Array<() => void> = [];
 
-    const requestAssets = (parsed: NonNullable<ReturnType<typeof parseMatchingRepoReleases>[0]>) => {
+    const requestAssets = (
+      parsed: NonNullable<ReturnType<typeof parseMatchingRepoReleases>[0]>
+    ) => {
       const { ids, relayHints } = assetIdsAndRelayHintsFromRelease(parsed);
       const missing = ids.filter((id) => !nostrAssetsByIdRef.current.has(id));
       if (missing.length === 0) {
@@ -460,9 +441,7 @@ export default function RepoReleasesPage({
         return;
       }
       if (!subscribe) return;
-      const assetRelays = Array.from(
-        new Set([...uniqueRelays, ...relayHints])
-      );
+      const assetRelays = Array.from(new Set([...uniqueRelays, ...relayHints]));
       const unsubAssets = subscribe(
         [{ kinds: [KIND_SOFTWARE_ASSET], ids: missing }],
         assetRelays,
@@ -594,53 +573,16 @@ export default function RepoReleasesPage({
     setTitleInput("");
     setNotesInput("");
     setIsPrerelease(false);
-    setAssets([]);
-    setAssetName("");
-    setAssetPlatform("linux");
   }, []);
 
-  const addAsset = useCallback(() => {
-    if (!assetName.trim()) return;
-    const newAsset: ReleaseAsset = {
-      name: assetName.trim(),
-      platform: assetPlatform,
-    };
-    setAssets([...assets, newAsset]);
-    setAssetName("");
-    setAssetPlatform("linux");
-  }, [assetName, assetPlatform, assets]);
-
-  const removeAsset = useCallback(
-    (index: number) => {
-      setAssets(assets.filter((_, i) => i !== index));
-    },
-    [assets]
-  );
-
-  const submitRelease = useCallback(async () => {
+  const submitRelease = useCallback(() => {
     if (!tagInput.trim()) {
       alert("Tag is required");
       return;
     }
 
-    // CRITICAL: Require signature for creating releases (owner or maintainer must sign)
     if (!currentUserPubkey) {
-      alert("Please log in to create releases");
-      return;
-    }
-
-    // Get private key for signing (required for release creation)
-    const signingCreds = await resolveSigningCredentials({ remoteSigner });
-    if (!signingCreds) {
-      alert(NO_SIGNING_METHOD_MESSAGE);
-      return;
-    }
-    const { hasNip07, privateKey } = signingCreds;
-
-    if (!privateKey && !hasNip07) {
-      alert(
-        "Creating releases requires signature. Please configure NIP-07 extension or private key in settings."
-      );
+      alert("Please log in to save a listing");
       return;
     }
 
@@ -678,7 +620,6 @@ export default function RepoReleasesPage({
         published_at: now,
         html_url: undefined, // Only set for imported releases, not new ones
         author,
-        assets: assets.length > 0 ? assets : undefined,
         prerelease: isPrerelease,
       };
       if (idx < 0 || !repos[idx]) {
@@ -720,7 +661,6 @@ export default function RepoReleasesPage({
       setTitleInput("");
       setNotesInput("");
       setIsPrerelease(false);
-      setAssets([]);
     } catch {
       // keep form open on error
     } finally {
@@ -734,7 +674,6 @@ export default function RepoReleasesPage({
     tagInput,
     titleInput,
     isPrerelease,
-    assets,
     currentUserPubkey,
     userPicture,
     userMetadata.picture,
@@ -803,11 +742,25 @@ export default function RepoReleasesPage({
             <Link href="/apps" className="text-purple-400 hover:underline">
               /apps
             </Link>
-            . Put real binaries on the forge Release first, then use{" "}
-            <strong className="font-medium text-gray-300">
-              Announce on Nostr
-            </strong>{" "}
-            on that tag. See{" "}
+            .
+            {forgeSourceLinked ? (
+              <>
+                {" "}
+                Put real binaries on the forge Release first, then use{" "}
+                <strong className="font-medium text-gray-300">
+                  Announce on Nostr
+                </strong>{" "}
+                on that tag.
+              </>
+            ) : (
+              <>
+                {" "}
+                Nostr-only repos cannot announce an installer from gittr yet —
+                there is no forge file to hash. Link a GitHub / Codeberg /
+                GitLab source if the binaries live there.
+              </>
+            )}{" "}
+            See{" "}
             <Link
               href="/help#releases"
               className="text-purple-400 hover:underline"
@@ -869,83 +822,12 @@ export default function RepoReleasesPage({
             </label>
           </div>
 
-          {/* Assets/Artifacts section */}
-          <div className="mt-6 border-t border-[#383B42] pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Package className="h-5 w-5 text-purple-500" />
-              <h4 className="font-semibold">Release Assets</h4>
-            </div>
-            <p className="text-sm text-gray-400 mb-4">
-              Name/platform labels only for this local listing. Upload real
-              files on the forge Release (or wait for Blossom upload later).
-            </p>
-
-            <div className="space-y-2 mb-3">
-              {assets.map((asset, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-2 p-2 bg-[#0E1116] rounded border border-[#383B42]"
-                >
-                  <Package className="h-4 w-4 text-purple-500" />
-                  <span className="flex-1 text-sm">{asset.name}</span>
-                  <span className="text-xs text-gray-400 px-2 py-1 bg-purple-900/20 rounded">
-                    {asset.platform}
-                  </span>
-                  <button
-                    onClick={() => removeAsset(idx)}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Input
-                value={assetName}
-                onChange={(e) => setAssetName(e.target.value)}
-                placeholder="Asset name (e.g., app-linux.tar.gz)"
-                className="bg-[#0E1116] border-[#383B42] text-white"
-                onKeyPress={(e) => e.key === "Enter" && addAsset()}
-              />
-              <select
-                value={assetPlatform}
-                onChange={(e) => setAssetPlatform(e.target.value)}
-                className="bg-[#0E1116] border border-[#383B42] text-white rounded px-3 py-2"
-              >
-                <option value="linux">Linux</option>
-                <option value="windows">Windows</option>
-                <option value="macos">macOS</option>
-                <option value="android">Android</option>
-                <option value="ios">iOS</option>
-                <option value="web">Web</option>
-                <option value="source">Source</option>
-                <option value="other">Other</option>
-              </select>
-              <Button
-                type="button"
-                onClick={addAsset}
-                variant="outline"
-                className="flex items-center gap-2"
-                disabled={!assetName.trim()}
-              >
-                <Upload className="h-4 w-4" />
-                Add Asset
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Binary upload to Blossom is not available yet — metadata only for
-              now.
-            </p>
-          </div>
-
           <div className="mt-6 flex items-center gap-3">
             <Button
               onClick={submitRelease}
               disabled={creating || !tagInput.trim()}
             >
-              {creating ? "Creating…" : "Save listing"}
+              {creating ? "Saving…" : "Save listing"}
             </Button>
             <Button variant="outline" onClick={() => setShowForm(false)}>
               Cancel
@@ -1008,6 +890,9 @@ export default function RepoReleasesPage({
                 {nostrReleasesSeen
                   ? " (events seen — assets may still be resolving)."
                   : "."}{" "}
+                {hasWrite && !forgeSourceLinked
+                  ? "New listing here is notes in this browser only — it is not Announce on Nostr. "
+                  : ""}
                 Browse installable apps at{" "}
                 <Link
                   href="/apps"

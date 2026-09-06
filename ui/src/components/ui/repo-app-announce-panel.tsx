@@ -13,6 +13,10 @@ import {
   pickAnnouncePrimaryAsset,
   pickSiblingNip82Assets,
 } from "@/lib/nostr/software-announce-build";
+import {
+  announcePanelSummaryLabel,
+  missingForgeSourceAnnounceMessage,
+} from "@/lib/repo/announce-panel-copy";
 import type {
   ForgeReleasesOk,
   ForgeReleasesResult,
@@ -124,9 +128,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     async (withHash: boolean) => {
       if (!sourceUrl?.trim()) {
         setForge(null);
-        setError(
-          "Link a GitHub, Codeberg, or GitLab source URL first (Settings → source)."
-        );
+        setError(missingForgeSourceAnnounceMessage());
         return;
       }
       setLoading(true);
@@ -316,11 +318,11 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
 
   if (!isOwnerSession) return null;
 
-  const summaryLabel = tagForQuery
-    ? `Announce ${tagForQuery}`
-    : isInline
-    ? "Announce on Nostr"
-    : "Nostr Apps";
+  const summaryLabel = announcePanelSummaryLabel({
+    preferredTag: tagForQuery,
+    loadedReleaseTag: forge?.release.tag,
+    variant,
+  });
 
   return (
     <details
@@ -349,7 +351,9 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         <p className="text-[11px] leading-snug text-zinc-400">
           {tagForQuery ? (
             <>
-              Announce forge tag{" "}
+              Same as this repo’s{" "}
+              <strong className="font-medium text-zinc-300">Releases</strong>{" "}
+              tab: announce forge tag{" "}
               <strong className="font-medium text-zinc-300">
                 {tagForQuery}
               </strong>{" "}
@@ -368,22 +372,24 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             </>
           ) : (
             <>
-              List this release on{" "}
-              <Link
-                href="/apps"
-                className="text-[var(--color-link)] underline-offset-2 hover:underline"
-              >
-                Apps
-              </Link>
-              . An <strong className="font-medium text-zinc-300">.apk</strong>{" "}
-              is preferred for Zapstore Android; other NIP-82 binaries (tar.gz,
-              AppImage, DMG, MSI/EXE, IPA) work as the main file. Extra files on
-              the same forge Release are announced as extra assets when
-              verified. Files stay on the forge — gittr only publishes the Nostr
-              events. Optional pin uses public Blossom hosts, never
-              blossom.gittr.space. The repo{" "}
-              <strong className="font-medium text-zinc-300">Releases</strong>{" "}
-              tab still lists every downloadable forge file.
+              Shortcut for the <em>latest</em> forge Release
+              {forge?.release.tag ? (
+                <>
+                  {" "}
+                  (
+                  <strong className="font-medium text-zinc-300">
+                    {forge.release.tag}
+                  </strong>
+                  )
+                </>
+              ) : null}{" "}
+              — never a listing without a version. Same Nostr events as{" "}
+              <strong className="font-medium text-zinc-300">Releases</strong> →
+              Announce on Nostr on that tag. An{" "}
+              <strong className="font-medium text-zinc-300">.apk</strong> is
+              preferred for Zapstore Android; other NIP-82 binaries work as the
+              main file. Extra files on the same tag are linked when verified.
+              Files stay on the forge. Pick another tag on the Releases tab.
             </>
           )}
         </p>
