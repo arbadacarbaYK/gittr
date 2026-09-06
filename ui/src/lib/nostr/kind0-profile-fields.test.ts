@@ -111,6 +111,44 @@ describe("payment + social parsing sanity", () => {
     expect(out.lud16).toBe("new@madeflow.nl");
   });
 
+  it("replaces a cached picture when a newer kind 0 has a new URL", () => {
+    const existing: Metadata = {
+      name: "Ada",
+      picture: "https://old.example/a.jpg",
+      created_at: 10,
+    };
+    const incoming: Metadata = {
+      name: "Ada",
+      picture: "https://new.example/b.jpg",
+    };
+    const out = mergeKind0OntoExisting(existing, incoming, 20);
+    expect(out.picture).toBe("https://new.example/b.jpg");
+  });
+
+  it("lets a newer kind 0 clear a picture; an older blank must not", () => {
+    const existing: Metadata = {
+      name: "Ada",
+      picture: "https://old.example/a.jpg",
+      created_at: 20,
+    };
+    const newerClears = mergeKind0OntoExisting(
+      { ...existing, created_at: 10 },
+      { name: "Ada", picture: "" },
+      20
+    );
+    expect(newerClears.picture).toBeUndefined();
+
+    const olderBlanks = mergeKind0OntoExisting(
+      existing,
+      {
+        name: "Ada",
+        picture: "",
+      },
+      10
+    );
+    expect(olderBlanks.picture).toBe("https://old.example/a.jpg");
+  });
+
   it("still takes name/picture from a clock-skewed (future) kind 0 onto an empty cache", () => {
     const incoming: Metadata = {
       name: "arbadacarba",

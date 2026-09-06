@@ -9,9 +9,9 @@
  * Soft RSC for repo tabs also must stay fast: generateMetadata skips Nostr on
  * Flight requests (isRscClientNavigation). startTransition keeps the chrome
  * responsive while the new segment streams in — except when leaving a Code
- * tab, where Code setState storms starve the transition (logo/home looked
- * dead). Those leaves push urgently; home from Code also gets a short hard
- * fallback if the URL never changes.
+ * tab, Apps/Pages hub, or a profile URL, where setState storms starve the
+ * transition (logo/home looked dead). Those leaves push urgently; home from
+ * those pages also gets a short hard fallback if the URL never changes.
  */
 import { startTransition } from "react";
 
@@ -76,6 +76,27 @@ export function isHeavyDirectoryPath(pathname: string): boolean {
 }
 
 /**
+ * Profile URL `/{npub}` or `/{hex}` — live 30617 catalog flushes starve
+ * startTransition the same way Code/Apps do, so logo/home looked dead ~8–10s.
+ */
+export function isProfileEntityPath(pathname: string): boolean {
+  const path = canonicalPath(pathname || "");
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length !== 1) return false;
+  const first = (parts[0] || "").toLowerCase();
+  if (RESERVED_TOP_SEGMENTS.has(first)) return false;
+  return true;
+}
+
+function isUrgentHomePath(pathname: string): boolean {
+  return (
+    isRepoCodePath(pathname) ||
+    isHeavyDirectoryPath(pathname) ||
+    isProfileEntityPath(pathname)
+  );
+}
+
+/**
  * Repo Code tab: `/{entity}/{repo}` with no further segment.
  * Excludes reserved app routes like `/settings/profile`.
  */
@@ -107,7 +128,9 @@ export function softNavHardFallbackMs(
 ): number {
   if (
     canonicalPath(href) === "/" &&
-    (isRepoCodePath(currentPathname) || isHeavyDirectoryPath(currentPathname))
+    (isRepoCodePath(currentPathname) ||
+      isHeavyDirectoryPath(currentPathname) ||
+      isProfileEntityPath(currentPathname))
   ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
   }
@@ -177,7 +200,7 @@ export function appNavigate(
     };
     // Code-tab setState (tree/README) starves startTransition; leave urgently
     // so the logo and tabs actually commit instead of waiting forever.
-    if (isRepoCodePath(startedOn) || isHeavyDirectoryPath(startedOn)) {
+    if (isUrgentHomePath(startedOn)) {
       push();
     } else {
       startTransition(push);

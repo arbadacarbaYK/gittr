@@ -22,6 +22,7 @@ import {
 } from "@/lib/activity-tracking";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { blossomMediaFallbackUrls } from "@/lib/nostr/blossom-media-fallback";
 import {
   enqueueFollowPublish,
   loadKnownContactList,
@@ -40,6 +41,7 @@ import {
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
 import { profileRepoRelaysForClient } from "@/lib/nostr/nip34-discovery-relays";
 import {
   nip39IdentityDisplay,
@@ -56,6 +58,7 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
+import { useBlossomMediaSrc } from "@/lib/nostr/useBlossomMediaSrc";
 import {
   type ClaimedIdentity,
   useContributorMetadata,
@@ -292,7 +295,6 @@ export default function EntityPage({
   // Check if current user is following this profile
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingLoading, setFollowingLoading] = useState(false);
-  const [pictureLoadFailed, setPictureLoadFailed] = useState(false);
   const [contactList, setContactList] = useState<string[]>([]);
   /** Shown when follow would risk wiping an unloaded contact list (Enter = dismiss / cancel). */
   const [followListRiskOpen, setFollowListRiskOpen] = useState(false);
@@ -2521,50 +2523,24 @@ export default function EntityPage({
     lastProcessedEntityRef.current = resolvedParams.entity;
   }, [resolvedParams.entity, isPubkey]); // Removed fullPubkeyForMeta from deps - use ref to prevent loops
 
-  // Use getEntityDisplayName for consistent display name resolution
-  // CRITICAL: Never show full npub string or shortened pubkey - always prefer username or show npub
-  // userMeta already centralizes the metadata lookup (with own-profile fallback), so trust it here.
+  // Same order as header/cards: display_name (and camelCase displayName), then name.
+  // Kind 0 has both fields; this page used to prefer `name` only and skip people
+  // who only filled the other one.
   const displayName = useMemo(() => {
-    if (
-      userMeta?.name &&
-      userMeta.name.trim().length > 0 &&
-      userMeta.name !== "Anonymous Nostrich" &&
-      !userMeta.name.startsWith("npub") &&
-      !/^[0-9a-f]{8,64}$/i.test(userMeta.name)
-    ) {
-      return userMeta.name;
-    }
-    if (
-      userMeta?.display_name &&
-      userMeta.display_name.trim().length > 0 &&
-      !userMeta.display_name.startsWith("npub") &&
-      !/^[0-9a-f]{8,64}$/i.test(userMeta.display_name)
-    ) {
-      return userMeta.display_name;
-    }
-
-    // If we have npub, show shortened npub (not pubkey prefix)
+    const fromKind0 = pickProfileDisplayName(userMeta);
+    if (fromKind0) return fromKind0;
     if (resolvedParams.entity.startsWith("npub")) {
       return resolvedParams.entity.substring(0, 16) + "...";
     }
-
-    // Fallback: show 8-char prefix only if entity is exactly 8 chars
     return resolvedParams.entity.length === 8
       ? resolvedParams.entity
       : resolvedParams.entity.slice(0, 8);
   }, [userMeta, resolvedParams.entity]);
 
-  // Derive visual metadata directly from userMeta. userMeta already performs the
-  // centralized lookup (including own-profile fallback), so no extra getUserMetadata
-  // calls are needed here.
   const picture = useMemo(() => userMeta?.picture || null, [userMeta]);
-
-  // Reset when kind-0 picture URL changes (dead Blossom hosts must not stick empty)
-  useEffect(() => {
-    setPictureLoadFailed(false);
-  }, [picture]);
-
+  const pictureMedia = useBlossomMediaSrc(picture);
   const banner = useMemo(() => userMeta?.banner, [userMeta]);
+  const bannerMedia = useBlossomMediaSrc(banner);
 
   const about = userMeta?.about;
   const nip05 = userMeta?.nip05;
@@ -3110,15 +3086,13 @@ export default function EntityPage({
   return (
     <div className="container mx-auto max-w-6xl p-3 sm:p-4 md:p-6">
       {/* Banner */}
-      {banner && (
+      {bannerMedia.src && (
         <div className="mb-4 sm:mb-6 rounded-lg overflow-hidden h-32 sm:h-40 md:h-48 bg-gradient-to-r from-purple-600 to-blue-600">
           <img
-            src={banner}
+            src={bannerMedia.src}
             alt={`${displayName} banner`}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            onError={bannerMedia.onError}
           />
         </div>
       )}
@@ -3128,12 +3102,12 @@ export default function EntityPage({
         <div className="flex flex-col md:flex-row items-start gap-4 sm:gap-6">
           {/* Avatar */}
           <div className="relative">
-            {picture && picture.startsWith("http") && !pictureLoadFailed ? (
+            {pictureMedia.src ? (
               <img
-                src={picture}
+                src={pictureMedia.src}
                 alt={displayName}
                 className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] shrink-0 object-cover"
-                onError={() => setPictureLoadFailed(true)}
+                onError={pictureMedia.onError}
               />
             ) : (
               <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] bg-[#22262C] flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-bold text-white shrink-0 overflow-hidden">
@@ -3681,7 +3655,7 @@ export default function EntityPage({
                       picture.trim().length > 0 &&
                       picture.startsWith("http")
                     ) {
-                      iconUrl = picture;
+                      iconUrl = blossomMediaFallbackUrls(picture)[0] || picture;
                     }
                   }
                   if (!iconUrl) {

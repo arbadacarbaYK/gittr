@@ -52,7 +52,8 @@ const profileFetchAttempted = new Set<string>();
 const profileFetchRetryCount = new Map<string, number>();
 const MAX_PROFILE_HTTP_RETRIES = 2;
 
-/** Set `localStorage.gittr_verbose_contributor_meta = "1"` for noisy subscription / kind-0 logs. */
+/** Same-tab cache updates. `storage` events only fire across tabs. */
+export const METADATA_CACHE_UPDATED_EVENT = "gittr:metadata-cache-updated";
 function contributorMetaVerbose(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -224,13 +225,93 @@ function isQuotaExceeded(err: unknown): boolean {
   );
 }
 
-function saveMetadataCache(metadata: Record<string, Metadata>) {
-  // Prevent recursive saves
+function notifyMetadataCacheUpdated(cache: Record<string, Metadata>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent(METADATA_CACHE_UPDATED_EVENT, {
+        detail: { cache },
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeMetadataCacheToStorage(normalized: Record<string, Metadata>) {
+  if (typeof window === "undefined") return;
+  let toSave = normalized;
+  try {
+    localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+    localStorage.setItem(METADATA_CACHE_SAVED_AT_KEY, String(Date.now()));
+  } catch (err) {
+    if (!isQuotaExceeded(err)) throw err;
+    toSave = pruneMetadataForQuota(toSave, 0.4);
+    try {
+      localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
+      localStorage.setItem(METADATA_CACHE_SAVED_AT_KEY, String(Date.now()));
+      console.warn(
+        `⚠️ [useContributorMetadata] localStorage full — pruned metadata cache to ${
+          Object.keys(toSave).length
+        } entries (kept Lightning profiles when possible)`
+      );
+    } catch (err2) {
+      if (isQuotaExceeded(err2)) {
+        try {
+          localStorage.removeItem(METADATA_CACHE_KEY);
+          localStorage.removeItem(METADATA_CACHE_SAVED_AT_KEY);
+          console.warn(
+            "⚠️ [useContributorMetadata] localStorage full — cleared metadata cache so zaps can still use in-memory profiles"
+          );
+        } catch {
+          /* ignore */
+        }
+      } else {
+        throw err2;
+      }
+    }
+  }
+  moduleCache = normalized;
+  cacheLoadTime = Date.now();
+}
+
+function persistMetadataCacheNow(metadata: Record<string, Metadata>) {
+  const normalized: Record<string, Metadata> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    normalized[key.toLowerCase()] = value;
+  }
+  pendingMetadata = normalized;
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  try {
+    isSaving = true;
+    writeMetadataCacheToStorage(normalized);
+  } catch (err) {
+    console.error(
+      "❌ [useContributorMetadata] Failed to save metadata cache",
+      err
+    );
+  } finally {
+    isSaving = false;
+    notifyMetadataCacheUpdated(normalized);
+  }
+}
+
+function saveMetadataCache(
+  metadata: Record<string, Metadata>,
+  opts?: { immediate?: boolean }
+) {
+  if (opts?.immediate) {
+    persistMetadataCacheNow(metadata);
+    return;
+  }
+
   if (isSaving) {
     return;
   }
 
-  // CRITICAL: Normalize all keys to lowercase before saving to prevent case-sensitivity issues
   const normalized: Record<string, Metadata> = {};
   for (const [key, value] of Object.entries(metadata)) {
     normalized[key.toLowerCase()] = value;
@@ -238,54 +319,17 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
 
   pendingMetadata = normalized;
 
-  // Clear existing timeout
   if (saveTimeout) {
     clearTimeout(saveTimeout);
   }
 
-  // Debounce saves to prevent excessive writes
+  // Debounce WS-driven writes. HTTP fills must use { immediate: true }
+  // or a remount (Amber hydrate) reads empty localStorage and stays on npub.
   saveTimeout = setTimeout(() => {
     if (pendingMetadata && typeof window !== "undefined") {
       try {
-        isSaving = true; // Mark as saving to prevent recursive updates
-        let toSave = pendingMetadata;
-        try {
-          localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
-          localStorage.setItem(METADATA_CACHE_SAVED_AT_KEY, String(Date.now()));
-        } catch (err) {
-          if (!isQuotaExceeded(err)) throw err;
-          // Keep zap-relevant profiles; drop the rest so future loads still work.
-          toSave = pruneMetadataForQuota(toSave, 0.4);
-          try {
-            localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(toSave));
-            localStorage.setItem(
-              METADATA_CACHE_SAVED_AT_KEY,
-              String(Date.now())
-            );
-            console.warn(
-              `⚠️ [useContributorMetadata] localStorage full — pruned metadata cache to ${
-                Object.keys(toSave).length
-              } entries (kept Lightning profiles when possible)`
-            );
-          } catch (err2) {
-            if (isQuotaExceeded(err2)) {
-              try {
-                localStorage.removeItem(METADATA_CACHE_KEY);
-                localStorage.removeItem(METADATA_CACHE_SAVED_AT_KEY);
-                console.warn(
-                  "⚠️ [useContributorMetadata] localStorage full — cleared metadata cache so zaps can still use in-memory profiles"
-                );
-              } catch {
-                /* ignore */
-              }
-            } else {
-              throw err2;
-            }
-          }
-        }
-        // Keep module cache in sync with what we intended (full map in memory).
-        moduleCache = pendingMetadata;
-        cacheLoadTime = Date.now();
+        isSaving = true;
+        writeMetadataCacheToStorage(pendingMetadata);
         if (
           contributorMetaVerbose() &&
           Object.keys(pendingMetadata).length > 0 &&
@@ -297,7 +341,6 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
             } metadata entries to cache`
           );
         }
-        // Reset flag after a short delay to allow storage events to process
         setTimeout(() => {
           isSaving = false;
         }, 200);
@@ -310,7 +353,7 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
       }
       pendingMetadata = null;
     }
-  }, 1000); // 1 second debounce
+  }, 1000);
 }
 
 // Hook to fetch metadata for multiple pubkeys (e.g., contributors)
@@ -384,10 +427,6 @@ export function useContributorMetadata(pubkeys: string[]) {
     if (subscriptionTimeoutRef.current) {
       clearTimeout(subscriptionTimeoutRef.current);
       subscriptionTimeoutRef.current = null;
-    }
-
-    if (!subscribe) {
-      return;
     }
 
     const validPubkeys = pubkeys.filter((p) => /^[0-9a-f]{64}$/i.test(p));
@@ -475,7 +514,7 @@ export function useContributorMetadata(pubkeys: string[]) {
               meta.created_at
             );
           }
-          saveMetadataCache(next);
+          saveMetadataCache(next, { immediate: true });
           return next;
         };
         if (Object.keys(profiles).length === 0) {
@@ -526,6 +565,17 @@ export function useContributorMetadata(pubkeys: string[]) {
         }
       }
     })();
+
+    if (!subscribe) {
+      return () => {
+        httpAbort.cancelled = true;
+        if (!httpApplied) {
+          for (const p of pubkeysToSubscribe) {
+            profileFetchAttempted.delete(p.toLowerCase());
+          }
+        }
+      };
+    }
 
     // Batch subscriptions — snappier than 25@500ms once thrash is fixed
     const BATCH_SIZE = 40;
@@ -597,7 +647,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                               meta.created_at
                             ),
                           };
-                          saveMetadataCache(merged);
+                          saveMetadataCache(merged, { immediate: true });
                           return merged;
                         });
                       }
@@ -947,38 +997,31 @@ export function useContributorMetadata(pubkeys: string[]) {
 
     // Handle custom events (from same tab - e.g., profile settings page)
     const handleMetadataCacheUpdate = (e: CustomEvent) => {
-      // Skip if we're currently saving (prevent recursive updates)
-      if (isSaving) {
-        return;
-      }
+      const { pubkey, metadata, cache } = e.detail || {};
 
-      const { pubkey, metadata } = e.detail || {};
-      if (!pubkey || !metadata) return;
-
-      const normalizedPubkey = pubkey.toLowerCase();
-
-      // CRITICAL: Reload cache from localStorage to get the latest data
-      // This ensures we get the updated metadata that was just saved
       try {
+        if (cache && typeof cache === "object") {
+          const normalizedCache: Record<string, Metadata> = {};
+          for (const [key, value] of Object.entries(
+            cache as Record<string, Metadata>
+          )) {
+            normalizedCache[key.toLowerCase()] = value;
+          }
+          setMetadataMap((prev) => ({ ...prev, ...normalizedCache }));
+          return;
+        }
+
+        if (!pubkey || !metadata) return;
+
+        const normalizedPubkey = String(pubkey).toLowerCase();
         const updatedCache = loadMetadataCache();
 
-        // Update state with the new cache data
         setMetadataMap((prev) => {
-          // Merge with existing to preserve other entries
           const merged = { ...prev, ...updatedCache };
-
-          // Ensure the updated pubkey is included
           if (updatedCache[normalizedPubkey]) {
             merged[normalizedPubkey] = updatedCache[normalizedPubkey];
-          }
-
-          if (contributorMetaVerbose()) {
-            console.log(
-              `🔄 [useContributorMetadata] Refreshed metadata cache from same-tab update for ${normalizedPubkey.slice(
-                0,
-                8
-              )}`
-            );
+          } else if (metadata) {
+            merged[normalizedPubkey] = metadata;
           }
           return merged;
         });
@@ -991,14 +1034,14 @@ export function useContributorMetadata(pubkeys: string[]) {
     };
 
     window.addEventListener(
-      "gittr:metadata-cache-updated",
+      METADATA_CACHE_UPDATED_EVENT,
       handleMetadataCacheUpdate as EventListener
     );
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener(
-        "gittr:metadata-cache-updated",
+        METADATA_CACHE_UPDATED_EVENT,
         handleMetadataCacheUpdate as EventListener
       );
     };

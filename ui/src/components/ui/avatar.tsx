@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { useBlossomMediaSrc } from "@/lib/nostr/useBlossomMediaSrc";
 import { cn } from "@/lib/utils";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 
@@ -23,13 +24,23 @@ Avatar.displayName = AvatarPrimitive.Root.displayName;
 const AvatarImage = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Image
-    ref={ref}
-    className={cn("h-full w-full object-cover", className)}
-    {...props}
-  />
-));
+>(({ className, src, onError, ...props }, ref) => {
+  const media = useBlossomMediaSrc(typeof src === "string" ? src : undefined);
+  if (!media.src) return null;
+  return (
+    <AvatarPrimitive.Image
+      ref={ref}
+      className={cn("h-full w-full object-cover", className)}
+      src={media.src}
+      key={media.src}
+      onError={(e) => {
+        media.onError();
+        onError?.(e);
+      }}
+      {...props}
+    />
+  );
+});
 AvatarImage.displayName = AvatarPrimitive.Image.displayName;
 
 const AvatarFallback = React.forwardRef<

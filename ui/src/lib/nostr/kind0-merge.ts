@@ -110,6 +110,22 @@ export function mergeKind0OntoExisting(
   if (identities) next.identities = identities;
   else delete (next as { identities?: unknown }).identities;
 
+  // Pictures follow the same replaceable-event rule as names: a newer kind 0
+  // with a new URL must show immediately (do not pin the cached photo). An
+  // older event that blanks `picture` must not wipe a newer cache. A newer
+  // event that blanks `picture` is a deletion.
+  const incomingPicture =
+    typeof incoming.picture === "string" ? incoming.picture.trim() : "";
+  const incomingBanner =
+    typeof incoming.banner === "string" ? incoming.banner.trim() : "";
+  if (preferIncoming) {
+    if (!incomingPicture) delete next.picture;
+    if (!incomingBanner) delete next.banner;
+  } else {
+    if (!next.picture && existing?.picture) next.picture = existing.picture;
+    if (!next.banner && existing?.banner) next.banner = existing.banner;
+  }
+
   // If we kept an incomplete existing as "newer", still fill missing name fields.
   if (!hasUsableProfileName(next) && incomingHasName) {
     if (incoming.name) next.name = incoming.name;

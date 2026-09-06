@@ -4,6 +4,7 @@ import {
   SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS,
   SOFT_NAV_HARD_FALLBACK_MS,
   isHeavyDirectoryPath,
+  isProfileEntityPath,
   isRepoCodePath,
   shouldApplySoftNavHardFallback,
   shouldHardNavigate,
@@ -42,6 +43,19 @@ describe("isHeavyDirectoryPath", () => {
     expect(isHeavyDirectoryPath("/pages")).toBe(true);
     expect(isHeavyDirectoryPath("/explore")).toBe(false);
     expect(isHeavyDirectoryPath(CODE_PATH)).toBe(false);
+  });
+});
+
+describe("isProfileEntityPath", () => {
+  it("treats npub and hex profile URLs as heavy", () => {
+    expect(
+      isProfileEntityPath(
+        "/npub1q3sle0kvfsehgsuexttt3ugjd8xdklxfwwkh559wxckmzddywnws6cd26p"
+      )
+    ).toBe(true);
+    expect(isProfileEntityPath("/" + "a".repeat(64))).toBe(true);
+    expect(isProfileEntityPath("/settings")).toBe(false);
+    expect(isProfileEntityPath(CODE_PATH)).toBe(false);
   });
 });
 
@@ -86,6 +100,15 @@ describe("softNavHardFallbackMs", () => {
     expect(softNavHardFallbackMs("/", "/pages")).toBe(
       SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
     );
+  });
+
+  it("recovers home from a profile URL the same way", () => {
+    expect(
+      softNavHardFallbackMs(
+        "/",
+        "/npub1q3sle0kvfsehgsuexttt3ugjd8xdklxfwwkh559wxckmzddywnws6cd26p"
+      )
+    ).toBe(SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS);
   });
 
   it("keeps the long stall window for other routes (avoid remount freeze)", () => {

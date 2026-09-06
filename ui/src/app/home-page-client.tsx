@@ -18,6 +18,8 @@ import {
 } from "@/lib/activity-links";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { blossomMediaFallbackUrls } from "@/lib/nostr/blossom-media-fallback";
+import { useBlossomMediaSrc } from "@/lib/nostr/useBlossomMediaSrc";
 import {
   type Metadata,
   useContributorMetadata,
@@ -138,14 +140,16 @@ export default function HomePage({
       ? `/${nip19.npubEncode(pubkey)}`
       : null;
   const welcomeName = mounted && isLoggedIn && name ? name : null;
-  const avatarSrc =
-    mounted && picture && picture.trim() ? picture : "/logo.svg";
+  const welcomePicture =
+    mounted && picture && picture.startsWith("http") ? picture : null;
+  const welcomeMedia = useBlossomMediaSrc(welcomePicture);
+  const avatarSrc = welcomeMedia.src || "/logo.svg";
   const showBanner =
     mounted &&
     isLoggedIn &&
     typeof banner === "string" &&
     banner.trim().length > 0
-      ? banner.trim()
+      ? blossomMediaFallbackUrls(banner.trim())[0] || banner.trim()
       : null;
   const [topRepos, setTopRepos] = useState<RepoStats[]>(
     () => initialLeaderboard?.topRepos ?? []
@@ -1040,7 +1044,7 @@ export default function HomePage({
           picture.trim().length > 0 &&
           picture.startsWith("http")
         ) {
-          return picture;
+          return blossomMediaFallbackUrls(picture)[0] || picture;
         }
       }
     }
@@ -1079,10 +1083,7 @@ export default function HomePage({
                     src={avatarSrc}
                     alt={welcomeName || "You"}
                     className="h-full w-full object-cover"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      if (target.src !== "/logo.svg") target.src = "/logo.svg";
-                    }}
+                    onError={welcomeMedia.onError}
                     referrerPolicy="no-referrer"
                     suppressHydrationWarning
                   />
@@ -1092,10 +1093,7 @@ export default function HomePage({
                   src={avatarSrc}
                   alt="gittr"
                   className="h-full w-full object-cover"
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    if (target.src !== "/logo.svg") target.src = "/logo.svg";
-                  }}
+                  onError={welcomeMedia.onError}
                   referrerPolicy="no-referrer"
                   suppressHydrationWarning
                 />
@@ -1922,13 +1920,20 @@ export default function HomePage({
                     iconUrl = resolveRepoIcon(r);
                     // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
                     if (metadata?.picture) {
-                      ownerPicture = metadata.picture;
+                      ownerPicture =
+                        blossomMediaFallbackUrls(metadata.picture)[0] ||
+                        metadata.picture;
                     } else if (normalizedOwnerPubkey) {
                       ownerPicture =
                         userMetadata[normalizedOwnerPubkey]?.picture ||
                         (ownerPubkey
                           ? userMetadata[ownerPubkey.toLowerCase()]?.picture
                           : undefined);
+                      if (ownerPicture) {
+                        ownerPicture =
+                          blossomMediaFallbackUrls(ownerPicture)[0] ||
+                          ownerPicture;
+                      }
                     }
                   } catch (error) {
                     console.error("⚠️ [Home] Error resolving icons:", error);
