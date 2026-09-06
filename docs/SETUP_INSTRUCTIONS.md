@@ -344,7 +344,8 @@ sudo systemctl status gittr-frontend git-nostr-bridge
 curl -sI https://your.domain | head -1
 ```
 
-- Open the site, log in (NIP-07 or key), import or create a repo.
+- Open the site, log in (NIP-07, Amber/NIP-46, or nsec), import or create a repo.
+- **Settings → Security** must match the login: remote signer is not NIP-07 (`window.nostr` is the Amber adapter). Encryption on that page is for a stored nsec or Account payment secrets, not the phone key.
 - Footer → **Legal** (`/legal`) — non-commercial Nostr client disclaimer; blacklist contact `info@gittr.space`. No personal operator details.
 - Bulk `/import` is local-only by default; optional **Also Push selected to Nostr** publishes each newly imported repo (NIP-34). Single-repo URL auto-import never auto-pushes.
 - `git ls-remote git@your.domain:<npub-or-hex>/<repo>.git` (with your key).

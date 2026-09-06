@@ -3343,9 +3343,11 @@ export default function HelpPage() {
 
             <HelpTopic title={<>Encrypted Keys</>}>
               <p>
-                Your Nostr private key and payment credentials are encrypted
-                with a password you set. Enable encryption in Settings →
-                Security.
+                Settings → Security shows how you actually sign in. Amber /
+                NIP-46 and NIP-07 keep your identity key off this site — you do
+                not need encryption for login. Encryption is for an nsec stored
+                in this browser, and for Lightning / NWC secrets on Settings →
+                Account if you saved any.
               </p>
             </HelpTopic>
 

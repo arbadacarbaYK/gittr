@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  type BrowserLoginSnapshot,
+  encryptionOptionalCopy,
+  leftoverNsecCopy,
+  readBrowserLoginSnapshot,
+} from "@/lib/security/browser-login-method";
+import {
   isEncryptionEnabled,
   migrateToEncrypted,
   setEncryptionPassword,
@@ -14,7 +20,11 @@ import {
 
 import { AlertCircle, CheckCircle, Lock, Shield } from "lucide-react";
 
-export default function EncryptionSetup() {
+export default function EncryptionSetup({
+  snapshot,
+}: {
+  snapshot: BrowserLoginSnapshot;
+}) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [verifyPassword, setVerifyPassword] = useState("");
@@ -25,8 +35,8 @@ export default function EncryptionSetup() {
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [showUnlock, setShowUnlock] = useState(false);
+  const leftover = leftoverNsecCopy(snapshot.method);
 
-  // Check if encryption is already enabled on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const enabled = isEncryptionEnabled();
@@ -58,10 +68,8 @@ export default function EncryptionSetup() {
 
     setIsSettingUp(true);
     try {
-      // Set encryption password
       await setEncryptionPassword(password);
 
-      // Migrate existing sensitive data
       try {
         const plaintextPrivkey = localStorage.getItem("nostr:privkey");
         if (plaintextPrivkey) {
@@ -106,8 +114,6 @@ export default function EncryptionSetup() {
       if (isValid) {
         setSuccess("Password verified! Encryption is active.");
         setShowUnlock(false);
-        // Store verified password in session (memory only, cleared on page unload)
-        // This allows decryption without asking for password every time
         if (typeof window !== "undefined") {
           (window as any).__gittr_encryption_password = verifyPassword;
         }
@@ -121,71 +127,46 @@ export default function EncryptionSetup() {
     }
   };
 
-  // Check if there's actually a private key stored
-  const [hasPrivateKey, setHasPrivateKey] = useState(false);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Check both plaintext and encrypted storage
-      const plaintextKey = localStorage.getItem("nostr:privkey");
-      // Check if encryption is enabled and there might be encrypted data
-      const encryptionEnabled = isEncryptionEnabled();
-      setHasPrivateKey(
-        !!plaintextKey ||
-          (encryptionEnabled &&
-            !!localStorage.getItem("gittr:encrypted:nostr:privkey"))
-      );
-    }
-  }, []);
-
-  // Check if using NIP-07 (keys stay in extension, not localStorage)
-  const [usingNip07, setUsingNip07] = useState(false);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setUsingNip07(typeof window.nostr !== "undefined");
-    }
-  }, []);
-
   if (!encryptionEnabled && !showSetup) {
-    // Only show warning if there's actually a private key stored
-    // If using NIP-07 only, no keys should be in localStorage
-    if (!hasPrivateKey) {
+    if (!snapshot.hasNsecInBrowser) {
       return (
-        <div className="border border-green-600 bg-green-900/20 rounded-lg p-4 space-y-3">
+        <div className="border border-gray-700 rounded-lg p-4 space-y-3">
           <div className="flex items-start gap-2">
-            <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+            <Lock className="h-5 w-5 text-gray-400 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-semibold text-green-400 mb-1">
-                No Private Keys Stored
+              <h3 className="font-semibold text-gray-200 mb-1">
+                Browser encryption (optional)
               </h3>
               <p className="text-sm text-gray-300">
-                {usingNip07
-                  ? "You're using NIP-07 extension login. Your private keys stay in the extension and are never stored in localStorage. This is the most secure option."
-                  : "No Nostr private keys are currently stored in localStorage. If you use NIP-07 extension login, keys stay in the extension and are never stored here."}
+                {encryptionOptionalCopy(snapshot.method)}
               </p>
+              <Button
+                onClick={() => setShowSetup(true)}
+                variant="outline"
+                className="mt-3"
+              >
+                <Lock className="h-4 w-4 mr-2" />
+                {snapshot.method === "remote" || snapshot.method === "nip07"
+                  ? "Encrypt Account secrets anyway"
+                  : "Enable Encryption"}
+              </Button>
             </div>
           </div>
         </div>
       );
     }
 
-    // Show warning only if private key exists
     return (
       <div className="border border-yellow-600 bg-yellow-900/20 rounded-lg p-4 space-y-3">
         <div className="flex items-start gap-2">
           <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5" />
           <div className="flex-1">
             <h3 className="font-semibold text-yellow-400 mb-1">
-              Security Warning
+              {leftover.title}
             </h3>
-            <p className="text-sm text-gray-300 mb-3">
-              Your Nostr private keys are currently stored as plaintext in
-              browser localStorage. This means anyone with access to your
-              browser can see your keys.
-            </p>
+            <p className="text-sm text-gray-300 mb-3">{leftover.body}</p>
             <p className="text-xs text-yellow-300 mb-3">
-              💡 <strong>Tip:</strong> For better security, use NIP-07 extension
-              login instead. Keys stay in the extension and are never stored in
-              localStorage.
+              💡 <strong>Tip:</strong> {leftover.tip}
             </p>
             <Button
               onClick={() => setShowSetup(true)}
@@ -210,8 +191,8 @@ export default function EncryptionSetup() {
               Enable Data Encryption
             </h3>
             <p className="text-sm text-gray-300 mb-4">
-              Set a password to encrypt your private keys. You'll need to enter
-              this password once per browser session to decrypt your keys.
+              Set a password to encrypt secrets stored in this browser. You
+              enter it once per session.
             </p>
 
             {error && (
@@ -286,8 +267,8 @@ export default function EncryptionSetup() {
               Unlock Encryption
             </h3>
             <p className="text-sm text-gray-300 mb-4">
-              Enter your encryption password to decrypt your private keys for
-              this session.
+              Enter your encryption password to decrypt secrets stored in this
+              browser for this session.
             </p>
 
             {error && (
@@ -327,7 +308,6 @@ export default function EncryptionSetup() {
     );
   }
 
-  // Encryption is enabled and unlocked
   return (
     <div className="border border-green-600 bg-green-900/20 rounded-lg p-4">
       <div className="flex items-start gap-2">
@@ -337,11 +317,28 @@ export default function EncryptionSetup() {
             Encryption Active
           </h3>
           <p className="text-sm text-gray-300">
-            Your private keys are encrypted. The encryption password is stored
-            in memory for this session only.
+            Secrets stored in this browser are encrypted. The password stays in
+            memory for this session only.
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+export function useBrowserLoginSnapshot(): BrowserLoginSnapshot & {
+  ready: boolean;
+} {
+  const [snap, setSnap] = useState<BrowserLoginSnapshot>(() => ({
+    hasRemoteSession: false,
+    hasWindowNostr: false,
+    hasNsecInBrowser: false,
+    method: "none",
+  }));
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setSnap(readBrowserLoginSnapshot());
+    setReady(true);
+  }, []);
+  return { ...snap, ready };
 }
