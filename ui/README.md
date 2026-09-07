@@ -2,7 +2,7 @@
 
 Next.js frontend for [gittr.space](https://gittr.space) — Nostr git (mirror, issues/PRs, Pages, apps, Lightning bounties). SEO metadata: `src/lib/seo/site-metadata.ts`; sitemap: `src/app/sitemap.ts` (see repo `docs/SEO.md`).
 
-Explore / My Repositories / Profile / Pages / Apps grids use shared **Load more** pagination (48 cards at a time).
+Explore / My Repositories / Profile / Pages / Apps grids use shared **Load more** pagination (48 cards at a time). `/explore` first paints the SEO seed (fast), then fills in the rest from NIP-34 discovery relays (ngit, Shakespeare, NostrHub, gitnostr, gittr) — not only repos that live on this deployment’s git bridge.
 
 Read about the vision [here](https://github.com/NostrGit/NostrGit/tree/main/documentation/vision.md).
 

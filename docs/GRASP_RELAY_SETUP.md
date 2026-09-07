@@ -8,7 +8,7 @@ Bridge setup: [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md).
 
 ## Public relays
 
-Default list is in `ui/.env.example` → `NEXT_PUBLIC_NOSTR_RELAYS`. Include GRASP-capable `wss://` URLs your deployment relies on (e.g. `wss://relay.gittr.space`, `wss://relay.ngit.dev`, `wss://gitnostr.com`, `wss://git.shakespeare.diy`) plus a short set of healthy general relays (`damus.io`, `nos.lol`, `primal.net`, …). Skip unreachable hosts from the *default* connect list (DNS-dead or chronic handshake stalls) — they can still appear in other people’s `clone` tags for read. Push auto-mirrors use `GRASP_SERVERS_FOR_PUSHING` ∪ user kind 10317 (`mergeGraspHostsForPush`).
+Default list is in `ui/.env.example` → `NEXT_PUBLIC_NOSTR_RELAYS`. Include GRASP-capable `wss://` URLs your deployment relies on (e.g. `wss://relay.gittr.space`, `wss://relay.ngit.dev`, `wss://gitnostr.com`, `wss://git.shakespeare.diy`, `wss://git.nostrhub.io`) plus a short set of healthy general relays (`damus.io`, `nos.lol`, `primal.net`, …). Skip unreachable hosts from the *default* connect list (DNS-dead or chronic handshake stalls) — they can still appear in other people’s `clone` tags for read. **Do not** put `git.gittr.space` or `gitworkshop.dev` on the wss list — those are git HTTPS / a website, not relays; Explore used to dial them from `relays` tags and stall while only bridge/seed cards showed. Push auto-mirrors use `GRASP_SERVERS_FOR_PUSHING` ∪ user kind 10317 (`mergeGraspHostsForPush`).
 
 Match the same URLs in `git-nostr-bridge.json` → `relays`.
 

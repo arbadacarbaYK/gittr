@@ -1,7 +1,7 @@
 /**
- * NIP-34 discovery relays for profile / repo lookup. Many NostrHub / ngit
- * announcements never land on gittr's Pyramid relay — without these, profiles
- * under-count vs Explore.
+ * NIP-34 discovery relays for profile / Explore / repo lookup. Many NostrHub /
+ * ngit announcements never land on gittr's Pyramid relay — without these,
+ * those surfaces only show gittr-bridge repos until extra relays trickle in.
  *
  * Keep this module free of Node-only imports so the profile page can use it.
  */

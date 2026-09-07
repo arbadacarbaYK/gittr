@@ -1,0 +1,128 @@
+/**
+ * Relays Explore should actually dial for NIP-34 discovery.
+ *
+ * The page used to wait until a repo event listed extra `relays` tags, then
+ * call addRelay + subscribe for every event. That:
+ *   1. Left NostrHub / ngit / Shakespeare repos until long after gittr's own
+ *      relay (and the SEO seed) had already painted — "only bridge repos".
+ *   2. Re-dialed the same host while the socket was still CONNECTING, which
+ *      kills in-flight handshakes (see NostrContext.addRelay).
+ *   3. Treated websites and git HTTPS hosts (gitworkshop.dev, git.gittr.space)
+ *      as wss:// relays, burning browser WebSocket slots on guaranteed failures.
+ */
+import { isGraspServer } from "../utils/grasp-servers";
+
+import { NIP34_DISCOVERY_RELAYS } from "./nip34-discovery-relays";
+
+/** Hosts that show up in NIP-34 `relays` / `web` tags but are not Nostr relays. */
+export const EXPLORE_NON_RELAY_HOSTS = [
+  "gitworkshop.dev",
+  "git.gittr.space",
+  "github.com",
+  "gitlab.com",
+  "codeberg.org",
+  "gist.github.com",
+] as const;
+
+export function normalizeExploreRelayUrl(url: string): string {
+  return String(url || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\/+$/, "");
+}
+
+function hostnameFromRelayUrl(url: string): string {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  try {
+    const withProto =
+      raw.startsWith("wss://") ||
+      raw.startsWith("ws://") ||
+      raw.startsWith("http://") ||
+      raw.startsWith("https://")
+        ? raw
+        : `wss://${raw}`;
+    return new URL(withProto).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * True when this URL is worth a browser WebSocket for Explore discovery.
+ * HTTP(S) clone/web URLs are never relays.
+ */
+export function isUsableExploreDiscoveryRelay(url: string): boolean {
+  const raw = String(url || "").trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("http://") || lower.startsWith("https://")) {
+    return false;
+  }
+  const withProto =
+    lower.startsWith("wss://") || lower.startsWith("ws://")
+      ? raw
+      : `wss://${raw}`;
+  if (!/^wss?:\/\//i.test(withProto)) return false;
+
+  const host = hostnameFromRelayUrl(withProto);
+  if (!host) return false;
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  ) {
+    return false;
+  }
+
+  return !EXPLORE_NON_RELAY_HOSTS.some(
+    (blocked) => host === blocked || host.endsWith(`.${blocked}`)
+  );
+}
+
+/**
+ * Record a newly seen relay. Returns the URL to subscribe to, or null when
+ * it is unusable or already queried this session.
+ */
+export function rememberExploreDiscoveryRelay(
+  url: string,
+  alreadyQueried: Set<string>
+): string | null {
+  if (!isUsableExploreDiscoveryRelay(url)) return null;
+  const raw =
+    url.startsWith("wss://") || url.startsWith("ws://")
+      ? url.trim()
+      : `wss://${url.trim()}`;
+  const key = normalizeExploreRelayUrl(raw);
+  if (!key || alreadyQueried.has(key)) return null;
+  alreadyQueried.add(key);
+  return raw.replace(/\/+$/, "");
+}
+
+function pushUniqueRelay(out: string[], seen: Set<string>, url: string): void {
+  const accepted = rememberExploreDiscoveryRelay(url, seen);
+  if (accepted) out.push(accepted);
+}
+
+/**
+ * Initial Explore subscribe list: GRASP / git hosts first (including the
+ * NIP-34 discovery set), then remaining app relays. Deduped and stripped of
+ * non-relay hosts.
+ */
+export function exploreRepoRelaysForClient(defaultRelays: string[]): string[] {
+  const envList = (defaultRelays || []).filter(Boolean);
+  const combined = [...envList, ...NIP34_DISCOVERY_RELAYS];
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const url of combined) {
+    if (isUsableExploreDiscoveryRelay(url) && isGraspServer(url)) {
+      pushUniqueRelay(out, seen, url);
+    }
+  }
+  for (const url of combined) {
+    pushUniqueRelay(out, seen, url);
+  }
+  return out;
+}

@@ -20,6 +20,10 @@ import {
   usableCloneUrls,
 } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import {
+  exploreRepoRelaysForClient,
+  rememberExploreDiscoveryRelay,
+} from "@/lib/nostr/explore-discovery-relays";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
@@ -38,12 +42,14 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
+import { getGraspServers } from "@/lib/utils/grasp-servers";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import type { OnEvent } from "nostr-relaypool";
 import { nip19 } from "nostr-tools";
 
 /**
@@ -54,6 +60,18 @@ const EXPLORE_SEED_FETCH_LIMIT = 3000;
 const EXPLORE_SEED_CACHE_CAP = 3000;
 /** Skip re-seed only when cache is already near full catalog size. */
 const EXPLORE_SEED_SKIP_IF_CACHED = 2000;
+
+/** Per-event Explore logs freeze the tab; opt in with localStorage gittr_explore_debug=1 */
+function exploreDebug(...args: unknown[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem("gittr_explore_debug") === "1") {
+      console.log(...args);
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -855,7 +873,7 @@ function ExplorePageContent() {
       contributors: r.contributors || [],
     }));
 
-    console.log("🔍 [Explore] applyReposToUi:", {
+    exploreDebug("🔍 [Explore] applyReposToUi:", {
       catalog: list.length,
       shown: finalRepos.length,
     });
@@ -1153,15 +1171,17 @@ function ExplorePageContent() {
     );
     setSyncing(true);
 
-    // Identify GRASP relays (these have the most repos!)
-    const { getGraspServers } = require("@/lib/utils/grasp-servers");
-    const graspRelays = getGraspServers(defaultRelays);
+    // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags.
+    const allRelays = exploreRepoRelaysForClient(getAllRelays(defaultRelays));
+    const graspRelays = getGraspServers(allRelays);
     const normRelay = (u: string) => u.trim().toLowerCase().replace(/\/+$/, "");
     const graspRelayNorms = new Set(graspRelays.map(normRelay));
+    const queriedDiscoveryRelays = new Set(allRelays.map(normRelay));
+    const extraUnsubs: Array<() => void> = [];
     console.log(
-      "🎯 [Explore] GRASP relays found:",
-      graspRelays.length,
-      graspRelays
+      "🎯 [Explore] Discovery relays (GRASP first):",
+      allRelays.length,
+      allRelays.slice(0, 10)
     );
 
     // Track which relays have sent EOSE - but prioritize GRASP relays
@@ -1170,11 +1190,13 @@ function ExplorePageContent() {
     const graspRelaysReceived = new Set<string>();
     let eoseTimeout: NodeJS.Timeout | null = null;
     let minRelaysTimeout: NodeJS.Timeout | null = null;
+    let syncIndicatorHidden = false;
 
     const checkShouldStopSyncing = () => {
       // CRITICAL: This only stops the "syncing" UI indicator, NOT the subscription!
       // The subscription continues to listen for new repos in real-time even after this.
       // EOSE means "end of stored events" - but new events can still arrive after EOSE.
+      if (syncIndicatorHidden) return;
 
       // Stop showing "syncing" status if we've received EOSE from at least 2 GRASP relays
       // OR if we've received repos from at least 5 regular relays and waited 5 seconds
@@ -1194,6 +1216,7 @@ function ExplorePageContent() {
         hasVeryManyRepos ||
         hasUsableSample
       ) {
+        syncIndicatorHidden = true;
         console.log(
           "✅ [Explore] Hiding sync indicator - enough initial data received:",
           {
@@ -1260,17 +1283,6 @@ function ExplorePageContent() {
       JSON.stringify(filters, null, 2)
     );
 
-    // Prefer GRASP / git hosts first — they carry most NIP-34 announces.
-    const allRelaysRaw = getAllRelays(defaultRelays);
-    const allRelays = [
-      ...graspRelays,
-      ...allRelaysRaw.filter((u) => !graspRelayNorms.has(normRelay(u))),
-    ];
-    console.log(
-      "📡 [Explore] Relay order (GRASP first):",
-      allRelays.slice(0, 8)
-    );
-
     // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
     // Map: repoKey (pubkey + d tag) -> array of events
     const nip34EventsByRepo = new Map<
@@ -1278,989 +1290,804 @@ function ExplorePageContent() {
       Array<{ event: any; relayURL?: string }>
     >();
 
-    const unsub = subscribe(
-      filters,
-      allRelays,
-      (event, isAfterEose, relayURL) => {
-        // CRITICAL: Process ALL events, including those that arrive after EOSE!
-        // EOSE (End of Stored Events) just means the relay finished sending stored events,
-        // but new events can still arrive in real-time. The subscription NEVER stops listening.
-        // We continue to process and add new repos even after the "syncing" status changes to false.
-        console.log("📨 [Explore] Event received:", {
-          kind: event.kind,
-          expectedKinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34, 5],
-          relay: relayURL,
-          isAfterEose,
-          pubkey: event.pubkey?.slice(0, 8),
-          eventId: event.id?.slice(0, 8),
-        });
+    const onExploreEvent: OnEvent = (event, isAfterEose, relayURL) => {
+      // CRITICAL: Process ALL events, including those that arrive after EOSE!
+      // EOSE (End of Stored Events) just means the relay finished sending stored events,
+      // but new events can still arrive in real-time. The subscription NEVER stops listening.
+      // We continue to process and add new repos even after the "syncing" status changes to false.
+      exploreDebug("📨 [Explore] Event received:", {
+        kind: event.kind,
+        expectedKinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34, 5],
+        relay: relayURL,
+        isAfterEose,
+        pubkey: event.pubkey?.slice(0, 8),
+        eventId: event.id?.slice(0, 8),
+      });
 
-        // CRITICAL: For NIP-34 replaceable events, collect ALL events first
-        // Don't process immediately - wait for EOSE to pick the latest one
-        if (event.kind === KIND_REPOSITORY_NIP34) {
-          if (isPublisherBlocklisted(event.pubkey)) return;
-          const dTag = event.tags?.find(
-            (t: any) => Array.isArray(t) && t[0] === "d"
+      // CRITICAL: For NIP-34 replaceable events, collect ALL events first
+      // Don't process immediately - wait for EOSE to pick the latest one
+      if (event.kind === KIND_REPOSITORY_NIP34) {
+        if (isPublisherBlocklisted(event.pubkey)) return;
+        const dTag = event.tags?.find(
+          (t: any) => Array.isArray(t) && t[0] === "d"
+        );
+        const repoName = dTag?.[1];
+        if (repoName && event.pubkey) {
+          const repoKey = `${event.pubkey}/${repoName}`;
+          if (!nip34EventsByRepo.has(repoKey)) {
+            nip34EventsByRepo.set(repoKey, []);
+          }
+          nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
+          exploreDebug(
+            `📦 [Explore] Collected NIP-34 event for ${repoKey}: id=${event.id.slice(
+              0,
+              8
+            )}..., created_at=${event.created_at}, total=${
+              nip34EventsByRepo.get(repoKey)!.length
+            }`
           );
-          const repoName = dTag?.[1];
-          if (repoName && event.pubkey) {
-            const repoKey = `${event.pubkey}/${repoName}`;
-            if (!nip34EventsByRepo.has(repoKey)) {
-              nip34EventsByRepo.set(repoKey, []);
-            }
-            nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
-            console.log(
-              `📦 [Explore] Collected NIP-34 event for ${repoKey}: id=${event.id.slice(
-                0,
-                8
-              )}..., created_at=${event.created_at}, total=${
-                nip34EventsByRepo.get(repoKey)!.length
-              }`
-            );
-            // Don't return - continue to process it normally too (for immediate display)
-            // But we'll ensure the latest one is used when storing
-          }
+          // Don't return - continue to process it normally too (for immediate display)
+          // But we'll ensure the latest one is used when storing
         }
+      }
 
-        // Handle NIP-09 deletion events (kind 5)
-        if (event.kind === 5) {
-          // NIP-09: Deletion events reference the deleted event via "e" tag
-          // Process deletion events to mark repos as deleted
-          if (event.tags && Array.isArray(event.tags)) {
-            for (const tag of event.tags) {
-              if (Array.isArray(tag) && tag[0] === "e" && tag[1]) {
-                const deletedEventId = tag[1];
-                console.log(
-                  "🗑️ [Explore] NIP-09 deletion event received for event:",
-                  deletedEventId.slice(0, 8)
-                );
+      // Handle NIP-09 deletion events (kind 5)
+      if (event.kind === 5) {
+        // NIP-09: Deletion events reference the deleted event via "e" tag
+        // Process deletion events to mark repos as deleted
+        if (event.tags && Array.isArray(event.tags)) {
+          for (const tag of event.tags) {
+            if (Array.isArray(tag) && tag[0] === "e" && tag[1]) {
+              const deletedEventId = tag[1];
+              console.log(
+                "🗑️ [Explore] NIP-09 deletion event received for event:",
+                deletedEventId.slice(0, 8)
+              );
 
-                // Find repos with this event ID and mark them as deleted
-                const existingRepos = [...readExploreCatalog()];
-                let updated = false;
+              // Find repos with this event ID and mark them as deleted
+              const existingRepos = [...readExploreCatalog()];
+              let updated = false;
 
-                const updatedRepos = existingRepos.map((r: any) => {
-                  // Match by nostrEventId or lastNostrEventId
-                  if (
-                    (r.nostrEventId === deletedEventId ||
-                      r.lastNostrEventId === deletedEventId) &&
-                    !r.deleted
-                  ) {
-                    console.log(
-                      "🗑️ [Explore] Marking repo as deleted via NIP-09:",
-                      {
-                        repo: r.repo || r.slug,
-                        entity: r.entity,
-                        eventId: deletedEventId.slice(0, 8),
-                      }
-                    );
-                    updated = true;
-                    return { ...r, deleted: true };
-                  }
-                  return r;
-                });
-
-                if (updated) {
-                  commitExploreCatalog(updatedRepos, { immediate: true });
+              const updatedRepos = existingRepos.map((r: any) => {
+                // Match by nostrEventId or lastNostrEventId
+                if (
+                  (r.nostrEventId === deletedEventId ||
+                    r.lastNostrEventId === deletedEventId) &&
+                  !r.deleted
+                ) {
+                  console.log(
+                    "🗑️ [Explore] Marking repo as deleted via NIP-09:",
+                    {
+                      repo: r.repo || r.slug,
+                      entity: r.entity,
+                      eventId: deletedEventId.slice(0, 8),
+                    }
+                  );
+                  updated = true;
+                  return { ...r, deleted: true };
                 }
+                return r;
+              });
+
+              if (updated) {
+                commitExploreCatalog(updatedRepos, { immediate: true });
               }
             }
           }
-          return; // Don't process deletion events as repos
         }
+        return; // Don't process deletion events as repos
+      }
 
-        // Support both gitnostr (kind 51) and NIP-34 (kind 30617)
-        if (
-          event.kind === KIND_REPOSITORY ||
-          event.kind === KIND_REPOSITORY_NIP34
-        ) {
-          if (isPublisherBlocklisted(event.pubkey)) return;
-          try {
-            // NIP-34 uses tags for metadata, content is empty
-            // gitnostr uses JSON in content
-            let repoData: any;
-            if (event.kind === KIND_REPOSITORY_NIP34) {
-              // NIP-34 format: Parse from tags
-              repoData = parseNIP34Repository(event);
-            } else {
-              // gitnostr format: Parse from JSON content
-              // CRITICAL: Validate content is JSON before parsing
-              if (!event.content || typeof event.content !== "string") {
-                console.warn(
-                  "⚠️ [Explore] Skipping event with invalid content:",
-                  {
-                    eventId: event.id.slice(0, 8),
-                    kind: event.kind,
-                    contentLength: event.content?.length || 0,
-                  }
-                );
-                return;
-              }
-
-              // Check if content looks like JSON (starts with { or [)
-              const trimmedContent = event.content.trim();
-              if (
-                !trimmedContent.startsWith("{") &&
-                !trimmedContent.startsWith("[")
-              ) {
-                console.warn(
-                  "⚠️ [Explore] Skipping event with non-JSON content:",
-                  {
-                    eventId: event.id.slice(0, 8),
-                    kind: event.kind,
-                    contentPreview: trimmedContent.slice(0, 50),
-                  }
-                );
-                return;
-              }
-
-              try {
-                repoData = JSON.parse(event.content);
-              } catch (parseError) {
-                console.warn("⚠️ [Explore] Failed to parse JSON content:", {
+      // Support both gitnostr (kind 51) and NIP-34 (kind 30617)
+      if (
+        event.kind === KIND_REPOSITORY ||
+        event.kind === KIND_REPOSITORY_NIP34
+      ) {
+        if (isPublisherBlocklisted(event.pubkey)) return;
+        try {
+          // NIP-34 uses tags for metadata, content is empty
+          // gitnostr uses JSON in content
+          let repoData: any;
+          if (event.kind === KIND_REPOSITORY_NIP34) {
+            // NIP-34 format: Parse from tags
+            repoData = parseNIP34Repository(event);
+          } else {
+            // gitnostr format: Parse from JSON content
+            // CRITICAL: Validate content is JSON before parsing
+            if (!event.content || typeof event.content !== "string") {
+              console.warn(
+                "⚠️ [Explore] Skipping event with invalid content:",
+                {
                   eventId: event.id.slice(0, 8),
                   kind: event.kind,
-                  error: parseError,
-                  contentPreview: trimmedContent.slice(0, 100),
-                });
-                return; // Skip this event
-              }
+                  contentLength: event.content?.length || 0,
+                }
+              );
+              return;
             }
 
-            // CRITICAL: Validate repoData has required fields
+            // Check if content looks like JSON (starts with { or [)
+            const trimmedContent = event.content.trim();
             if (
-              !repoData ||
-              typeof repoData !== "object" ||
-              !repoData.repositoryName
+              !trimmedContent.startsWith("{") &&
+              !trimmedContent.startsWith("[")
             ) {
               console.warn(
-                "⚠️ [Explore] Skipping event with invalid repoData:",
+                "⚠️ [Explore] Skipping event with non-JSON content:",
                 {
                   eventId: event.id.slice(0, 8),
-                  hasRepoData: !!repoData,
-                  hasRepositoryName: !!repoData?.repositoryName,
+                  kind: event.kind,
+                  contentPreview: trimmedContent.slice(0, 50),
                 }
               );
               return;
             }
 
-            // Foreign clients sometimes announce storage paths ("<hex>/name")
-            // as the d tag — those can never resolve on gittr, so don't list.
-            if (!isRenderableRepoName(repoData.repositoryName)) {
-              console.warn(
-                "⚠️ [Explore] Skipping repo with unrenderable identifier:",
-                {
-                  eventId: event.id.slice(0, 8),
-                  repositoryName: String(repoData.repositoryName).slice(0, 80),
-                }
-              );
-              return;
+            try {
+              repoData = JSON.parse(event.content);
+            } catch (parseError) {
+              console.warn("⚠️ [Explore] Failed to parse JSON content:", {
+                eventId: event.id.slice(0, 8),
+                kind: event.kind,
+                error: parseError,
+                contentPreview: trimmedContent.slice(0, 100),
+              });
+              return; // Skip this event
             }
+          }
 
-            // GRASP-01: Parse clone, relays, topics, and contributors from event.tags
-            // Tags are stored as: ["clone", "https://gittr.space"] or ["relays", "wss://relay.example.com"]
-            // Contributors are stored as: ["p", pubkey, weight, role]
-            const cloneTags: string[] = [];
-            const relaysTags: string[] = [];
-            const topicTags: string[] = [];
-            const contributorTags: Array<{
-              pubkey: string;
-              weight: number;
-              role?: string;
-            }> = [];
+          // CRITICAL: Validate repoData has required fields
+          if (
+            !repoData ||
+            typeof repoData !== "object" ||
+            !repoData.repositoryName
+          ) {
+            console.warn("⚠️ [Explore] Skipping event with invalid repoData:", {
+              eventId: event.id.slice(0, 8),
+              hasRepoData: !!repoData,
+              hasRepositoryName: !!repoData?.repositoryName,
+            });
+            return;
+          }
 
-            if (event.tags && Array.isArray(event.tags)) {
-              for (const tag of event.tags) {
-                if (Array.isArray(tag) && tag.length >= 2) {
-                  const tagName = tag[0];
-                  const tagValue = tag[1];
+          // Foreign clients sometimes announce storage paths ("<hex>/name")
+          // as the d tag — those can never resolve on gittr, so don't list.
+          if (!isRenderableRepoName(repoData.repositoryName)) {
+            console.warn(
+              "⚠️ [Explore] Skipping repo with unrenderable identifier:",
+              {
+                eventId: event.id.slice(0, 8),
+                repositoryName: String(repoData.repositoryName).slice(0, 80),
+              }
+            );
+            return;
+          }
 
-                  if (tagName === "clone" && tagValue) {
-                    cloneTags.push(tagValue);
-                  } else if (tagName === "relays" && tagValue) {
-                    // CRITICAL: Handle both formats per NIP-34 spec:
-                    // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
-                    // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
-                    // Check if value contains commas (comma-separated format)
-                    if (tagValue.includes(",")) {
-                      // Comma-separated format - split and add each
-                      const relayUrls = tagValue
-                        .split(",")
-                        .map((r) => r.trim())
-                        .filter((r) => r.length > 0);
-                      relayUrls.forEach((relayUrl) => {
-                        // Ensure wss:// prefix
-                        const normalized =
-                          relayUrl.startsWith("wss://") ||
-                          relayUrl.startsWith("ws://")
-                            ? relayUrl
-                            : `wss://${relayUrl}`;
-                        if (!relaysTags.includes(normalized)) {
-                          relaysTags.push(normalized);
-                        }
-                      });
-                    } else {
-                      // Single relay per tag - add directly
+          // GRASP-01: Parse clone, relays, topics, and contributors from event.tags
+          // Tags are stored as: ["clone", "https://gittr.space"] or ["relays", "wss://relay.example.com"]
+          // Contributors are stored as: ["p", pubkey, weight, role]
+          const cloneTags: string[] = [];
+          const relaysTags: string[] = [];
+          const topicTags: string[] = [];
+          const contributorTags: Array<{
+            pubkey: string;
+            weight: number;
+            role?: string;
+          }> = [];
+
+          if (event.tags && Array.isArray(event.tags)) {
+            for (const tag of event.tags) {
+              if (Array.isArray(tag) && tag.length >= 2) {
+                const tagName = tag[0];
+                const tagValue = tag[1];
+
+                if (tagName === "clone" && tagValue) {
+                  cloneTags.push(tagValue);
+                } else if (tagName === "relays" && tagValue) {
+                  // CRITICAL: Handle both formats per NIP-34 spec:
+                  // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
+                  // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
+                  // Check if value contains commas (comma-separated format)
+                  if (tagValue.includes(",")) {
+                    // Comma-separated format - split and add each
+                    const relayUrls = tagValue
+                      .split(",")
+                      .map((r) => r.trim())
+                      .filter((r) => r.length > 0);
+                    relayUrls.forEach((relayUrl) => {
+                      // Ensure wss:// prefix
                       const normalized =
-                        tagValue.startsWith("wss://") ||
-                        tagValue.startsWith("ws://")
-                          ? tagValue
-                          : `wss://${tagValue}`;
+                        relayUrl.startsWith("wss://") ||
+                        relayUrl.startsWith("ws://")
+                          ? relayUrl
+                          : `wss://${relayUrl}`;
                       if (!relaysTags.includes(normalized)) {
                         relaysTags.push(normalized);
                       }
+                    });
+                  } else {
+                    // Single relay per tag - add directly
+                    const normalized =
+                      tagValue.startsWith("wss://") ||
+                      tagValue.startsWith("ws://")
+                        ? tagValue
+                        : `wss://${tagValue}`;
+                    if (!relaysTags.includes(normalized)) {
+                      relaysTags.push(normalized);
                     }
-                  } else if (tagName === "t" && tagValue) {
-                    // Topic/tag tags
-                    topicTags.push(tagValue);
-                  } else if (tagName === "p") {
-                    // Extract contributors from "p" tags: ["p", pubkey, weight, role]
-                    const pubkey = tagValue;
-                    const weight =
-                      tag.length > 2 ? parseInt(tag[2] as string) || 0 : 0;
-                    const role =
-                      tag.length > 3 ? (tag[3] as string) : undefined;
+                  }
+                } else if (tagName === "t" && tagValue) {
+                  // Topic/tag tags
+                  topicTags.push(tagValue);
+                } else if (tagName === "p") {
+                  // Extract contributors from "p" tags: ["p", pubkey, weight, role]
+                  const pubkey = tagValue;
+                  const weight =
+                    tag.length > 2 ? parseInt(tag[2] as string) || 0 : 0;
+                  const role = tag.length > 3 ? (tag[3] as string) : undefined;
 
-                    // Validate pubkey format (64 hex chars)
-                    if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-                      contributorTags.push({
-                        pubkey,
-                        weight,
-                        role:
-                          role ||
-                          (weight === 100
-                            ? "owner"
-                            : weight >= 50
-                            ? "maintainer"
-                            : "contributor"),
-                      });
-                    }
+                  // Validate pubkey format (64 hex chars)
+                  if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+                    contributorTags.push({
+                      pubkey,
+                      weight,
+                      role:
+                        role ||
+                        (weight === 100
+                          ? "owner"
+                          : weight >= 50
+                          ? "maintainer"
+                          : "contributor"),
+                    });
                   }
                 }
               }
             }
+          }
 
-            // GRASP-02: Client-side proactive sync - add relays from repo events to subscription pool
-            // This helps discover repos from other relays that repo owners listed
-            // CRITICAL: This is how we discover repos from the entire Nostr network, not just configured relays
-            // NOTE: Repos are identified by event.pubkey (hex), NOT by NIP-05 identifiers
-            // NIP-05 is only for display/URLs - all repos are discoverable regardless of NIP-05
-            if (relaysTags.length > 0 && addRelay) {
-              console.log("🔍 [GRASP-02] Found relays tags in repo:", {
-                repo: repoData.repositoryName,
-                owner: event.pubkey.slice(0, 8),
-                relaysTags: relaysTags,
-                defaultRelaysCount: defaultRelays.length,
-                willDiscover: relaysTags.filter(
-                  (r) => r.startsWith("wss://") && !defaultRelays.includes(r)
-                ).length,
-              });
+          // Extra `relays` tags: query each new *real* relay once. Do not
+          // re-dial gitworkshop / git.gittr.space, and do not spawn a nested
+          // subscribe per event (that thrashed CONNECTING sockets).
+          if (relaysTags.length > 0 && addRelay && subscribe) {
+            for (const relayUrl of relaysTags) {
+              const toQuery = rememberExploreDiscoveryRelay(
+                relayUrl,
+                queriedDiscoveryRelays
+              );
+              if (!toQuery) continue;
+              exploreDebug(
+                "🔄 [GRASP-02] Discovering new relay from repo event:",
+                toQuery
+              );
+              addRelay(toQuery);
+              const extraUnsub = subscribe(filters, [toQuery], onExploreEvent);
+              if (typeof extraUnsub === "function") {
+                extraUnsubs.push(extraUnsub);
+              }
+            }
+          }
 
-              relaysTags.forEach((relayUrl: string) => {
-                // Only add valid wss:// relays that aren't already in defaultRelays
+          const isForeignRepo = pubkey && event.pubkey !== pubkey;
+          const isOwnRepo = pubkey && event.pubkey === pubkey;
+          exploreDebug("📦 [Explore] Repo event received:", {
+            relay: relayURL,
+            owner: event.pubkey.slice(0, 8),
+            repoName: repoData.repositoryName,
+            isForeign: isForeignRepo,
+            isOwn: isOwnRepo,
+            hasFiles: !!(repoData.files && repoData.files.length > 0),
+            filesCount: repoData.files?.length || 0,
+            cloneTags: cloneTags.length,
+            relaysTags: relaysTags.length,
+            topicTags: topicTags.length,
+            createdAt: new Date(event.created_at * 1000).toISOString(),
+            eventId: event.id.slice(0, 8),
+          });
+
+          // Session catalog (grows past localStorage quota)
+          const existingRepos = [...readExploreCatalog()];
+
+          // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
+          const deletedRepos = JSON.parse(
+            localStorage.getItem("gittr_deleted_repos") || "[]"
+          ) as Array<{ entity: string; repo: string; deletedAt: number }>;
+          // CRITICAL: Use npub format for entity (GRASP protocol standard)
+          const entity = nip19.npubEncode(event.pubkey);
+          const repoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
+          const isDeleted = deletedRepos.some((d) => {
+            // Check by npub entity or by ownerPubkey (handles both formats)
+            const dEntityMatch =
+              d.entity.toLowerCase() === entity.toLowerCase();
+            // CRITICAL: Check repoData.repositoryName exists before calling toLowerCase()
+            if (
+              dEntityMatch &&
+              repoData.repositoryName &&
+              d.repo.toLowerCase() === repoData.repositoryName.toLowerCase()
+            )
+              return true;
+            // Also check if deleted entity is npub for same pubkey
+            if (d.entity.startsWith("npub")) {
+              try {
+                const dDecoded = nip19.decode(d.entity);
                 if (
-                  relayUrl.startsWith("wss://") &&
-                  !defaultRelays.includes(relayUrl)
+                  dDecoded.type === "npub" &&
+                  (dDecoded.data as string).toLowerCase() ===
+                    event.pubkey.toLowerCase()
                 ) {
-                  console.log(
-                    "🔄 [GRASP-02] Discovering new relay from repo event:",
-                    relayUrl
+                  return (
+                    repoData.repositoryName &&
+                    d.repo.toLowerCase() ===
+                      repoData.repositoryName.toLowerCase()
                   );
-                  addRelay(relayUrl);
-                  // CRITICAL: Subscribe to repos from this newly discovered relay
-                  // This is how we get repos from the entire Nostr network
-                  setTimeout(() => {
-                    if (subscribe) {
-                      console.log(
-                        "📡 [GRASP-02] Querying newly discovered relay:",
-                        relayUrl
-                      );
-                      subscribe(
-                        [
-                          {
-                            kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
-                            limit: 10000,
-                          },
-                        ], // Request many repos from new relay
-                        [relayUrl],
-                        (newEvent, isAfterEose, newRelayURL) => {
-                          // CRITICAL: Process and store repos from discovered relay
-                          if (
-                            newEvent.kind === KIND_REPOSITORY ||
-                            newEvent.kind === KIND_REPOSITORY_NIP34
-                          ) {
-                            try {
-                              let repoData: any;
-                              if (newEvent.kind === KIND_REPOSITORY_NIP34) {
-                                repoData = parseNIP34Repository(newEvent);
-                              } else {
-                                // CRITICAL: Validate content is JSON before parsing
-                                if (
-                                  !newEvent.content ||
-                                  typeof newEvent.content !== "string"
-                                ) {
-                                  return;
-                                }
-                                const trimmedContent = newEvent.content.trim();
-                                if (
-                                  !trimmedContent.startsWith("{") &&
-                                  !trimmedContent.startsWith("[")
-                                ) {
-                                  return;
-                                }
-                                try {
-                                  repoData = JSON.parse(newEvent.content);
-                                } catch (parseError) {
-                                  return; // Skip this event
-                                }
-                              }
-
-                              // CRITICAL: Validate repoData has required fields
-                              if (
-                                !repoData ||
-                                typeof repoData !== "object" ||
-                                !repoData.repositoryName
-                              ) {
-                                return;
-                              }
-
-                              const entity = nip19.npubEncode(newEvent.pubkey);
-
-                              // CRITICAL: Validate BEFORE storing - use general corruption check
-                              const repoForValidation = {
-                                repositoryName: repoData.repositoryName,
-                                entity: entity,
-                                ownerPubkey: newEvent.pubkey,
-                              };
-
-                              if (
-                                isRepoCorrupted(repoForValidation, newEvent.id)
-                              ) {
-                                // Silently reject - don't spam console for corrupted repos
-                                return; // Don't store corrupted repos
-                              }
-
-                              const existingRepos = [...readExploreCatalog()];
-
-                              // Check if deleted
-                              const deletedRepos = JSON.parse(
-                                localStorage.getItem("gittr_deleted_repos") ||
-                                  "[]"
-                              );
-                              const repoKey =
-                                `${entity}/${repoData.repositoryName}`.toLowerCase();
-                              const isDeleted = deletedRepos.some(
-                                (d: any) =>
-                                  `${d.entity}/${d.repo}`.toLowerCase() ===
-                                  repoKey
-                              );
-
-                              if (
-                                isDeleted ||
-                                repoData.deleted ||
-                                repoData.archived
-                              )
-                                return;
-
-                              // Check if exists
-                              const existingIndex = existingRepos.findIndex(
-                                (r: any) =>
-                                  (r.ownerPubkey === newEvent.pubkey &&
-                                    (r.repo === repoData.repositoryName ||
-                                      r.slug === repoData.repositoryName)) ||
-                                  ((r.entity === entity ||
-                                    r.entity === newEvent.pubkey) &&
-                                    (r.repo === repoData.repositoryName ||
-                                      r.slug === repoData.repositoryName))
-                              );
-
-                              const repo: Repo = {
-                                slug: repoData.repositoryName,
-                                entity: entity,
-                                repo: repoData.repositoryName,
-                                name:
-                                  repoData.repositoryName ||
-                                  repoData.name ||
-                                  repoData.repositoryName,
-                                description: repoData.description,
-                                ownerPubkey: newEvent.pubkey,
-                                createdAt:
-                                  existingRepos[existingIndex]?.createdAt ||
-                                  newEvent.created_at * 1000,
-                                updatedAt: newEvent.created_at * 1000,
-                                entityDisplayName: entity,
-                                // Never embed file trees in the explore catalog (quota).
-                                topics: repoData.topics || [],
-                                contributors: repoData.contributors || [],
-                                syncedFromNostr: true,
-                                lastNostrEventId: newEvent.id,
-                                lastNostrEventCreatedAt: newEvent.created_at,
-                              };
-
-                              if (existingIndex >= 0) {
-                                existingRepos[existingIndex] = {
-                                  ...existingRepos[existingIndex],
-                                  ...repo,
-                                };
-                              } else {
-                                existingRepos.push(repo);
-                              }
-
-                              commitExploreCatalog(existingRepos);
-
-                              console.log(
-                                "✅ [GRASP-02] Stored repo from discovered relay:",
-                                {
-                                  relay: newRelayURL,
-                                  owner: newEvent.pubkey.slice(0, 8),
-                                  repo: repoData.repositoryName,
-                                }
-                              );
-                            } catch (error: any) {
-                              console.error(
-                                "[GRASP-02] Error processing repo from discovered relay:",
-                                error
-                              );
-                            }
-                          }
-                        }
-                      );
-                    }
-                  }, 1000);
                 }
-              });
+              } catch {}
             }
+            return false;
+          });
 
-            // DEBUG: Log ALL repos received (for debugging)
-            const isForeignRepo = pubkey && event.pubkey !== pubkey;
-            const isOwnRepo = pubkey && event.pubkey === pubkey;
-            console.log("📦 [Explore] Repo event received:", {
-              relay: relayURL,
-              owner: event.pubkey.slice(0, 8),
-              repoName: repoData.repositoryName,
-              isForeign: isForeignRepo,
-              isOwn: isOwnRepo,
-              hasFiles: !!(repoData.files && repoData.files.length > 0),
-              filesCount: repoData.files?.length || 0,
-              cloneTags: cloneTags.length,
-              relaysTags: relaysTags.length,
-              topicTags: topicTags.length,
-              createdAt: new Date(event.created_at * 1000).toISOString(),
-              eventId: event.id.slice(0, 8),
-            });
+          // Normalize repo name for comparison (handle underscores vs hyphens, case-insensitive)
+          const normalizeRepoName = (name: string): string => {
+            if (!name) return "";
+            return name.toLowerCase().replace(/[_-]/g, "");
+          };
+          const normalizedRepoName = normalizeRepoName(repoData.repositoryName);
 
-            // Session catalog (grows past localStorage quota)
-            const existingRepos = [...readExploreCatalog()];
-
-            // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
-            const deletedRepos = JSON.parse(
-              localStorage.getItem("gittr_deleted_repos") || "[]"
-            ) as Array<{ entity: string; repo: string; deletedAt: number }>;
-            // CRITICAL: Use npub format for entity (GRASP protocol standard)
-            const entity = nip19.npubEncode(event.pubkey);
-            const repoKey =
-              `${entity}/${repoData.repositoryName}`.toLowerCase();
-            const isDeleted = deletedRepos.some((d) => {
-              // Check by npub entity or by ownerPubkey (handles both formats)
-              const dEntityMatch =
-                d.entity.toLowerCase() === entity.toLowerCase();
-              // CRITICAL: Check repoData.repositoryName exists before calling toLowerCase()
-              if (
-                dEntityMatch &&
-                repoData.repositoryName &&
-                d.repo.toLowerCase() === repoData.repositoryName.toLowerCase()
-              )
-                return true;
-              // Also check if deleted entity is npub for same pubkey
-              if (d.entity.startsWith("npub")) {
-                try {
-                  const dDecoded = nip19.decode(d.entity);
-                  if (
-                    dDecoded.type === "npub" &&
-                    (dDecoded.data as string).toLowerCase() ===
-                      event.pubkey.toLowerCase()
-                  ) {
-                    return (
-                      repoData.repositoryName &&
-                      d.repo.toLowerCase() ===
-                        repoData.repositoryName.toLowerCase()
-                    );
-                  }
-                } catch {}
-              }
-              return false;
-            });
-
-            // Normalize repo name for comparison (handle underscores vs hyphens, case-insensitive)
-            const normalizeRepoName = (name: string): string => {
-              if (!name) return "";
-              return name.toLowerCase().replace(/[_-]/g, "");
-            };
-            const normalizedRepoName = normalizeRepoName(
-              repoData.repositoryName
-            );
-
-            // Soft-delete on Nostr → hide + purge Explore copies.
-            // Local tombstone alone means a prior Delete in this browser; a live
-            // non-deleted 30617 is a reopen under the same name — clear & show.
-            if (repoData.deleted === true || repoData.archived === true) {
-              const purged = existingRepos.filter((r: any) => {
-                const rRepoNormalized = normalizeRepoName(
-                  r.repo || r.slug || ""
-                );
-                const sameRepo = rRepoNormalized === normalizedRepoName;
-                if (!sameRepo) return true;
-                if (
-                  r.ownerPubkey &&
-                  r.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()
-                ) {
-                  return false;
-                }
-                if (r.entity === entity || r.entity === event.pubkey) {
-                  return false;
-                }
-                return true;
-              });
-              if (purged.length !== existingRepos.length) {
-                commitExploreCatalog(purged, { immediate: true });
-              }
-              return;
-            }
-
-            if (isDeleted) {
-              const announcedAtMs =
-                typeof event.created_at === "number"
-                  ? event.created_at * 1000
-                  : undefined;
-              const cleared = clearDeletedRepoTombstones({
-                entity,
-                repo: repoData.repositoryName,
-                ownerPubkey: event.pubkey,
-                announcedAtMs,
-              });
-              if (cleared === 0) {
-                return;
-              }
-            }
-
-            // Check if this repo already exists (match by ownerPubkey first, then entity)
-            // CRITICAL: Use ownerPubkey as primary key for matching to avoid duplicates
-            // CRITICAL: Normalize repo names to handle variations (bitcoin_meetup_calendar vs bitcoin-meetup-calendar)
-            const existingIndex = existingRepos.findIndex((r: any) => {
-              // Normalize existing repo names for comparison
+          // Soft-delete on Nostr → hide + purge Explore copies.
+          // Local tombstone alone means a prior Delete in this browser; a live
+          // non-deleted 30617 is a reopen under the same name — clear & show.
+          if (repoData.deleted === true || repoData.archived === true) {
+            const purged = existingRepos.filter((r: any) => {
               const rRepoNormalized = normalizeRepoName(r.repo || r.slug || "");
-              const rSlugNormalized = normalizeRepoName(r.slug || "");
-
-              // Match by ownerPubkey first (most reliable - works across all entity formats)
+              const sameRepo = rRepoNormalized === normalizedRepoName;
+              if (!sameRepo) return true;
               if (
                 r.ownerPubkey &&
                 r.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()
               ) {
-                return (
-                  rRepoNormalized === normalizedRepoName ||
-                  rSlugNormalized === normalizedRepoName
-                );
+                return false;
               }
-              // Match by entity (npub format or full pubkey)
               if (r.entity === entity || r.entity === event.pubkey) {
-                return (
-                  rRepoNormalized === normalizedRepoName ||
-                  rSlugNormalized === normalizedRepoName
-                );
+                return false;
               }
-              // Also check if existing entity is npub for same pubkey
-              if (r.entity && r.entity.startsWith("npub")) {
-                try {
-                  const rDecoded = nip19.decode(r.entity);
-                  if (
-                    rDecoded.type === "npub" &&
-                    (rDecoded.data as string).toLowerCase() ===
-                      event.pubkey.toLowerCase()
-                  ) {
-                    return (
-                      rRepoNormalized === normalizedRepoName ||
-                      rSlugNormalized === normalizedRepoName
-                    );
-                  }
-                } catch {}
-              }
-              return false;
+              return true;
             });
-
-            // entityDisplayName will be set from metadata later, use npub as fallback
-            const entityDisplayName = entity;
-            const existingRepo =
-              existingIndex >= 0 ? existingRepos[existingIndex] : undefined;
-
-            // CRITICAL: Extract contributors from "p" tags first (most reliable source)
-            // Then merge with contributors from JSON content, then with existing repo contributors
-            let contributors: Array<{
-              pubkey?: string;
-              name?: string;
-              picture?: string;
-              weight: number;
-              role?: string;
-              githubLogin?: string;
-            }> = [];
-
-            // Priority 1: Contributors from "p" tags (published by owner, most reliable)
-            if (contributorTags.length > 0) {
-              contributors = contributorTags.map((c) => ({
-                pubkey: c.pubkey,
-                weight: c.weight,
-                role: c.role as
-                  | "owner"
-                  | "maintainer"
-                  | "contributor"
-                  | undefined,
-              }));
-              console.log(
-                `📋 [Explore] Extracted ${contributors.length} contributors from "p" tags`
-              );
+            if (purged.length !== existingRepos.length) {
+              commitExploreCatalog(purged, { immediate: true });
             }
+            return;
+          }
 
-            // Priority 2: Merge with contributors from JSON content (if any)
-            if (
-              repoData.contributors &&
-              Array.isArray(repoData.contributors) &&
-              repoData.contributors.length > 0
-            ) {
-              // Merge: add contributors from content that aren't already in tags
-              for (const contentContributor of repoData.contributors) {
-                const exists = contributors.some(
-                  (c) =>
-                    c.pubkey &&
-                    contentContributor.pubkey &&
-                    c.pubkey.toLowerCase() ===
-                      contentContributor.pubkey.toLowerCase()
-                );
-                if (!exists) {
-                  contributors.push(contentContributor);
-                }
-              }
-              console.log(
-                `📋 [Explore] Merged ${repoData.contributors.length} contributors from JSON content`
-              );
-            }
-
-            // Priority 3: Merge with existing repo contributors (preserve local metadata like names/pictures)
-            if (
-              existingRepo?.contributors &&
-              Array.isArray(existingRepo.contributors) &&
-              existingRepo.contributors.length > 0
-            ) {
-              for (const existingContributor of existingRepo.contributors) {
-                const existingIndex = contributors.findIndex(
-                  (c) =>
-                    c.pubkey &&
-                    existingContributor.pubkey &&
-                    c.pubkey.toLowerCase() ===
-                      existingContributor.pubkey.toLowerCase()
-                );
-                if (existingIndex >= 0) {
-                  // Merge: keep pubkey/weight/role from tags/content, but preserve name/picture from existing
-                  contributors[existingIndex] = {
-                    ...contributors[existingIndex],
-                    name:
-                      existingContributor.name ||
-                      contributors[existingIndex]?.name,
-                    picture:
-                      existingContributor.picture ||
-                      contributors[existingIndex]?.picture,
-                    githubLogin:
-                      existingContributor.githubLogin ||
-                      contributors[existingIndex]?.githubLogin,
-                    weight:
-                      contributors[existingIndex]?.weight ??
-                      existingContributor.weight ??
-                      0, // Ensure weight is always a number
-                  };
-                } else {
-                  // Add contributor that exists locally but not in event
-                  // Ensure weight is always a number
-                  contributors.push({
-                    ...existingContributor,
-                    weight: existingContributor.weight ?? 0,
-                  });
-                }
-              }
-            }
-
-            // CRITICAL: Always ensure owner (event.pubkey) is in contributors with weight 100 and role owner
-            const ownerInContributors = contributors.some(
-              (c: any) =>
-                c.pubkey &&
-                c.pubkey.toLowerCase() === event.pubkey.toLowerCase()
-            );
-            if (!ownerInContributors) {
-              contributors = [
-                { pubkey: event.pubkey, weight: 100, role: "owner" },
-                ...contributors,
-              ];
-            } else {
-              // Ensure owner has weight 100 and role owner (override any other values)
-              contributors = contributors.map((c: any) =>
-                c.pubkey &&
-                c.pubkey.toLowerCase() === event.pubkey.toLowerCase()
-                  ? { ...c, weight: 100, role: "owner" }
-                  : c
-              );
-            }
-
-            console.log(
-              `✅ [Explore] Final contributors list: ${contributors.length} total`,
-              {
-                owners: contributors.filter(
-                  (c) => c.weight === 100 || c.role === "owner"
-                ).length,
-                maintainers: contributors.filter(
-                  (c) =>
-                    c.role === "maintainer" ||
-                    (c.weight >= 50 && c.weight < 100)
-                ).length,
-                contributors: contributors.filter(
-                  (c) =>
-                    c.role === "contributor" || (c.weight > 0 && c.weight < 50)
-                ).length,
-              }
-            );
-
-            // CRITICAL: Validate BEFORE creating repo object - use general corruption check
-            const repoForValidation = {
-              repositoryName: repoData.repositoryName,
-              entity: entity,
-              ownerPubkey: event.pubkey,
-            };
-
-            if (isRepoCorrupted(repoForValidation, event.id)) {
-              // Silently reject - don't spam console for corrupted repos
-              return; // Don't store corrupted repos
-            }
-
-            // Discovery: skip announces that only advertise localhost/private clones.
-            // (Zero clone tags still allowed — legacy / GRASP-only.)
-            const rawCloneUrls =
-              cloneTags.length > 0
-                ? cloneTags
-                : Array.isArray(repoData.clone)
-                ? repoData.clone
-                : [];
-            if (shouldHideAnnounceForUnusableClones(rawCloneUrls)) {
-              if (existingIndex >= 0) {
-                existingRepos.splice(existingIndex, 1);
-              }
-              return;
-            }
-
-            const repo: Repo = {
-              slug: repoData.repositoryName,
-              entity: entity, // CRITICAL: Use npub format (GRASP protocol standard)
-              repo: repoData.repositoryName,
-              // CRITICAL: Use human-readable name from event content if available, otherwise use repositoryName
-              name: repoData.name || repoData.repositoryName,
-              description: repoData.description,
-              sourceUrl: (() => {
-                const raw = repoData.sourceUrl || existingRepo?.sourceUrl;
-                return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
-              })(),
-              forkedFrom: (() => {
-                const raw = repoData.forkedFrom || existingRepo?.forkedFrom;
-                return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
-              })(),
-              readme: repoData.readme || existingRepo?.readme,
-              // CRITICAL: Only use files from event if they exist and are an array with items
-              // Don't overwrite existing files with empty array from event
-              files:
-                repoData.files &&
-                Array.isArray(repoData.files) &&
-                repoData.files.length > 0
-                  ? repoData.files
-                  : existingRepo?.files &&
-                    Array.isArray(existingRepo.files) &&
-                    existingRepo.files.length > 0
-                  ? existingRepo.files
-                  : undefined,
-              stars:
-                repoData.stars !== undefined
-                  ? repoData.stars
-                  : existingRepo?.stars,
-              forks:
-                repoData.forks !== undefined
-                  ? repoData.forks
-                  : existingRepo?.forks,
-              languages: repoData.languages || existingRepo?.languages,
-              // GRASP-01: Use topics from event.tags (t tags), fallback to content
-              topics:
-                topicTags.length > 0
-                  ? topicTags
-                  : repoData.topics || existingRepo?.topics || [],
-              contributors: contributors,
-              defaultBranch:
-                repoData.defaultBranch || existingRepo?.defaultBranch,
-              branches: repoData.branches || existingRepo?.branches,
-              releases: coalesceMetadataList(
-                repoData.releases,
-                existingRepo?.releases
-              ),
-              logoUrl: existingRepo?.logoUrl,
-              createdAt: existingRepo?.createdAt || event.created_at * 1000, // Keep in milliseconds for compatibility
-              updatedAt: event.created_at * 1000, // Track when repo was last updated from Nostr (in milliseconds)
-              entityDisplayName: entityDisplayName,
-              ownerPubkey: event.pubkey, // CRITICAL: Always store full pubkey
-              deleted: repoData.deleted || false,
-              archived: repoData.archived || false,
-              links: repoData.links || existingRepo?.links,
-              // GRASP-01: Store clone and relays tags from event.tags (for future GRASP-02 sync)
-              clone: usableCloneUrls(
-                cloneTags.length > 0
-                  ? cloneTags
-                  : repoData.clone || existingRepo?.clone || []
-              ),
-              relays:
-                relaysTags.length > 0
-                  ? relaysTags
-                  : repoData.relays || existingRepo?.relays,
-            };
-
-            // CRITICAL: Ensure entity is always set (required for filtering)
-            // If somehow entity is missing, derive from ownerPubkey as npub
-            if (!repo.entity || repo.entity === "user") {
-              if (
-                repo.ownerPubkey &&
-                /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)
-              ) {
-                repo.entity = nip19.npubEncode(repo.ownerPubkey);
-                repo.entityDisplayName = repo.entityDisplayName || repo.entity;
-              } else {
-                console.error(
-                  "⚠️ [Explore] Cannot store repo without entity or ownerPubkey:",
-                  {
-                    repo: repoData.repositoryName,
-                    hasEntity: !!repo.entity,
-                    hasOwnerPubkey: !!repo.ownerPubkey,
-                  }
-                );
-                return; // Skip storing repos without entity/ownerPubkey
-              }
-            }
-
-            console.log("💾 [Explore] Storing repo:", {
+          if (isDeleted) {
+            const announcedAtMs =
+              typeof event.created_at === "number"
+                ? event.created_at * 1000
+                : undefined;
+            const cleared = clearDeletedRepoTombstones({
               entity,
               repo: repoData.repositoryName,
-              ownerPubkey: event.pubkey.slice(0, 8),
-              isNew: existingIndex < 0,
-              hasEntity: !!entity,
-              hasOwnerPubkey: !!event.pubkey,
-              eventId: event.id.slice(0, 16),
-              createdAt: new Date(event.created_at * 1000).toISOString(),
-              relay: relayURL,
-              // Log if this is a duplicate
-              isDuplicate: existingIndex >= 0,
-              existingEntity:
-                existingIndex >= 0
-                  ? existingRepos[existingIndex]?.entity
-                  : undefined,
-              existingUpdatedAt:
-                existingIndex >= 0
-                  ? existingRepos[existingIndex]?.updatedAt
-                  : undefined,
+              ownerPubkey: event.pubkey,
+              announcedAtMs,
             });
+            if (cleared === 0) {
+              return;
+            }
+          }
 
-            if (existingIndex >= 0) {
-              // CRITICAL: For NIP-34 replaceable events, only update if this event is newer
-              // Check if existing repo has a newer event already stored
-              // NIP-34 uses Unix timestamps in SECONDS - compare in seconds
-              const existingEventCreatedAtSeconds =
-                existingRepo?.lastNostrEventCreatedAt ||
-                (existingRepo?.updatedAt
-                  ? Math.floor(existingRepo.updatedAt / 1000)
-                  : 0);
-              const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
+          // Check if this repo already exists (match by ownerPubkey first, then entity)
+          // CRITICAL: Use ownerPubkey as primary key for matching to avoid duplicates
+          // CRITICAL: Normalize repo names to handle variations (bitcoin_meetup_calendar vs bitcoin-meetup-calendar)
+          const existingIndex = existingRepos.findIndex((r: any) => {
+            // Normalize existing repo names for comparison
+            const rRepoNormalized = normalizeRepoName(r.repo || r.slug || "");
+            const rSlugNormalized = normalizeRepoName(r.slug || "");
 
-              if (
-                event.kind === KIND_REPOSITORY_NIP34 &&
-                newEventCreatedAtSeconds <= existingEventCreatedAtSeconds
-              ) {
-                console.log(
-                  `⏭️ [Explore] Skipping older NIP-34 event: existing=${new Date(
-                    existingEventCreatedAtSeconds * 1000
-                  ).toISOString()}, new=${new Date(
-                    newEventCreatedAtSeconds * 1000
-                  ).toISOString()}`
-                );
-                return; // Skip older events
+            // Match by ownerPubkey first (most reliable - works across all entity formats)
+            if (
+              r.ownerPubkey &&
+              r.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()
+            ) {
+              return (
+                rRepoNormalized === normalizedRepoName ||
+                rSlugNormalized === normalizedRepoName
+              );
+            }
+            // Match by entity (npub format or full pubkey)
+            if (r.entity === entity || r.entity === event.pubkey) {
+              return (
+                rRepoNormalized === normalizedRepoName ||
+                rSlugNormalized === normalizedRepoName
+              );
+            }
+            // Also check if existing entity is npub for same pubkey
+            if (r.entity && r.entity.startsWith("npub")) {
+              try {
+                const rDecoded = nip19.decode(r.entity);
+                if (
+                  rDecoded.type === "npub" &&
+                  (rDecoded.data as string).toLowerCase() ===
+                    event.pubkey.toLowerCase()
+                ) {
+                  return (
+                    rRepoNormalized === normalizedRepoName ||
+                    rSlugNormalized === normalizedRepoName
+                  );
+                }
+              } catch {}
+            }
+            return false;
+          });
+
+          // entityDisplayName will be set from metadata later, use npub as fallback
+          const entityDisplayName = entity;
+          const existingRepo =
+            existingIndex >= 0 ? existingRepos[existingIndex] : undefined;
+
+          // CRITICAL: Extract contributors from "p" tags first (most reliable source)
+          // Then merge with contributors from JSON content, then with existing repo contributors
+          let contributors: Array<{
+            pubkey?: string;
+            name?: string;
+            picture?: string;
+            weight: number;
+            role?: string;
+            githubLogin?: string;
+          }> = [];
+
+          // Priority 1: Contributors from "p" tags (published by owner, most reliable)
+          if (contributorTags.length > 0) {
+            contributors = contributorTags.map((c) => ({
+              pubkey: c.pubkey,
+              weight: c.weight,
+              role: c.role as
+                | "owner"
+                | "maintainer"
+                | "contributor"
+                | undefined,
+            }));
+            console.log(
+              `📋 [Explore] Extracted ${contributors.length} contributors from "p" tags`
+            );
+          }
+
+          // Priority 2: Merge with contributors from JSON content (if any)
+          if (
+            repoData.contributors &&
+            Array.isArray(repoData.contributors) &&
+            repoData.contributors.length > 0
+          ) {
+            // Merge: add contributors from content that aren't already in tags
+            for (const contentContributor of repoData.contributors) {
+              const exists = contributors.some(
+                (c) =>
+                  c.pubkey &&
+                  contentContributor.pubkey &&
+                  c.pubkey.toLowerCase() ===
+                    contentContributor.pubkey.toLowerCase()
+              );
+              if (!exists) {
+                contributors.push(contentContributor);
               }
+            }
+            console.log(
+              `📋 [Explore] Merged ${repoData.contributors.length} contributors from JSON content`
+            );
+          }
 
-              // CRITICAL: Replace with newer version from Nostr (no merging for proper versioning)
-              // Only preserve user-set logoUrl (not from Nostr events)
-              const updatedRepo = {
-                ...repo, // Use newest Nostr version as base
-                // Preserve local logoUrl ONLY if it was user-set (not from Nostr)
-                logoUrl:
-                  existingRepo?.logoUrl &&
-                  !existingRepo?.logoUrl?.startsWith("http")
-                    ? existingRepo.logoUrl
-                    : repo.logoUrl,
-                // Preserve local unpushed edits flag (local state)
-                hasUnpushedEdits: existingRepo?.hasUnpushedEdits || false,
-                // Use newest event ID and created_at
-                // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
-                nostrEventId: event.id,
-                lastNostrEventId: event.id,
-                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
-                // Keep original createdAt (when repo was first created)
-                createdAt: existingRepo?.createdAt || repo.createdAt,
-                // Extract earliest unique commit from "r" tag if present (may not be in Repo type but exists at runtime)
-                ...(repoData.earliestUniqueCommit ||
-                (existingRepo as any)?.earliestUniqueCommit
-                  ? {
-                      earliestUniqueCommit:
-                        repoData.earliestUniqueCommit ||
-                        (existingRepo as any)?.earliestUniqueCommit,
-                    }
-                  : {}),
-              };
-              existingRepos[existingIndex] = updatedRepo;
-              console.log(
-                "🔄 [Explore] Updated existing repo with newer Nostr version:",
+          // Priority 3: Merge with existing repo contributors (preserve local metadata like names/pictures)
+          if (
+            existingRepo?.contributors &&
+            Array.isArray(existingRepo.contributors) &&
+            existingRepo.contributors.length > 0
+          ) {
+            for (const existingContributor of existingRepo.contributors) {
+              const existingIndex = contributors.findIndex(
+                (c) =>
+                  c.pubkey &&
+                  existingContributor.pubkey &&
+                  c.pubkey.toLowerCase() ===
+                    existingContributor.pubkey.toLowerCase()
+              );
+              if (existingIndex >= 0) {
+                // Merge: keep pubkey/weight/role from tags/content, but preserve name/picture from existing
+                contributors[existingIndex] = {
+                  ...contributors[existingIndex],
+                  name:
+                    existingContributor.name ||
+                    contributors[existingIndex]?.name,
+                  picture:
+                    existingContributor.picture ||
+                    contributors[existingIndex]?.picture,
+                  githubLogin:
+                    existingContributor.githubLogin ||
+                    contributors[existingIndex]?.githubLogin,
+                  weight:
+                    contributors[existingIndex]?.weight ??
+                    existingContributor.weight ??
+                    0, // Ensure weight is always a number
+                };
+              } else {
+                // Add contributor that exists locally but not in event
+                // Ensure weight is always a number
+                contributors.push({
+                  ...existingContributor,
+                  weight: existingContributor.weight ?? 0,
+                });
+              }
+            }
+          }
+
+          // CRITICAL: Always ensure owner (event.pubkey) is in contributors with weight 100 and role owner
+          const ownerInContributors = contributors.some(
+            (c: any) =>
+              c.pubkey && c.pubkey.toLowerCase() === event.pubkey.toLowerCase()
+          );
+          if (!ownerInContributors) {
+            contributors = [
+              { pubkey: event.pubkey, weight: 100, role: "owner" },
+              ...contributors,
+            ];
+          } else {
+            // Ensure owner has weight 100 and role owner (override any other values)
+            contributors = contributors.map((c: any) =>
+              c.pubkey && c.pubkey.toLowerCase() === event.pubkey.toLowerCase()
+                ? { ...c, weight: 100, role: "owner" }
+                : c
+            );
+          }
+
+          exploreDebug(
+            `✅ [Explore] Final contributors list: ${contributors.length} total`,
+            {
+              owners: contributors.filter(
+                (c) => c.weight === 100 || c.role === "owner"
+              ).length,
+              maintainers: contributors.filter(
+                (c) =>
+                  c.role === "maintainer" || (c.weight >= 50 && c.weight < 100)
+              ).length,
+              contributors: contributors.filter(
+                (c) =>
+                  c.role === "contributor" || (c.weight > 0 && c.weight < 50)
+              ).length,
+            }
+          );
+
+          // CRITICAL: Validate BEFORE creating repo object - use general corruption check
+          const repoForValidation = {
+            repositoryName: repoData.repositoryName,
+            entity: entity,
+            ownerPubkey: event.pubkey,
+          };
+
+          if (isRepoCorrupted(repoForValidation, event.id)) {
+            // Silently reject - don't spam console for corrupted repos
+            return; // Don't store corrupted repos
+          }
+
+          // Discovery: skip announces that only advertise localhost/private clones.
+          // (Zero clone tags still allowed — legacy / GRASP-only.)
+          const rawCloneUrls =
+            cloneTags.length > 0
+              ? cloneTags
+              : Array.isArray(repoData.clone)
+              ? repoData.clone
+              : [];
+          if (shouldHideAnnounceForUnusableClones(rawCloneUrls)) {
+            if (existingIndex >= 0) {
+              existingRepos.splice(existingIndex, 1);
+            }
+            return;
+          }
+
+          const repo: Repo = {
+            slug: repoData.repositoryName,
+            entity: entity, // CRITICAL: Use npub format (GRASP protocol standard)
+            repo: repoData.repositoryName,
+            // CRITICAL: Use human-readable name from event content if available, otherwise use repositoryName
+            name: repoData.name || repoData.repositoryName,
+            description: repoData.description,
+            sourceUrl: (() => {
+              const raw = repoData.sourceUrl || existingRepo?.sourceUrl;
+              return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
+            })(),
+            forkedFrom: (() => {
+              const raw = repoData.forkedFrom || existingRepo?.forkedFrom;
+              return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
+            })(),
+            readme: repoData.readme || existingRepo?.readme,
+            // CRITICAL: Only use files from event if they exist and are an array with items
+            // Don't overwrite existing files with empty array from event
+            files:
+              repoData.files &&
+              Array.isArray(repoData.files) &&
+              repoData.files.length > 0
+                ? repoData.files
+                : existingRepo?.files &&
+                  Array.isArray(existingRepo.files) &&
+                  existingRepo.files.length > 0
+                ? existingRepo.files
+                : undefined,
+            stars:
+              repoData.stars !== undefined
+                ? repoData.stars
+                : existingRepo?.stars,
+            forks:
+              repoData.forks !== undefined
+                ? repoData.forks
+                : existingRepo?.forks,
+            languages: repoData.languages || existingRepo?.languages,
+            // GRASP-01: Use topics from event.tags (t tags), fallback to content
+            topics:
+              topicTags.length > 0
+                ? topicTags
+                : repoData.topics || existingRepo?.topics || [],
+            contributors: contributors,
+            defaultBranch:
+              repoData.defaultBranch || existingRepo?.defaultBranch,
+            branches: repoData.branches || existingRepo?.branches,
+            releases: coalesceMetadataList(
+              repoData.releases,
+              existingRepo?.releases
+            ),
+            logoUrl: existingRepo?.logoUrl,
+            createdAt: existingRepo?.createdAt || event.created_at * 1000, // Keep in milliseconds for compatibility
+            updatedAt: event.created_at * 1000, // Track when repo was last updated from Nostr (in milliseconds)
+            entityDisplayName: entityDisplayName,
+            ownerPubkey: event.pubkey, // CRITICAL: Always store full pubkey
+            deleted: repoData.deleted || false,
+            archived: repoData.archived || false,
+            links: repoData.links || existingRepo?.links,
+            // GRASP-01: Store clone and relays tags from event.tags (for future GRASP-02 sync)
+            clone: usableCloneUrls(
+              cloneTags.length > 0
+                ? cloneTags
+                : repoData.clone || existingRepo?.clone || []
+            ),
+            relays:
+              relaysTags.length > 0
+                ? relaysTags
+                : repoData.relays || existingRepo?.relays,
+          };
+
+          // CRITICAL: Ensure entity is always set (required for filtering)
+          // If somehow entity is missing, derive from ownerPubkey as npub
+          if (!repo.entity || repo.entity === "user") {
+            if (repo.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
+              repo.entity = nip19.npubEncode(repo.ownerPubkey);
+              repo.entityDisplayName = repo.entityDisplayName || repo.entity;
+            } else {
+              console.error(
+                "⚠️ [Explore] Cannot store repo without entity or ownerPubkey:",
                 {
                   repo: repoData.repositoryName,
-                  oldUpdatedAt: existingRepo?.updatedAt
-                    ? new Date(existingRepo.updatedAt).toISOString()
-                    : "unknown",
-                  newUpdatedAt: repo.updatedAt
-                    ? new Date(repo.updatedAt).toISOString()
-                    : "unknown",
-                  eventId: event.id.slice(0, 16),
-                  eventCreatedAt: new Date(
-                    event.created_at * 1000
-                  ).toISOString(),
+                  hasEntity: !!repo.entity,
+                  hasOwnerPubkey: !!repo.ownerPubkey,
                 }
               );
-            } else {
-              // New repo - store with event ID and created_at
-              // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
-              const newRepo = {
-                ...repo,
-                nostrEventId: event.id,
-                lastNostrEventId: event.id,
-                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
-                earliestUniqueCommit: repoData.earliestUniqueCommit,
-              };
-              existingRepos.push(newRepo);
+              return; // Skip storing repos without entity/ownerPubkey
+            }
+          }
+
+          exploreDebug("💾 [Explore] Storing repo:", {
+            entity,
+            repo: repoData.repositoryName,
+            ownerPubkey: event.pubkey.slice(0, 8),
+            isNew: existingIndex < 0,
+            hasEntity: !!entity,
+            hasOwnerPubkey: !!event.pubkey,
+            eventId: event.id.slice(0, 16),
+            createdAt: new Date(event.created_at * 1000).toISOString(),
+            relay: relayURL,
+            // Log if this is a duplicate
+            isDuplicate: existingIndex >= 0,
+            existingEntity:
+              existingIndex >= 0
+                ? existingRepos[existingIndex]?.entity
+                : undefined,
+            existingUpdatedAt:
+              existingIndex >= 0
+                ? existingRepos[existingIndex]?.updatedAt
+                : undefined,
+          });
+
+          if (existingIndex >= 0) {
+            // CRITICAL: For NIP-34 replaceable events, only update if this event is newer
+            // Check if existing repo has a newer event already stored
+            // NIP-34 uses Unix timestamps in SECONDS - compare in seconds
+            const existingEventCreatedAtSeconds =
+              existingRepo?.lastNostrEventCreatedAt ||
+              (existingRepo?.updatedAt
+                ? Math.floor(existingRepo.updatedAt / 1000)
+                : 0);
+            const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
+
+            if (
+              event.kind === KIND_REPOSITORY_NIP34 &&
+              newEventCreatedAtSeconds <= existingEventCreatedAtSeconds
+            ) {
+              exploreDebug(
+                `⏭️ [Explore] Skipping older NIP-34 event: existing=${new Date(
+                  existingEventCreatedAtSeconds * 1000
+                ).toISOString()}, new=${new Date(
+                  newEventCreatedAtSeconds * 1000
+                ).toISOString()}`
+              );
+              return; // Skip older events
             }
 
-            // Persist best-effort; always refresh UI from session catalog
-            // (never reload from localStorage alone — that stuck Explore at ~180).
-            commitExploreCatalog(existingRepos);
-            setTimeout(() => {
-              checkShouldStopSyncing();
-            }, 100);
-          } catch (error: any) {
-            console.error("Error processing repo event:", error);
+            // CRITICAL: Replace with newer version from Nostr (no merging for proper versioning)
+            // Only preserve user-set logoUrl (not from Nostr events)
+            const updatedRepo = {
+              ...repo, // Use newest Nostr version as base
+              // Preserve local logoUrl ONLY if it was user-set (not from Nostr)
+              logoUrl:
+                existingRepo?.logoUrl &&
+                !existingRepo?.logoUrl?.startsWith("http")
+                  ? existingRepo.logoUrl
+                  : repo.logoUrl,
+              // Preserve local unpushed edits flag (local state)
+              hasUnpushedEdits: existingRepo?.hasUnpushedEdits || false,
+              // Use newest event ID and created_at
+              // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+              nostrEventId: event.id,
+              lastNostrEventId: event.id,
+              lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+              // Keep original createdAt (when repo was first created)
+              createdAt: existingRepo?.createdAt || repo.createdAt,
+              // Extract earliest unique commit from "r" tag if present (may not be in Repo type but exists at runtime)
+              ...(repoData.earliestUniqueCommit ||
+              (existingRepo as any)?.earliestUniqueCommit
+                ? {
+                    earliestUniqueCommit:
+                      repoData.earliestUniqueCommit ||
+                      (existingRepo as any)?.earliestUniqueCommit,
+                  }
+                : {}),
+            };
+            existingRepos[existingIndex] = updatedRepo;
+            exploreDebug(
+              "🔄 [Explore] Updated existing repo with newer Nostr version:",
+              {
+                repo: repoData.repositoryName,
+                oldUpdatedAt: existingRepo?.updatedAt
+                  ? new Date(existingRepo.updatedAt).toISOString()
+                  : "unknown",
+                newUpdatedAt: repo.updatedAt
+                  ? new Date(repo.updatedAt).toISOString()
+                  : "unknown",
+                eventId: event.id.slice(0, 16),
+                eventCreatedAt: new Date(event.created_at * 1000).toISOString(),
+              }
+            );
+          } else {
+            // New repo - store with event ID and created_at
+            // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+            const newRepo = {
+              ...repo,
+              nostrEventId: event.id,
+              lastNostrEventId: event.id,
+              lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+              earliestUniqueCommit: repoData.earliestUniqueCommit,
+            };
+            existingRepos.push(newRepo);
           }
+
+          // Persist best-effort; always refresh UI from session catalog
+          // (never reload from localStorage alone — that stuck Explore at ~180).
+          commitExploreCatalog(existingRepos);
+          setTimeout(() => {
+            checkShouldStopSyncing();
+          }, 100);
+        } catch (error: any) {
+          console.error("Error processing repo event:", error);
         }
-      },
+      }
+    };
+
+    const unsub = subscribe(
+      filters,
+      allRelays,
+      onExploreEvent,
       undefined,
       (relayInfo, minCreatedAt) => {
         // nostr-relaypool passes (relay, minCreatedAt); relay may be a URL string or { url }.
@@ -2365,10 +2192,24 @@ function ExplorePageContent() {
 
     return () => {
       if (unsub) unsub();
+      for (const extra of extraUnsubs) {
+        try {
+          extra();
+        } catch {
+          /* ignore */
+        }
+      }
       if (eoseTimeout) clearTimeout(eoseTimeout);
       if (minRelaysTimeout) clearTimeout(minRelaysTimeout);
     };
-  }, [subscribe, defaultRelays, pubkey]); // REMOVED loadRepos from deps to prevent infinite loop
+  }, [
+    subscribe,
+    defaultRelays,
+    pubkey,
+    addRelay,
+    readExploreCatalog,
+    commitExploreCatalog,
+  ]);
 
   const sorted = useMemo(() => {
     // CRITICAL: Ensure all repos have entity BEFORE sorting
@@ -2614,7 +2455,7 @@ function ExplorePageContent() {
           topics.includes(q) ||
           ownerName.includes(q);
         if (!matches) {
-          console.log(
+          exploreDebug(
             "🔍 [Explore] Filtered out repo (search filter):",
             r.slug || r.repo || r.name
           );
@@ -2635,7 +2476,7 @@ function ExplorePageContent() {
       : 0;
 
     if (removed > 0 || result.length > 0) {
-      console.log("📊 [Explore] Filtered repos:", {
+      exploreDebug("📊 [Explore] Filtered repos:", {
         total: sorted.length,
         filtered: result.length,
         removed: removed,
