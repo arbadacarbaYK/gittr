@@ -142,6 +142,8 @@ import {
   resolveActiveRepoBranch,
   resolveContentBranch,
   shouldSyncBranchFromFetch,
+  shouldWipeCachedFileTreeOnBranchChange,
+  userExplicitlyPickedBranch,
   writeUserPickedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
 import {
@@ -184,6 +186,7 @@ import {
   loadRepoOverrides,
   loadStoredRepos,
   mergeRepoFileIndexes,
+  persistRepoTipBranch,
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveRepoFiles,
@@ -1319,6 +1322,23 @@ export function RepoCodePage() {
           resolvedParams.entity,
           resolvedParams.repo
         );
+        const rememberTip = () => {
+          const tip = (
+            currentRepo as { filesBranch?: string } | null
+          )?.filesBranch?.trim();
+          if (!tip) return;
+          persistRepoTipBranch(resolvedParams.entity, storageRepo, tip, {
+            asDefault:
+              !userPickedBranchRef.current &&
+              !userExplicitlyPickedBranch(
+                {
+                  entity: resolvedParams.entity,
+                  repo: resolvedParams.repo,
+                },
+                selectedBranchRef.current
+              ),
+          });
+        };
         const existingIndexed = loadRepoFiles(
           resolvedParams.entity,
           storageRepo
@@ -1441,6 +1461,7 @@ export function RepoCodePage() {
             );
           }
           setFilesTreeBump((b) => b + 1);
+          rememberTip();
         } else {
           console.warn(
             `⚠️ ${context} File tree not persisted (localStorage full or quota). ${files.length} files remain in memory for this session.`
@@ -1568,6 +1589,25 @@ export function RepoCodePage() {
         ? (repoDataRef.current.files as RepoFileEntry[])
         : [];
       const local = mergeRepoFileIndexes(inMemory, indexed);
+      const ownerHex =
+        (repoDataRef.current as { ownerPubkey?: string } | null)?.ownerPubkey &&
+        /^[0-9a-f]{64}$/i.test(
+          String((repoDataRef.current as { ownerPubkey?: string }).ownerPubkey)
+        )
+          ? String(
+              (repoDataRef.current as { ownerPubkey?: string }).ownerPubkey
+            ).toLowerCase()
+          : undefined;
+      const visibleExistingCount = filterGraspMirrorPollutionFromFileTree(
+        local,
+        { ownerPubkeyHex: ownerHex }
+      ).length;
+      const userPicked =
+        userPickedBranchRef.current ||
+        userExplicitlyPickedBranch(
+          { entity: resolvedParams.entity, repo: resolvedParams.repo },
+          selectedBranchRef.current
+        );
       return prepareFetchedFileTree({
         incoming,
         local,
@@ -1584,6 +1624,8 @@ export function RepoCodePage() {
         ),
         existingNestedCount: nestedFilePathCount(local),
         incomingNestedCount: nestedFilePathCount(incoming),
+        userPickedBranch: userPicked,
+        visibleExistingCount,
       });
     },
     [overlayPathsForRepo, resolvedParams.entity, resolvedParams.repo]
@@ -1773,14 +1815,29 @@ export function RepoCodePage() {
           ? repoDataRef.current.files.length
           : 0;
         const existingCount = Math.max(indexedCount, refCount);
-        let filesToApply = data.files as RepoFileEntry[];
-        if (existingCount > 0 && data.files.length < existingCount) {
+        const resolvedIncomingBranch =
+          typeof data.branch === "string" && data.branch.trim()
+            ? data.branch.trim()
+            : branch;
+        const prepared = prepareIncomingFetchTree(
+          data.files as RepoFileEntry[],
+          resolvedIncomingBranch,
+          "nostr-git"
+        );
+        if (!prepared.apply) {
+          console.warn(
+            `⏭️ [Bridge Fetch] Keeping local tree instead of remote (${data.files.length})`
+          );
+          return;
+        }
+        let filesToApply = prepared.files as RepoFileEntry[];
+        if (existingCount > 0 && filesToApply.length < existingCount) {
           const existingFromRef = Array.isArray(repoDataRef.current?.files)
             ? repoDataRef.current.files
             : [];
           const mergedFiles = mergeRepoFileIndexes(
             existingFromRef,
-            data.files as RepoFileEntry[]
+            filesToApply
           );
           if (mergedFiles.length < existingCount) {
             console.warn(
@@ -1817,6 +1874,15 @@ export function RepoCodePage() {
               contributors: storedContributors,
               defaultBranch: branch,
             } as StoredRepo);
+          const userPicked =
+            userPickedBranchRef.current ||
+            userExplicitlyPickedBranch(
+              {
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
+              },
+              selectedBranchRef.current
+            );
           // Bridge-first loads often beat NIP-34 clone tags. Seed sidebar clone
           // URLs immediately so Git Server / Clone URL are not blank until a
           // hard refresh (or a later multi-source finalize).
@@ -1831,6 +1897,10 @@ export function RepoCodePage() {
           const updated = {
             ...base,
             files: filesToApply,
+            filesBranch: resolvedIncomingBranch,
+            defaultBranch: userPicked
+              ? (base as { defaultBranch?: string }).defaultBranch || branch
+              : resolvedIncomingBranch,
             clone: mergeDiscoverableCloneUrls(
               (base as { clone?: string[] }).clone,
               sidebarClones
@@ -1843,6 +1913,14 @@ export function RepoCodePage() {
           repoDataRef.current = updated;
           return updated;
         });
+
+        if (repoDataRef.current) {
+          repoDataRef.current = {
+            ...repoDataRef.current,
+            files: filesToApply,
+            filesBranch: resolvedIncomingBranch,
+          };
+        }
 
         // Store files only when repo cache should persist (owner or local edits)
         persistRepoFiles(
@@ -1862,6 +1940,8 @@ export function RepoCodePage() {
     entityPubkey,
     resolvedParams.entity,
     resolvedParams.repo,
+    prepareIncomingFetchTree,
+    persistRepoFiles,
   ]);
   // Live counters synced with localStorage updates from layout actions
   const [liveStarCount, setLiveStarCount] = useState<number>(0);
@@ -3852,6 +3932,7 @@ export function RepoCodePage() {
             readme: preferUpstreamContent ? "" : repo.readme || "",
             description: repo.description || "",
             files: resolvedFiles,
+            filesBranch: (repo as StoredRepo).filesBranch,
             sourceUrl: repo.sourceUrl,
             forkedFrom: sanitizeForkedFromField(repo.forkedFrom, {
               sourceUrl: repo.sourceUrl,
@@ -3874,7 +3955,8 @@ export function RepoCodePage() {
               repo.links || [],
               repo.sourceUrl
             ) as RepoLink[],
-            defaultBranch: repo.defaultBranch || "main",
+            defaultBranch:
+              (repo as StoredRepo).filesBranch || repo.defaultBranch || "main",
             clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
             relays: (repo as any).relays || [],
             ownerPubkey: ownerPubkey || repo.ownerPubkey,
@@ -3939,7 +4021,13 @@ export function RepoCodePage() {
           ? repo.branches
           : Array.from(new Set([repo.defaultBranch || "main", "dev"]));
       setSelectedBranch(
-        repoDefaultBranch({ defaultBranch: repo.defaultBranch, branches })
+        resolveActiveRepoBranch(
+          {
+            filesBranch: (repo as StoredRepo).filesBranch,
+            defaultBranch: repo.defaultBranch,
+          },
+          selectedBranchRef.current
+        )
       );
       // persist back if we synthesized branches
       if (!repo.branches || repo.branches.length === 0) {
@@ -5478,18 +5566,30 @@ export function RepoCodePage() {
 
     // Check if repo already has files (only if repoData exists)
     // NOTE: For branch switching, we want to refetch even if files exist (different branch = different files)
+    const userPicked =
+      userPickedBranchRef.current ||
+      userExplicitlyPickedBranch(
+        { entity: resolvedParams.entity, repo: resolvedParams.repo },
+        selectedBranchRef.current
+      );
     const cachedFilesBranch = (
       (currentRepoData as { filesBranch?: string })?.filesBranch || ""
     ).trim();
     const filesMatchBranch =
       !cachedFilesBranch ||
       cachedFilesBranch === currentBranch ||
-      fetchedTreeBranchesCompatible(cachedFilesBranch, currentBranch);
-    const hasFiles =
-      filesMatchBranch &&
-      currentRepoData?.files &&
-      Array.isArray(currentRepoData.files) &&
-      currentRepoData.files.length > 0;
+      fetchedTreeBranchesCompatible(cachedFilesBranch, currentBranch, {
+        userPickedBranch: userPicked,
+      });
+    const ownerHexForDisplay =
+      ownerPubkeyForFetch && /^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch)
+        ? ownerPubkeyForFetch.toLowerCase()
+        : undefined;
+    const displayableCachedFiles = filterGraspMirrorPollutionFromFileTree(
+      Array.isArray(currentRepoData?.files) ? currentRepoData.files : [],
+      { ownerPubkeyHex: ownerHexForDisplay }
+    );
+    const hasFiles = filesMatchBranch && displayableCachedFiles.length > 0;
 
     const reposSnapshot = (() => {
       try {
@@ -5564,10 +5664,12 @@ export function RepoCodePage() {
       fileFetchAttemptedRef.current = "";
     }
     if (
-      cachedFilesBranch &&
-      cachedFilesBranch !== currentBranch &&
-      !fetchedTreeBranchesCompatible(cachedFilesBranch, currentBranch) &&
-      currentRepoData?.files?.length
+      shouldWipeCachedFileTreeOnBranchChange({
+        cachedFilesBranch,
+        currentBranch,
+        userPickedBranch: userPicked,
+        hasFiles: !!currentRepoData?.files?.length,
+      })
     ) {
       console.log(
         "🔄 [File Fetch] Cached files are for a different branch, will refetch:",

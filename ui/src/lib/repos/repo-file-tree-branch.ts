@@ -139,18 +139,47 @@ export function repoNavHref(
  */
 const CANONICAL_DEFAULT_BRANCHES = new Set(["main", "master"]);
 
-/** `main` and `master` are the same default tip for applying a fetched listing. */
+export type FetchedTreeBranchOpts = {
+  /**
+   * True only when the viewer chose a named branch (dropdown / session pick).
+   * Nav `?branch=` copied from a stored default is not a pick.
+   */
+  userPickedBranch?: boolean;
+};
+
+/**
+ * Whether a fetched listing may replace the tree for this Code-tab branch.
+ *
+ * Git discovers HEAD under whatever name the repo uses (`develop`, `trunk`,
+ * `gittr`, `master`, …). When the viewer did not pick a branch, that tip is
+ * the default — names do not have to match. A real pick (`dev` in the
+ * dropdown) must still match so we do not paint `main` onto `dev`.
+ */
 export function fetchedTreeBranchesCompatible(
   incomingBranch: string,
-  activeBranch: string
+  activeBranch: string,
+  opts?: FetchedTreeBranchOpts
 ): boolean {
   const incoming = (incomingBranch || "").trim();
   const active = (activeBranch || "").trim();
   if (!incoming || !active || incoming === active) return true;
-  return (
-    CANONICAL_DEFAULT_BRANCHES.has(incoming) &&
-    CANONICAL_DEFAULT_BRANCHES.has(active)
-  );
+  if (!opts?.userPickedBranch) return true;
+  return incoming === active;
+}
+
+/** Remount / URL default must not throw away a cached tree for the git tip. */
+export function shouldWipeCachedFileTreeOnBranchChange(opts: {
+  cachedFilesBranch: string;
+  currentBranch: string;
+  userPickedBranch: boolean;
+  hasFiles: boolean;
+}): boolean {
+  if (!opts.hasFiles) return false;
+  if (!opts.userPickedBranch) return false;
+  const cached = (opts.cachedFilesBranch || "").trim();
+  const current = (opts.currentBranch || "").trim();
+  if (!cached || !current) return false;
+  return cached !== current;
 }
 
 export function shouldSyncBranchFromFetch(
@@ -285,15 +314,26 @@ export function shouldApplyFetchedFileTree(
     allowShrink?: boolean;
     existingNestedCount?: number;
     incomingNestedCount?: number;
+    userPickedBranch?: boolean;
+    /** After GRASP-pollution / display scrub — 0 means treat as first load. */
+    visibleExistingCount?: number;
   }
 ): boolean {
-  if (existingFileCount === 0) return true;
-  if (!fetchedTreeBranchesCompatible(incomingBranch, activeBranch))
+  const existing =
+    typeof opts?.visibleExistingCount === "number"
+      ? opts.visibleExistingCount
+      : existingFileCount;
+  if (existing === 0) return true;
+  if (
+    !fetchedTreeBranchesCompatible(incomingBranch, activeBranch, {
+      userPickedBranch: opts?.userPickedBranch,
+    })
+  )
     return false;
   if (
     typeof incomingFileCount === "number" &&
     incomingFileCount > 0 &&
-    incomingFileCount < existingFileCount &&
+    incomingFileCount < existing &&
     !opts?.allowShrink
   ) {
     return false;
@@ -306,7 +346,7 @@ export function shouldApplyFetchedFileTree(
     incomingNested < existingNested &&
     typeof incomingFileCount === "number" &&
     incomingFileCount > 0 &&
-    incomingFileCount <= existingFileCount
+    incomingFileCount <= existing
   ) {
     return false;
   }

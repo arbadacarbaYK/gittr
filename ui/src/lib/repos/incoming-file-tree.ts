@@ -30,6 +30,8 @@ export function prepareFetchedFileTree<T extends PathishRepoFile>(opts: {
   activeBranch: string;
   existingNestedCount?: number;
   incomingNestedCount?: number;
+  userPickedBranch?: boolean;
+  visibleExistingCount?: number;
 }): {
   files: T[];
   apply: boolean;
@@ -53,6 +55,11 @@ export function prepareFetchedFileTree<T extends PathishRepoFile>(opts: {
     opts.overridePaths
   );
   const existingCount = local.length;
+  const visibleExisting =
+    typeof opts.visibleExistingCount === "number"
+      ? opts.visibleExistingCount
+      : existingCount;
+  const applyExisting = hollowExtrasOnly ? 0 : visibleExisting;
   const shrinkOrHollow = allowShrink || hollowExtrasOnly;
   const shouldApply = shouldApplyFetchedFileTree(
     opts.incomingBranch,
@@ -63,16 +70,19 @@ export function prepareFetchedFileTree<T extends PathishRepoFile>(opts: {
       allowShrink: shrinkOrHollow,
       existingNestedCount: opts.existingNestedCount,
       incomingNestedCount: opts.incomingNestedCount,
+      userPickedBranch: opts.userPickedBranch,
+      visibleExistingCount: applyExisting,
     }
   );
   const shouldMerge = shouldMergeFetchedFileTree(
-    existingCount,
+    applyExisting,
     incoming.length,
     { allowShrink: shrinkOrHollow }
   );
   const branchOk =
-    fetchedTreeBranchesCompatible(opts.incomingBranch, opts.activeBranch) ||
-    existingCount === 0;
+    fetchedTreeBranchesCompatible(opts.incomingBranch, opts.activeBranch, {
+      userPickedBranch: opts.userPickedBranch,
+    }) || applyExisting === 0;
   const apply =
     incoming.length > 0 &&
     branchOk &&

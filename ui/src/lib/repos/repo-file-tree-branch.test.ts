@@ -6,6 +6,7 @@ import {
   nestedFilePathCount,
   resolveSharedRepoBranch,
   shouldApplyFetchedFileTree,
+  shouldWipeCachedFileTreeOnBranchChange,
 } from "./repo-file-tree-branch";
 
 describe("nestedFilePathCount", () => {
@@ -70,14 +71,46 @@ describe("branchesToTryForContent", () => {
 });
 
 describe("fetchedTreeBranchesCompatible", () => {
-  it("treats main and master as the same default tip", () => {
+  it("accepts any git HEAD name when the viewer did not pick a branch", () => {
     expect(fetchedTreeBranchesCompatible("master", "main")).toBe(true);
-    expect(fetchedTreeBranchesCompatible("main", "master")).toBe(true);
+    expect(fetchedTreeBranchesCompatible("develop", "main")).toBe(true);
+    expect(fetchedTreeBranchesCompatible("gittr", "main")).toBe(true);
   });
 
-  it("does not treat feature branches as the default tip", () => {
-    expect(fetchedTreeBranchesCompatible("dev", "main")).toBe(false);
-    expect(fetchedTreeBranchesCompatible("main", "release")).toBe(false);
+  it("requires an exact match when the viewer picked a branch", () => {
+    expect(
+      fetchedTreeBranchesCompatible("dev", "main", { userPickedBranch: true })
+    ).toBe(false);
+    expect(
+      fetchedTreeBranchesCompatible("main", "dev", { userPickedBranch: true })
+    ).toBe(false);
+    expect(
+      fetchedTreeBranchesCompatible("dev", "dev", { userPickedBranch: true })
+    ).toBe(true);
+  });
+});
+
+describe("shouldWipeCachedFileTreeOnBranchChange", () => {
+  it("does not wipe on remount when the viewer is still on the default tip", () => {
+    expect(
+      shouldWipeCachedFileTreeOnBranchChange({
+        cachedFilesBranch: "develop",
+        currentBranch: "main",
+        userPickedBranch: false,
+        hasFiles: true,
+      })
+    ).toBe(false);
+  });
+
+  it("wipes when the viewer picked a different named branch", () => {
+    expect(
+      shouldWipeCachedFileTreeOnBranchChange({
+        cachedFilesBranch: "main",
+        currentBranch: "dev",
+        userPickedBranch: true,
+        hasFiles: true,
+      })
+    ).toBe(true);
   });
 });
 
@@ -94,8 +127,24 @@ describe("shouldApplyFetchedFileTree", () => {
     expect(shouldApplyFetchedFileTree("master", 51, "main", 51)).toBe(true);
   });
 
-  it("still blocks a feature-branch listing when local already has files", () => {
-    expect(shouldApplyFetchedFileTree("dev", 2, "main", 1)).toBe(false);
+  it("applies git HEAD of any name onto an existing default-tip tree", () => {
+    expect(shouldApplyFetchedFileTree("develop", 51, "main", 51)).toBe(true);
+  });
+
+  it("still blocks a feature-branch listing when the viewer picked another branch", () => {
+    expect(
+      shouldApplyFetchedFileTree("dev", 2, "main", 1, {
+        userPickedBranch: true,
+      })
+    ).toBe(false);
+  });
+
+  it("applies a listing when the cached tree is present but not displayable", () => {
+    expect(
+      shouldApplyFetchedFileTree("develop", 80, "main", 41, {
+        visibleExistingCount: 0,
+      })
+    ).toBe(true);
   });
 
   it("blocks smaller remote trees", () => {

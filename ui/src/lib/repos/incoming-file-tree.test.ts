@@ -48,14 +48,39 @@ describe("prepareFetchedFileTree", () => {
     expect(r.files).toHaveLength(3);
   });
 
-  it("does not apply a listing for a different branch", () => {
+  it("does not apply a listing for a different branch when the viewer picked one", () => {
     const r = prepareFetchedFileTree({
       incoming: [{ path: "README.md" }],
       local: [{ path: "README.md" }, { path: "a.ts", content: "x" }],
       incomingBranch: "dev",
       activeBranch: "main",
+      userPickedBranch: true,
     });
     expect(r.apply).toBe(false);
+  });
+
+  it("applies git HEAD of any name when the viewer did not pick a branch", () => {
+    const incoming = [{ path: "README.md" }, { path: "src/index.ts" }];
+    const r = prepareFetchedFileTree({
+      incoming,
+      local: incoming,
+      incomingBranch: "develop",
+      activeBranch: "main",
+    });
+    expect(r.apply).toBe(true);
+    expect(r.files).toHaveLength(2);
+  });
+
+  it("applies a listing when local cache is non-empty but not displayable", () => {
+    const incoming = [{ path: "README.md" }, { path: "a.ts" }];
+    const r = prepareFetchedFileTree({
+      incoming,
+      local: [{ path: "npub1abc/repo/README.md" }],
+      incomingBranch: "gittr",
+      activeBranch: "main",
+      visibleExistingCount: 0,
+    });
+    expect(r.apply).toBe(true);
   });
 
   it("applies master listing when the UI is still on main and local is empty", () => {

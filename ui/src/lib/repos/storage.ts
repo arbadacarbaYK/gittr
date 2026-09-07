@@ -1,4 +1,3 @@
-import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
 import {
   getRepoStorageKey,
   normalizeEntityForStorage,
@@ -12,6 +11,7 @@ import { markRepoAsEdited } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 
 import { reconcileDeletedPathsAfterAdd } from "./deleted-paths";
+import { clearDeletedRepoTombstonesForOwner } from "./deleted-repo-tombstones";
 import {
   forgetOverrideBlob,
   idbDeleteRepoOverrides,
@@ -23,12 +23,10 @@ import {
   resolveOverridesMap,
 } from "./overrides-idb";
 import {
-  clearDeletedRepoTombstonesForOwner,
-} from "./deleted-repo-tombstones";
-import {
   classifyForeignReposForFlush,
   classifyOwnReposForFlush,
 } from "./repo-cache-flush";
+import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -101,6 +99,8 @@ export interface StoredRepo {
   relays?: string[];
   topics?: string[];
   defaultBranch?: string;
+  /** Git tip the last persisted Code-tab tree was listed from (may differ from defaultBranch). */
+  filesBranch?: string;
   description?: string;
   stars?: number;
   forks?: number;
@@ -603,8 +603,18 @@ const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
 
 const isRepoFileEntry = (value: unknown): value is RepoFileEntry => {
   if (!isRecord(value)) return false;
-  return typeof value.path === "string" && typeof value.type === "string";
+  if (typeof value.path !== "string" || !value.path) return false;
+  if (typeof value.type !== "undefined" && typeof value.type !== "string") {
+    return false;
+  }
+  return true;
 };
+
+function coerceRepoFileEntry(entry: RepoFileEntry): RepoFileEntry {
+  const type =
+    typeof entry.type === "string" && entry.type.trim() ? entry.type : "file";
+  return { ...entry, type };
+}
 
 const isStoredContributor = (value: unknown): value is StoredContributor => {
   if (!isRecord(value)) return false;
@@ -1210,11 +1220,38 @@ export const loadRepoFiles = (
     const filesKey = getRepoStorageKey("gittr_files", entity, repo);
     const stored = localStorage.getItem(filesKey);
     if (!stored) return [];
-    return parseJsonArray(stored, isRepoFileEntry);
+    return parseJsonArray(stored, isRepoFileEntry).map(coerceRepoFileEntry);
   } catch {
     return [];
   }
 };
+
+/** Remember which git tip the Code-tab tree was listed from (leave/return). */
+export function persistRepoTipBranch(
+  entity: string,
+  repo: string,
+  branch: string,
+  opts?: { asDefault?: boolean }
+): void {
+  if (typeof window === "undefined") return;
+  const b = (branch || "").trim();
+  if (!b) return;
+  try {
+    const repos = loadStoredRepos();
+    const match = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+    if (!match) return;
+    const idx = repos.indexOf(match);
+    if (idx < 0) return;
+    const next: StoredRepo = { ...match, filesBranch: b };
+    if (opts?.asDefault === true) {
+      next.defaultBranch = b;
+    }
+    repos[idx] = next;
+    saveStoredRepos(repos, { quiet: true });
+  } catch {
+    /* ignore */
+  }
+}
 
 /** @deprecated import from merge-repo-file-indexes — re-exported for callers */
 export { mergeRepoFileIndexes } from "./merge-repo-file-indexes";
