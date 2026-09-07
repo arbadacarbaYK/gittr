@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   NIP34_DISCOVERY_RELAYS,
+  extraNostrRelaysFromRepoRemotes,
   profileRepoRelaysForClient,
 } from "./nip34-discovery-relays";
 
@@ -19,5 +20,26 @@ describe("profileRepoRelaysForClient", () => {
     expect(relays[0]).toBe("wss://relay.damus.io");
     expect(relays.filter((u) => u === "wss://relay.ngit.dev")).toHaveLength(1);
     expect(relays).toContain("wss://git.shakespeare.diy");
+  });
+});
+
+describe("extraNostrRelaysFromRepoRemotes", () => {
+  it("turns announcement relays and clone hosts into wss lookup relays", () => {
+    const npub =
+      "npub1k0y4eceal2zryes3azm6nsgt0r0jsa2v8zcsdf9uqxttn0jlfe9q04c9h8";
+    expect(
+      extraNostrRelaysFromRepoRemotes({
+        relays: ["wss://relay.poster.place"],
+        clone: [`https://relay.poster.place/${npub}/project-brutality-xdc.git`],
+      })
+    ).toEqual(["wss://relay.poster.place"]);
+  });
+
+  it("does not treat GitHub as a Nostr relay", () => {
+    expect(
+      extraNostrRelaysFromRepoRemotes({
+        clone: ["https://github.com/org/repo.git"],
+      })
+    ).toEqual([]);
   });
 });

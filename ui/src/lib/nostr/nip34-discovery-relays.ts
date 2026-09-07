@@ -38,3 +38,55 @@ export function profileRepoRelaysForClient(defaultRelays: string[]): string[] {
   }
   return out;
 }
+
+const NOT_NOSTR_CLONE_HOST =
+  /(?:^|\.)(?:github\.com|gitlab\.com|codeberg\.org|bitbucket\.org)$/i;
+
+/**
+ * Extra relays to query for a Code-tab 30617: announcement `relays` tags plus
+ * `wss://` on the same host as HTTPS `clone[]` (self-hosted / PosterChan-style).
+ */
+export function extraNostrRelaysFromRepoRemotes(opts: {
+  relays?: string[] | null;
+  clone?: string[] | null;
+}): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const addRelay = (raw: string) => {
+    let u = (raw || "").trim().replace(/\/+$/, "");
+    if (!u) return;
+    if (u.startsWith("https://")) u = `wss://${u.slice("https://".length)}`;
+    else if (u.startsWith("http://")) u = `ws://${u.slice("http://".length)}`;
+    if (!u.startsWith("wss://") && !u.startsWith("ws://")) {
+      u = `wss://${u}`;
+    }
+    try {
+      const parsed = new URL(u);
+      if (NOT_NOSTR_CLONE_HOST.test(parsed.hostname)) return;
+      const relay = `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, "");
+      const key = relay.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(relay);
+    } catch {
+      /* ignore */
+    }
+  };
+  for (const r of opts.relays || []) {
+    if (typeof r === "string") addRelay(r);
+  }
+  for (const c of opts.clone || []) {
+    if (typeof c !== "string" || !c.trim()) continue;
+    try {
+      const https = c
+        .trim()
+        .replace(/^git@([^:]+):/, "https://$1/")
+        .replace(/^git:\/\//i, "https://");
+      const withProto = /:\/\//.test(https) ? https : `https://${https}`;
+      addRelay(new URL(withProto).origin);
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}

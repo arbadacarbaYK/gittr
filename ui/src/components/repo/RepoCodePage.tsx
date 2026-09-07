@@ -63,8 +63,12 @@ import {
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
-import { pickUserFacingCloneUrl } from "@/lib/nostr/clone-url-quality";
+import {
+  isLikelyGitCloneUrl,
+  pickUserFacingCloneUrl,
+} from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { extraNostrRelaysFromRepoRemotes } from "@/lib/nostr/nip34-discovery-relays";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
   formatPushRepoSuccessAlert,
@@ -632,6 +636,35 @@ function appendInferredGraspCloneUrls(
     console.log(
       `🔍 [File Fetch] Inferred ${inferred.length} GRASP clone URL(s) (repo had no clone tags)`
     );
+  }
+}
+
+/** Announcement clone tags that are Nostr-relay homepages must not block GRASP inference. */
+function inferGraspClonesIfNeeded(
+  cloneUrls: string[],
+  entity: string,
+  repo: string,
+  announcementStatus: AnnouncementCloneStatus,
+  allowLastResort?: boolean
+): void {
+  const usable = cloneUrls.filter(isLikelyGitCloneUrl).length;
+  const status: AnnouncementCloneStatus =
+    usable === 0 && announcementStatus === "present"
+      ? "empty"
+      : announcementStatus;
+  if (
+    !shouldInferGraspCloneUrls({
+      collectedCloneCount: usable,
+      announcementStatus: status,
+      allowLastResort,
+    })
+  ) {
+    return;
+  }
+  const inferred: string[] = [];
+  appendInferredGraspCloneUrls(inferred, entity, repo);
+  for (const url of inferred) {
+    if (!cloneUrls.includes(url)) cloneUrls.push(url);
   }
 }
 
@@ -6821,9 +6854,27 @@ export function RepoCodePage() {
             (r) => r.toLowerCase().replace(/\/+$/, "") === n
           );
         });
+        const publisherRelays = extraNostrRelaysFromRepoRemotes({
+          relays: Array.isArray(
+            (repoDataRef.current as { relays?: string[] })?.relays
+          )
+            ? (repoDataRef.current as { relays: string[] }).relays
+            : [],
+          clone: Array.isArray(
+            (repoDataRef.current as { clone?: string[] })?.clone
+          )
+            ? (repoDataRef.current as { clone: string[] }).clone
+            : [],
+        });
         const prioritizedRelays = [
           ...graspRelays,
           ...discoveryExtras,
+          ...publisherRelays.filter((url) => {
+            const n = url.toLowerCase().replace(/\/+$/, "");
+            return ![...graspRelays, ...discoveryExtras, ...regularRelays].some(
+              (r) => r.toLowerCase().replace(/\/+$/, "") === n
+            );
+          }),
           ...regularRelays,
         ];
 
@@ -9189,6 +9240,26 @@ export function RepoCodePage() {
                   return;
                 }
 
+                inferGraspClonesIfNeeded(
+                  cloneUrls,
+                  resolvedParams.entity,
+                  resolvedParams.repo,
+                  nip34AnnouncementCloneStatusRef.current
+                );
+                if (cloneUrls.length > 0) {
+                  setRepoData((prev: any) =>
+                    prev
+                      ? {
+                          ...prev,
+                          clone: mergeDiscoverableCloneUrls(
+                            prev.clone,
+                            cloneUrls
+                          ),
+                        }
+                      : prev
+                  );
+                }
+
                 // Check if already attempted AND we have files, OR if truly in progress
                 // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
                 // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
@@ -9279,21 +9350,6 @@ export function RepoCodePage() {
                     fetchFromGitNostrBridge();
                     return;
                   }
-                }
-
-                // After Nostr EOSE: guess well-known GRASP paths only when the
-                // announcement arrived and still has no clone tags.
-                if (
-                  shouldInferGraspCloneUrls({
-                    collectedCloneCount: cloneUrls.length,
-                    announcementStatus: nip34AnnouncementCloneStatusRef.current,
-                  })
-                ) {
-                  appendInferredGraspCloneUrls(
-                    cloneUrls,
-                    resolvedParams.entity,
-                    resolvedParams.repo
-                  );
                 }
 
                 if (cloneUrls.length > 0) {
@@ -9845,31 +9901,27 @@ export function RepoCodePage() {
         // inference only if we still never saw a 30617 (native gittr / empty relays).
         setTimeout(() => {
           if (unsub) unsub();
-          const live = repoDataRef.current as { clone?: string[] } | null;
-          const existing = Array.isArray(live?.clone) ? live.clone.length : 0;
-          if (
-            shouldInferGraspCloneUrls({
-              collectedCloneCount: existing,
-              announcementStatus: nip34AnnouncementCloneStatusRef.current,
-              allowLastResort: true,
-            })
-          ) {
-            const inferred: string[] = [];
-            appendInferredGraspCloneUrls(
-              inferred,
-              resolvedParams.entity,
-              resolvedParams.repo
+          const live = repoDataRef.current as {
+            clone?: string[];
+            relays?: string[];
+          } | null;
+          const existing = Array.isArray(live?.clone) ? [...live.clone] : [];
+          inferGraspClonesIfNeeded(
+            existing,
+            resolvedParams.entity,
+            resolvedParams.repo,
+            nip34AnnouncementCloneStatusRef.current,
+            true
+          );
+          if (existing.length > 0) {
+            setRepoData((prev: any) =>
+              prev
+                ? {
+                    ...prev,
+                    clone: mergeDiscoverableCloneUrls(prev.clone, existing),
+                  }
+                : prev
             );
-            if (inferred.length > 0) {
-              setRepoData((prev: any) =>
-                prev
-                  ? {
-                      ...prev,
-                      clone: mergeDiscoverableCloneUrls(prev.clone, inferred),
-                    }
-                  : prev
-              );
-            }
           }
         }, 20000);
         // Timeout after 3 seconds as a final fallback (reduced from 15s - should rarely trigger since we start fetching immediately)
@@ -9979,18 +10031,12 @@ export function RepoCodePage() {
 
             // Do not invent GRASP while the 30617 is still in flight — that
             // races real clone tags (self-hosted git remotes, etc.).
-            if (
-              shouldInferGraspCloneUrls({
-                collectedCloneCount: cloneUrls.length,
-                announcementStatus: nip34AnnouncementCloneStatusRef.current,
-              })
-            ) {
-              appendInferredGraspCloneUrls(
-                cloneUrls,
-                resolvedParams.entity,
-                resolvedParams.repo
-              );
-            }
+            inferGraspClonesIfNeeded(
+              cloneUrls,
+              resolvedParams.entity,
+              resolvedParams.repo,
+              nip34AnnouncementCloneStatusRef.current
+            );
             if (cloneUrls.length > 0) {
               setRepoData((prev: any) =>
                 prev

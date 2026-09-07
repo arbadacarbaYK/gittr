@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { gitCloneUrlsForFileFetch } from "@/lib/nostr/clone-url-quality";
 import {
   noteGitSourceHttpEnd,
   noteGitSourceHttpStart,
@@ -1995,12 +1996,20 @@ export async function fetchFilesFromMultipleSources(
     return { files: null, statuses };
   }
 
+  const gitCloneUrls = gitCloneUrlsForFileFetch(cloneUrls);
+  if (gitCloneUrls.length === 0) {
+    console.info(
+      `ℹ️ [Git Source] No git clone URLs after skipping ${cloneUrls.length} relay homepage(s)`
+    );
+    return { files: null, statuses: [] };
+  }
+
   noteGitSourceHttpStart();
   try {
-    let prioritizedCloneUrls = cloneUrls;
+    let prioritizedCloneUrls = gitCloneUrls;
 
     // If user has GRASP list preferences, prioritize those servers
-    if (userPubkey && subscribe && defaultRelays && cloneUrls.length > 0) {
+    if (userPubkey && subscribe && defaultRelays && gitCloneUrls.length > 0) {
       try {
         const {
           getUserGraspServers,
@@ -2032,7 +2041,7 @@ export async function fetchFilesFromMultipleSources(
           const graspCloneUrls: string[] = [];
           const otherCloneUrls: string[] = [];
 
-          cloneUrls.forEach((url) => {
+          gitCloneUrls.forEach((url) => {
             // Check if this clone URL is from a user-preferred GRASP server
             const isUserPreferredGrasp = userGraspDomains.some((domain) => {
               const urlDomain = url

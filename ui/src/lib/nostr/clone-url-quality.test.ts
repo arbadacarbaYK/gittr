@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { pickUserFacingCloneUrl } from "./clone-url-quality";
+import {
+  gitCloneUrlsForFileFetch,
+  isLikelyGitCloneUrl,
+  pickUserFacingCloneUrl,
+} from "./clone-url-quality";
 
 const npub = "npub1k0y4eceal2zryes3azm6nsgt0r0jsa2v8zcsdf9uqxttn0jlfe9q04c9h8";
 
@@ -24,5 +28,33 @@ describe("pickUserFacingCloneUrl", () => {
       ],
     });
     expect(url).toContain("git.gittr.space");
+  });
+});
+
+describe("isLikelyGitCloneUrl", () => {
+  it("keeps known GRASP and forge remotes", () => {
+    expect(
+      isLikelyGitCloneUrl(`https://relay.ngit.dev/${npub}/officecli.git`)
+    ).toBe(true);
+    expect(isLikelyGitCloneUrl("https://github.com/org/repo.git")).toBe(true);
+  });
+
+  it("rejects Nostr-relay homepages that are not GRASP git hosts", () => {
+    expect(
+      isLikelyGitCloneUrl(
+        `https://relay.poster.place/${npub}/project-brutality-xdc.git`
+      )
+    ).toBe(false);
+  });
+});
+
+describe("gitCloneUrlsForFileFetch", () => {
+  it("drops relay homepages and keeps GRASP", () => {
+    expect(
+      gitCloneUrlsForFileFetch([
+        `https://relay.poster.place/${npub}/project-brutality-xdc.git`,
+        `https://relay.ngit.dev/${npub}/project-brutality-xdc.git`,
+      ])
+    ).toEqual([`https://relay.ngit.dev/${npub}/project-brutality-xdc.git`]);
   });
 });

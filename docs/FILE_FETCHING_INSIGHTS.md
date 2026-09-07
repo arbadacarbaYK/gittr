@@ -74,12 +74,12 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 1. **Browser `localStorage`** — owned or previously loaded trees show immediately. Network refresh still runs when there is a GitHub mirror (or an npub/hex route that needs a live announcement).
 2. **Embedded files** in a Nostr repo event (legacy / small repos).
-3. **Kind 30617** on relays — published **`clone[]` and `source` tags are the map**. Query includes the viewer’s relays plus NIP-34 discovery (`relay.gittr.space`, `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, `nos.lol`).
-4. **Timers:** after ~3s, multifetch and bridge fallback start even if tags are still arriving (the subscription stays open). After **20s**, the metadata sub closes. Well-known GRASP URLs are filled in only when a matching 30617 has **empty** `clone[]`, or as last resort if **no** 30617 arrived by EOSE.
+3. **Kind 30617** on relays — published **`clone[]` and `source` tags are the map**. Query includes the viewer’s relays, NIP-34 discovery (`relay.gittr.space`, `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, `nos.lol`), plus the announcement’s own `relays` tags and `wss://` on clone hosts.
+4. **Timers:** after ~3s, multifetch and bridge fallback start even if tags are still arriving (the subscription stays open). After **20s**, the metadata sub closes. Well-known GRASP URLs are filled in when a matching 30617 has **empty** `clone[]`, when the only clones are Nostr-relay homepages (not git), or as last resort if **no** 30617 arrived by EOSE.
 5. **Which tree:**
    - Forge **`source`** and no local drafts: fetch that forge first (`/api/git/repo-files`). That listing is the Code tab (smaller than the bridge is OK — upstream deletes).
-   - Otherwise **parallel race** over `clone[]` (**45s** for the first success). **Winner among those remotes = first non-empty listing.** A 502 from one mirror does not block another.
-   - Git lists the **default tip from HEAD** under whatever name that branch has (`main`, `master`, `develop`, `gittr`, …). The Code tab applies that listing unless you **picked** a named branch in the dropdown. Cached trees are not wiped on leave/return just because the URL still says `main`. A leftover cache that does not display (polluted / typeless) is treated as empty so a successful listing can paint. An explicit pick (`dev`) is not replaced by another branch.
+   - Otherwise **parallel race** over `clone[]` (**45s** for the first success). **Winner among those remotes = first non-empty listing.** A 502 from one mirror does not block another. Clone tags whose host is `relay.*` and not a known GRASP git host are skipped for this race (they are Nostr relays, not git).
+   - If the announcement JSON includes a README, that can paint **without** a git file listing. The tree still needs a clone URL gittr can actually `git clone`. A `https://relay.…` homepage that is not a known GRASP host is not git — we still try well-known GRASP paths and the announcement’s own relays.
    - Forge and self-hosted HTTPS are asked before GRASP; bare `http://IP:port` last.
    - GitHub in the URL list is preflighted up to 20s; success returns immediately.
    - With Amber / NIP-46 paired, HTTP concurrency is **2**.

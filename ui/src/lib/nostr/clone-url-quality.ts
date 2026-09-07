@@ -6,7 +6,7 @@
  * (localhost, loopback, private LAN, *.local), hide it from discovery.
  * Announces with zero clone tags stay visible (legacy / GRASP-only).
  */
-import { isHexPathGitHost } from "../utils/grasp-servers";
+import { isGraspServer, isHexPathGitHost } from "../utils/grasp-servers";
 
 /**
  * NIP-34 `d` must be a bare repo identifier (e.g. "gamestr"), not
@@ -375,6 +375,46 @@ export function pickUserFacingCloneUrl(opts: {
 
   if (opts.originFallback) return opts.originFallback;
   return null;
+}
+
+const FORGE_CLONE_HOST =
+  /(?:^|\.)(?:github\.com|gitlab\.com|codeberg\.org|bitbucket\.org)$/i;
+
+/**
+ * True when a clone tag is worth handing to git (`/api/git/repo-files`).
+ * `https://relay.example/…` hosts that are not known GRASP are Nostr relays;
+ * treating them as the only git remote leaves the Code tab at 0 files while
+ * README still paints from the announcement JSON.
+ */
+export function isLikelyGitCloneUrl(url: string): boolean {
+  const raw = (url || "").trim();
+  if (!raw) return false;
+  if (/^htree:\/\//i.test(raw)) return false;
+  let host = "";
+  try {
+    const normalized = raw
+      .replace(/^git@([^:]+):/, "https://$1/")
+      .replace(/^git:\/\//i, "https://");
+    const withProto = /:\/\//.test(normalized)
+      ? normalized
+      : `https://${normalized}`;
+    host = new URL(withProto).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  if (!host) return false;
+  if (FORGE_CLONE_HOST.test(host)) return true;
+  if (isGraspServer(host) || isGraspServer(`https://${host}`)) return true;
+  if (host.startsWith("relay.")) return false;
+  return true;
+}
+
+/** Clone tags worth racing in `/api/git/repo-files` (drops relay homepages). */
+export function gitCloneUrlsForFileFetch(
+  urls: string[] | undefined | null
+): string[] {
+  if (!Array.isArray(urls)) return [];
+  return urls.filter((u) => typeof u === "string" && isLikelyGitCloneUrl(u));
 }
 
 /**
