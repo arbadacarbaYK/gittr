@@ -12,6 +12,7 @@ import {
 } from "./file-inline-body";
 import { allowShrinkToSourceUpstreamTree } from "./forge-tree-shrink";
 import {
+  fetchedTreeBranchesCompatible,
   shouldApplyFetchedFileTree,
   shouldMergeFetchedFileTree,
 } from "./repo-file-tree-branch";
@@ -69,9 +70,12 @@ export function prepareFetchedFileTree<T extends PathishRepoFile>(opts: {
     incoming.length,
     { allowShrink: shrinkOrHollow }
   );
+  const branchOk =
+    fetchedTreeBranchesCompatible(opts.incomingBranch, opts.activeBranch) ||
+    existingCount === 0;
   const apply =
     incoming.length > 0 &&
-    opts.incomingBranch === opts.activeBranch &&
+    branchOk &&
     (shouldApply || shouldMerge || hollowExtrasOnly);
 
   return { files, apply, allowShrink, hollowExtrasOnly };

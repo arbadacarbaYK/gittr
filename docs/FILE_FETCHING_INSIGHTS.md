@@ -79,6 +79,7 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 5. **Which tree:**
    - Forge **`source`** and no local drafts: fetch that forge first (`/api/git/repo-files`). That listing is the Code tab (smaller than the bridge is OK — upstream deletes).
    - Otherwise **parallel race** over `clone[]` (**45s** for the first success). **Winner among those remotes = first non-empty listing.** A 502 from one mirror does not block another.
+   - **`main` and `master` are the same default tip.** Git often lists `master` while the Code tab still shows `main`. That listing must still paint. An empty local tree never blocks a successful remote listing. A real `dev` (or other) branch is not applied onto `main`.
    - Forge and self-hosted HTTPS are asked before GRASP; bare `http://IP:port` last.
    - GitHub in the URL list is preflighted up to 20s; success returns immediately.
    - With Amber / NIP-46 paired, HTTP concurrency is **2**.

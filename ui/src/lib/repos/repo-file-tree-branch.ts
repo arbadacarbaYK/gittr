@@ -139,6 +139,20 @@ export function repoNavHref(
  */
 const CANONICAL_DEFAULT_BRANCHES = new Set(["main", "master"]);
 
+/** `main` and `master` are the same default tip for applying a fetched listing. */
+export function fetchedTreeBranchesCompatible(
+  incomingBranch: string,
+  activeBranch: string
+): boolean {
+  const incoming = (incomingBranch || "").trim();
+  const active = (activeBranch || "").trim();
+  if (!incoming || !active || incoming === active) return true;
+  return (
+    CANONICAL_DEFAULT_BRANCHES.has(incoming) &&
+    CANONICAL_DEFAULT_BRANCHES.has(active)
+  );
+}
+
 export function shouldSyncBranchFromFetch(
   resolvedBranch: string | undefined,
   repoDefault: string,
@@ -274,7 +288,8 @@ export function shouldApplyFetchedFileTree(
   }
 ): boolean {
   if (existingFileCount === 0) return true;
-  if (incomingBranch !== activeBranch) return false;
+  if (!fetchedTreeBranchesCompatible(incomingBranch, activeBranch))
+    return false;
   if (
     typeof incomingFileCount === "number" &&
     incomingFileCount > 0 &&

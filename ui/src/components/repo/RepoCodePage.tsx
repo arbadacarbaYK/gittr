@@ -55,10 +55,6 @@ import {
   savePagesAutoReadme,
   savePagesSiteSlugBackup,
 } from "@/lib/gittr-pages/pages-site-slug-store";
-import {
-  mergeRepoStateWithStorage,
-  withPreservedPagesSiteSlug,
-} from "@/lib/repos/merge-repo-state-with-storage";
 import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-manifest";
 import {
   buildGittrPagesReadmeAppend,
@@ -105,18 +101,27 @@ import {
   removeAutoNostrPagesLinks,
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
+import {
+  localExtrasAreHollowOnly,
+  overlayLocalBodiesOnRemoteTree,
+} from "@/lib/repos/file-inline-body";
 import { formatForgeAttributionLabel } from "@/lib/repos/forge-fork-meta";
 import {
   isDisplayableForkAttribution,
   resolveStoredForkedFrom,
   sanitizeForkedFromField,
 } from "@/lib/repos/fork-attribution";
+import { prepareFetchedFileTree } from "@/lib/repos/incoming-file-tree";
 import {
   type AnnouncementCloneStatus,
   shouldInferGraspCloneUrls,
 } from "@/lib/repos/infer-grasp-clones";
 import { languageFromFilename } from "@/lib/repos/infer-languages-from-files";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
+import {
+  mergeRepoStateWithStorage,
+  withPreservedPagesSiteSlug,
+} from "@/lib/repos/merge-repo-state-with-storage";
 import { isOpaqueBinaryDataUrl } from "@/lib/repos/opaque-binary-data-url";
 import {
   hydrateRepoOverrideBlobs,
@@ -130,6 +135,7 @@ import {
 import {
   type RepoBranchRoute,
   branchesToTryForContent,
+  fetchedTreeBranchesCompatible,
   isBotFeatureBranch,
   nestedFilePathCount,
   repoDefaultBranch,
@@ -184,11 +190,6 @@ import {
   saveRepoOverrides,
   saveStoredRepos,
 } from "@/lib/repos/storage";
-import {
-  localExtrasAreHollowOnly,
-  overlayLocalBodiesOnRemoteTree,
-} from "@/lib/repos/file-inline-body";
-import { prepareFetchedFileTree } from "@/lib/repos/incoming-file-tree";
 import {
   hasForgeUpstreamMirror,
   hasGithubUpstreamMirror,
@@ -5481,7 +5482,9 @@ export function RepoCodePage() {
       (currentRepoData as { filesBranch?: string })?.filesBranch || ""
     ).trim();
     const filesMatchBranch =
-      !cachedFilesBranch || cachedFilesBranch === currentBranch;
+      !cachedFilesBranch ||
+      cachedFilesBranch === currentBranch ||
+      fetchedTreeBranchesCompatible(cachedFilesBranch, currentBranch);
     const hasFiles =
       filesMatchBranch &&
       currentRepoData?.files &&
@@ -5545,9 +5548,15 @@ export function RepoCodePage() {
       }
     }
 
-    // CRITICAL: If we have cloneUrls but no files, clear attempted flag to allow fetch
-    // cloneUrls mean files should be fetchable - if previous attempt failed, we need to retry
+    // cloneUrls mean files should be fetchable — retry only within the budget
     if (hasCloneUrls && hasAttempted && !hasFiles) {
+      if (!canAutoRetryFileFetch(repoKeyWithBranch)) {
+        console.log(
+          "⏭️ [File Fetch] Retry budget exhausted, not hammering sources:",
+          repoKeyWithBranch
+        );
+        return;
+      }
       console.log(
         "🔄 [File Fetch] Repo has clone URLs but no files - clearing attempted flag to allow fetch:",
         repoKeyWithBranch
@@ -5557,6 +5566,7 @@ export function RepoCodePage() {
     if (
       cachedFilesBranch &&
       cachedFilesBranch !== currentBranch &&
+      !fetchedTreeBranchesCompatible(cachedFilesBranch, currentBranch) &&
       currentRepoData?.files?.length
     ) {
       console.log(
@@ -6069,18 +6079,15 @@ export function RepoCodePage() {
         return;
       }
 
-      // CRITICAL: If isInProgress is true but we have no files, clear it to allow retry
-      // This handles the case where a previous fetch attempt failed but left the flag stuck
-      if (isInProgress && !hasFiles && hasCloneUrls) {
+      if (isInProgress) {
         console.log(
-          "🔄 [File Fetch] Clearing stuck isInProgress flag (no files but cloneUrls exist) to allow retry:",
+          "⏭️ [File Fetch] Fetch already in progress, skipping duplicate clone-URL fetch:",
           repoKeyWithBranch
         );
-        fileFetchInProgressRef.current = false;
+        return;
       }
 
-      // CRITICAL: If we attempted before but have no files (failed fetch), clear the attempted flag to allow retry
-      // This is especially important when cloneUrls exist - we need to keep trying until files are loaded
+      // If we attempted before but have no files, retry only within the budget
       if (hasAttempted && !hasFiles) {
         const willRetry =
           hasCloneUrls && canAutoRetryFileFetch(repoKeyWithBranch);
@@ -6095,6 +6102,12 @@ export function RepoCodePage() {
         );
         if (willRetry) {
           fileFetchAttemptedRef.current = "";
+        } else {
+          console.log(
+            "⏭️ [File Fetch] Retry budget exhausted after empty clone-URL fetch:",
+            repoKeyWithBranch
+          );
+          return;
         }
       }
 
@@ -9097,21 +9110,26 @@ export function RepoCodePage() {
                   ...cloneUrls
                 );
                 const mustRefreshEose = eoseUpstream.includes("github.com");
-                // Match initial multi-source guard: never skip just because a fetch is in flight
-                // when we still have zero files — the first run may only have Nostr clone URLs;
-                // EOSE adds upstream sourceUrl (e.g. self-hosted git) required for a successful tree.
+                // Don't interrupt an in-flight multifetch just because EOSE added
+                // the same clone URLs — that was stacking parallel 429 storms.
                 if (
                   fileFetchInProgressRef.current &&
-                  (!hasFiles || mustRefreshEose) &&
+                  mustRefreshEose &&
+                  hasFiles &&
                   hasCloneUrlsForEose
                 ) {
                   console.log(
-                    mustRefreshEose && hasFiles
-                      ? "🔄 [File Fetch] EOSE: clearing isInProgress (upstream mirror arrived; refresh stale cache):"
-                      : "🔄 [File Fetch] EOSE: clearing isInProgress (no files yet; clone list now includes event URLs):",
+                    "🔄 [File Fetch] EOSE: clearing isInProgress (upstream mirror arrived; refresh stale cache):",
                     repoKeyWithBranch
                   );
                   fileFetchInProgressRef.current = false;
+                }
+                if (fileFetchInProgressRef.current && !hasFiles) {
+                  console.log(
+                    "⏭️ [File Fetch] EOSE: fetch already in progress, not starting another:",
+                    repoKeyWithBranch
+                  );
+                  return;
                 }
                 const isInProgress = fileFetchInProgressRef.current;
 
@@ -9151,6 +9169,13 @@ export function RepoCodePage() {
                   );
                   if (canAutoRetryFileFetch(repoKeyWithBranch)) {
                     fileFetchAttemptedRef.current = "";
+                  } else {
+                    console.log(
+                      "⏭️ [File Fetch] EOSE: retry budget exhausted, not starting another clone-URL fetch:",
+                      repoKeyWithBranch
+                    );
+                    fetchFromGitNostrBridge();
+                    return;
                   }
                 }
 
@@ -9284,7 +9309,8 @@ export function RepoCodePage() {
                             status.source?.type
                           );
                           const shouldApplyTree = prepared.apply;
-                          const filesToApply = prepared.files as RepoFileEntry[];
+                          const filesToApply =
+                            prepared.files as RepoFileEntry[];
                           if (!shouldApplyTree) {
                             console.warn(
                               `⏭️ [File Fetch] Keeping local tree instead of remote (${status.files.length}) from ${status.source.displayName}`

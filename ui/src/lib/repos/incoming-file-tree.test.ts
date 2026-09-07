@@ -57,4 +57,31 @@ describe("prepareFetchedFileTree", () => {
     });
     expect(r.apply).toBe(false);
   });
+
+  it("applies master listing when the UI is still on main and local is empty", () => {
+    const incoming = [
+      { path: "README.md" },
+      { path: "package.json" },
+      { path: "src/index.ts" },
+    ];
+    const r = prepareFetchedFileTree({
+      incoming,
+      local: [],
+      incomingBranch: "master",
+      activeBranch: "main",
+    });
+    expect(r.apply).toBe(true);
+    expect(r.files).toHaveLength(3);
+  });
+
+  it("applies master listing onto an existing main tree of the same size", () => {
+    const files = [{ path: "README.md" }, { path: "a.ts", content: "x" }];
+    const r = prepareFetchedFileTree({
+      incoming: files,
+      local: files,
+      incomingBranch: "master",
+      activeBranch: "main",
+    });
+    expect(r.apply).toBe(true);
+  });
 });

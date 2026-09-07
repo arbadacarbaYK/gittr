@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   branchesToTryForContent,
+  fetchedTreeBranchesCompatible,
   nestedFilePathCount,
   resolveSharedRepoBranch,
   shouldApplyFetchedFileTree,
@@ -68,9 +69,33 @@ describe("branchesToTryForContent", () => {
   });
 });
 
+describe("fetchedTreeBranchesCompatible", () => {
+  it("treats main and master as the same default tip", () => {
+    expect(fetchedTreeBranchesCompatible("master", "main")).toBe(true);
+    expect(fetchedTreeBranchesCompatible("main", "master")).toBe(true);
+  });
+
+  it("does not treat feature branches as the default tip", () => {
+    expect(fetchedTreeBranchesCompatible("dev", "main")).toBe(false);
+    expect(fetchedTreeBranchesCompatible("main", "release")).toBe(false);
+  });
+});
+
 describe("shouldApplyFetchedFileTree", () => {
   it("allows first load", () => {
     expect(shouldApplyFetchedFileTree("main", 0, "main", 6)).toBe(true);
+  });
+
+  it("allows first load when git resolved master and the UI is still on main", () => {
+    expect(shouldApplyFetchedFileTree("master", 0, "main", 51)).toBe(true);
+  });
+
+  it("allows replacing an existing main tree with a master listing of the same size", () => {
+    expect(shouldApplyFetchedFileTree("master", 51, "main", 51)).toBe(true);
+  });
+
+  it("still blocks a feature-branch listing when local already has files", () => {
+    expect(shouldApplyFetchedFileTree("dev", 2, "main", 1)).toBe(false);
   });
 
   it("blocks smaller remote trees", () => {
