@@ -18,8 +18,7 @@
     "noUncheckedIndexedAccess": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "nostr-tools": ["./node_modules/nostr-tools/lib/index.d.ts"]
+      "@/*": ["./src/*"]
     },
     "plugins": [
       {
