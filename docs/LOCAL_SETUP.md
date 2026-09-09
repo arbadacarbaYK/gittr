@@ -34,7 +34,7 @@ rm -rf .next
 yarn dev
 ```
 
-Do not run `yarn build` in `ui/` while `yarn dev` is running — they share `ui/.next` unless you set `GITTR_DIST_DIR` (honored in `ui/next.config.js`). Homepage **Most Active** cards stay empty until a leaderboard snapshot exists (`ui/data/platform-leaderboard-snapshot.json`); that is expected on a fresh local box.
+Do not run `yarn build` in `ui/` while `yarn dev` is running — they share `ui/.next` unless you set `GITTR_DIST_DIR` (honored in `ui/next.config.js`). Homepage **Most Active** cards stay empty until a leaderboard snapshot exists (`ui/data/platform-leaderboard-snapshot.json`); that is expected on a fresh local box. **Explore’s SEO starter** is the same: production reads `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json` on Hetzner (that file is the current index — **do not scp a laptop copy over it**). Local `/explore` seed is empty until you `scp` that JSON **from** the server into `ui/data/` for a one-off, or until live relays fill.
 
 ## Bridge (optional, for `git clone` / push)
 

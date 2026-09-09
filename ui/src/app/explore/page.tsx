@@ -27,6 +27,13 @@ import {
   rememberExploreDiscoveryRelay,
 } from "@/lib/nostr/explore-discovery-relays";
 import {
+  EXPLORE_SEED_CACHE_CAP,
+  EXPLORE_SEED_FETCH_LIMIT,
+  mergeExploreSeedIntoCatalog,
+  seoSeedRowCount,
+  shouldFetchExploreSeed,
+} from "@/lib/nostr/explore-seed-catalog";
+import {
   hydrateExploreSessionCatalog,
   peekExploreSessionCatalog,
   writeExploreSessionCatalog,
@@ -59,15 +66,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { OnEvent } from "nostr-relaypool";
 import { nip19 } from "nostr-tools";
-
-/**
- * Cold-start SEO seed for /explore (not the 48-card Load more page size).
- * Snapshot has ~2k+ paths; 600 was a soft quota guard that looked like “stuck”.
- */
-const EXPLORE_SEED_FETCH_LIMIT = 3000;
-const EXPLORE_SEED_CACHE_CAP = 3000;
-/** Skip re-seed only when cache is already near full catalog size. */
-const EXPLORE_SEED_SKIP_IF_CACHED = 2000;
 
 /** Per-event Explore logs freeze the tab; opt in with localStorage gittr_explore_debug=1 */
 function exploreDebugEnabled(): boolean {
@@ -1002,9 +1000,6 @@ function ExplorePageContent() {
   }, [applyReposToUi]);
 
   useEffect(() => {
-    loadRepos();
-
-    // Listen for repo updates from Nostr sync
     const handleRepoUpdate = () => {
       loadRepos();
     };
@@ -1020,9 +1015,9 @@ function ExplorePageContent() {
     };
   }, [loadRepos]);
 
-  // Cold start: seed from SEO snapshot (+ recent-repos) even when
-  // localStorage already has a thin locals list, so search matches
-  // Nostr-wide names before live relays finish.
+  // SEO snapshot is the starter catalog (Hetzner disk file). Do not paint
+  // localStorage-only as "done" first — search filters this list, and a large
+  // locals cache used to skip the seed entirely.
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
@@ -1040,59 +1035,22 @@ function ExplorePageContent() {
       if (!seed.length) return;
       try {
         const existing = readExploreCatalog() as any[];
-        const byKey = new Map<string, any>();
-        for (const r of existing) {
-          const entity = String(r.entity || "").toLowerCase();
-          const name = String(
-            r.repo || r.slug || r.repositoryName || r.name || ""
-          ).toLowerCase();
-          if (entity && name) byKey.set(`${entity}/${name}`, r);
-        }
-        // Prefer fresher SEO rows first so a capped write still shows activity.
-        const rankedSeed = [...seed].sort(
-          (a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)
+        const { list, added } = mergeExploreSeedIntoCatalog(
+          existing,
+          seed,
+          EXPLORE_SEED_CACHE_CAP
         );
-        let added = 0;
-        for (const s of rankedSeed) {
-          const entity = String(s.entity || "").trim();
-          const name = String(s.repo || s.repoName || "").trim();
-          if (!entity || !name) continue;
-          const key = `${entity.toLowerCase()}/${name.toLowerCase()}`;
-          if (byKey.has(key)) continue;
-          byKey.set(key, {
-            entity,
-            repo: name,
-            slug: name,
-            name,
-            repositoryName: name,
-            ownerPubkey: s.ownerPubkey,
-            description: s.description || "",
-            createdAt: s.lastActivity || Date.now(),
-            lastNostrEventCreatedAt: s.lastActivity
-              ? Math.floor(s.lastActivity / 1000)
-              : undefined,
-            fromSeoSnapshot: true,
-            syncedFromNostr: false,
+        if (added > 0 && !cancelled) {
+          const saved = commitExploreCatalog(list as Repo[], {
+            immediate: true,
           });
-          added++;
-          // Soft cap SEO seed growth (quota) — keep aligned with EXPLORE_SEED_FETCH_LIMIT.
-          if (byKey.size >= EXPLORE_SEED_CACHE_CAP) break;
-        }
-        if (added > 0) {
-          const merged = Array.from(byKey.values()) as Repo[];
-          if (!cancelled) {
-            const saved = commitExploreCatalog(merged, { immediate: true });
-            if (!saved) {
-              console.warn(
-                "[Explore] seed merge could not persist (quota); session catalog kept in memory"
-              );
-            }
-            // Seed is the SEO snapshot of long-indexed gittr-side repos.
-            // Do not hide "syncing" here — live ngit/Shakespeare/NostrHub
-            // events are still in flight.
+          if (!saved) {
+            console.warn(
+              "[Explore] seed merge could not persist (quota); session catalog kept in memory"
+            );
           }
           exploreDebug(
-            `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
+            `🌱 [Explore] Seeded ${added} repos (cache now ${list.length})`
           );
         }
       } catch (e) {
@@ -1101,48 +1059,60 @@ function ExplorePageContent() {
     };
 
     (async () => {
-      try {
-        const existing = readExploreCatalog() as any[];
-        // Re-seed until near full catalog — old gate at 200 left people stuck at the
-        // previous 600 soft cap with no path to pull the rest of the SEO snapshot.
-        if (existing.length >= EXPLORE_SEED_SKIP_IF_CACHED) return;
+      const existing = readExploreCatalog() as any[];
+      const hasSeoStarter = seoSeedRowCount(existing) > 0;
+      const needsSeed = shouldFetchExploreSeed(existing);
 
-        const [seedRes, recentRes] = await Promise.all([
-          fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
-            () => null
-          ),
-          fetch("/api/stats/recent-repos").catch(() => null),
-        ]);
-        if (cancelled) return;
+      if (hasSeoStarter) {
+        loadRepos();
+      } else {
+        setIsLoadingRepos(true);
+      }
 
-        const seedJson = seedRes?.ok
-          ? ((await seedRes.json()) as {
-              ok?: boolean;
-              repos?: Array<{
-                entity: string;
-                repo: string;
-                repoName?: string;
-                ownerPubkey: string;
-                lastActivity?: number;
-              }>;
-            })
-          : null;
-        const recentJson = recentRes?.ok
-          ? ((await recentRes.json()) as {
-              repos?: Array<{
-                entity: string;
-                repo: string;
-                repoName?: string;
-                ownerPubkey: string;
-                lastActivity?: number;
-                description?: string;
-              }>;
-            })
-          : null;
+      if (needsSeed) {
+        try {
+          const [seedRes, recentRes] = await Promise.all([
+            fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
+              () => null
+            ),
+            fetch("/api/stats/recent-repos").catch(() => null),
+          ]);
+          if (cancelled) return;
 
-        mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
-      } catch (e) {
-        console.warn("[Explore] seed fetch failed:", e);
+          const seedJson = seedRes?.ok
+            ? ((await seedRes.json()) as {
+                ok?: boolean;
+                repos?: Array<{
+                  entity: string;
+                  repo: string;
+                  repoName?: string;
+                  ownerPubkey: string;
+                  lastActivity?: number;
+                }>;
+              })
+            : null;
+          const recentJson = recentRes?.ok
+            ? ((await recentRes.json()) as {
+                repos?: Array<{
+                  entity: string;
+                  repo: string;
+                  repoName?: string;
+                  ownerPubkey: string;
+                  lastActivity?: number;
+                  description?: string;
+                }>;
+              })
+            : null;
+
+          mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
+        } catch (e) {
+          console.warn("[Explore] seed fetch failed:", e);
+        }
+      }
+
+      if (!cancelled) {
+        loadRepos();
+        setIsLoadingRepos(false);
       }
     })();
 
