@@ -1,7 +1,7 @@
 /**
  * Dry-run of the CVE-alert eligibility filter against real repos on
  * gittr.space. Uses the real manifest parser + the production audit API and
- * prints the issue each repo owner WOULD have received. Sends nothing.
+ * prints the private DM each repo owner WOULD have received. Sends nothing.
  *
  * Bot eligibility: shared eligibleCveAdvisories() — confirmed (pinned, not
  * unfixable+UNKNOWN) + direct + CRITICAL/HIGH. Live publish is scripts/cve-bot.mts.
@@ -19,7 +19,10 @@ import {
   eligibleCveAdvisories,
   isConfirmedAdvisory,
 } from "../ui/src/lib/security/cve-eligibility";
-import { formatCveIssueBody } from "../ui/src/lib/security/cve-issue-format";
+import {
+  formatCveNotificationDm,
+  ownerPubkeyToNpub,
+} from "../ui/src/lib/security/cve-issue-format";
 
 const BASE = process.env.GITTR_BASE || "https://gittr.space";
 
@@ -59,13 +62,19 @@ async function getJson(url: string): Promise<any | null> {
   }
 }
 
-function botIssueMessage(repoLabel: string, eligible: Advisory[]): string {
-  const { title, description } = formatCveIssueBody(
-    repoLabel,
-    "dry-run",
-    eligible
-  );
-  return `Title: ${title}\n\n${description}`;
+function botNoticeMessage(
+  repoLabel: string,
+  eligible: Advisory[],
+  ownerPubkey: string,
+  repo: string
+): string {
+  const { title, message } = formatCveNotificationDm({
+    repoName: repoLabel,
+    scannedCommit: "dry-run",
+    eligible,
+    repoPublicUrl: `https://gittr.space/${ownerPubkeyToNpub(ownerPubkey)}/${encodeURIComponent(repo)}/dependencies`,
+  });
+  return `Title: ${title}\n\n${message}`;
 }
 
 for (const target of REPOS) {
@@ -151,9 +160,9 @@ for (const target of REPOS) {
   if (eligible.length === 0) {
     console.log("  bot would NOT alert (no direct+pinned critical/high)");
   } else {
-    console.log(`  bot WOULD open 1 issue with ${eligible.length} item(s):`);
+    console.log(`  bot WOULD DM ${eligible.length} item(s) (no public issue):`);
     console.log(
-      botIssueMessage(target.label, eligible)
+      botNoticeMessage(target.label, eligible, target.owner, target.repo)
         .split("\n")
         .map((l) => `    | ${l}`)
         .join("\n")

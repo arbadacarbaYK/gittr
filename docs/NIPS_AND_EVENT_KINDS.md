@@ -251,7 +251,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 ### Kind 1621: Issues (NIP-34)
 
 - **Purpose**: Issue tracking
-- **Usage**: Repository issues with bounties
+- **Usage**: Repository issues with bounties. **Not** used for CVE/OSV dependency notices — those are opt-in private DMs (relays have no owner-only issue kind).
 - **Tags**:
   - `a`: Repository reference (`30617:<owner-pubkey>:<repo-id>`) - REQUIRED
   - `r`: Earliest unique commit ID - REQUIRED
@@ -340,7 +340,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 ### Kind 30078: Notification prefs (NIP-78 app data)
 
 - **Purpose**: Bot- and server-readable notification preferences (multi-browser sync). Telegram User ID is **not** stored here — only on the instance via `/api/notifications/consent`.
-- **Usage**: Settings → Notifications → Save publishes this replaceable event. `sendNotification` delivers via `/api/notifications/deliver` using the **recipient’s** consent, not the actor’s localStorage. CVE bot treats `events.security_cve === true` as opt-in (confirmed OSV CVE issues+DMs **and** Spoiler Alert RSS early-warning DMs; Dependencies tab stays OSV-only).
+- **Usage**: Settings → Notifications → Save publishes this replaceable event. `sendNotification` delivers via `/api/notifications/deliver` using the **recipient’s** consent, not the actor’s localStorage. CVE bot treats `events.security_cve === true` as opt-in (confirmed OSV CVE **private DMs** **and** Spoiler Alert RSS early-warning DMs; never public kind 1621; Dependencies tab stays OSV-only).
 - **Tags**:
   - `d`: `gittr/notifications` (canonical). Legacy: `gittr/security-cve` (still hydrated).
 - **Content** (JSON): `{ "v": 1, "channels": { "nostr": bool, "telegram": bool }, "events": { "pr_opened": bool, "security_cve": bool, ... } }`

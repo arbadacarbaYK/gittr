@@ -379,9 +379,10 @@ export default function NotificationsPage() {
                     <code className="rounded bg-black/40 px-1 text-gray-200">
                       /start
                     </code>
-                    ), then paste the User ID here. Needed for dependency notices
-                    and other Telegram DMs. Stored on this server only — not on
-                    public relays. You can enable Nostr and Telegram together.
+                    ), then paste the User ID here. Needed for dependency
+                    notices and other Telegram DMs. Stored on this server only —
+                    not on public relays. You can enable Nostr and Telegram
+                    together.
                   </p>
                 </div>
               </div>
@@ -436,8 +437,8 @@ export default function NotificationsPage() {
                   </span>
                 </label>
                 <p className="ml-6 text-xs text-gray-300">
-                  <strong className="text-white">For Telegram DMs:</strong> first
-                  open{" "}
+                  <strong className="text-white">For Telegram DMs:</strong>{" "}
+                  first open{" "}
                   <a
                     href="https://t.me/gittrupdatebot"
                     target="_blank"
@@ -465,7 +466,9 @@ export default function NotificationsPage() {
                 About dependency notices (CVE)
               </p>
               <p className="text-gray-300">
-                <strong className="text-white">Telegram setup (required for TG):</strong>{" "}
+                <strong className="text-white">
+                  Telegram setup (required for TG):
+                </strong>{" "}
                 <a
                   href="https://t.me/gittrupdatebot"
                   target="_blank"
@@ -482,14 +485,16 @@ export default function NotificationsPage() {
                 CRITICAL/HIGH) on{" "}
                 <strong className="text-gray-300">repos you own</strong> that
                 have code on gittr (created / imported / pushed here) — not
-                watched or starred projects. Want coverage of someone else&apos;s
-                stack? Fork or import it under your account. A match means the
-                pinned version is in an advisory&apos;s range —{" "}
+                watched or starred projects. Want coverage of someone
+                else&apos;s stack? Fork or import it under your account. A match
+                means the pinned version is in an advisory&apos;s range —{" "}
                 <strong className="text-gray-300">not</strong> automatic proof
                 that your app is exploitable; please verify. When we notify, we
-                open a normal Issues entry titled like a dependency notice (not
-                an “incident”), plus your Nostr/Telegram channels. Alerts need
-                your{" "}
+                send a private Nostr/Telegram message (only if you opted in
+                here) with the advisory names. We do not open a public Issues
+                entry — Nostr issues are public, and spelling out CRITICAL CVEs
+                there is the wrong place. Open the Dependencies tab to re-run
+                the audit. Alerts need your{" "}
                 <strong className="text-gray-300">Nostr announcement</strong>{" "}
                 (kind 30618 from Push) to match the tip on gittr — if they
                 disagree, we skip rather than warn from the wrong tree. After
@@ -502,12 +507,13 @@ export default function NotificationsPage() {
                 The same Security toggle also enables private{" "}
                 <strong className="text-gray-300">early warnings</strong> when a
                 public Spoiler Alert feed flags a HIGH/CRITICAL patch that looks
-                  related to a direct dependency (often before a CVE). Matching
-                  is intentionally strict (scoped packages / Go module paths) so
-                  common names like <code className="bg-gray-800 px-1 rounded text-xs">react</code>{" "}
-                  do not fire on every app. Those DMs are not listed on the
-                  Dependencies tab; if that feed is down, normal OSV CVE checks
-                  keep working.
+                related to a direct dependency (often before a CVE). Matching is
+                intentionally strict (scoped packages / Go module paths) so
+                common names like{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">react</code>{" "}
+                do not fire on every app. Those DMs are not listed on the
+                Dependencies tab; if that feed is down, normal OSV CVE checks
+                keep working.
               </p>
               <p>
                 Details:{" "}

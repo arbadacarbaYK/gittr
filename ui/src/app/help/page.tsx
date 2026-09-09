@@ -2678,8 +2678,9 @@ export default function HelpPage() {
                 <p className="mt-2">
                   <strong>How the message looks:</strong> Telegram / Nostr DMs
                   lead with the <strong>repo name</strong>, list at most a few
-                  findings, and link to a tracking Issues entry on that repo —
-                  not a wall of hex URLs or truncated advisory dumps. Wording is
+                  findings, and link to that repo&apos;s{" "}
+                  <strong>Dependencies</strong> tab — not a public Issues entry.
+                  Advisory names stay in the private message. Wording is
                   deliberately calm: this is a{" "}
                   <strong>dependency advisory notice</strong>, not a claim that
                   the project is compromised.
@@ -2701,12 +2702,12 @@ export default function HelpPage() {
                   a <strong>direct</strong> pinned dependency on a repo that has
                   code on <strong>gittr</strong> (created / imported / pushed
                   here — not merely announced from another client), the platform
-                  can open a normal <strong>Issues</strong> entry on that repo
-                  (for tracking) and notify you on the{" "}
+                  can send a <strong>private</strong> notice on the{" "}
                   <strong>same channels</strong> you enabled (Nostr and/or
-                  Telegram). That entry is visible on the repo&apos;s Issues tab
-                  like any other issue — we avoid frightening “security
-                  incident” branding. A lockfile match still needs{" "}
+                  Telegram). GitHub Dependabot keeps vulnerability alerts off
+                  the public Issues tab; gittr does the same. Nostr issues are
+                  public on relays — there is no owner-only issue kind — so we
+                  never post CVE names there. A lockfile match still needs{" "}
                   <strong>your</strong> check: whether your code actually uses
                   the affected APIs. All notification toggles (including
                   Security) live in one kind{" "}
@@ -2757,10 +2758,10 @@ export default function HelpPage() {
                 </p>
                 <p className="mt-2">
                   <strong>How notices are sent:</strong> when you are opted in,
-                  the platform bot opens a calm dependency-tracking Issues entry
-                  on that repo and DMs you (Nostr and/or Telegram per your
-                  prefs) for each new CRITICAL/HIGH lockfile match. The same
-                  advisory is not re-sent on later scans.
+                  the platform bot DMs you (Nostr and/or Telegram per your
+                  prefs) for each new CRITICAL/HIGH lockfile match. It does not
+                  open a public issue. The same advisory is not re-sent on later
+                  scans.
                 </p>
                 <p className="mt-2">
                   <strong>Early (pre-CVE) warnings — same opt-in:</strong> with
