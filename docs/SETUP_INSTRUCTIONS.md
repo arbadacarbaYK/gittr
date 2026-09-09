@@ -54,7 +54,7 @@ yarn build
 
 **Env notes (production):**
 
-- `NEXT_PUBLIC_NOSTR_RELAYS` should match bridge `relays` in `git-nostr-bridge.json`. Explore dials gittr’s NIP-34 set (`relay.gittr.space`, ngit, shakespeare, …) plus the visitor’s Settings → Relays (NIP-65) list. It does **not** auto-dial `ngit.danconwaydev.com` or `:8081` event tags. CSP `connect-src` uses `wss:` / `ws:` so custom-port relays can connect (`wss://*` only matches port 443).
+- `NEXT_PUBLIC_NOSTR_RELAYS` should match bridge `relays` in `git-nostr-bridge.json`. Explore dials gittr’s NIP-34 set (`relay.gittr.space`, ngit, shakespeare, …) plus the visitor’s Settings → Relays (NIP-65) list. It does **not** auto-dial announce `relays` tags (dead GRASP hosts used to starve live Nostr). CSP `connect-src` uses `wss:` / `ws:` so custom-port relays can connect.
 - If Next runs as a different user than the bridge, set **`GIT_NOSTR_BRIDGE_DB`** and **`GIT_NOSTR_BRIDGE_REPOS_DIR`** to the bridge’s absolute paths (see `.env.example`).
 - Optional: `PUBLISHER_BLOCKLIST` / `NEXT_PUBLIC_PUBLISHER_BLOCKLIST` — hides listed pubkeys from explore/repos/sitemap (server `ui/.env.local` only). Pages directory: gateway **`CURATION_USER`** + deploy sync — see [GITTR_PAGES_CURATION.md](GITTR_PAGES_CURATION.md).
 - Push paywall, NIP-34 tag shape, Pages/Blossom behavior: [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) and in-app Help — not repeated here.

@@ -24,8 +24,9 @@ import {
   exploreDeferredSocialRelays,
   exploreImmediateDiscoveryRelays,
   exploreRepoRelaysForClient,
-  rememberExploreDiscoveryRelay,
 } from "@/lib/nostr/explore-discovery-relays";
+import { compareExploreReposWithHomepagePins } from "@/lib/nostr/explore-homepage-pins";
+import type { ExploreHomepagePin } from "@/lib/nostr/explore-homepage-pins";
 import {
   EXPLORE_SEED_CACHE_CAP,
   EXPLORE_SEED_FETCH_LIMIT,
@@ -307,13 +308,16 @@ function ExplorePageContent() {
   );
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [homepageRecentPins, setHomepageRecentPins] = useState<
+    ExploreHomepagePin[]
+  >([]);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const searchParams = useSearchParams();
   const qRaw = searchParams?.get("q") || "";
   const q = qRaw.toLowerCase();
   const userFilter = searchParams?.get("user") || null;
   const openRepoInNewTab = !!(qRaw.trim() || userFilter);
-  const { defaultRelays, subscribe, pubkey, addRelay } = useNostrContext();
+  const { defaultRelays, subscribe, pubkey } = useNostrContext();
   // Session catalog: grows with every Nostr event even when localStorage quota
   // blocks persist. Never reset this from a failed save + loadRepos() loop.
   // Module-level peek survives leaving /explore (the page used to remount empty).
@@ -1028,6 +1032,35 @@ function ExplorePageContent() {
     };
   }, [loadRepos]);
 
+  // Same ordered list as Home “Recent repositories” — pin those cards first
+  // even if the 3000-row Explore cache still has fake newest stamps.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/stats/recent-repos");
+        if (!res.ok || cancelled) return;
+        const json = (await res.json()) as {
+          repos?: ExploreHomepagePin[];
+        };
+        if (cancelled || !json.repos?.length) return;
+        setHomepageRecentPins(
+          json.repos.map((r) => ({
+            entity: r.entity,
+            repo: r.repo,
+            ownerPubkey: r.ownerPubkey,
+          }))
+        );
+      } catch {
+        /* homepage recent is a pin, not a hard dependency */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Locals first, then SEO snapshot (Hetzner disk), then live Nostr enriches.
   // Do not skip the snapshot because localStorage is already large.
   useEffect(() => {
@@ -1108,6 +1141,16 @@ function ExplorePageContent() {
             })
           : null;
 
+        if (recentJson?.repos?.length) {
+          setHomepageRecentPins(
+            recentJson.repos.map((r) => ({
+              entity: r.entity,
+              repo: r.repo || r.repoName || "",
+              ownerPubkey: r.ownerPubkey,
+            }))
+          );
+        }
+
         mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
       } catch (e) {
         console.warn("[Explore] seed fetch failed:", e);
@@ -1173,7 +1216,6 @@ function ExplorePageContent() {
     const graspRelays = getGraspServers(allRelays);
     const normRelay = (u: string) => u.trim().toLowerCase().replace(/\/+$/, "");
     const graspRelayNorms = new Set(graspRelays.map(normRelay));
-    const queriedDiscoveryRelays = new Set(allRelays.map(normRelay));
     const extraUnsubs: Array<() => void> = [];
     exploreDebug(
       "🎯 [Explore] Immediate discovery (NIP-34 / GRASP):",
@@ -1530,27 +1572,10 @@ function ExplorePageContent() {
             }
           }
 
-          // Extra `relays` tags: query each new *real* relay once. Do not
-          // re-dial gitworkshop / git.gittr.space, and do not spawn a nested
-          // subscribe per event (that thrashed CONNECTING sockets).
-          if (relaysTags.length > 0 && addRelay && subscribe) {
-            for (const relayUrl of relaysTags) {
-              const toQuery = rememberExploreDiscoveryRelay(
-                relayUrl,
-                queriedDiscoveryRelays
-              );
-              if (!toQuery) continue;
-              exploreDebug(
-                "🔄 [GRASP-02] Discovering new relay from repo event:",
-                toQuery
-              );
-              addRelay(toQuery);
-              const extraUnsub = subscribe(filters, [toQuery], onExploreEvent);
-              if (typeof extraUnsub === "function") {
-                extraUnsubs.push(extraUnsub);
-              }
-            }
-          }
+          // Do not dial extra `relays` tags from announces. That opened a
+          // storm of dead sockets (uid.ovh, nostrver.se, laantungir /grasp,
+          // …) and starved gittr + the visitor’s own relays so live Nostr
+          // never filled. Discovery uses NIP-34 + getAllRelays only.
 
           const isForeignRepo = pubkey && event.pubkey !== pubkey;
           const isOwnRepo = pubkey && event.pubkey === pubkey;
@@ -2170,13 +2195,7 @@ function ExplorePageContent() {
       if (eoseTimeout) clearTimeout(eoseTimeout);
       if (minRelaysTimeout) clearTimeout(minRelaysTimeout);
     };
-  }, [
-    subscribe,
-    defaultRelays,
-    addRelay,
-    readExploreCatalog,
-    commitExploreCatalog,
-  ]);
+  }, [subscribe, defaultRelays, readExploreCatalog, commitExploreCatalog]);
 
   const sorted = useMemo(() => {
     // CRITICAL: Ensure all repos have entity BEFORE sorting
@@ -2210,9 +2229,14 @@ function ExplorePageContent() {
           0
         );
       };
-      return toMs(b) - toMs(a);
+      return compareExploreReposWithHomepagePins(
+        a,
+        b,
+        homepageRecentPins,
+        (x, y) => toMs(y) - toMs(x)
+      );
     });
-  }, [repos]);
+  }, [repos, homepageRecentPins]);
 
   const filteredRepos = useMemo(() => {
     // Load list of locally-deleted repos (user deleted them, don't show)
