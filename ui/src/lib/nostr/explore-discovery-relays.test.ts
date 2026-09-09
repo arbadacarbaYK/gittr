@@ -27,6 +27,31 @@ describe("isUsableExploreDiscoveryRelay", () => {
     expect(isUsableExploreDiscoveryRelay("wss://github.com")).toBe(false);
     expect(isUsableExploreDiscoveryRelay("wss://localhost")).toBe(false);
   });
+
+  it("rejects danconway auto-dial and non-default ports from event tags", () => {
+    expect(isUsableExploreDiscoveryRelay("wss://ngit.danconwaydev.com")).toBe(
+      false
+    );
+    expect(
+      isUsableExploreDiscoveryRelay("wss://ngit.danconwaydev.com:8081/")
+    ).toBe(false);
+    expect(
+      isUsableExploreDiscoveryRelay("ws://ngit.danconwaydev.com:8081")
+    ).toBe(false);
+    const seen = new Set<string>();
+    expect(
+      rememberExploreDiscoveryRelay("wss://ngit.danconwaydev.com:8081/", seen)
+    ).toBe(null);
+  });
+
+  it("does not put danconway on the Explore subscribe list even if env has it", () => {
+    const relays = exploreRepoRelaysForClient([
+      "wss://ngit.danconwaydev.com",
+      "wss://relay.gittr.space",
+    ]);
+    expect(relays.some((u) => u.includes("danconway"))).toBe(false);
+    expect(relays[0]).toBe("wss://relay.gittr.space");
+  });
 });
 
 describe("rememberExploreDiscoveryRelay", () => {

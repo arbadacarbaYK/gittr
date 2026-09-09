@@ -40,7 +40,7 @@ export const securityHeaders = [
       "style-src 'self' 'unsafe-inline'", // unsafe-inline for Tailwind
       "img-src 'self' data: https: blob:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.github.com wss://* https://*", // Nostr relays, GitHub API, etc.
+      "connect-src 'self' https://*.github.com wss: ws: https:", // wss://* does not match :8081
       "frame-src 'self' https://www.youtube.com https://youtube.com https://youtu.be",
       "object-src 'none'",
       "base-uri 'self'",
@@ -56,11 +56,10 @@ export const securityHeaders = [
  */
 export function getSecurityHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  
+
   securityHeaders.forEach((header) => {
     headers[header.key] = header.value;
   });
 
   return headers;
 }
-

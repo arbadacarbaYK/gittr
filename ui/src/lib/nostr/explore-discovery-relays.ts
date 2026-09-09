@@ -24,6 +24,11 @@ export const EXPLORE_NON_RELAY_HOSTS = [
   "gist.github.com",
 ] as const;
 
+/** Do not auto-dial from env GRASP-first or from random NIP-34 `relays` tags. */
+export const EXPLORE_DO_NOT_AUTO_DIAL_HOSTS = [
+  "ngit.danconwaydev.com",
+] as const;
+
 export function normalizeExploreRelayUrl(url: string): string {
   return String(url || "")
     .trim()
@@ -48,11 +53,34 @@ function hostnameFromRelayUrl(url: string): string {
   }
 }
 
+function hostIsAutoDialBlocked(host: string): boolean {
+  return EXPLORE_DO_NOT_AUTO_DIAL_HOSTS.some(
+    (blocked) => host === blocked || host.endsWith(`.${blocked}`)
+  );
+}
+
+function relayHasNonDefaultPort(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.port) return false;
+    if (parsed.protocol === "wss:" && parsed.port === "443") return false;
+    if (parsed.protocol === "ws:" && parsed.port === "80") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * True when this URL is worth a browser WebSocket for Explore discovery.
- * HTTP(S) clone/web URLs are never relays.
+ * HTTP(S) clone/web URLs are never relays. Custom ports (:8081) are skipped
+ * unless the caller already listed them as a user/default relay — event-tag
+ * fan-out used to CSP-block `wss://host:8081`.
  */
-export function isUsableExploreDiscoveryRelay(url: string): boolean {
+export function isUsableExploreDiscoveryRelay(
+  url: string,
+  opts?: { allowCustomPort?: boolean }
+): boolean {
   const raw = String(url || "").trim();
   if (!raw) return false;
   const lower = raw.toLowerCase();
@@ -75,10 +103,25 @@ export function isUsableExploreDiscoveryRelay(url: string): boolean {
   ) {
     return false;
   }
+  if (hostIsAutoDialBlocked(host)) return false;
+  if (!opts?.allowCustomPort && relayHasNonDefaultPort(withProto)) {
+    return false;
+  }
 
   return !EXPLORE_NON_RELAY_HOSTS.some(
     (blocked) => host === blocked || host.endsWith(`.${blocked}`)
   );
+}
+
+function pushUniqueRelay(
+  out: string[],
+  seen: Set<string>,
+  url: string,
+  opts?: { allowCustomPort?: boolean }
+): void {
+  if (!isUsableExploreDiscoveryRelay(url, opts)) return;
+  const accepted = rememberExploreDiscoveryRelay(url, seen, opts);
+  if (accepted) out.push(accepted);
 }
 
 /**
@@ -87,9 +130,10 @@ export function isUsableExploreDiscoveryRelay(url: string): boolean {
  */
 export function rememberExploreDiscoveryRelay(
   url: string,
-  alreadyQueried: Set<string>
+  alreadyQueried: Set<string>,
+  opts?: { allowCustomPort?: boolean }
 ): string | null {
-  if (!isUsableExploreDiscoveryRelay(url)) return null;
+  if (!isUsableExploreDiscoveryRelay(url, opts)) return null;
   const raw =
     url.startsWith("wss://") || url.startsWith("ws://")
       ? url.trim()
@@ -100,29 +144,27 @@ export function rememberExploreDiscoveryRelay(
   return raw.replace(/\/+$/, "");
 }
 
-function pushUniqueRelay(out: string[], seen: Set<string>, url: string): void {
-  const accepted = rememberExploreDiscoveryRelay(url, seen);
-  if (accepted) out.push(accepted);
-}
-
 /**
- * Initial Explore subscribe list: GRASP / git hosts first (including the
- * NIP-34 discovery set), then remaining app relays. Deduped and stripped of
- * non-relay hosts.
+ * Initial Explore subscribe list: gittr NIP-34 hosts first, then remaining
+ * app relays. Dan Conway's public GRASP is not auto-dialed — gittr has its
+ * own relay, and the visitor's NIP-65 list is merged by getAllRelays.
  */
 export function exploreRepoRelaysForClient(defaultRelays: string[]): string[] {
   const envList = (defaultRelays || []).filter(Boolean);
-  const combined = [...envList, ...NIP34_DISCOVERY_RELAYS];
+  const combined = [...NIP34_DISCOVERY_RELAYS, ...envList];
   const out: string[] = [];
   const seen = new Set<string>();
 
   for (const url of combined) {
-    if (isUsableExploreDiscoveryRelay(url) && isGraspServer(url)) {
-      pushUniqueRelay(out, seen, url);
+    if (
+      isUsableExploreDiscoveryRelay(url, { allowCustomPort: true }) &&
+      isGraspServer(url)
+    ) {
+      pushUniqueRelay(out, seen, url, { allowCustomPort: true });
     }
   }
   for (const url of combined) {
-    pushUniqueRelay(out, seen, url);
+    pushUniqueRelay(out, seen, url, { allowCustomPort: true });
   }
   return out;
 }
@@ -148,9 +190,9 @@ export function exploreImmediateDiscoveryRelays(
     isImmediateExploreDiscoveryRelay
   );
   if (immediate.length > 0) return immediate;
-  return NIP34_DISCOVERY_RELAYS.filter(isUsableExploreDiscoveryRelay).map(
-    (url) => url.replace(/\/+$/, "")
-  );
+  return NIP34_DISCOVERY_RELAYS.filter((url) =>
+    isUsableExploreDiscoveryRelay(url)
+  ).map((url) => url.replace(/\/+$/, ""));
 }
 
 /** Remaining app relays to subscribe after the first discovery sockets are up. */

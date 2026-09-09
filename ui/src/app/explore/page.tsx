@@ -39,6 +39,10 @@ import {
 } from "@/lib/nostr/explore-session-catalog";
 import { shouldHideExploreSyncForCatalog } from "@/lib/nostr/explore-sync-indicator";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import {
+  nostrTimestampToMs,
+  nostrTimestampToSeconds,
+} from "@/lib/nostr/nostr-created-at";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
@@ -1198,18 +1202,12 @@ function ExplorePageContent() {
       // OR if we've received a very large number of repos (2000+) - we have enough initial data
       const repos = readExploreCatalog();
       const hasEnoughRepos = repos.length > 0;
-      const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
       const hasUsableSample = shouldHideExploreSyncForCatalog(repos);
 
       const hasEnoughGraspRelays = graspRelaysReceived.size >= 2;
       const hasEnoughRegularRelays = eoseReceived.size >= 5 && hasEnoughRepos;
 
-      if (
-        hasEnoughGraspRelays ||
-        hasEnoughRegularRelays ||
-        hasVeryManyRepos ||
-        hasUsableSample
-      ) {
+      if (hasEnoughGraspRelays || hasEnoughRegularRelays || hasUsableSample) {
         syncIndicatorHidden = true;
         exploreDebug(
           "✅ [Explore] Hiding sync indicator - enough initial data received:",
@@ -1221,8 +1219,6 @@ function ExplorePageContent() {
               ? "2+ GRASP relays"
               : hasEnoughRegularRelays
               ? "5+ regular relays with repos"
-              : hasVeryManyRepos
-              ? "2000+ repos received (good initial sample)"
               : "40+ live Nostr events (not SEO seed)",
             note: "Subscription continues to listen for new repos in real-time",
           }
@@ -1981,12 +1977,10 @@ function ExplorePageContent() {
             // CRITICAL: For NIP-34 replaceable events, only update if this event is newer
             // Check if existing repo has a newer event already stored
             // NIP-34 uses Unix timestamps in SECONDS - compare in seconds
-            const existingEventCreatedAtSeconds =
-              existingRepo?.lastNostrEventCreatedAt ||
-              (existingRepo?.updatedAt
-                ? Math.floor(existingRepo.updatedAt / 1000)
-                : 0);
-            const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
+            const existingEventCreatedAtSeconds = nostrTimestampToSeconds(
+              existingRepo?.lastNostrEventCreatedAt || existingRepo?.updatedAt
+            );
+            const newEventCreatedAtSeconds = event.created_at;
 
             if (
               event.kind === KIND_REPOSITORY_NIP34 &&
@@ -2019,8 +2013,17 @@ function ExplorePageContent() {
               nostrEventId: event.id,
               lastNostrEventId: event.id,
               lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
-              // Keep original createdAt (when repo was first created)
-              createdAt: existingRepo?.createdAt || repo.createdAt,
+              syncedFromNostr: true,
+              createdAt: (() => {
+                const existingSec = nostrTimestampToSeconds(
+                  existingRepo?.createdAt
+                );
+                const fromEvent = event.created_at * 1000;
+                if (!existingSec || existingSec > event.created_at) {
+                  return fromEvent;
+                }
+                return existingRepo?.createdAt || fromEvent;
+              })(),
               // Extract earliest unique commit from "r" tag if present (may not be in Repo type but exists at runtime)
               ...(repoData.earliestUniqueCommit ||
               (existingRepo as any)?.earliestUniqueCommit
@@ -2054,6 +2057,7 @@ function ExplorePageContent() {
               nostrEventId: event.id,
               lastNostrEventId: event.id,
               lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+              syncedFromNostr: true,
               earliestUniqueCommit: repoData.earliestUniqueCommit,
             };
             existingRepos.push(newRepo);
@@ -2196,12 +2200,15 @@ function ExplorePageContent() {
     // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
     return reposWithEntity.slice().sort((a, b) => {
       const toMs = (r: (typeof reposWithEntity)[number]) => {
-        const nostrAt = Number((r as any).lastNostrEventCreatedAt);
-        if (Number.isFinite(nostrAt) && nostrAt > 0) {
-          // Seconds (~1.7e9) vs accidental milliseconds (~1.7e12)
-          return nostrAt > 1e12 ? nostrAt : nostrAt * 1000;
-        }
-        return r.updatedAt || r.createdAt || 0;
+        const fromNostr = nostrTimestampToMs(
+          (r as any).lastNostrEventCreatedAt
+        );
+        if (fromNostr > 0) return fromNostr;
+        return (
+          nostrTimestampToMs(r.updatedAt) ||
+          nostrTimestampToMs(r.createdAt) ||
+          0
+        );
       };
       return toMs(b) - toMs(a);
     });

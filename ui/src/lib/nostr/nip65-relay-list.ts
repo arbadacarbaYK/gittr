@@ -3,6 +3,11 @@
  * Not the same as localStorage extras or Amber bunker transport relays.
  */
 import { KIND_RELAY_LIST } from "@/lib/nostr/events";
+import {
+  NIP65_RELAY_CACHE_KEY,
+  cacheNip65Relays,
+  readCachedNip65RelayUrls,
+} from "@/lib/nostr/nip65-relay-cache";
 
 export type Nip65Marker = "read" | "write" | undefined;
 
@@ -28,6 +33,8 @@ function normalizeRelayUrl(url: string): string {
 function isWsUrl(url: string): boolean {
   return url.startsWith("wss://") || url.startsWith("ws://");
 }
+
+export { cacheNip65Relays, readCachedNip65RelayUrls, NIP65_RELAY_CACHE_KEY };
 
 export function parseRelayListEvent(event: any): Nip65RelayListData | null {
   if (!event || event.kind !== KIND_RELAY_LIST) return null;
@@ -119,6 +126,7 @@ export async function getUserNip65Relays(
         /* ignore */
       }
       console.log(`ℹ️ [NIP-65] ${reason} (${entries.length} relay(s))`);
+      cacheNip65Relays(entries);
       resolve(entries);
     };
 

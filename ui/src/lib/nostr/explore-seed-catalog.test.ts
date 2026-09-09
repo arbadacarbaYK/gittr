@@ -148,16 +148,15 @@ describe("mergeExploreSeedIntoCatalog", () => {
     ]);
   });
 
-  it("does not overwrite live Nostr timestamps with the snapshot", () => {
+  it("resets matching catalog timestamps from the seed so fake newest stamps cannot stay on top", () => {
     const { list, updated } = mergeExploreSeedIntoCatalog(
       [
         {
           entity: "npub1aaa",
           repo: "gittr",
-          createdAt: 9_000,
-          lastNostrEventCreatedAt: 9,
+          createdAt: Date.now(),
+          lastNostrEventCreatedAt: Math.floor(Date.now() / 1000),
           syncedFromNostr: true,
-          fromSeoSnapshot: true,
         },
       ],
       [
@@ -165,11 +164,36 @@ describe("mergeExploreSeedIntoCatalog", () => {
           entity: "npub1aaa",
           repo: "gittr",
           ownerPubkey: "aa".repeat(32),
-          lastActivity: 1,
+          lastActivity: 1_700_000_000_000,
         },
       ]
     );
-    expect(updated).toBe(0);
-    expect(list[0]?.lastNostrEventCreatedAt).toBe(9);
+    expect(updated).toBe(1);
+    expect(list[0]?.createdAt).toBe(1_700_000_000_000);
+    expect(list[0]?.lastNostrEventCreatedAt).toBe(1_700_000_000);
+  });
+
+  it("evicts old snapshot rows at cap so homepage-newest seed names still enter", () => {
+    const existing = Array.from({ length: 3 }, (_, i) => ({
+      entity: "npub1old",
+      repo: `junk-${i}`,
+      createdAt: 1,
+      fromSeoSnapshot: true,
+    }));
+    const { list, added } = mergeExploreSeedIntoCatalog(
+      existing,
+      [
+        {
+          entity: "npub1bbb",
+          repo: "iris-drive",
+          ownerPubkey: "bb".repeat(32),
+          lastActivity: 9,
+        },
+      ],
+      3
+    );
+    expect(added).toBe(1);
+    expect(list.some((r) => r.repo === "iris-drive")).toBe(true);
+    expect(list.map((r) => r.repo)).toEqual(["iris-drive"]);
   });
 });

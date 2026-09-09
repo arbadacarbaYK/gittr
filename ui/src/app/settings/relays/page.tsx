@@ -15,6 +15,7 @@ import {
 import {
   type Nip65RelayEntry,
   buildRelayListTags,
+  cacheNip65Relays,
   getUserNip65Relays,
 } from "@/lib/nostr/nip65-relay-list";
 import {
@@ -342,6 +343,7 @@ export default function RelaysPage() {
         ])
       );
       await publish(event, publishRelays);
+      cacheNip65Relays(nip65Relays);
       setNip65Status("✅ Saved to Nostr!");
       setTimeout(() => setNip65Status(""), 3000);
     } catch (error: any) {
@@ -365,12 +367,15 @@ export default function RelaysPage() {
       return;
     }
     setNip65Relays([...nip65Relays, { url }]);
+    cacheNip65Relays([...nip65Relays, { url }]);
     setNewNip65Relay("wss://");
   };
 
   const removeNip65Relay = (url: string) => {
     const key = normalizeRelayUrl(url);
-    setNip65Relays(nip65Relays.filter((r) => normalizeRelayUrl(r.url) !== key));
+    const next = nip65Relays.filter((r) => normalizeRelayUrl(r.url) !== key);
+    setNip65Relays(next);
+    cacheNip65Relays(next);
   };
 
   // Save GRASP list to Nostr (add/remove servers, then publish kind 10317)

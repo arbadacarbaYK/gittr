@@ -1,19 +1,39 @@
 /**
- * Helper to get all relays (default + optional browser-local extras).
+ * Helper to get all relays (default + the visitor's list on top).
  * Used for metadata fetching, explore, and profile pages.
  *
- * Note: NIP-65 kind 10002 is the user's published list (Settings → Relays).
- * `gittr_user_relays` is only legacy/local extras if present — never overwrite
- * or replace the platform default env list.
- *
- * In development mode, skips local extras to avoid connection spam.
+ * Order: platform env defaults, then NIP-65 kind 10002 (Settings → Relays,
+ * cached after last fetch/save), then legacy `gittr_user_relays`.
  */
+import { readCachedNip65RelayUrls } from "./nip65-relay-cache";
+
+function pushRelay(out: string[], seen: Set<string>, url: string): void {
+  const trimmed = String(url || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!trimmed) return;
+  if (!trimmed.startsWith("wss://") && !trimmed.startsWith("ws://")) return;
+  const key = trimmed.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push(trimmed);
+}
 
 export function getAllRelays(defaultRelays: string[]): string[] {
-  if (typeof window === "undefined") return defaultRelays;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const url of defaultRelays || []) {
+    pushRelay(out, seen, url);
+  }
 
-  if (process.env.NODE_ENV === "development") {
-    return defaultRelays;
+  if (typeof localStorage === "undefined") return out;
+
+  try {
+    for (const url of readCachedNip65RelayUrls()) {
+      pushRelay(out, seen, url);
+    }
+  } catch (e) {
+    console.warn("[getAllRelays] Failed to load NIP-65 relays:", e);
   }
 
   try {
@@ -21,22 +41,15 @@ export function getAllRelays(defaultRelays: string[]): string[] {
     if (userRelaysStr) {
       const userRelays = JSON.parse(userRelaysStr) as Array<{
         url: string;
-        type: string;
+        type?: string;
       }>;
-      const userRelayUrls = userRelays
-        .map((r) => r.url)
-        .filter((url) => url && url.startsWith("wss://"));
-      const allRelays = [...defaultRelays];
-      userRelayUrls.forEach((url) => {
-        if (!allRelays.includes(url)) {
-          allRelays.push(url);
-        }
-      });
-      return allRelays;
+      for (const row of userRelays) {
+        pushRelay(out, seen, row?.url);
+      }
     }
   } catch (e) {
     console.warn("[getAllRelays] Failed to load user relays:", e);
   }
 
-  return defaultRelays;
+  return out;
 }

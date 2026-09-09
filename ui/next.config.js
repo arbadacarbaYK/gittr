@@ -110,7 +110,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.github.com wss://* https://*",
+              "connect-src 'self' https://*.github.com wss: ws: https:",
               "frame-src 'self' https://www.youtube.com https://youtube.com https://youtu.be",
               "object-src 'none'",
               "base-uri 'self'",

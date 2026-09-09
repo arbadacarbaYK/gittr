@@ -1,5 +1,7 @@
 import { isRenderableRepoName } from "../repos/renderable-repo-name";
 
+import { nostrTimestampToMs } from "./nostr-created-at";
+
 /**
  * Merge the disk SEO snapshot into Explore's in-memory catalog.
  *
@@ -71,6 +73,44 @@ function activityToNostrSeconds(lastActivity: number): number | undefined {
   return Math.floor(lastActivity > 1e12 ? lastActivity / 1000 : lastActivity);
 }
 
+function rowRankMs(row: ExploreCatalogSeedRow): number {
+  const fromNostr = nostrTimestampToMs(row.lastNostrEventCreatedAt as number);
+  if (fromNostr > 0) return fromNostr;
+  return nostrTimestampToMs(row.createdAt as number) || 0;
+}
+
+function evictOneForSeed(
+  byKey: Map<string, ExploreCatalogSeedRow>,
+  protect: Set<string>
+): boolean {
+  let worstKey: string | null = null;
+  let worst = Infinity;
+  for (const [key, row] of byKey) {
+    if (protect.has(key)) continue;
+    if (row.syncedFromNostr) continue;
+    if (!row.fromSeoSnapshot) continue;
+    const rank = rowRankMs(row);
+    if (rank <= worst) {
+      worst = rank;
+      worstKey = key;
+    }
+  }
+  if (!worstKey) {
+    for (const [key, row] of byKey) {
+      if (protect.has(key)) continue;
+      if (row.syncedFromNostr) continue;
+      const rank = rowRankMs(row);
+      if (rank <= worst) {
+        worst = rank;
+        worstKey = key;
+      }
+    }
+  }
+  if (!worstKey) return false;
+  byKey.delete(worstKey);
+  return true;
+}
+
 function seedRowFromInput(s: ExploreSeedInput): ExploreCatalogSeedRow {
   const entity = String(s.entity || "").trim();
   const name = String(s.repo || s.repoName || "").trim();
@@ -128,17 +168,35 @@ export function mergeExploreSeedIntoCatalog(
     (a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)
   );
   const seedKeys = new Set<string>();
+  for (const s of rankedSeed) {
+    const entity = String(s.entity || "").trim();
+    const name = String(s.repo || s.repoName || "").trim();
+    if (!entity || !name || !isRenderableRepoName(name)) continue;
+    seedKeys.add(`${entity.toLowerCase()}/${name.toLowerCase()}`);
+  }
+
   let added = 0;
   let updated = 0;
+  let removed = 0;
+  for (const [key, row] of [...byKey.entries()]) {
+    if (seedKeys.has(key)) continue;
+    if (row.syncedFromNostr) continue;
+    if (!row.fromSeoSnapshot) continue;
+    byKey.delete(key);
+    removed++;
+  }
+
   for (const s of rankedSeed) {
     const entity = String(s.entity || "").trim();
     const name = String(s.repo || s.repoName || "").trim();
     if (!entity || !name) continue;
     if (!isRenderableRepoName(name)) continue;
     const key = `${entity.toLowerCase()}/${name.toLowerCase()}`;
-    seedKeys.add(key);
     const prev = byKey.get(key);
     if (!prev) {
+      while (byKey.size >= cap && evictOneForSeed(byKey, seedKeys)) {
+        removed += 1;
+      }
       if (byKey.size >= cap) continue;
       byKey.set(key, seedRowFromInput(s));
       added++;
@@ -149,10 +207,8 @@ export function mergeExploreSeedIntoCatalog(
     if (!next.description && s.description) next.description = s.description;
     if (!next.ownerPubkey && s.ownerPubkey) next.ownerPubkey = s.ownerPubkey;
 
-    const live = prev.syncedFromNostr === true;
-    const snapshotOnly = prev.fromSeoSnapshot === true && !live;
     const activity = activityToMs(s.lastActivity || 0);
-    if (snapshotOnly && activity > 0) {
+    if (activity > 0) {
       const nextSec = activityToNostrSeconds(activity);
       if (
         prev.createdAt !== activity ||
@@ -166,32 +222,11 @@ export function mergeExploreSeedIntoCatalog(
     byKey.set(key, next);
   }
 
-  let removed = 0;
-  for (const [key, row] of [...byKey.entries()]) {
-    if (seedKeys.has(key)) continue;
-    if (row.syncedFromNostr) continue;
-    if (!row.fromSeoSnapshot) continue;
-    byKey.delete(key);
-    removed++;
-  }
-
   let list = Array.from(byKey.values());
   if (list.length > cap) {
     list = list
       .slice()
-      .sort((a, b) => {
-        const aAt = a.lastNostrEventCreatedAt
-          ? a.lastNostrEventCreatedAt > 1e12
-            ? a.lastNostrEventCreatedAt
-            : a.lastNostrEventCreatedAt * 1000
-          : a.createdAt || 0;
-        const bAt = b.lastNostrEventCreatedAt
-          ? b.lastNostrEventCreatedAt > 1e12
-            ? b.lastNostrEventCreatedAt
-            : b.lastNostrEventCreatedAt * 1000
-          : b.createdAt || 0;
-        return bAt - aAt;
-      })
+      .sort((a, b) => rowRankMs(b) - rowRankMs(a))
       .slice(0, cap);
   }
 
