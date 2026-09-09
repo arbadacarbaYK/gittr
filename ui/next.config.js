@@ -4,6 +4,11 @@ const nextConfig = {
   // This file is the config Next loads (not next.config.mjs).
   distDir: process.env.GITTR_DIST_DIR || ".next",
   reactStrictMode: true,
+  // Keep AVIF out of /_next/image even if a newer sharp would allow it
+  // (GHSA-2xp9-vwfh-vxw4). gittr only uses next/image for local SVG logos.
+  images: {
+    formats: ["image/webp"],
+  },
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors. Only use this if you need to.

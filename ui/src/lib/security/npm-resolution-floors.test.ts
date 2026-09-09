@@ -24,12 +24,13 @@ function gte(
 }
 
 describe("npm resolution floors (Dependencies tab / OSV)", () => {
+  const uiRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
   const pkg = JSON.parse(
-    readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../../package.json"),
-      "utf8"
-    )
-  ) as { resolutions?: Record<string, string> };
+    readFileSync(join(uiRoot, "package.json"), "utf8")
+  ) as {
+    dependencies?: Record<string, string>;
+    resolutions?: Record<string, string>;
+  };
   const resolutions = pkg.resolutions || {};
 
   it("pins browserslist at the CVE-2026-73088 / CVE-2026-73089 floor", () => {
@@ -42,5 +43,16 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     expect(
       gte(resolutionFloor(resolutions["@xmldom/xmldom"]), [0, 8, 15])
     ).toBe(true);
+  });
+
+  it("keeps next at the GHSA-2xp9-vwfh-vxw4 / CVE-2026-75604 floor", () => {
+    const declared = pkg.dependencies?.next;
+    expect(declared).toBeTruthy();
+    expect(gte(resolutionFloor(declared!), [15, 5, 24])).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(/^next@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m);
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [15, 5, 24])).toBe(true);
   });
 });
