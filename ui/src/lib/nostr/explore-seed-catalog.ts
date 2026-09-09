@@ -1,3 +1,5 @@
+import { isRenderableRepoName } from "../repos/renderable-repo-name";
+
 /**
  * Merge the disk SEO snapshot into Explore's in-memory catalog.
  *
@@ -82,8 +84,13 @@ export function mergeExploreSeedIntoCatalog(
     const entity = String(s.entity || "").trim();
     const name = String(s.repo || s.repoName || "").trim();
     if (!entity || !name) continue;
+    if (!isRenderableRepoName(name)) continue;
     const key = `${entity.toLowerCase()}/${name.toLowerCase()}`;
     if (byKey.has(key)) continue;
+    const activity =
+      typeof s.lastActivity === "number" && s.lastActivity > 0
+        ? s.lastActivity
+        : 0;
     byKey.set(key, {
       entity,
       repo: name,
@@ -92,9 +99,9 @@ export function mergeExploreSeedIntoCatalog(
       repositoryName: name,
       ownerPubkey: s.ownerPubkey,
       description: s.description || "",
-      createdAt: s.lastActivity || Date.now(),
-      lastNostrEventCreatedAt: s.lastActivity
-        ? Math.floor(s.lastActivity / 1000)
+      createdAt: activity || undefined,
+      lastNostrEventCreatedAt: activity
+        ? Math.floor(activity > 1e12 ? activity / 1000 : activity)
         : undefined,
       fromSeoSnapshot: true,
       syncedFromNostr: false,

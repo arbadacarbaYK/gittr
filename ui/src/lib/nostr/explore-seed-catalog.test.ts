@@ -58,4 +58,28 @@ describe("mergeExploreSeedIntoCatalog", () => {
       list.find((r) => r.repo === "shakespeare-app")?.fromSeoSnapshot
     ).toBe(true);
   });
+
+  it("does not treat zero activity as now, so extras do not sort first", () => {
+    const { list } = mergeExploreSeedIntoCatalog(
+      [
+        {
+          entity: "npub1aaa",
+          repo: "live-one",
+          createdAt: 1_700_000_000_000,
+          lastNostrEventCreatedAt: 1_700_000_000,
+        },
+      ],
+      [
+        {
+          entity: "npub1bbb",
+          repo: "pushed-only",
+          ownerPubkey: "bb".repeat(32),
+          lastActivity: 0,
+        },
+      ]
+    );
+    const extra = list.find((r) => r.repo === "pushed-only");
+    expect(extra?.createdAt).toBeUndefined();
+    expect(extra?.lastNostrEventCreatedAt).toBeUndefined();
+  });
 });

@@ -7,6 +7,7 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
+import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 
 import { type Event, SimplePool, nip19 } from "nostr-tools";
@@ -114,8 +115,10 @@ export async function fetchSitemapRepoPathsFromNostr(
   }
 
   const timeoutMs = options.timeoutMs ?? SITEMAP_RELAY_TIMEOUT_MS;
-  // Hard ceiling under Next static-generation budget (~60s) even if pool.list hangs.
-  const hardCapMs = Math.min(timeoutMs + 5_000, 50_000);
+  // Sitemap on-demand stays under Next's ~60s budget (default timeout 45s).
+  // The daily SEO job uses 120s — do not clamp that to 50s or the oneshot
+  // returns 0 paths and leaves a stale snapshot (deleted repos never drop).
+  const hardCapMs = timeoutMs + 5_000;
   const pool = new SimplePool({
     eoseSubTimeout: timeoutMs,
     getTimeout: timeoutMs,
@@ -178,7 +181,7 @@ export async function fetchSitemapRepoPathsFromNostr(
         const dRaw = getTag(ev, "d");
         const name = getTag(ev, "name");
         const d = normalizeNip34RepoIdentifier(dRaw, name);
-        if (!d) continue;
+        if (!d || !isRenderableRepoName(d)) continue;
         try {
           const npub = nip19.npubEncode(ev.pubkey);
           const line = `${npub}/${d}`;
@@ -196,7 +199,7 @@ export async function fetchSitemapRepoPathsFromNostr(
         if (isRepoAnnouncementDeleted(ev)) continue;
         if (!isPublicReadFromEvent(ev)) continue;
         const name = parseKind51RepoName(ev.content);
-        if (!name) continue;
+        if (!name || !isRenderableRepoName(name)) continue;
         try {
           const npub = nip19.npubEncode(ev.pubkey);
           const line = `${npub}/${name}`;

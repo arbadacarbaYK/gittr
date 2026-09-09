@@ -21,5 +21,7 @@ export function isRenderableRepoName(raw: string | null | undefined): boolean {
   // Slash, backslash, control chars break routing and on-disk repo paths.
   if (/[\0\x01-\x1f\\/]/.test(s)) return false;
   if (s.includes("..")) return false;
+  // Bare git-object hashes as `d` tags are not browseable gittr repos.
+  if (/^[0-9a-f]{64}$/i.test(s)) return false;
   return true;
 }

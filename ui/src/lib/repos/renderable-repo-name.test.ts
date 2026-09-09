@@ -33,6 +33,14 @@ describe("isRenderableRepoName", () => {
     expect(isRenderableRepoName("")).toBe(false);
     expect(isRenderableRepoName(undefined)).toBe(false);
   });
+
+  it("rejects bare 64-char hex identifiers (git hashes as d tags)", () => {
+    expect(
+      isRenderableRepoName(
+        "7da083932c0e21087669074509b4e169b7ad9925c7a01c3fd3bd3dd0034d1336"
+      )
+    ).toBe(false);
+  });
 });
 
 describe("normalizeGithubSourceUrl localhost guard", () => {

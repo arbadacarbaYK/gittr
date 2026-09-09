@@ -30,7 +30,6 @@ import {
   EXPLORE_SEED_CACHE_CAP,
   EXPLORE_SEED_FETCH_LIMIT,
   mergeExploreSeedIntoCatalog,
-  seoSeedRowCount,
   shouldFetchExploreSeed,
 } from "@/lib/nostr/explore-seed-catalog";
 import {
@@ -868,6 +867,7 @@ function ExplorePageContent() {
         const repoKey = `${entity}/${repo}`.toLowerCase();
         if (deletedReposSet.has(repoKey)) return false;
         if (r.deleted === true || r.archived === true) return false;
+        if (!isRenderableRepoName(repo)) return false;
         if (!r.entity || r.entity === "user") {
           exploreDebug("⚠️ [Explore] Skipping repo without entity:", {
             slug: r.slug,
@@ -1000,6 +1000,8 @@ function ExplorePageContent() {
   }, [applyReposToUi]);
 
   useEffect(() => {
+    loadRepos();
+
     const handleRepoUpdate = () => {
       loadRepos();
     };
@@ -1015,9 +1017,8 @@ function ExplorePageContent() {
     };
   }, [loadRepos]);
 
-  // SEO snapshot is the starter catalog (Hetzner disk file). Do not paint
-  // localStorage-only as "done" first — search filters this list, and a large
-  // locals cache used to skip the seed entirely.
+  // Locals first, then SEO snapshot (Hetzner disk), then live Nostr enriches.
+  // Do not skip the snapshot because localStorage is already large.
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
@@ -1060,66 +1061,52 @@ function ExplorePageContent() {
 
     (async () => {
       const existing = readExploreCatalog() as any[];
-      const hasSeoStarter = seoSeedRowCount(existing) > 0;
-      const needsSeed = shouldFetchExploreSeed(existing);
+      if (!shouldFetchExploreSeed(existing)) return;
 
-      if (hasSeoStarter) {
-        loadRepos();
-      } else {
-        setIsLoadingRepos(true);
-      }
+      try {
+        const [seedRes, recentRes] = await Promise.all([
+          fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
+            () => null
+          ),
+          fetch("/api/stats/recent-repos").catch(() => null),
+        ]);
+        if (cancelled) return;
 
-      if (needsSeed) {
-        try {
-          const [seedRes, recentRes] = await Promise.all([
-            fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
-              () => null
-            ),
-            fetch("/api/stats/recent-repos").catch(() => null),
-          ]);
-          if (cancelled) return;
+        const seedJson = seedRes?.ok
+          ? ((await seedRes.json()) as {
+              ok?: boolean;
+              repos?: Array<{
+                entity: string;
+                repo: string;
+                repoName?: string;
+                ownerPubkey: string;
+                lastActivity?: number;
+              }>;
+            })
+          : null;
+        const recentJson = recentRes?.ok
+          ? ((await recentRes.json()) as {
+              repos?: Array<{
+                entity: string;
+                repo: string;
+                repoName?: string;
+                ownerPubkey: string;
+                lastActivity?: number;
+                description?: string;
+              }>;
+            })
+          : null;
 
-          const seedJson = seedRes?.ok
-            ? ((await seedRes.json()) as {
-                ok?: boolean;
-                repos?: Array<{
-                  entity: string;
-                  repo: string;
-                  repoName?: string;
-                  ownerPubkey: string;
-                  lastActivity?: number;
-                }>;
-              })
-            : null;
-          const recentJson = recentRes?.ok
-            ? ((await recentRes.json()) as {
-                repos?: Array<{
-                  entity: string;
-                  repo: string;
-                  repoName?: string;
-                  ownerPubkey: string;
-                  lastActivity?: number;
-                  description?: string;
-                }>;
-              })
-            : null;
-
-          mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
-        } catch (e) {
-          console.warn("[Explore] seed fetch failed:", e);
-        }
-      }
-
-      if (!cancelled) {
-        loadRepos();
-        setIsLoadingRepos(false);
+        mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
+      } catch (e) {
+        console.warn("[Explore] seed fetch failed:", e);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [loadRepos, commitExploreCatalog, readExploreCatalog]);
+  }, [commitExploreCatalog, readExploreCatalog]);
 
   // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own

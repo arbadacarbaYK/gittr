@@ -1,3 +1,5 @@
+import { isRenderableRepoName } from "../repos/renderable-repo-name";
+
 import { nip19 } from "nostr-tools";
 
 export type ExploreSeedRepo = {
@@ -19,6 +21,7 @@ function pathKeyToSeedRepo(
   const entity = pathKey.slice(0, slash).trim();
   const repo = pathKey.slice(slash + 1).trim();
   if (!entity.startsWith("npub1") || !repo) return null;
+  if (!isRenderableRepoName(repo)) return null;
   let ownerPubkey = "";
   try {
     const decoded = nip19.decode(entity);
@@ -39,11 +42,12 @@ function pathKeyToSeedRepo(
   };
 }
 
-/** Merge snapshot paths with optional `npub/repo` file lines, newest first. */
+/** Merge snapshot paths with optional `npub/repo` file lines.
+ * Extra lines keep search coverage but must not steal "newest" (do not stamp Date.now()). */
 export function mergeExploreSeedPaths(
   snapshotPaths: Record<string, number> | Map<string, number>,
   extraPathKeys: string[] = [],
-  extraActivityMs: number = Date.now()
+  extraActivityMs: number = 0
 ): Map<string, number> {
   const out = new Map<string, number>();
   const entries =

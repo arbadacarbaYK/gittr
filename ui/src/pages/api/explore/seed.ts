@@ -49,7 +49,7 @@ export default async function handler(
     const pathToActivity = mergeExploreSeedPaths(
       snap?.paths || {},
       extraPaths,
-      now
+      0
     );
 
     if (pathToActivity.size === 0) {
