@@ -6,22 +6,23 @@ import { nip19 } from "nostr-tools";
 export async function generateMetadata({
   params,
 }: {
-  params: { entity: string };
+  params: Promise<{ entity: string }>;
 }): Promise<Metadata> {
+  const { entity } = await params;
   const baseUrl = getPublicSiteUrl();
 
   // Try to decode npub to get pubkey
   let pubkey: string | null = null;
-  let displayName = params.entity;
+  let displayName = entity;
 
   try {
-    if (params.entity.startsWith("npub")) {
-      const decoded = nip19.decode(params.entity);
+    if (entity.startsWith("npub")) {
+      const decoded = nip19.decode(entity);
       if (decoded.type === "npub") {
         pubkey = decoded.data as string;
       }
-    } else if (/^[0-9a-f]{64}$/i.test(params.entity)) {
-      pubkey = params.entity;
+    } else if (/^[0-9a-f]{64}$/i.test(entity)) {
+      pubkey = entity;
       try {
         displayName = nip19.npubEncode(pubkey);
       } catch {}
@@ -31,7 +32,7 @@ export async function generateMetadata({
   }
 
   const title = displayName;
-  const url = `${baseUrl}/${encodeURIComponent(params.entity)}`;
+  const url = `${baseUrl}/${encodeURIComponent(entity)}`;
 
   return {
     title,

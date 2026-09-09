@@ -483,27 +483,27 @@ a:hover {
   background-color: var(--color-bg-dark) !important;
 }
 
-:root[data-theme="bitcoin"] .bg-\[#0E1116\],
-:root[data-theme="cypherpunk"] .bg-\[#0E1116\],
-:root[data-theme="girly"] .bg-\[#0E1116\],
-:root[data-theme="arcade80s"] .bg-\[#0E1116\],
-:root[data-theme="midnight"] .bg-\[#0E1116\] {
+:root[data-theme="bitcoin"] [class~="bg-[#0E1116]"],
+:root[data-theme="cypherpunk"] [class~="bg-[#0E1116]"],
+:root[data-theme="girly"] [class~="bg-[#0E1116]"],
+:root[data-theme="arcade80s"] [class~="bg-[#0E1116]"],
+:root[data-theme="midnight"] [class~="bg-[#0E1116]"] {
   background-color: var(--color-bg-primary) !important;
 }
 
-:root[data-theme="bitcoin"] .bg-\[#171B21\],
-:root[data-theme="cypherpunk"] .bg-\[#171B21\],
-:root[data-theme="girly"] .bg-\[#171B21\],
-:root[data-theme="arcade80s"] .bg-\[#171B21\],
-:root[data-theme="midnight"] .bg-\[#171B21\] {
+:root[data-theme="bitcoin"] [class~="bg-[#171B21]"],
+:root[data-theme="cypherpunk"] [class~="bg-[#171B21]"],
+:root[data-theme="girly"] [class~="bg-[#171B21]"],
+:root[data-theme="arcade80s"] [class~="bg-[#171B21]"],
+:root[data-theme="midnight"] [class~="bg-[#171B21]"] {
   background-color: var(--color-bg-secondary) !important;
 }
 
-:root[data-theme="bitcoin"] .bg-\[#22262C\],
-:root[data-theme="cypherpunk"] .bg-\[#22262C\],
-:root[data-theme="girly"] .bg-\[#22262C\],
-:root[data-theme="arcade80s"] .bg-\[#22262C\],
-:root[data-theme="midnight"] .bg-\[#22262C\] {
+:root[data-theme="bitcoin"] [class~="bg-[#22262C]"],
+:root[data-theme="cypherpunk"] [class~="bg-[#22262C]"],
+:root[data-theme="girly"] [class~="bg-[#22262C]"],
+:root[data-theme="arcade80s"] [class~="bg-[#22262C]"],
+:root[data-theme="midnight"] [class~="bg-[#22262C]"] {
   background-color: var(--color-bg-secondary) !important;
 }
 

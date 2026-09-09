@@ -14,7 +14,7 @@ interface Digit {
 export function BoltSnow() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const digitsRef = useRef<Digit[]>([]);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -6,6 +6,8 @@
  * - @npub[bech32] - Standard Nostr npub format
  * - @[64-char-hex] - Full pubkey (64 hex characters)
  */
+import type { JSX } from "react";
+
 import { nip19 } from "nostr-tools";
 
 export interface Mention {

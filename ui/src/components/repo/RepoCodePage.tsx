@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type JSX,
   type ReactNode,
   startTransition,
   useCallback,
@@ -19778,7 +19779,11 @@ export function RepoCodePage() {
                               return (
                                 <div className="my-4 overflow-x-auto">
                                   <ReadmeMarkdownImage
-                                    src={props.src || ""}
+                                    src={
+                                      typeof props.src === "string"
+                                        ? props.src
+                                        : ""
+                                    }
                                     alt={props.alt || ""}
                                     branch={branch}
                                     forgeSourceUrl={forgeSourceUrl}

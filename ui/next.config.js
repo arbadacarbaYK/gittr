@@ -9,11 +9,6 @@ const nextConfig = {
   images: {
     formats: ["image/webp"],
   },
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors. Only use this if you need to.
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // Warning: This allows production builds to successfully complete even if
     // your project has type errors. Only use this if you need to.

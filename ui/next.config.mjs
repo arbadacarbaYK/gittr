@@ -12,7 +12,10 @@ const config = {
   // builds in place and only restarts after BUILD_ID exists (see upload_to_hetzner.sh).
   distDir: process.env.GITTR_DIST_DIR || ".next",
   reactStrictMode: true,
+  // Stale twin of next.config.js — Next loads the .js file. Keep this
+  // typecheck-clean so a future switch does not reintroduce Next 16-removed keys.
   images: {
+    formats: ["image/webp"],
     domains: ["void.cat"],
     remotePatterns: [
       {
@@ -21,13 +24,8 @@ const config = {
       },
     ],
   },
-  // Temporarily ignore ESLint errors during build to test functionality
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
-    // Temporarily ignore TypeScript errors during build to test functionality
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 
   /**

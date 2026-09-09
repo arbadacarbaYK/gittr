@@ -6,8 +6,10 @@ import type { NextRequest } from "next/server";
 /**
  * Cheap 404 for crawler nest ?path= / ?file= loops before generateMetadata
  * opens Nostr pools. 404 (not 429) so crawlers drop the URL instead of retrying.
+ *
+ * Next.js 16: middleware.ts is proxy.ts (network boundary).
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (searchParamsHaveAbsurdRepoPath(request.nextUrl.searchParams)) {
     return new NextResponse("Not Found", {
       status: 404,

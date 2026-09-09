@@ -48,11 +48,11 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
   it("keeps next at the GHSA-2xp9-vwfh-vxw4 / CVE-2026-75604 floor", () => {
     const declared = pkg.dependencies?.next;
     expect(declared).toBeTruthy();
-    expect(gte(resolutionFloor(declared!), [15, 5, 24])).toBe(true);
+    expect(gte(resolutionFloor(declared!), [16, 3, 3])).toBe(true);
 
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = lock.match(/^next@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m);
     expect(resolved?.[1]).toBeTruthy();
-    expect(gte(resolutionFloor(resolved![1]!), [15, 5, 24])).toBe(true);
+    expect(gte(resolutionFloor(resolved![1]!), [16, 3, 3])).toBe(true);
   });
 });

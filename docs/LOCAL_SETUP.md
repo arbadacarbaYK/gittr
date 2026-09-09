@@ -6,7 +6,7 @@ Run the Next.js app on your machine. Git over SSH optional.
 
 ## Prerequisites
 
-Node 18+, yarn (preferred), git. Optional: Go 1.25+ for the bridge (see `ui/gitnostr/go.mod`).
+Node 20.9+, yarn (preferred), git. Optional: Go 1.25+ for the bridge (see `ui/gitnostr/go.mod`).
 
 ## Steps
 
