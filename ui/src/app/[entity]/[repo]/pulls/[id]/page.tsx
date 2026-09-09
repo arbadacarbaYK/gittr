@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +19,7 @@ import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
   KIND_PR_UPDATE,
+  KIND_PULL_REQUEST,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
@@ -33,6 +27,7 @@ import {
   createPullRequestUpdateEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
+import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -61,6 +56,7 @@ import {
   saveRepoOverrides,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import {
   getNostrPrivateKey,
   getSecureItem,
@@ -76,6 +72,10 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import {
+  fetchPrFileDiffs,
+  prDiffLooksLikeUnifiedPatch,
+} from "@/lib/utils/fetch-pr-file-diffs";
 import {
   findPullRequestRowIndexByRouteParam,
   isGithubStylePrId,
@@ -105,6 +105,7 @@ interface ChangedFile {
   after?: string;
   isBinary?: boolean;
   mimeType?: string;
+  diffPreview?: boolean;
 }
 
 interface PRData {
@@ -125,6 +126,13 @@ interface PRData {
   mergedBy?: string;
   baseBranch?: string;
   headBranch?: string;
+  cloneUrls?: string[];
+  currentCommitId?: string;
+  mergeBase?: string;
+  headSha?: string;
+  baseSha?: string;
+  html_url?: string;
+  number?: string;
   /** Merged in gittr while GitHub (or other source) may still list this PR open. */
   sourcePrStillOpen?: boolean;
 }
@@ -174,6 +182,9 @@ export default function PRDetailPage({
     new Map()
   );
   const [prEventId, setPrEventId] = useState<string | null>(null);
+  const [loadingRemoteDiffs, setLoadingRemoteDiffs] = useState(false);
+  const [remoteDiffError, setRemoteDiffError] = useState<string | null>(null);
+  const lastRemoteDiffKey = useRef("");
   const [prStorageRev, setPrStorageRev] = useState(0);
   const [mergePublishReady, setMergePublishReady] = useState<boolean>(false);
   const [mergePublishReason, setMergePublishReason] = useState<string>("");
@@ -349,8 +360,17 @@ export default function PRDetailPage({
           mergeCommit: prData.mergeCommit,
           mergedAt: prData.mergedAt,
           mergedBy: prData.mergedBy,
-          baseBranch: prData.baseBranch || "main",
-          headBranch: prData.headBranch,
+          baseBranch: prData.baseBranch || prData.base || "main",
+          headBranch: prData.headBranch || prData.head,
+          cloneUrls: Array.isArray(prData.cloneUrls)
+            ? prData.cloneUrls
+            : undefined,
+          currentCommitId: prData.currentCommitId,
+          mergeBase: prData.mergeBase,
+          headSha: prData.headSha,
+          baseSha: prData.baseSha,
+          html_url: prData.html_url,
+          number: prData.number != null ? String(prData.number) : undefined,
           sourcePrStillOpen: Boolean(prData.sourcePrStillOpen),
         });
         // Store PR event ID if available
@@ -445,6 +465,185 @@ export default function PRDetailPage({
     currentUserPubkey,
     prStorageRev,
   ]);
+
+  // Fill clone / commit tags if the list row was a thin warm upsert.
+  useEffect(() => {
+    if (!subscribe || !defaultRelays || !prEventId) return;
+    const unsub = subscribe(
+      [{ kinds: [KIND_PULL_REQUEST], ids: [prEventId] }],
+      defaultRelays,
+      (event) => {
+        if (event.kind !== KIND_PULL_REQUEST || event.id !== prEventId) return;
+        const hints = parseKind1618PrGitHints(event.tags);
+        setPR((prev) => {
+          if (!prev) return prev;
+          const cloneUrls =
+            hints.cloneUrls.length > 0 ? hints.cloneUrls : prev.cloneUrls;
+          const currentCommitId = hints.currentCommitId || prev.currentCommitId;
+          const mergeBase = hints.mergeBase || prev.mergeBase;
+          const headBranch = hints.branchName || prev.headBranch;
+          const body = prev.body || event.content || "";
+          if (
+            body === prev.body &&
+            currentCommitId === prev.currentCommitId &&
+            mergeBase === prev.mergeBase &&
+            headBranch === prev.headBranch &&
+            JSON.stringify(cloneUrls || []) ===
+              JSON.stringify(prev.cloneUrls || [])
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            body,
+            cloneUrls,
+            currentCommitId,
+            mergeBase,
+            headBranch,
+          };
+        });
+        try {
+          const storageKey = getRepoStorageKey(
+            "gittr_prs",
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const prs = JSON.parse(localStorage.getItem(storageKey) || "[]");
+          const next = prs.map((row: { id?: string }) =>
+            row.id === prEventId || row.id === event.id
+              ? {
+                  ...row,
+                  cloneUrls:
+                    hints.cloneUrls.length > 0
+                      ? hints.cloneUrls
+                      : (row as { cloneUrls?: string[] }).cloneUrls,
+                  currentCommitId:
+                    hints.currentCommitId ||
+                    (row as { currentCommitId?: string }).currentCommitId,
+                  mergeBase:
+                    hints.mergeBase ||
+                    (row as { mergeBase?: string }).mergeBase,
+                }
+              : row
+          );
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* quota */
+        }
+      }
+    );
+    return () => {
+      unsub();
+    };
+  }, [subscribe, defaultRelays, prEventId]);
+
+  // NIP-34 content is markdown only; GitHub/Gitea sync stores metadata only.
+  useEffect(() => {
+    if (!pr) return;
+    if ((pr.changedFiles && pr.changedFiles.length > 0) || pr.path) {
+      setLoadingRemoteDiffs(false);
+      return;
+    }
+    const rec =
+      findRepoByEntityAndName<StoredRepo>(
+        loadStoredRepos(),
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) ?? null;
+    const ghUrl = rec
+      ? resolveGithubUpstreamForTabs(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          rec
+        )
+      : "";
+    const repoClones = Array.isArray(rec?.clone)
+      ? rec.clone.filter((u): u is string => typeof u === "string")
+      : [];
+    const cloneUrls = [...new Set([...(pr.cloneUrls || []), ...repoClones])];
+    const currentCommitId = pr.currentCommitId || pr.headSha;
+    const mergeBase = pr.mergeBase || pr.baseSha;
+    const canFetch = Boolean(
+      currentCommitId || pr.html_url || isGithubStylePrId(pr.id)
+    );
+    const waitingHints = Boolean(
+      (prEventId || isHexEventId(pr.id)) && !canFetch
+    );
+    if (!canFetch) {
+      if (!waitingHints) return;
+      setLoadingRemoteDiffs(true);
+      const t = window.setTimeout(() => {
+        setLoadingRemoteDiffs(false);
+        setRemoteDiffError(
+          "Could not load file changes from git or GitHub yet."
+        );
+      }, 15000);
+      return () => clearTimeout(t);
+    }
+    const key = [
+      pr.id,
+      currentCommitId || "",
+      mergeBase || "",
+      pr.html_url || "",
+      cloneUrls.join(","),
+      ghUrl,
+    ].join("|");
+    if (key === lastRemoteDiffKey.current) return;
+    lastRemoteDiffKey.current = key;
+    let cancelled = false;
+    let finished = false;
+    (async () => {
+      setLoadingRemoteDiffs(true);
+      setRemoteDiffError(null);
+      try {
+        const files = await fetchPrFileDiffs({
+          id: pr.id,
+          number: pr.number,
+          html_url: pr.html_url,
+          cloneUrls,
+          currentCommitId,
+          mergeBase,
+          nostrEventId: prEventId || (isHexEventId(pr.id) ? pr.id : undefined),
+          githubSourceUrl: ghUrl || undefined,
+        });
+        if (cancelled) return;
+        if (!files.length) {
+          setRemoteDiffError(
+            "Could not load file changes from git or GitHub yet."
+          );
+          return;
+        }
+        setPR((prev) => (prev ? { ...prev, changedFiles: files } : prev));
+        try {
+          const storageKey = getRepoStorageKey(
+            "gittr_prs",
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const prs = JSON.parse(localStorage.getItem(storageKey) || "[]");
+          const next = prs.map((row: { id?: string }) =>
+            row.id === pr.id ? { ...row, changedFiles: files } : row
+          );
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* quota */
+        }
+      } catch {
+        if (!cancelled) {
+          setRemoteDiffError(
+            "Could not load file changes from git or GitHub yet."
+          );
+        }
+      } finally {
+        finished = true;
+        if (!cancelled) setLoadingRemoteDiffs(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (!finished) lastRemoteDiffKey.current = "";
+    };
+  }, [pr, prEventId, resolvedParams.entity, resolvedParams.repo]);
 
   const changedFiles = useMemo(() => {
     if (pr?.changedFiles && pr.changedFiles.length > 0) {
@@ -716,6 +915,21 @@ export default function PRDetailPage({
           ? mergeFilesOverrideRef.current
           : initialChangedFiles;
       mergeFilesOverrideRef.current = null;
+
+      const patchOnlyPreview =
+        changedFiles.length > 0 &&
+        changedFiles.every(
+          (file) =>
+            (file.diffPreview || prDiffLooksLikeUnifiedPatch(file.after)) &&
+            !file.before
+        );
+      if (patchOnlyPreview) {
+        setMerging(false);
+        setMergeMessage(
+          "This PR shows a remote diff preview. Merge it with git (the PR branch or refs/nostr/…) — in-app merge needs full file bodies."
+        );
+        return;
+      }
 
       // Get current file state from overrides (expand IndexedDB pointers)
       const baseFiles: Record<string, string> = {};
@@ -1818,9 +2032,7 @@ export default function PRDetailPage({
             resolvedParams.repo
           );
           const ownerPubkeyHex =
-            (repo
-              ? getRepoOwnerPubkey(repo, resolvedParams.entity)
-              : null) ||
+            (repo ? getRepoOwnerPubkey(repo, resolvedParams.entity) : null) ||
             resolveEntityToPubkey(resolvedParams.entity) ||
             "";
           const signingCreds = await resolveSigningCredentials({
@@ -1828,9 +2040,7 @@ export default function PRDetailPage({
           });
           if (ownerPubkeyHex && signingCreds) {
             const { hasNip07, privateKey } = signingCreds;
-            const statusKind = closing
-              ? KIND_STATUS_CLOSED
-              : KIND_STATUS_OPEN;
+            const statusKind = closing ? KIND_STATUS_CLOSED : KIND_STATUS_OPEN;
             let statusEvent: any;
             if (hasNip07 && window.nostr) {
               const authorPubkey = await window.nostr.getPublicKey();
@@ -2030,11 +2240,9 @@ export default function PRDetailPage({
               {canMerge && (
                 <p>
                   <span className="text-gray-300 font-medium">Merge</span>{" "}
-                  applies the PR files and pushes the updated tip to Nostr /
-                  the bridge. Other clients see it after that — you do{" "}
-                  <strong className="text-gray-300 font-medium">
-                    not
-                  </strong>{" "}
+                  applies the PR files and pushes the updated tip to Nostr / the
+                  bridge. Other clients see it after that — you do{" "}
+                  <strong className="text-gray-300 font-medium">not</strong>{" "}
                   need a separate Code-tab{" "}
                   <strong className="text-gray-300 font-medium">
                     Push to Nostr
@@ -2045,15 +2253,11 @@ export default function PRDetailPage({
               {canCloseOrReopenPr && (
                 <p>
                   <span className="text-gray-300 font-medium">Close</span>{" "}
-                  publishes a closed status event to Nostr (so other git
-                  clients stop showing it as open). It does{" "}
-                  <strong className="text-gray-300 font-medium">
-                    not
-                  </strong>{" "}
+                  publishes a closed status event to Nostr (so other git clients
+                  stop showing it as open). It does{" "}
+                  <strong className="text-gray-300 font-medium">not</strong>{" "}
                   change files and does{" "}
-                  <strong className="text-gray-300 font-medium">
-                    not
-                  </strong>{" "}
+                  <strong className="text-gray-300 font-medium">not</strong>{" "}
                   need a Code-tab{" "}
                   <strong className="text-gray-300 font-medium">
                     Push to Nostr
@@ -2301,7 +2505,10 @@ export default function PRDetailPage({
                   code: MarkdownCode,
                 }}
               >
-                {pr.body || "No description provided"}
+                {pr.body ||
+                  (hasChanges
+                    ? "No description — file changes are below."
+                    : "No description provided")}
               </ReactMarkdown>
               {/* Render snippets referenced in PR description */}
               {(() => {
@@ -2353,14 +2560,40 @@ export default function PRDetailPage({
           </div>
 
           {/* File Changes */}
-          {hasChanges && changedFiles.length > 0 && (
-            <div className="space-y-4">
-              <div className="border border-gray-700 rounded p-4">
-                <h3 className="font-semibold mb-3">
-                  Changes ({changedFiles.length} file
-                  {changedFiles.length !== 1 ? "s" : ""})
-                </h3>
-                {changedFiles.map((file, idx) => {
+          <div className="space-y-4">
+            <div className="border border-gray-700 rounded p-4">
+              <h3 className="font-semibold mb-3">
+                {loadingRemoteDiffs && !hasChanges
+                  ? "Loading file changes…"
+                  : `Changes (${changedFiles.length} file${
+                      changedFiles.length !== 1 ? "s" : ""
+                    })`}
+              </h3>
+              {loadingRemoteDiffs && !hasChanges && (
+                <p className="text-sm text-gray-400">
+                  Fetching the patch from git or GitHub. NIP-34 PRs do not embed
+                  file bodies in the event.
+                </p>
+              )}
+              {remoteDiffError && !hasChanges && (
+                <p className="text-sm text-amber-400/90">{remoteDiffError}</p>
+              )}
+              {!loadingRemoteDiffs && !hasChanges && !remoteDiffError && (
+                <p className="text-sm text-gray-400">
+                  No file changes listed for this pull request yet.
+                </p>
+              )}
+              {hasChanges &&
+                changedFiles.some(
+                  (f) => f.diffPreview || prDiffLooksLikeUnifiedPatch(f.after)
+                ) && (
+                  <p className="text-xs text-gray-500 mb-3">
+                    Patch preview from git or GitHub (the Nostr event is
+                    description text only).
+                  </p>
+                )}
+              {hasChanges &&
+                changedFiles.map((file, idx) => {
                   const handleOwnerEdit = (newContent: string) => {
                     const key = getRepoStorageKey(
                       "gittr_prs",
@@ -2409,15 +2642,19 @@ export default function PRDetailPage({
                         after={file.after}
                         isBinary={file.isBinary}
                         mimeType={file.mimeType}
-                        ownerEdit={isOwner && pr.status === "open"}
+                        ownerEdit={
+                          isOwner &&
+                          pr.status === "open" &&
+                          !file.diffPreview &&
+                          !prDiffLooksLikeUnifiedPatch(file.after)
+                        }
                         onEdit={handleOwnerEdit}
                       />
                     </div>
                   );
                 })}
-              </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Sidebar */}

@@ -15,6 +15,7 @@ import {
   KIND_STATUS_DRAFT,
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
+import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -356,12 +357,10 @@ export default function RepoPullsPage({
               const pTag = event.tags.find(
                 (t: string[]) => t[0] === "p" && !t[2]
               ); // Repository owner (no marker)
+              const gitHints = parseKind1618PrGitHints(event.tags);
               const cTag = event.tags.find((t: string[]) => t[0] === "c"); // Current commit ID (NIP-34)
               const branchNameTag = event.tags.find(
                 (t: string[]) => t[0] === "branch-name"
-              );
-              const cloneTags = event.tags.filter(
-                (t: string[]) => t[0] === "clone"
               );
 
               // Verify this PR belongs to the current repo via "a" tag
@@ -476,13 +475,20 @@ export default function RepoPullsPage({
                 contributors: [event.pubkey],
                 baseBranch: baseBranch,
                 headBranch: headBranch,
-                currentCommitId: cTag ? cTag[1] : undefined, // NIP-34: commit ID
-                cloneUrls: cloneTags.map((t: string[]) => t[1]), // NIP-34: clone URLs
+                currentCommitId:
+                  gitHints.currentCommitId ||
+                  prior?.currentCommitId ||
+                  (cTag ? cTag[1] : undefined),
+                cloneUrls:
+                  gitHints.cloneUrls.length > 0
+                    ? gitHints.cloneUrls
+                    : prior?.cloneUrls,
+                mergeBase: gitHints.mergeBase || prior?.mergeBase,
                 changedFiles: Array.isArray(fileSnap.changedFiles)
                   ? (fileSnap.changedFiles as any[])
                   : [],
                 createdAt: event.created_at * 1000,
-                number: String(existingPRs.length + 1), // Auto-number
+                number: prior?.number || String(existingPRs.length + 1),
                 linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
                 ...(fileSnap.path !== undefined ? { path: fileSnap.path } : {}),
                 ...(fileSnap.before !== undefined

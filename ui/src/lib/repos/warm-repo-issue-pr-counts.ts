@@ -11,6 +11,7 @@ import {
   KIND_STATUS_DRAFT,
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
+import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
 import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
@@ -168,6 +169,7 @@ function upsertPr(entity: string, repo: string, event: any): void {
   }
   const prior = idx >= 0 ? existing[idx] : undefined;
   const status = prStatusForNostrKind1618Merge(prior?.status, "open");
+  const gitHints = parseKind1618PrGitHints(event.tags);
   const row = {
     ...(prior || {}),
     id: event.id,
@@ -180,6 +182,10 @@ function upsertPr(entity: string, repo: string, event: any): void {
     createdAt: event.created_at * 1000,
     number: prior?.number || String(existing.length + 1),
     nostrEventId: prior?.nostrEventId || event.id,
+    cloneUrls:
+      gitHints.cloneUrls.length > 0 ? gitHints.cloneUrls : prior?.cloneUrls,
+    currentCommitId: gitHints.currentCommitId || prior?.currentCommitId,
+    mergeBase: gitHints.mergeBase || prior?.mergeBase,
   };
   if (idx >= 0) existing[idx] = row;
   else existing.push(row);

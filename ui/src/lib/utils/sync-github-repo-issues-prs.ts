@@ -197,6 +197,8 @@ export async function syncGithubPullsForRepo(
         merged_at: it.merged_at || null,
         head: (it.head as { ref?: string } | undefined)?.ref || null,
         base: (it.base as { ref?: string } | undefined)?.ref || null,
+        headSha: (it.head as { sha?: string } | undefined)?.sha || null,
+        baseSha: (it.base as { sha?: string } | undefined)?.sha || null,
       };
     });
 

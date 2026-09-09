@@ -1,12 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -243,7 +250,6 @@ export default function PullsPage({}) {
     }
     setCollapsePrefsLoaded(true);
   }, []);
-
 
   // Load PRs from repos owned by the logged-in user only
   useEffect(() => {
@@ -562,6 +568,7 @@ export default function PullsPage({}) {
           const fileSnap = mergeNostrKind1618FileSnapshot(prior, {
             changedFiles,
           });
+          const gitHints = parseKind1618PrGitHints(event.tags);
 
           const pr = {
             id: event.id,
@@ -573,12 +580,18 @@ export default function PullsPage({}) {
             author: event.pubkey,
             contributors: [event.pubkey],
             baseBranch: baseBranch,
-            headBranch: headBranch,
+            headBranch: headBranch || gitHints.branchName,
+            cloneUrls:
+              gitHints.cloneUrls.length > 0
+                ? gitHints.cloneUrls
+                : prior?.cloneUrls,
+            currentCommitId: gitHints.currentCommitId || prior?.currentCommitId,
+            mergeBase: gitHints.mergeBase || prior?.mergeBase,
             changedFiles: Array.isArray(fileSnap.changedFiles)
               ? (fileSnap.changedFiles as any[])
               : [],
             createdAt: event.created_at * 1000,
-            number: String(nextNumber),
+            number: prior?.number || String(nextNumber),
             linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
             ...(fileSnap.path !== undefined ? { path: fileSnap.path } : {}),
             ...(fileSnap.before !== undefined
@@ -767,9 +780,7 @@ export default function PullsPage({}) {
     (key: string) => {
       startTransition(() => {
         setCollapsedRepos((prev) => {
-          const next = new Set(
-            prev ?? collapseAllRepoKeys(allRepoGroupKeys)
-          );
+          const next = new Set(prev ?? collapseAllRepoKeys(allRepoGroupKeys));
           const k = key.toLowerCase();
           if (next.has(k)) next.delete(k);
           else next.add(k);
@@ -1072,7 +1083,8 @@ export default function PullsPage({}) {
                                 {item.linkedIssueBountyStatus === "paid" && (
                                   <span className="text-green-400">●</span>
                                 )}
-                                {item.linkedIssueBountyStatus === "released" && (
+                                {item.linkedIssueBountyStatus ===
+                                  "released" && (
                                   <span className="text-purple-400">✓</span>
                                 )}
                               </span>

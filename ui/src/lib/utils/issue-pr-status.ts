@@ -104,6 +104,27 @@ export function isGithubStyleIssueId(id: unknown): boolean {
   return /^issue-\d+$/i.test(String(id ?? ""));
 }
 
+function preserveLocalPrDiffFields(
+  prev: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!prev) return {};
+  const out: Record<string, unknown> = {};
+  if (Array.isArray(prev.changedFiles) && prev.changedFiles.length > 0) {
+    out.changedFiles = prev.changedFiles;
+  }
+  if (typeof prev.path === "string" && prev.path) out.path = prev.path;
+  if (prev.before !== undefined) out.before = prev.before;
+  if (prev.after !== undefined) out.after = prev.after;
+  if (Array.isArray(prev.cloneUrls) && prev.cloneUrls.length > 0) {
+    out.cloneUrls = prev.cloneUrls;
+  }
+  if (prev.currentCommitId) out.currentCommitId = prev.currentCommitId;
+  if (prev.mergeBase) out.mergeBase = prev.mergeBase;
+  if (prev.headSha) out.headSha = prev.headSha;
+  if (prev.baseSha) out.baseSha = prev.baseSha;
+  return out;
+}
+
 /** Nostr kind-1621 rows use 64-char hex event ids. */
 export function isNostrHexIssueId(id: unknown): boolean {
   return /^[0-9a-f]{64}$/i.test(String(id ?? ""));
@@ -371,6 +392,7 @@ export function countMergedIssueComments(
  * - Keeps Nostr-only rows (id not `pr-<n>`, e.g. hex event ids) so relay PRs are not erased.
  * - If this repo was merged in gittr but GitHub still shows the PR open, keep `merged` and set
  *   `sourcePrStillOpen` so the UI can explain drift (until GitHub reflects the merge).
+ * - Keeps hydrated `changedFiles` / git hints so the PR page does not go blank on refetch.
  */
 export function mergeGithubPrsAfterRefetch(
   existing: unknown[],
@@ -410,9 +432,10 @@ export function mergeGithubPrsAfterRefetch(
         mergedBy: prev.mergedBy,
         mergeCommit: prev.mergeCommit,
         sourcePrStillOpen: true,
+        ...preserveLocalPrDiffFields(prev),
       };
     }
-    return ghRow;
+    return { ...ghRow, ...preserveLocalPrDiffFields(prev) };
   });
 
   return [...merged, ...nostrOnly];

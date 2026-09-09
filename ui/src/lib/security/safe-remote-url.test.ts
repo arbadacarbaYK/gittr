@@ -59,7 +59,9 @@ describe("previewHttpUrlForSafety", () => {
 
 describe("assertSafeGitHubApiEndpoint", () => {
   it("allows known UI endpoints", () => {
-    expect(assertSafeGitHubApiEndpoint("/repos/o/r").ok).toBe(true);
+    expect(assertSafeGitHubApiEndpoint("/repos/o/r/pulls/12/files").ok).toBe(
+      true
+    );
     expect(assertSafeGitHubApiEndpoint("/repos/o/r/commits").ok).toBe(true);
     expect(assertSafeGitHubApiEndpoint("/repos/o/r/languages").ok).toBe(true);
     expect(
