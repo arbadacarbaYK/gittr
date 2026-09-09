@@ -21,6 +21,8 @@ import {
 } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import {
+  exploreDeferredSocialRelays,
+  exploreImmediateDiscoveryRelays,
   exploreRepoRelaysForClient,
   rememberExploreDiscoveryRelay,
 } from "@/lib/nostr/explore-discovery-relays";
@@ -1062,7 +1064,9 @@ function ExplorePageContent() {
                 "[Explore] seed merge could not persist (quota); session catalog kept in memory"
               );
             }
-            if (byKey.size >= 40) setSyncing(false);
+            // Seed is the SEO snapshot of long-indexed gittr-side repos.
+            // Do not hide "syncing" here — live ngit/Shakespeare/NostrHub
+            // events are still in flight.
           }
           console.log(
             `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
@@ -1138,23 +1142,9 @@ function ExplorePageContent() {
       relayList: defaultRelays?.slice(0, 5), // Show first 5 relays
     });
 
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0) {
-      console.warn(
-        "⚠️ [Explore] Cannot subscribe: subscribe=",
-        !!subscribe,
-        "defaultRelays=",
-        defaultRelays?.length || 0,
-        "defaultRelays=",
-        defaultRelays
-      );
-      // Retry after a short delay if context isn't ready yet
-      const timeout = setTimeout(() => {
-        if (subscribe && defaultRelays && defaultRelays.length > 0) {
-          console.log("🔄 [Explore] Retrying subscription after delay...");
-          // Force re-trigger by updating a dependency
-        }
-      }, 1000);
-      return () => clearTimeout(timeout);
+    if (!subscribe) {
+      console.warn("⚠️ [Explore] Cannot subscribe: subscribe missing");
+      return;
     }
 
     const existingRepos = readExploreCatalog();
@@ -1163,26 +1153,28 @@ function ExplorePageContent() {
       existingRepos.length
     );
 
-    console.log(
-      "📡 [Explore] Starting subscription with",
-      defaultRelays.length,
-      "relays:",
-      defaultRelays
-    );
+    const envRelays = defaultRelays || [];
     setSyncing(true);
 
-    // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags.
-    const allRelays = exploreRepoRelaysForClient(getAllRelays(defaultRelays));
+    // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags,
+    // and don't open Damus/wine in the same REQ (that starves discovery).
+    const allRelays = exploreRepoRelaysForClient(getAllRelays(envRelays));
+    const immediateRelays = exploreImmediateDiscoveryRelays(
+      getAllRelays(envRelays)
+    );
+    const deferredRelays = exploreDeferredSocialRelays(getAllRelays(envRelays));
     const graspRelays = getGraspServers(allRelays);
     const normRelay = (u: string) => u.trim().toLowerCase().replace(/\/+$/, "");
     const graspRelayNorms = new Set(graspRelays.map(normRelay));
     const queriedDiscoveryRelays = new Set(allRelays.map(normRelay));
     const extraUnsubs: Array<() => void> = [];
     console.log(
-      "🎯 [Explore] Discovery relays (GRASP first):",
-      allRelays.length,
-      allRelays.slice(0, 10)
+      "🎯 [Explore] Immediate discovery (NIP-34 / GRASP):",
+      immediateRelays
     );
+    if (deferredRelays.length > 0) {
+      console.log("⏳ [Explore] Social relays deferred 1.5s:", deferredRelays);
+    }
 
     // Track which relays have sent EOSE - but prioritize GRASP relays
     // Stop syncing after we get responses from at least 2 GRASP relays OR 5 regular relays OR 10 seconds
@@ -1204,8 +1196,11 @@ function ExplorePageContent() {
       const repos = readExploreCatalog();
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
-      // Seed / early events: hide spinner once we can search, keep listening.
-      const hasUsableSample = repos.length >= 40;
+      const liveFromNostr = repos.filter(
+        (r: { syncedFromNostr?: boolean; lastNostrEventId?: string }) =>
+          r.syncedFromNostr || r.lastNostrEventId
+      ).length;
+      const hasUsableSample = liveFromNostr >= 40;
 
       const hasEnoughGraspRelays = graspRelaysReceived.size >= 2;
       const hasEnoughRegularRelays = eoseReceived.size >= 5 && hasEnoughRepos;
@@ -1229,7 +1224,7 @@ function ExplorePageContent() {
               ? "5+ regular relays with repos"
               : hasVeryManyRepos
               ? "2000+ repos received (good initial sample)"
-              : "40+ repos in cache (seed or early events)",
+              : "40+ live Nostr events (not SEO seed)",
             note: "Subscription continues to listen for new repos in real-time",
           }
         );
@@ -2086,7 +2081,7 @@ function ExplorePageContent() {
 
     const unsub = subscribe(
       filters,
-      allRelays,
+      immediateRelays,
       onExploreEvent,
       undefined,
       (relayInfo, minCreatedAt) => {
@@ -2190,6 +2185,17 @@ function ExplorePageContent() {
       }
     );
 
+    if (deferredRelays.length > 0) {
+      const socialTimer = setTimeout(() => {
+        console.log(
+          "📡 [Explore] Opening social relays after discovery sockets:",
+          deferredRelays
+        );
+        extraUnsubs.push(subscribe(filters, deferredRelays, onExploreEvent));
+      }, 1500);
+      extraUnsubs.push(() => clearTimeout(socialTimer));
+    }
+
     return () => {
       if (unsub) unsub();
       for (const extra of extraUnsubs) {
@@ -2205,7 +2211,6 @@ function ExplorePageContent() {
   }, [
     subscribe,
     defaultRelays,
-    pubkey,
     addRelay,
     readExploreCatalog,
     commitExploreCatalog,

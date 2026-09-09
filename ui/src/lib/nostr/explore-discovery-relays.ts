@@ -126,3 +126,39 @@ export function exploreRepoRelaysForClient(defaultRelays: string[]): string[] {
   }
   return out;
 }
+
+function isImmediateExploreDiscoveryRelay(url: string): boolean {
+  if (isGraspServer(url)) return true;
+  const key = normalizeExploreRelayUrl(url);
+  return NIP34_DISCOVERY_RELAYS.some(
+    (listed) => normalizeExploreRelayUrl(listed) === key
+  );
+}
+
+/**
+ * Relays Explore should dial on the first subscribe. Social hosts (Damus,
+ * wine, …) already occupy the main pool; opening them in the same REQ
+ * starves ngit / Shakespeare / NostrHub so only long-indexed gittr seed
+ * cards paint for a while.
+ */
+export function exploreImmediateDiscoveryRelays(
+  defaultRelays: string[]
+): string[] {
+  const immediate = exploreRepoRelaysForClient(defaultRelays).filter(
+    isImmediateExploreDiscoveryRelay
+  );
+  if (immediate.length > 0) return immediate;
+  return NIP34_DISCOVERY_RELAYS.filter(isUsableExploreDiscoveryRelay).map(
+    (url) => url.replace(/\/+$/, "")
+  );
+}
+
+/** Remaining app relays to subscribe after the first discovery sockets are up. */
+export function exploreDeferredSocialRelays(defaultRelays: string[]): string[] {
+  const immediate = new Set(
+    exploreImmediateDiscoveryRelays(defaultRelays).map(normalizeExploreRelayUrl)
+  );
+  return exploreRepoRelaysForClient(defaultRelays).filter(
+    (url) => !immediate.has(normalizeExploreRelayUrl(url))
+  );
+}

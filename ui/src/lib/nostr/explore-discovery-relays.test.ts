@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  exploreDeferredSocialRelays,
+  exploreImmediateDiscoveryRelays,
   exploreRepoRelaysForClient,
   isUsableExploreDiscoveryRelay,
   rememberExploreDiscoveryRelay,
@@ -82,5 +84,34 @@ describe("exploreRepoRelaysForClient", () => {
     expect(relays.some((u) => u.includes("gitworkshop"))).toBe(false);
     expect(relays.some((u) => u.includes("git.gittr.space"))).toBe(false);
     expect(relays).toContain("wss://relay.gittr.space");
+  });
+});
+
+describe("exploreImmediateDiscoveryRelays", () => {
+  it("dials NIP-34 hosts even when env is empty", () => {
+    const relays = exploreImmediateDiscoveryRelays([]);
+    expect(relays).toContain("wss://relay.ngit.dev");
+    expect(relays).toContain("wss://git.shakespeare.diy");
+    expect(relays).toContain("wss://git.nostrhub.io");
+    expect(relays.some((u) => u.includes("damus"))).toBe(false);
+  });
+
+  it("keeps Damus off the first subscribe when env is the full app list", () => {
+    const env = [
+      "wss://relay.gittr.space",
+      "wss://git.shakespeare.diy",
+      "wss://relay.ngit.dev",
+      "wss://git.nostrhub.io",
+      "wss://relay.damus.io",
+      "wss://nostr.wine",
+    ];
+    const immediate = exploreImmediateDiscoveryRelays(env);
+    expect(immediate).toContain("wss://git.shakespeare.diy");
+    expect(immediate).toContain("wss://git.nostrhub.io");
+    expect(immediate).not.toContain("wss://relay.damus.io");
+    expect(immediate).not.toContain("wss://nostr.wine");
+    const deferred = exploreDeferredSocialRelays(env);
+    expect(deferred).toContain("wss://relay.damus.io");
+    expect(deferred).toContain("wss://nostr.wine");
   });
 });
