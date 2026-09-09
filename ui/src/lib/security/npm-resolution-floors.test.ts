@@ -45,6 +45,28 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     ).toBe(true);
   });
 
+  it("pins js-yaml at the CVE-2026-84375 floor", () => {
+    expect(gte(resolutionFloor(resolutions["js-yaml"]), [4, 3, 2])).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^js-yaml@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [4, 3, 2])).toBe(true);
+  });
+
+  it("pins sharp at the GHSA-rgj7-g3m4-5g8c floor", () => {
+    expect(gte(resolutionFloor(resolutions.sharp), [0, 35, 4])).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^sharp@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [0, 35, 4])).toBe(true);
+  });
+
   it("keeps next at the GHSA-2xp9-vwfh-vxw4 / CVE-2026-75604 floor", () => {
     const declared = pkg.dependencies?.next;
     expect(declared).toBeTruthy();
