@@ -89,7 +89,7 @@
     "@xmldom/xmldom": "0.8.15",
     "mdast-util-to-hast": "13.2.1",
     "dompurify": "^3.4.13",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "tar": "^7.5.21",
     "postcss": "^8.5.23",
     "sharp": "^0.35.0"
