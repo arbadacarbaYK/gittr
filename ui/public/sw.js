@@ -1,4 +1,4 @@
-const CACHE_NAME = "gittr-pwa-v6";
+const CACHE_NAME = "gittr-pwa-v7";
 
 const CORE_ASSETS = [
   "/offline.html",

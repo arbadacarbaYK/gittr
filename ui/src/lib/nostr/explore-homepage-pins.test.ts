@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyHomepagePinsToFront,
   compareExploreReposWithHomepagePins,
   homepageRecentPinRank,
+  sanitizeHomepagePins,
 } from "./explore-homepage-pins";
 
 const pins = [
@@ -77,5 +79,46 @@ describe("compareExploreReposWithHomepagePins", () => {
       "iris-drive",
       "adventofcode-2025",
     ]);
+  });
+});
+
+describe("applyHomepagePinsToFront", () => {
+  it("puts Home order first even when the cache ranks junk newer", () => {
+    const junk = { entity: "ben", repo: "adventofcode-2025" };
+    const coop = { entity: "npub1coop", repo: "coop" };
+    const iris = {
+      entity: "npub1iris",
+      repo: "iris-drive",
+      ownerPubkey: "bb".repeat(32),
+    };
+    const list = applyHomepagePinsToFront([junk, coop, iris], pins);
+    expect(list.map((r) => r.repo)).toEqual([
+      "ngit-ci-dashboard",
+      "iris-drive",
+      "gittr",
+      "adventofcode-2025",
+      "coop",
+    ]);
+  });
+
+  it("inserts a stub when Home has a repo Explore has not cached yet", () => {
+    const list = applyHomepagePinsToFront(
+      [{ entity: "ben", repo: "adventofcode-2025" }],
+      pins
+    );
+    expect(list[0]?.repo).toBe("ngit-ci-dashboard");
+    expect(list[1]?.repo).toBe("iris-drive");
+    expect(list.map((r) => r.repo)).toContain("adventofcode-2025");
+  });
+});
+
+describe("sanitizeHomepagePins", () => {
+  it("keeps at most 12 valid pins", () => {
+    const raw = Array.from({ length: 20 }, (_, i) => ({
+      entity: `npub${i}`,
+      repo: `repo-${i}`,
+    }));
+    expect(sanitizeHomepagePins(raw)).toHaveLength(12);
+    expect(sanitizeHomepagePins([{ repo: "only-name" }])).toEqual([]);
   });
 });

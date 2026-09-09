@@ -28,6 +28,22 @@ describe("isUsableExploreDiscoveryRelay", () => {
     expect(isUsableExploreDiscoveryRelay("wss://localhost")).toBe(false);
   });
 
+  it("rejects dead GRASP sockets and /grasp git paths", () => {
+    expect(isUsableExploreDiscoveryRelay("wss://git-01.uid.ovh/")).toBe(false);
+    expect(isUsableExploreDiscoveryRelay("wss://ngit-relay.nostrver.se/")).toBe(
+      false
+    );
+    expect(isUsableExploreDiscoveryRelay("wss://laantungir.net/grasp")).toBe(
+      false
+    );
+    expect(isUsableExploreDiscoveryRelay("wss://relay.nostrich.land/")).toBe(
+      false
+    );
+    expect(isUsableExploreDiscoveryRelay("wss://relay.poster.place/")).toBe(
+      false
+    );
+  });
+
   it("rejects danconway auto-dial and non-default ports from event tags", () => {
     expect(isUsableExploreDiscoveryRelay("wss://ngit.danconwaydev.com")).toBe(
       false

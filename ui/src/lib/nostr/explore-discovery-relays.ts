@@ -27,6 +27,17 @@ export const EXPLORE_NON_RELAY_HOSTS = [
 /** Do not auto-dial from env GRASP-first or from random NIP-34 `relays` tags. */
 export const EXPLORE_DO_NOT_AUTO_DIAL_HOSTS = [
   "ngit.danconwaydev.com",
+  // Dead / handshake-fail GRASP (still OK as clone tags for other people's events)
+  "git-01.uid.ovh",
+  "git-02.uid.ovh",
+  "ngit-relay.nostrver.se",
+  // Dropped from lean NEXT_PUBLIC_NOSTR_RELAYS; leftover env / NIP-65 burned sockets
+  "relay.nostrich.land",
+  "relay.current.fyi",
+  "relay.nostr.bg",
+  "nostr-relay.wlvs.space",
+  "relay.nostrgraph.net",
+  "relay.poster.place",
 ] as const;
 
 export function normalizeExploreRelayUrl(url: string): string {
@@ -106,6 +117,15 @@ export function isUsableExploreDiscoveryRelay(
   if (hostIsAutoDialBlocked(host)) return false;
   if (!opts?.allowCustomPort && relayHasNonDefaultPort(withProto)) {
     return false;
+  }
+  // HTTPS GRASP clone paths are not Nostr WebSockets (`wss://host/grasp`).
+  try {
+    const pathname = new URL(withProto).pathname.toLowerCase();
+    if (pathname === "/grasp" || pathname.startsWith("/grasp/")) {
+      return false;
+    }
+  } catch {
+    if (/\/grasp(\/|$)/i.test(withProto)) return false;
   }
 
   return !EXPLORE_NON_RELAY_HOSTS.some(

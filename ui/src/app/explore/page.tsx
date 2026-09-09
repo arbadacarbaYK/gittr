@@ -25,8 +25,13 @@ import {
   exploreImmediateDiscoveryRelays,
   exploreRepoRelaysForClient,
 } from "@/lib/nostr/explore-discovery-relays";
-import { compareExploreReposWithHomepagePins } from "@/lib/nostr/explore-homepage-pins";
-import type { ExploreHomepagePin } from "@/lib/nostr/explore-homepage-pins";
+import {
+  type ExploreHomepagePin,
+  applyHomepagePinsToFront,
+  homepagePinToCatalogSeed,
+  readStoredHomepagePins,
+  writeStoredHomepagePins,
+} from "@/lib/nostr/explore-homepage-pins";
 import {
   EXPLORE_SEED_CACHE_CAP,
   EXPLORE_SEED_FETCH_LIMIT,
@@ -310,7 +315,7 @@ function ExplorePageContent() {
   const [syncing, setSyncing] = useState(false);
   const [homepageRecentPins, setHomepageRecentPins] = useState<
     ExploreHomepagePin[]
-  >([]);
+  >(() => readStoredHomepagePins());
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   const searchParams = useSearchParams();
   const qRaw = searchParams?.get("q") || "";
@@ -1042,16 +1047,37 @@ function ExplorePageContent() {
         const res = await fetch("/api/stats/recent-repos");
         if (!res.ok || cancelled) return;
         const json = (await res.json()) as {
-          repos?: ExploreHomepagePin[];
+          repos?: Array<
+            ExploreHomepagePin & {
+              repoName?: string;
+              lastActivity?: number;
+              description?: string;
+            }
+          >;
         };
         if (cancelled || !json.repos?.length) return;
-        setHomepageRecentPins(
-          json.repos.map((r) => ({
-            entity: r.entity,
-            repo: r.repo,
-            ownerPubkey: r.ownerPubkey,
-          }))
-        );
+        const pins = json.repos.map((r) => ({
+          entity: r.entity,
+          repo: r.repo || r.repoName || "",
+          ownerPubkey: r.ownerPubkey,
+          lastActivity: r.lastActivity,
+          description: r.description,
+        }));
+        setHomepageRecentPins(pins);
+        writeStoredHomepagePins(pins);
+        try {
+          const existing = readExploreCatalog() as any[];
+          const { list, added, updated } = mergeExploreSeedIntoCatalog(
+            existing,
+            pins.map(homepagePinToCatalogSeed),
+            EXPLORE_SEED_CACHE_CAP
+          );
+          if ((added > 0 || updated > 0) && !cancelled) {
+            commitExploreCatalog(list as Repo[], { immediate: true });
+          }
+        } catch {
+          /* pin merge is best-effort */
+        }
       } catch {
         /* homepage recent is a pin, not a hard dependency */
       }
@@ -1059,7 +1085,7 @@ function ExplorePageContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [commitExploreCatalog, readExploreCatalog]);
 
   // Locals first, then SEO snapshot (Hetzner disk), then live Nostr enriches.
   // Do not skip the snapshot because localStorage is already large.
@@ -1142,13 +1168,15 @@ function ExplorePageContent() {
           : null;
 
         if (recentJson?.repos?.length) {
-          setHomepageRecentPins(
-            recentJson.repos.map((r) => ({
-              entity: r.entity,
-              repo: r.repo || r.repoName || "",
-              ownerPubkey: r.ownerPubkey,
-            }))
-          );
+          const pins = recentJson.repos.map((r) => ({
+            entity: r.entity,
+            repo: r.repo || r.repoName || "",
+            ownerPubkey: r.ownerPubkey,
+            lastActivity: r.lastActivity,
+            description: r.description,
+          }));
+          setHomepageRecentPins(pins);
+          writeStoredHomepagePins(pins);
         }
 
         mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
@@ -2214,10 +2242,9 @@ function ExplorePageContent() {
       return r;
     });
 
-    // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
-    // This ensures repos with recent updates appear first
-    // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
-    return reposWithEntity.slice().sort((a, b) => {
+    // Rank by latest event, then pin Home’s live recent list in front so the
+    // 3000-row SEO cache cannot bury a brand-new announce.
+    const timeSorted = reposWithEntity.slice().sort((a, b) => {
       const toMs = (r: (typeof reposWithEntity)[number]) => {
         const fromNostr = nostrTimestampToMs(
           (r as any).lastNostrEventCreatedAt
@@ -2229,13 +2256,9 @@ function ExplorePageContent() {
           0
         );
       };
-      return compareExploreReposWithHomepagePins(
-        a,
-        b,
-        homepageRecentPins,
-        (x, y) => toMs(y) - toMs(x)
-      );
+      return toMs(b) - toMs(a);
     });
+    return applyHomepagePinsToFront(timeSorted, homepageRecentPins);
   }, [repos, homepageRecentPins]);
 
   const filteredRepos = useMemo(() => {
