@@ -11,6 +11,7 @@ import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PRReviewSection } from "@/components/ui/pr-review-section";
 import { Reactions } from "@/components/ui/reactions";
+import { Textarea } from "@/components/ui/textarea";
 import { ZapButton } from "@/components/ui/zap-button";
 import { recordActivity } from "@/lib/activity-tracking";
 import { detectConflicts } from "@/lib/git/conflict-detection";
@@ -18,16 +19,26 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
+  KIND_COMMENT,
   KIND_PR_UPDATE,
   KIND_PULL_REQUEST,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
+  buildUnsignedCommentEvent,
   createBountyEvent,
+  createCommentEvent,
   createPullRequestUpdateEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
 import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
+import {
+  type Nip22Comment,
+  commentEventBelongsToThread,
+  parseNip22Comment,
+  prCommentsStorageKey,
+  repoTagMatchesRoute,
+} from "@/lib/nostr/nip22-comment-thread";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -93,8 +104,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { nip19 } from "nostr-tools";
 import { getEventHash } from "nostr-tools";
+import { nip19 } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -141,6 +152,22 @@ function isHexEventId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value);
 }
 
+function persistPrComments(
+  entity: string,
+  repo: string,
+  rootId: string,
+  comments: Nip22Comment[]
+) {
+  try {
+    localStorage.setItem(
+      prCommentsStorageKey(entity, repo, rootId),
+      JSON.stringify(comments)
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export default function PRDetailPage({
   params,
 }: {
@@ -181,6 +208,9 @@ export default function PRDetailPage({
   const [snippetEvents, setSnippetEvents] = useState<Map<string, any>>(
     new Map()
   );
+  const [comments, setComments] = useState<Nip22Comment[]>([]);
+  const [commentContent, setCommentContent] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
   const [prEventId, setPrEventId] = useState<string | null>(null);
   const [loadingRemoteDiffs, setLoadingRemoteDiffs] = useState(false);
   const [remoteDiffError, setRemoteDiffError] = useState<string | null>(null);
@@ -210,8 +240,17 @@ export default function PRDetailPage({
     if (linkedIssue?.bountyCreator) {
       pubkeys.add(linkedIssue.bountyCreator);
     }
+    comments.forEach((c) => {
+      if (c.author) pubkeys.add(c.author);
+    });
     return Array.from(pubkeys);
-  }, [pr?.author, pr?.mergedBy, pr?.contributors, linkedIssue?.bountyCreator]);
+  }, [
+    pr?.author,
+    pr?.mergedBy,
+    pr?.contributors,
+    linkedIssue?.bountyCreator,
+    comments,
+  ]);
 
   const recipientMetadata = useContributorMetadata(allPubkeys);
   const recipientMeta = pr?.author ? recipientMetadata[pr.author] : null;
@@ -300,10 +339,11 @@ export default function PRDetailPage({
           const referencesThisPR =
             prEventId && eTags.some((t) => t[1] === prEventId);
           const isInDescription = pr?.body && pr.body.includes(event.id);
-          const isForThisRepo =
-            repoTag &&
-            repoTag[1] === resolvedParams.entity &&
-            repoTag[2] === resolvedParams.repo;
+          const isForThisRepo = repoTagMatchesRoute(
+            repoTag,
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
 
           if (
             (referencesThisPR || isInDescription) &&
@@ -326,6 +366,80 @@ export default function PRDetailPage({
     subscribe,
     defaultRelays,
     pr?.body,
+    prEventId,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
+  useEffect(() => {
+    if (!prEventId) {
+      setComments([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(
+        prCommentsStorageKey(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          prEventId
+        )
+      );
+      const stored = raw ? (JSON.parse(raw) as Nip22Comment[]) : [];
+      setComments(Array.isArray(stored) ? stored : []);
+    } catch {
+      setComments([]);
+    }
+  }, [prEventId, resolvedParams.entity, resolvedParams.repo]);
+
+  // NIP-22 comments on this PR (kind 1111). Issues already did this; PRs did not.
+  useEffect(() => {
+    if (!subscribe || !defaultRelays || !prEventId) return;
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_COMMENT, 1],
+          "#E": [prEventId],
+          "#e": [prEventId],
+        },
+      ],
+      defaultRelays,
+      (event) => {
+        if (event.kind !== KIND_COMMENT && event.kind !== 1) return;
+        if (
+          !commentEventBelongsToThread(event, {
+            rootEventId: prEventId,
+            entity: resolvedParams.entity,
+            repo: resolvedParams.repo,
+          })
+        ) {
+          return;
+        }
+        const parsed = parseNip22Comment(event, prEventId);
+        if (!parsed) return;
+        setComments((prev) => {
+          const exists = prev.some(
+            (c) => c.id === parsed.id || c.nostrEventId === parsed.id
+          );
+          if (exists) return prev;
+          const next = [...prev, parsed].sort(
+            (a, b) => a.createdAt - b.createdAt
+          );
+          persistPrComments(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            prEventId,
+            next
+          );
+          return next;
+        });
+      }
+    );
+    return () => {
+      unsub();
+    };
+  }, [
+    subscribe,
+    defaultRelays,
     prEventId,
     resolvedParams.entity,
     resolvedParams.repo,
@@ -377,7 +491,8 @@ export default function PRDetailPage({
         const resolvedPrEventId =
           prData.nostrEventId ||
           prData.lastNostrEventId ||
-          (isHexEventId(prData.id) ? prData.id : null);
+          (isHexEventId(prData.id) ? prData.id : null) ||
+          (isHexEventId(resolvedParams.id) ? resolvedParams.id : null);
         if (resolvedPrEventId) {
           setPrEventId(resolvedPrEventId);
         }
@@ -452,6 +567,8 @@ export default function PRDetailPage({
           );
           if (issue) setLinkedIssue(issue);
         }
+      } else if (isHexEventId(resolvedParams.id)) {
+        setPrEventId(resolvedParams.id);
       }
       setLoading(false);
     } catch (error) {
@@ -2113,6 +2230,93 @@ export default function PRDetailPage({
     resolvedParams.id,
   ]);
 
+  const handleAddPrComment = useCallback(async () => {
+    if (!commentContent.trim() || !pr || !currentUserPubkey || !prEventId) {
+      return;
+    }
+    setPostingComment(true);
+    try {
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
+      const draft: Nip22Comment = {
+        id: `local-${Date.now()}`,
+        author: currentUserPubkey,
+        content: commentContent.trim(),
+        createdAt: Date.now(),
+        nostrEventId: "",
+      };
+      const unsigned = buildUnsignedCommentEvent(
+        {
+          content: draft.content,
+          prId: prEventId,
+          rootKind: KIND_PULL_REQUEST,
+          rootPubkey: isHexEventId(pr.author) ? pr.author : undefined,
+          repoEntity: resolvedParams.entity,
+          repoName: resolvedParams.repo,
+        },
+        currentUserPubkey
+      );
+      let signed = unsigned;
+      if (hasNip07 && typeof window !== "undefined" && window.nostr) {
+        unsigned.id = getEventHash(unsigned);
+        signed = await window.nostr.signEvent(unsigned);
+      } else if (privateKey) {
+        signed = createCommentEvent(
+          {
+            content: draft.content,
+            prId: prEventId,
+            rootKind: KIND_PULL_REQUEST,
+            rootPubkey: isHexEventId(pr.author) ? pr.author : undefined,
+            repoEntity: resolvedParams.entity,
+            repoName: resolvedParams.repo,
+          },
+          privateKey
+        );
+      } else {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      if (publish && defaultRelays?.length) {
+        publish(signed, defaultRelays);
+      }
+      const saved: Nip22Comment = {
+        ...draft,
+        id: signed.id || draft.id,
+        nostrEventId: signed.id || draft.id,
+      };
+      setComments((prev) => {
+        const next = [...prev, saved].sort((a, b) => a.createdAt - b.createdAt);
+        persistPrComments(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          prEventId,
+          next
+        );
+        return next;
+      });
+      setCommentContent("");
+    } catch (err) {
+      console.error("Failed to publish PR comment:", err);
+      alert("Could not publish the comment: " + (err as Error).message);
+    } finally {
+      setPostingComment(false);
+    }
+  }, [
+    commentContent,
+    pr,
+    currentUserPubkey,
+    prEventId,
+    remoteSigner,
+    publish,
+    defaultRelays,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
   if (loading) {
     return <div className="p-6">Loading PR...</div>;
   }
@@ -2557,6 +2761,93 @@ export default function PRDetailPage({
                 repo={resolvedParams.repo}
               />
             </div>
+          </div>
+
+          <div className="border border-gray-700 rounded p-4">
+            <h3 className="font-semibold mb-4">
+              {comments.length} {comments.length === 1 ? "Comment" : "Comments"}
+            </h3>
+            <div className="space-y-4 mb-6">
+              {comments.length === 0 ? (
+                <div className="text-center py-6 text-gray-500 text-sm">
+                  No comments yet on this pull request.
+                </div>
+              ) : (
+                comments.map((comment) => {
+                  const authorMeta = recipientMetadata[comment.author];
+                  const authorLabel =
+                    authorMeta?.display_name ||
+                    authorMeta?.name ||
+                    comment.author.slice(0, 8) + "...";
+                  return (
+                    <div
+                      key={comment.id}
+                      className="border border-gray-700 rounded p-4 bg-gray-900/50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-8 w-8 flex-shrink-0">
+                          {authorMeta?.picture &&
+                          authorMeta.picture.startsWith("http") ? (
+                            <AvatarImage src={authorMeta.picture} />
+                          ) : null}
+                          <AvatarFallback className="bg-gray-700 text-white text-xs">
+                            {authorLabel.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <Link
+                              href={`/${comment.author}`}
+                              className="font-semibold hover:text-purple-400"
+                            >
+                              {authorLabel}
+                            </Link>
+                            <span className="text-xs text-gray-500">
+                              {formatDateTime24h(comment.createdAt)}
+                            </span>
+                          </div>
+                          <div className="prose prose-invert prose-sm max-w-none">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              rehypePlugins={markdownRehypePlugins}
+                            >
+                              {comment.content}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {currentUserPubkey ? (
+              <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
+                <Textarea
+                  value={commentContent}
+                  onChange={(e) => setCommentContent(e.target.value)}
+                  placeholder="Write a comment…"
+                  className="min-h-24 mb-3"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      void handleAddPrComment();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() => void handleAddPrComment()}
+                  disabled={
+                    !commentContent.trim() || postingComment || !prEventId
+                  }
+                >
+                  {postingComment ? "Posting…" : "Post Comment"}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Sign in to comment on this pull request.
+              </p>
+            )}
           </div>
 
           {/* File Changes */}

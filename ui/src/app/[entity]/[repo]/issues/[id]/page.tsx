@@ -35,6 +35,10 @@ import {
   createStatusEvent,
 } from "@/lib/nostr/events";
 import {
+  commentEventBelongsToThread,
+  repoTagMatchesRoute,
+} from "@/lib/nostr/nip22-comment-thread";
+import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
@@ -402,8 +406,7 @@ export default function IssueDetailPage({
 
             // Verify this snippet is for our issue and repo
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
-            const isForThisRepo =
-              repoTag && repoTag[1] === entity && repoTag[2] === repo;
+            const isForThisRepo = repoTagMatchesRoute(repoTag, entity, repo);
 
             if (isForThisIssue && isForThisRepo) {
               // Store snippet event
@@ -434,17 +437,14 @@ export default function IssueDetailPage({
               (t): t is string[] => Array.isArray(t) && t[0] === "E"
             );
             const rootEventId = rootTag?.[1] || issueEventId || undefined;
-            const repoTag = event.tags.find(
-              (t): t is string[] => Array.isArray(t) && t[0] === "repo"
-            );
 
-            // Verify this comment is for our issue and repo
-            // Check both uppercase E (NIP-22) and lowercase e (legacy) tags
-            const isForThisIssue = eTagsAll.some((t) => t[1] === issueEventId);
-            const isForThisRepo =
-              repoTag && repoTag[1] === entity && repoTag[2] === repo;
-
-            if (isForThisIssue && isForThisRepo) {
+            if (
+              commentEventBelongsToThread(event, {
+                rootEventId: issueEventId,
+                entity,
+                repo,
+              })
+            ) {
               // NIP-22 parent: lowercase e tag points to parent (root for top-level)
               // Fallback to legacy NIP-10 reply marker if present
               let parentId: string | undefined;

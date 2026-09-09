@@ -383,7 +383,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 ### Kind 1111: Comments (NIP-22)
 
 - **Purpose**: Comments on issues, PRs, patches, and **discussion topics** (NIP-23 kind 30023)
-- **Usage**: Issue/PR comments; discussion replies (root event = 30023, K=30023)
+- **Usage**: Issue comments and **PR comments** (gittr PR detail subscribes to kind **1111** with `#E` / `#e` = the kind **1618** id). Replies on discussion topics (root event = 30023, K=30023)
 - **Tags**:
   - `E`: Root event ID - REQUIRED (uppercase E per NIP-22)
   - `K`: Root event kind - REQUIRED (e.g. 1621 issue, 1618 PR, 30023 discussion)
@@ -391,7 +391,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `e`: Parent event ID - REQUIRED (lowercase for parent scope)
   - `k`: Parent event kind - REQUIRED
   - `p`: Parent event author pubkey - REQUIRED when available
-  - `repo`: Repository context (custom extension, not in NIP-22)
+  - `repo`: Repository context (custom extension). Owner may be **npub or hex** — gittr matches both. Missing `repo` is still shown when `E`/`e` points at this issue/PR.
 
 ## Relay Configuration
 
