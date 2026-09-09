@@ -89,7 +89,7 @@ Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journ
 
 - Runs **standalone** `scripts/refresh-seo-repo-index.mts` (own Node/tsx process; does **not** curl live Next). Timer uses `Persistent=false` so mid-day install does not catch up a missed run
 - Writes `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`; `ExecStartPost` mirrors to `/opt/ngit/data/lab-snapshot/` for lab agents (cheap `cp`)
-- `/sitemap.xml` prefers that disk snapshot; live relay fan-out only if the snap is missing (or `SITEMAP_LIVE_NOSTR=1`)
+- `/sitemap.xml` prefers that disk snapshot (including a stale one); live relay fan-out also runs if the snap is missing or older than 14 days, then merges so a failed nightly job cannot blank the starter. `/api/explore/seed` always serves the disk snapshot + `nostr-pushed-repos.txt` (stale-ok).
 - See [SEO.md](SEO.md); keep `gittr-frontend` `MemoryMax` on small VPS
 
 Optional: kick the same oneshot after other indexing (`systemctl start gittr-seo-repo-index-refresh.service`) — do **not** curl `?refresh=1` into live Next for the daily job.

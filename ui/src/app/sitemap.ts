@@ -1,45 +1,20 @@
 import { filterRepoPathLinesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 import { fetchGittrPagesSitemapEntries } from "@/lib/seo/gittr-pages-sitemap";
+import { loadNostrPushedRepoPaths } from "@/lib/seo/nostr-pushed-repos";
 import {
   loadNostrSeoReposSnapshot,
+  snapshotIsStale,
   snapshotPathMap,
 } from "@/lib/seo/nostr-seo-repos-snapshot";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
-import { existsSync, readFileSync } from "fs";
 import { type MetadataRoute } from "next";
-import { join } from "path";
 
 const MAX_SITEMAP_URLS = 45000;
 
 /** Revalidate sitemap so new repos from relays appear without redeploying. */
 export const revalidate = 3600;
-
-/** Lines like npub1.../repo-name from optional local file (bridge / extras). */
-function loadNostrPushedRepoPaths(): string[] {
-  const candidates = [
-    join(process.cwd(), "..", "nostr-pushed-repos.txt"),
-    join(process.cwd(), "nostr-pushed-repos.txt"),
-  ];
-  for (const filePath of candidates) {
-    try {
-      if (!existsSync(filePath)) continue;
-      const raw = readFileSync(filePath, "utf8");
-      const lines = raw
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(
-          (l) =>
-            l.length > 0 && !l.startsWith("#") && /^npub1[0-9a-z]+\/.+/i.test(l)
-        );
-      return [...new Set(lines)];
-    } catch {
-      /* continue */
-    }
-  }
-  return [];
-}
 
 function mergePathMaps(
   ...maps: Array<Map<string, number>>
@@ -101,7 +76,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // heavy SimplePool path inside the public Next process.
   // During `next build`, skip live Nostr unless SITEMAP_LIVE_NOSTR=1 — empty
   // snaps otherwise hang static generation past Next's 60s page budget.
-  const seoSnap = await loadNostrSeoReposSnapshot();
+  const seoSnap = await loadNostrSeoReposSnapshot({ allowStale: true });
   const fromSnapshot = snapshotPathMap(seoSnap);
   const forceLive =
     process.env.SITEMAP_LIVE_NOSTR === "1" ||
@@ -109,8 +84,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const isProductionBuild =
     process.env.NEXT_PHASE === "phase-production-build" ||
     process.env.npm_lifecycle_event === "build";
+  const snapMissingOrStale =
+    fromSnapshot.size === 0 || (seoSnap ? snapshotIsStale(seoSnap.at) : true);
   const fromNostr =
-    forceLive || (fromSnapshot.size === 0 && !isProductionBuild)
+    forceLive || (snapMissingOrStale && !isProductionBuild)
       ? await fetchSitemapRepoPathsFromNostr()
       : new Map<string, number>();
   const fromFile = filterRepoPathLinesByPublisherBlocklist(

@@ -4,13 +4,15 @@ import { Suspense, useCallback, useEffect, useRef } from "react";
 
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { appNavigate } from "@/lib/utils/app-navigate";
 
 import { Search } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 function SearchBarInner({ className }: { className?: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const ref = useRef<HTMLInputElement>(null);
   /** Skip URL→input sync while the user is editing. */
   const suppressSyncRef = useRef(false);
@@ -30,22 +32,30 @@ function SearchBarInner({ className }: { className?: string }) {
     }
   }, [exploreQuery]);
 
-  const goExplore = useCallback((params: { q?: string; user?: string }) => {
-    const sp = new URLSearchParams();
-    if (params.user) sp.set("user", params.user);
-    if (params.q) sp.set("q", params.q);
-    const qs = sp.toString();
-    const href = qs ? `/explore?${qs}` : "/explore";
-    // Hard nav — soft App Router push/replace from the header was a silent no-op.
-    window.location.assign(href);
-  }, []);
+  const goExplore = useCallback(
+    (params: { q?: string; user?: string }) => {
+      const sp = new URLSearchParams();
+      if (params.user) sp.set("user", params.user);
+      if (params.q) sp.set("q", params.q);
+      const qs = sp.toString();
+      const href = qs ? `/explore?${qs}` : "/explore";
+      // Same-page query change must not hard-reload — that wiped the in-memory
+      // catalog so search only saw localStorage leftovers.
+      if (pathname === "/explore") {
+        router.replace(href, { scroll: false });
+        return;
+      }
+      appNavigate(href, router, pathname);
+    },
+    [pathname, router]
+  );
 
   const clearExploreFilters = useCallback(() => {
     if (pathname !== "/explore") return;
     suppressSyncRef.current = true;
     if (ref.current) ref.current.value = "";
-    window.location.assign("/explore");
-  }, [pathname]);
+    router.replace("/explore", { scroll: false });
+  }, [pathname, router]);
 
   const submitQuery = useCallback(
     (raw: string) => {

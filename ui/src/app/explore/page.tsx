@@ -31,6 +31,7 @@ import {
   peekExploreSessionCatalog,
   writeExploreSessionCatalog,
 } from "@/lib/nostr/explore-session-catalog";
+import { shouldHideExploreSyncForCatalog } from "@/lib/nostr/explore-sync-indicator";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
@@ -1019,8 +1020,9 @@ function ExplorePageContent() {
     };
   }, [loadRepos]);
 
-  // Cold start: seed from SEO snapshot (+ recent-repos) when localStorage is empty
-  // so search works before the heavy client Nostr sync finishes.
+  // Cold start: seed from SEO snapshot (+ recent-repos) even when
+  // localStorage already has a thin locals list, so search matches
+  // Nostr-wide names before live relays finish.
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
@@ -1190,7 +1192,7 @@ function ExplorePageContent() {
     }
 
     const envRelays = defaultRelays || [];
-    const alreadyHasCatalog = existingRepos.length >= 40;
+    const alreadyHasCatalog = shouldHideExploreSyncForCatalog(existingRepos);
     setSyncing(!alreadyHasCatalog);
 
     // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags,
@@ -1233,11 +1235,7 @@ function ExplorePageContent() {
       const repos = readExploreCatalog();
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
-      const liveFromNostr = repos.filter(
-        (r: { syncedFromNostr?: boolean; lastNostrEventId?: string }) =>
-          r.syncedFromNostr || r.lastNostrEventId
-      ).length;
-      const hasUsableSample = liveFromNostr >= 40;
+      const hasUsableSample = shouldHideExploreSyncForCatalog(repos);
 
       const hasEnoughGraspRelays = graspRelaysReceived.size >= 2;
       const hasEnoughRegularRelays = eoseReceived.size >= 5 && hasEnoughRepos;

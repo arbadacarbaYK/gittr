@@ -44,7 +44,7 @@ export default async function handler(
   const forceRefresh = req.query.refresh === "1";
 
   if (!forceRefresh) {
-    const snap = await loadNostrSeoReposSnapshot();
+    const snap = await loadNostrSeoReposSnapshot({ allowStale: true });
     return res.status(200).json({
       ok: true,
       refreshed: false,
