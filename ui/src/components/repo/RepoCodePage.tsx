@@ -1684,8 +1684,22 @@ export function RepoCodePage() {
       ? clearForeignReposFromStorage(effectiveUserPubkey, {
           preserveUnpushedEdits: true,
           preserveWithMetadata: true,
+          preserveRepos: [
+            {
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
+            },
+          ],
         })
-      : clearNonLocalReposFromStorage({ preserveWithMetadata: true });
+      : clearNonLocalReposFromStorage({
+          preserveWithMetadata: true,
+          preserveRepos: [
+            {
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
+            },
+          ],
+        });
     if (cleanupResult.clearedKeys > 0) {
       console.log(
         `🧹 [Storage] Auto-cleared ${cleanupResult.clearedRepos} repo caches and ${cleanupResult.clearedKeys} keys (estimated size: ${estimatedSize})`
@@ -1699,6 +1713,8 @@ export function RepoCodePage() {
     estimateLocalStorageSize,
     mounted,
     repoIsOwner,
+    resolvedParams.entity,
+    resolvedParams.repo,
   ]);
 
   useEffect(() => {
@@ -6818,6 +6834,7 @@ export function RepoCodePage() {
         /** Latest applied KIND_REPOSITORY (51) JSON snapshot by relay order (see early `foundFiles` gate). */
         let lastKind51RepoSnapshotCreatedAt = 0;
         let unsub: (() => void) | undefined;
+        let finalFallbackTimer: ReturnType<typeof setTimeout> | null = null;
         // Store sourceUrl and clone URLs from events for fallback use (accessible in closure)
         let sourceUrlFromEvent: string | undefined;
         let eventRepoData: any = null; // Store event data for multi-source fetching
@@ -9652,6 +9669,11 @@ export function RepoCodePage() {
                     );
 
                   if (files && files.length > 0) {
+                    foundFiles = true;
+                    if (finalFallbackTimer) {
+                      clearTimeout(finalFallbackTimer);
+                      finalFallbackTimer = null;
+                    }
                     console.log(
                       `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs`
                     );
@@ -9858,6 +9880,11 @@ export function RepoCodePage() {
                       }))
                     );
 
+                    foundFiles = true;
+                    if (finalFallbackTimer) {
+                      clearTimeout(finalFallbackTimer);
+                      finalFallbackTimer = null;
+                    }
                     fileFetchInProgressRef.current = false;
                     // CRITICAL: Mark as attempted to prevent re-fetching (files are now loaded)
                     const currentRepoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
@@ -9929,8 +9956,18 @@ export function RepoCodePage() {
         // CRITICAL: Do NOT unsub here — announcements often arrive after the bridge
         // already has files (e.g. clone on git.shakespeare.diy via nos.lol). Keep
         // listening so Git Server / Clone URL can update from real tags.
-        setTimeout(async () => {
-          if (!foundFiles && !fileFetchInProgressRef.current) {
+        finalFallbackTimer = setTimeout(async () => {
+          const liveFiles = (
+            repoDataRef.current as { files?: unknown[] } | null
+          )?.files;
+          const alreadyHaveTree =
+            foundFiles ||
+            fileFetchInProgressRef.current ||
+            (Array.isArray(liveFiles) && liveFiles.length > 0) ||
+            fileFetchAttemptedRef.current.startsWith(
+              `${paramsEntity}/${paramsRepo}:`
+            );
+          if (!alreadyHaveTree) {
             console.log(
               "⏱️ [File Fetch] Final timeout reached after 3s, trying multi-source fetch and git-nostr-bridge as last resort (keeping Nostr sub for late clone tags)"
             );
@@ -10234,6 +10271,11 @@ export function RepoCodePage() {
               );
 
               if (files && files.length > 0) {
+                foundFiles = true;
+                if (finalFallbackTimer) {
+                  clearTimeout(finalFallbackTimer);
+                  finalFallbackTimer = null;
+                }
                 console.log(
                   `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs`
                 );

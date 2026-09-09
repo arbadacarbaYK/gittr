@@ -227,13 +227,62 @@ const emptyFlushStats = (): RepoCacheFlushStats => ({
   duplicateRowsCollapsed: 0,
 });
 
+export type ForeignReposFlushOptions = {
+  preserveUnpushedEdits?: boolean;
+  preserveWithMetadata?: boolean;
+  /** Keep these repos (and their gittr_files / issue caches) even if they are "foreign". */
+  preserveRepos?: Array<{ entity: string; repo: string }>;
+};
+
+function repoMatchesPreserveList(
+  repo: StoredRepo,
+  preserveRepos?: Array<{ entity: string; repo: string }>
+): boolean {
+  if (!preserveRepos?.length) return false;
+  const entity = String(repo.entity || "").toLowerCase();
+  const name = String(
+    repo.repo || repo.slug || repo.name || repo.repositoryName || ""
+  ).toLowerCase();
+  return preserveRepos.some(
+    (p) =>
+      String(p.entity || "").toLowerCase() === entity &&
+      String(p.repo || "").toLowerCase() === name
+  );
+}
+
+function mergePreserveReposIntoKept(
+  unique: StoredRepo[],
+  keptRepos: StoredRepo[],
+  preserveRepos?: Array<{ entity: string; repo: string }>
+): StoredRepo[] {
+  if (!preserveRepos?.length) return keptRepos;
+  const next = [...keptRepos];
+  for (const repo of unique) {
+    if (repoMatchesPreserveList(repo, preserveRepos) && !next.includes(repo)) {
+      next.push(repo);
+    }
+  }
+  return next;
+}
+
+function appendPreserveRepoPatterns(
+  patterns: string[],
+  preserveRepos?: Array<{ entity: string; repo: string }>
+): void {
+  for (const p of preserveRepos || []) {
+    if (!p.entity || !p.repo) continue;
+    const testKey = getRepoStorageKey("gittr_test", p.entity, p.repo);
+    patterns.push(testKey.replace("gittr_test__", ""));
+  }
+}
+
 function readCatalogRowsForFlush(): StoredRepo[] {
   return parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
 }
 
 function planForeignReposFlush(
   pubkey: string,
-  options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
+  options?: ForeignReposFlushOptions
 ): {
   unique: StoredRepo[];
   keptRepos: StoredRepo[];
@@ -272,6 +321,11 @@ function planForeignReposFlush(
       keptRepos = [...keptRepos, ...extraKept];
     }
   }
+  keptRepos = mergePreserveReposIntoKept(
+    classified.unique,
+    keptRepos,
+    options?.preserveRepos
+  );
   const foreignRepos = classified.unique.filter(
     (repo) => !keptRepos.includes(repo)
   );
@@ -312,7 +366,7 @@ function planOwnReposFlush(pubkey: string): {
 /** Dry-run of flush others — same numbers the confirm modal and alert will use. */
 export const previewForeignReposFlush = (
   pubkey: string,
-  options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
+  options?: ForeignReposFlushOptions
 ): RepoCacheFlushStats => {
   const plan = planForeignReposFlush(pubkey, options);
   if (!plan) return emptyFlushStats();
@@ -345,7 +399,7 @@ export const previewOwnReposFlush = (pubkey: string): RepoCacheFlushStats => {
 
 export const clearForeignReposFromStorage = (
   pubkey: string,
-  options?: { preserveUnpushedEdits?: boolean; preserveWithMetadata?: boolean }
+  options?: ForeignReposFlushOptions
 ): RepoCacheFlushStats => {
   const plan = planForeignReposFlush(pubkey, options);
   if (!plan) return emptyFlushStats();
@@ -354,6 +408,7 @@ export const clearForeignReposFromStorage = (
 
   const keptRepoPatterns = buildRepoKeyPatterns(plan.keptRepos);
   plan.metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+  appendPreserveRepoPatterns(keptRepoPatterns, options?.preserveRepos);
   const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
   // Drop IndexedDB override blobs for flushed foreign repos (async, best-effort)
@@ -418,6 +473,7 @@ export const clearOwnReposFromStorage = (
 
 export const clearNonLocalReposFromStorage = (options?: {
   preserveWithMetadata?: boolean;
+  preserveRepos?: Array<{ entity: string; repo: string }>;
 }): {
   clearedRepos: number;
   clearedKeys: number;
@@ -456,6 +512,7 @@ export const clearNonLocalReposFromStorage = (options?: {
         if (metadataPatterns.has(pattern)) return true;
       }
     }
+    if (repoMatchesPreserveList(repo, options?.preserveRepos)) return true;
     return false;
   });
   const removedRepos = allRepos.filter((repo) => !keptRepos.includes(repo));
@@ -464,6 +521,7 @@ export const clearNonLocalReposFromStorage = (options?: {
 
   const keptRepoPatterns = buildRepoKeyPatterns(keptRepos);
   metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+  appendPreserveRepoPatterns(keptRepoPatterns, options?.preserveRepos);
   const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
   return {
@@ -1220,6 +1278,7 @@ export const loadRepoFiles = (
     const filesKey = getRepoStorageKey("gittr_files", entity, repo);
     const stored = localStorage.getItem(filesKey);
     if (!stored) return [];
+    rememberOpenRepoFileCache(entity, repo);
     return parseJsonArray(stored, isRepoFileEntry).map(coerceRepoFileEntry);
   } catch {
     return [];
@@ -1256,14 +1315,29 @@ export function persistRepoTipBranch(
 /** @deprecated import from merge-repo-file-indexes — re-exported for callers */
 export { mergeRepoFileIndexes } from "./merge-repo-file-indexes";
 
+const PROTECTED_FILE_CACHE_MAX = 8;
+let protectedRepoFileKeys: string[] = [];
+
+/** Keep the last few Code-tab trees off the quota eviction list. */
+export function rememberOpenRepoFileCache(entity: string, repo: string): void {
+  if (typeof window === "undefined" || !entity || !repo) return;
+  const key = getRepoStorageKey("gittr_files", entity, repo);
+  protectedRepoFileKeys = [
+    key,
+    ...protectedRepoFileKeys.filter((k) => k !== key),
+  ].slice(0, PROTECTED_FILE_CACHE_MAX);
+}
+
 function evictLargestOtherRepoFileKeys(
   keepKey: string,
   maxRemovals: number
 ): number {
+  const skip = new Set(protectedRepoFileKeys);
+  if (keepKey) skip.add(keepKey);
   const entries: { key: string; len: number }[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (!key || !key.startsWith("gittr_files__") || key === keepKey) continue;
+    if (!key || !key.startsWith("gittr_files__") || skip.has(key)) continue;
     const raw = localStorage.getItem(key);
     entries.push({ key, len: raw ? raw.length : 0 });
   }
@@ -1300,6 +1374,7 @@ export const saveRepoFiles = (
   const payload = JSON.stringify(files);
   try {
     localStorage.setItem(filesKey, payload);
+    rememberOpenRepoFileCache(entity, repo);
     return true;
   } catch (error: any) {
     if (

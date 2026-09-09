@@ -72,10 +72,10 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 ## Loading the file tree
 
-1. **Browser `localStorage`** — owned or previously loaded trees show immediately. Network refresh still runs when there is a GitHub mirror (or an npub/hex route that needs a live announcement).
+1. **Browser `localStorage`** — owned or previously loaded trees show immediately. Opening someone else’s Code tab no longer wipes **that** repo’s `gittr_files__` cache (auto-clear keeps the open repo). Network refresh still runs when there is a GitHub mirror (or an npub/hex route that needs a live announcement).
 2. **Embedded files** in a Nostr repo event (legacy / small repos).
 3. **Kind 30617** on relays — published **`clone[]` and `source` tags are the map**. Query includes the viewer’s relays, NIP-34 discovery (`relay.gittr.space`, `relay.ngit.dev`, shakespeare, nostrhub, gitnostr, `nos.lol`), plus the announcement’s own `relays` tags and `wss://` on clone hosts.
-4. **Timers:** after ~3s, multifetch and bridge fallback start even if tags are still arriving (the subscription stays open). After **20s**, the metadata sub closes. Well-known GRASP URLs are filled in when a matching 30617 has **empty** `clone[]`, when the only clones are Nostr-relay homepages (not git), or as last resort if **no** 30617 arrived by EOSE.
+4. **Timers:** after ~3s, multifetch and bridge fallback start **only if the tree is still empty** (a GRASP/GitHub listing that already painted must not start the same 3-way race again). After **20s**, the metadata sub closes. Well-known GRASP URLs are filled in when a matching 30617 has **empty** `clone[]`, when the only clones are Nostr-relay homepages (not git), or as last resort if **no** 30617 arrived by EOSE.
 5. **Which tree:**
    - Forge **`source`** and no local drafts: fetch that forge first (`/api/git/repo-files`). That listing is the Code tab (smaller than the bridge is OK — upstream deletes).
    - Otherwise **parallel race** over `clone[]` (**45s** for the first success). **Winner among those remotes = first non-empty listing.** A 502 from one mirror does not block another. Clone tags whose host is `relay.*` and not a known GRASP git host are skipped for this race (they are Nostr relays, not git).

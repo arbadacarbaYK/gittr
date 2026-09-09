@@ -26,6 +26,11 @@ import {
   exploreRepoRelaysForClient,
   rememberExploreDiscoveryRelay,
 } from "@/lib/nostr/explore-discovery-relays";
+import {
+  hydrateExploreSessionCatalog,
+  peekExploreSessionCatalog,
+  writeExploreSessionCatalog,
+} from "@/lib/nostr/explore-session-catalog";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
@@ -64,15 +69,18 @@ const EXPLORE_SEED_CACHE_CAP = 3000;
 const EXPLORE_SEED_SKIP_IF_CACHED = 2000;
 
 /** Per-event Explore logs freeze the tab; opt in with localStorage gittr_explore_debug=1 */
-function exploreDebug(...args: unknown[]) {
-  if (typeof window === "undefined") return;
+function exploreDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    if (window.localStorage.getItem("gittr_explore_debug") === "1") {
-      console.log(...args);
-    }
+    return window.localStorage.getItem("gittr_explore_debug") === "1";
   } catch {
-    /* ignore quota / private mode */
+    return false;
   }
+}
+
+function exploreDebug(...args: unknown[]) {
+  if (!exploreDebugEnabled()) return;
+  console.log(...args);
 }
 
 export const dynamic = "force-dynamic";
@@ -290,8 +298,11 @@ type Repo = {
 };
 
 function ExplorePageContent() {
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [isLoadingRepos, setIsLoadingRepos] = useState(true);
+  const sessionStart = peekExploreSessionCatalog() as Repo[] | null;
+  const [repos, setRepos] = useState<Repo[]>(() => sessionStart || []);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(
+    !(sessionStart && sessionStart.length > 0)
+  );
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
@@ -303,7 +314,8 @@ function ExplorePageContent() {
   const { defaultRelays, subscribe, pubkey, addRelay } = useNostrContext();
   // Session catalog: grows with every Nostr event even when localStorage quota
   // blocks persist. Never reset this from a failed save + loadRepos() loop.
-  const exploreCatalogRef = useRef<Repo[] | null>(null);
+  // Module-level peek survives leaving /explore (the page used to remount empty).
+  const exploreCatalogRef = useRef<Repo[] | null>(sessionStart);
   const catalogPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -316,7 +328,7 @@ function ExplorePageContent() {
 
   // DEBUG: Log context values
   useEffect(() => {
-    console.log("🔍 [Explore] Context values:", {
+    exploreDebug("🔍 [Explore] Context values:", {
       hasSubscribe: !!subscribe,
       hasDefaultRelays: !!defaultRelays,
       defaultRelaysLength: defaultRelays?.length || 0,
@@ -334,12 +346,12 @@ function ExplorePageContent() {
   const [metadataBatchSize] = useState(400); // Fetch metadata for visible explore owners (HTTP batch API)
 
   const ownerPubkeys = useMemo(() => {
-    console.log(
+    exploreDebug(
       `🔍 [Explore] Computing ownerPubkeys: repos.length=${repos.length}`
     );
     // Only fetch metadata if we have repos (like homepage - no loading state check)
     if (repos.length === 0) {
-      console.log(`⏭️ [Explore] No repos, returning empty pubkeys array`);
+      exploreDebug(`⏭️ [Explore] No repos, returning empty pubkeys array`);
       return [];
     }
 
@@ -435,7 +447,7 @@ function ExplorePageContent() {
       if (fullPubkey && /^[0-9a-f]{64}$/i.test(fullPubkey)) {
         pubkeys.add(fullPubkey);
       } else {
-        console.warn("⚠️ [Explore] Skipping invalid pubkey:", {
+        exploreDebug("⚠️ [Explore] Skipping invalid pubkey:", {
           repo: repo.slug || repo.repo,
           entity: repo.entity,
           ownerPubkey: repo.ownerPubkey
@@ -448,7 +460,7 @@ function ExplorePageContent() {
     }
 
     const pubkeyArray = Array.from(pubkeys);
-    console.log("🔑 [Explore] Owner pubkeys for metadata (BATCHED):", {
+    exploreDebug("🔑 [Explore] Owner pubkeys for metadata (BATCHED):", {
       totalRepos: repos.length,
       filteredRepos: filtered.length,
       reposForMetadata: reposForMetadata.length,
@@ -460,11 +472,11 @@ function ExplorePageContent() {
         length: p.length,
         isValid: /^[0-9a-f]{64}$/i.test(p),
       })),
-      ALL_PUBKEYS: pubkeyArray.map((p) => p.slice(0, 16) + "..."), // Log first 16 chars of each
+      ALL_PUBKEYS: pubkeyArray.map((p) => p.slice(0, 16) + "..."),
       RETURNING_ARRAY_LENGTH: pubkeyArray.length,
     });
 
-    console.log(
+    exploreDebug(
       `✅ [Explore] ownerPubkeys computed: returning ${pubkeyArray.length} pubkeys`
     );
     return pubkeyArray;
@@ -472,7 +484,7 @@ function ExplorePageContent() {
 
   // Debug: Log when ownerPubkeys changes
   useEffect(() => {
-    console.log(
+    exploreDebug(
       `🔄 [Explore] ownerPubkeys changed: length=${ownerPubkeys.length}`,
       {
         pubkeys: ownerPubkeys.slice(0, 3).map((p) => p.slice(0, 8)),
@@ -502,7 +514,7 @@ function ExplorePageContent() {
   // Debug: Log metadata state
   useEffect(() => {
     const metadataCount = Object.keys(ownerMetadata).length;
-    console.log("📊 [Explore] Metadata state:", {
+    exploreDebug("📊 [Explore] Metadata state:", {
       ownerPubkeysCount: ownerPubkeys.length,
       metadataKeysCount: metadataCount,
       metadataKeys: Object.keys(ownerMetadata)
@@ -517,7 +529,7 @@ function ExplorePageContent() {
         })),
     });
     if (ownerPubkeys.length > 0 && metadataCount === 0) {
-      console.warn(
+      exploreDebug(
         "⚠️ [Explore] METADATA NOT LOADING! Have",
         ownerPubkeys.length,
         "pubkeys but 0 metadata entries"
@@ -858,7 +870,7 @@ function ExplorePageContent() {
         if (deletedReposSet.has(repoKey)) return false;
         if (r.deleted === true || r.archived === true) return false;
         if (!r.entity || r.entity === "user") {
-          console.warn("⚠️ [Explore] Skipping repo without entity:", {
+          exploreDebug("⚠️ [Explore] Skipping repo without entity:", {
             slug: r.slug,
             repo: r.repo,
             hasOwnerPubkey: !!r.ownerPubkey,
@@ -885,14 +897,16 @@ function ExplorePageContent() {
   const readExploreCatalog = useCallback((): Repo[] => {
     if (exploreCatalogRef.current) return exploreCatalogRef.current;
     const fromLs = loadStoredRepos() as Repo[];
-    exploreCatalogRef.current = fromLs;
-    return fromLs;
+    const hydrated = hydrateExploreSessionCatalog(fromLs) as Repo[];
+    exploreCatalogRef.current = hydrated;
+    return hydrated;
   }, []);
 
   /** Persist best-effort; always keep session catalog + UI in sync with `list`. */
   const commitExploreCatalog = useCallback(
     (list: Repo[], opts?: { immediate?: boolean }) => {
       exploreCatalogRef.current = list;
+      writeExploreSessionCatalog(list);
       const flushUi = () => {
         if (exploreCatalogRef.current) {
           applyReposToUi(exploreCatalogRef.current);
@@ -932,10 +946,13 @@ function ExplorePageContent() {
   );
 
   const loadRepos = useCallback(() => {
-    setIsLoadingRepos(true);
+    const alreadyHas =
+      (exploreCatalogRef.current?.length || 0) > 0 ||
+      (peekExploreSessionCatalog()?.length || 0) > 0;
+    if (!alreadyHas) setIsLoadingRepos(true);
     try {
       const rawRepos = localStorage.getItem("gittr_repos");
-      console.log("🔍 [Explore] loadRepos - raw localStorage:", {
+      exploreDebug("🔍 [Explore] loadRepos - raw localStorage:", {
         hasData: !!rawRepos,
         length: rawRepos ? JSON.parse(rawRepos).length : 0,
         sample: rawRepos
@@ -951,15 +968,19 @@ function ExplorePageContent() {
       });
 
       const fromLs = loadStoredRepos() as Repo[];
-      const mem = exploreCatalogRef.current;
+      const mem =
+        exploreCatalogRef.current ||
+        (peekExploreSessionCatalog() as Repo[] | null);
       // Prefer the larger session catalog when quota blocked persist — otherwise
       // every loadRepos() after a failed save snapped UI back to ~180 rows.
       const list =
         mem && mem.length > fromLs.length
           ? mem
-          : ((exploreCatalogRef.current = fromLs), fromLs);
+          : ((exploreCatalogRef.current = fromLs),
+            writeExploreSessionCatalog(fromLs),
+            fromLs);
 
-      console.log("🔍 [Explore] loadRepos - after loadStoredRepos:", {
+      exploreDebug("🔍 [Explore] loadRepos - after loadStoredRepos:", {
         loadedCount: fromLs.length,
         sessionCatalog: mem?.length ?? 0,
         using: list.length,
@@ -1068,7 +1089,7 @@ function ExplorePageContent() {
             // Do not hide "syncing" here — live ngit/Shakespeare/NostrHub
             // events are still in flight.
           }
-          console.log(
+          exploreDebug(
             `🌱 [Explore] Seeded ${added} repos (cache now ${byKey.size})`
           );
         }
@@ -1134,7 +1155,7 @@ function ExplorePageContent() {
     // Wait for client-side only
     if (typeof window === "undefined") return;
 
-    console.log("🔍 [Explore] useEffect triggered:", {
+    exploreDebug("🔍 [Explore] useEffect triggered:", {
       hasSubscribe: !!subscribe,
       hasDefaultRelays: !!defaultRelays,
       defaultRelaysLength: defaultRelays?.length || 0,
@@ -1147,14 +1168,30 @@ function ExplorePageContent() {
       return;
     }
 
+    let alive = true;
     const existingRepos = readExploreCatalog();
-    console.log(
+    exploreDebug(
       "📊 [Explore] Current repos in session catalog:",
       existingRepos.length
     );
 
+    let deletedReposList: Array<{
+      entity: string;
+      repo: string;
+      deletedAt: number;
+    }> = [];
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem("gittr_deleted_repos") || "[]"
+      );
+      deletedReposList = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      deletedReposList = [];
+    }
+
     const envRelays = defaultRelays || [];
-    setSyncing(true);
+    const alreadyHasCatalog = existingRepos.length >= 40;
+    setSyncing(!alreadyHasCatalog);
 
     // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags,
     // and don't open Damus/wine in the same REQ (that starves discovery).
@@ -1168,12 +1205,12 @@ function ExplorePageContent() {
     const graspRelayNorms = new Set(graspRelays.map(normRelay));
     const queriedDiscoveryRelays = new Set(allRelays.map(normRelay));
     const extraUnsubs: Array<() => void> = [];
-    console.log(
+    exploreDebug(
       "🎯 [Explore] Immediate discovery (NIP-34 / GRASP):",
       immediateRelays
     );
     if (deferredRelays.length > 0) {
-      console.log("⏳ [Explore] Social relays deferred 1.5s:", deferredRelays);
+      exploreDebug("⏳ [Explore] Social relays deferred 1.5s:", deferredRelays);
     }
 
     // Track which relays have sent EOSE - but prioritize GRASP relays
@@ -1182,7 +1219,7 @@ function ExplorePageContent() {
     const graspRelaysReceived = new Set<string>();
     let eoseTimeout: NodeJS.Timeout | null = null;
     let minRelaysTimeout: NodeJS.Timeout | null = null;
-    let syncIndicatorHidden = false;
+    let syncIndicatorHidden = alreadyHasCatalog;
 
     const checkShouldStopSyncing = () => {
       // CRITICAL: This only stops the "syncing" UI indicator, NOT the subscription!
@@ -1212,7 +1249,7 @@ function ExplorePageContent() {
         hasUsableSample
       ) {
         syncIndicatorHidden = true;
-        console.log(
+        exploreDebug(
           "✅ [Explore] Hiding sync indicator - enough initial data received:",
           {
             eoseCount: eoseReceived.size,
@@ -1236,7 +1273,7 @@ function ExplorePageContent() {
 
     // Stop syncing after 15 seconds max (longer to allow GRASP relays to respond)
     eoseTimeout = setTimeout(() => {
-      console.log("⏱️ [Explore] Sync timeout after 15s:", {
+      exploreDebug("⏱️ [Explore] Sync timeout after 15s:", {
         eoseReceived: eoseReceived.size,
         graspRelaysReceived: graspRelaysReceived.size,
         totalRepos: readExploreCatalog().length,
@@ -1273,19 +1310,16 @@ function ExplorePageContent() {
         : []),
     ];
 
-    console.log(
-      "📡 [Explore] Subscribing with filters:",
-      JSON.stringify(filters, null, 2)
-    );
+    exploreDebug("📡 [Explore] Subscribing with filters:", filters);
 
-    // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
-    // Map: repoKey (pubkey + d tag) -> array of events
+    // NIP-34 replaceable events are applied live; collect duplicates only for debug.
     const nip34EventsByRepo = new Map<
       string,
       Array<{ event: any; relayURL?: string }>
     >();
 
     const onExploreEvent: OnEvent = (event, isAfterEose, relayURL) => {
+      if (!alive) return;
       // CRITICAL: Process ALL events, including those that arrive after EOSE!
       // EOSE (End of Stored Events) just means the relay finished sending stored events,
       // but new events can still arrive in real-time. The subscription NEVER stops listening.
@@ -1307,7 +1341,7 @@ function ExplorePageContent() {
           (t: any) => Array.isArray(t) && t[0] === "d"
         );
         const repoName = dTag?.[1];
-        if (repoName && event.pubkey) {
+        if (repoName && event.pubkey && exploreDebugEnabled()) {
           const repoKey = `${event.pubkey}/${repoName}`;
           if (!nip34EventsByRepo.has(repoKey)) {
             nip34EventsByRepo.set(repoKey, []);
@@ -1321,8 +1355,6 @@ function ExplorePageContent() {
               nip34EventsByRepo.get(repoKey)!.length
             }`
           );
-          // Don't return - continue to process it normally too (for immediate display)
-          // But we'll ensure the latest one is used when storing
         }
       }
 
@@ -1334,13 +1366,13 @@ function ExplorePageContent() {
           for (const tag of event.tags) {
             if (Array.isArray(tag) && tag[0] === "e" && tag[1]) {
               const deletedEventId = tag[1];
-              console.log(
+              exploreDebug(
                 "🗑️ [Explore] NIP-09 deletion event received for event:",
                 deletedEventId.slice(0, 8)
               );
 
               // Find repos with this event ID and mark them as deleted
-              const existingRepos = [...readExploreCatalog()];
+              const existingRepos = readExploreCatalog();
               let updated = false;
 
               const updatedRepos = existingRepos.map((r: any) => {
@@ -1350,7 +1382,7 @@ function ExplorePageContent() {
                     r.lastNostrEventId === deletedEventId) &&
                   !r.deleted
                 ) {
-                  console.log(
+                  exploreDebug(
                     "🗑️ [Explore] Marking repo as deleted via NIP-09:",
                     {
                       repo: r.repo || r.slug,
@@ -1390,7 +1422,7 @@ function ExplorePageContent() {
             // gitnostr format: Parse from JSON content
             // CRITICAL: Validate content is JSON before parsing
             if (!event.content || typeof event.content !== "string") {
-              console.warn(
+              exploreDebug(
                 "⚠️ [Explore] Skipping event with invalid content:",
                 {
                   eventId: event.id.slice(0, 8),
@@ -1407,7 +1439,7 @@ function ExplorePageContent() {
               !trimmedContent.startsWith("{") &&
               !trimmedContent.startsWith("[")
             ) {
-              console.warn(
+              exploreDebug(
                 "⚠️ [Explore] Skipping event with non-JSON content:",
                 {
                   eventId: event.id.slice(0, 8),
@@ -1421,7 +1453,7 @@ function ExplorePageContent() {
             try {
               repoData = JSON.parse(event.content);
             } catch (parseError) {
-              console.warn("⚠️ [Explore] Failed to parse JSON content:", {
+              exploreDebug("⚠️ [Explore] Failed to parse JSON content:", {
                 eventId: event.id.slice(0, 8),
                 kind: event.kind,
                 error: parseError,
@@ -1437,7 +1469,7 @@ function ExplorePageContent() {
             typeof repoData !== "object" ||
             !repoData.repositoryName
           ) {
-            console.warn("⚠️ [Explore] Skipping event with invalid repoData:", {
+            exploreDebug("⚠️ [Explore] Skipping event with invalid repoData:", {
               eventId: event.id.slice(0, 8),
               hasRepoData: !!repoData,
               hasRepositoryName: !!repoData?.repositoryName,
@@ -1448,7 +1480,7 @@ function ExplorePageContent() {
           // Foreign clients sometimes announce storage paths ("<hex>/name")
           // as the d tag — those can never resolve on gittr, so don't list.
           if (!isRenderableRepoName(repoData.repositoryName)) {
-            console.warn(
+            exploreDebug(
               "⚠️ [Explore] Skipping repo with unrenderable identifier:",
               {
                 eventId: event.id.slice(0, 8),
@@ -1580,12 +1612,10 @@ function ExplorePageContent() {
           });
 
           // Session catalog (grows past localStorage quota)
-          const existingRepos = [...readExploreCatalog()];
+          const existingRepos = readExploreCatalog();
 
           // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
-          const deletedRepos = JSON.parse(
-            localStorage.getItem("gittr_deleted_repos") || "[]"
-          ) as Array<{ entity: string; repo: string; deletedAt: number }>;
+          const deletedRepos = deletedReposList;
           // CRITICAL: Use npub format for entity (GRASP protocol standard)
           const entity = nip19.npubEncode(event.pubkey);
           const repoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
@@ -1739,7 +1769,7 @@ function ExplorePageContent() {
                 | "contributor"
                 | undefined,
             }));
-            console.log(
+            exploreDebug(
               `📋 [Explore] Extracted ${contributors.length} contributors from "p" tags`
             );
           }
@@ -1763,7 +1793,7 @@ function ExplorePageContent() {
                 contributors.push(contentContributor);
               }
             }
-            console.log(
+            exploreDebug(
               `📋 [Explore] Merged ${repoData.contributors.length} contributors from JSON content`
             );
           }
@@ -2085,7 +2115,7 @@ function ExplorePageContent() {
       onExploreEvent,
       undefined,
       (relayInfo, minCreatedAt) => {
-        // nostr-relaypool passes (relay, minCreatedAt); relay may be a URL string or { url }.
+        if (!alive) return;
         const relayUrl =
           typeof relayInfo === "string"
             ? relayInfo
@@ -2095,49 +2125,15 @@ function ExplorePageContent() {
               typeof (relayInfo as { url: string }).url === "string"
             ? (relayInfo as { url: string }).url
             : "";
-        // CRITICAL: After EOSE, process the latest NIP-34 event for each repo
-        // This ensures we use the most recent version of replaceable events
-        if (nip34EventsByRepo.size > 0) {
-          console.log(
-            `📡 [Explore] EOSE from ${
-              relayUrl || String(relayInfo)
-            } - processing latest NIP-34 events for ${
-              nip34EventsByRepo.size
-            } repos`
+        const relayName = relayUrl || String(relayInfo ?? "unknown");
+        if (exploreDebugEnabled() && nip34EventsByRepo.size > 0) {
+          exploreDebug(
+            `📡 [Explore] EOSE from ${relayName} — ${nip34EventsByRepo.size} NIP-34 repo key(s) this wave`
           );
-
-          nip34EventsByRepo.forEach((eventList, repoKey) => {
-            if (eventList.length > 1) {
-              // Sort by created_at descending (latest first)
-              eventList.sort(
-                (a, b) => (b.event.created_at || 0) - (a.event.created_at || 0)
-              );
-              const latestEvent = eventList[0];
-              if (latestEvent && latestEvent.event) {
-                console.log(
-                  `✅ [Explore] Found ${
-                    eventList.length
-                  } NIP-34 events for ${repoKey} - using latest: id=${latestEvent.event.id.slice(
-                    0,
-                    8
-                  )}..., created_at=${latestEvent.event.created_at} (${new Date(
-                    latestEvent.event.created_at * 1000
-                  ).toISOString()})`
-                );
-              }
-
-              // Re-process the latest event to ensure it's stored
-              // The event callback above already processed it, but we want to make sure we're using the latest
-              // This is handled by checking created_at when storing, but we log it here for debugging
-            }
-          });
-
-          // Clear the map after processing (events are already stored)
           nip34EventsByRepo.clear();
         }
 
-        const relayName = relayUrl || String(relayInfo ?? "unknown");
-        console.log(
+        exploreDebug(
           "✅ [Explore] EOSE from relay:",
           relayName,
           "minCreatedAt:",
@@ -2149,45 +2145,44 @@ function ExplorePageContent() {
           eoseReceived.add(nk);
           if (graspRelayNorms.has(nk)) {
             graspRelaysReceived.add(nk);
-            console.log("🎯 [Explore] GRASP relay responded:", relayUrl);
+            exploreDebug("🎯 [Explore] GRASP relay responded:", relayUrl);
           }
         }
 
-        // Log summary after EOSE
-        const allRepos = readExploreCatalog();
-        const foreignRepos = pubkey
-          ? allRepos.filter(
-              (r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey
-            )
-          : allRepos;
-        const ownRepos = pubkey
-          ? allRepos.filter((r: any) => r.ownerPubkey === pubkey)
-          : [];
+        if (exploreDebugEnabled()) {
+          const allRepos = readExploreCatalog();
+          const foreignRepos = pubkey
+            ? allRepos.filter(
+                (r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey
+              )
+            : allRepos;
+          const ownRepos = pubkey
+            ? allRepos.filter((r: any) => r.ownerPubkey === pubkey)
+            : [];
+          exploreDebug("📊 [Explore] Summary after EOSE:", {
+            relay: relayName,
+            totalRepos: allRepos.length,
+            foreignRepos: foreignRepos.length,
+            ownRepos: ownRepos.length,
+            currentUserPubkey: pubkey ? pubkey.slice(0, 8) : "none",
+            fromNostr: foreignRepos.length > 0 ? "✅" : "❌",
+            eoseCount: eoseReceived.size,
+            graspRelaysReceived: graspRelaysReceived.size,
+            sampleForeignRepos: foreignRepos.slice(0, 3).map((r: any) => ({
+              owner: r.ownerPubkey?.slice(0, 8),
+              repo: r.repo || r.slug || r.name,
+            })),
+          });
+        }
 
-        console.log("📊 [Explore] Summary after EOSE:", {
-          relay: relayName,
-          totalRepos: allRepos.length,
-          foreignRepos: foreignRepos.length,
-          ownRepos: ownRepos.length,
-          currentUserPubkey: pubkey ? pubkey.slice(0, 8) : "none",
-          fromNostr: foreignRepos.length > 0 ? "✅" : "❌",
-          eoseCount: eoseReceived.size,
-          graspRelaysReceived: graspRelaysReceived.size,
-          // Show sample of foreign repos
-          sampleForeignRepos: foreignRepos.slice(0, 3).map((r: any) => ({
-            owner: r.ownerPubkey?.slice(0, 8),
-            repo: r.repo || r.slug || r.name,
-          })),
-        });
-
-        // Check if we should stop syncing
         checkShouldStopSyncing();
       }
     );
 
     if (deferredRelays.length > 0) {
       const socialTimer = setTimeout(() => {
-        console.log(
+        if (!alive) return;
+        exploreDebug(
           "📡 [Explore] Opening social relays after discovery sockets:",
           deferredRelays
         );
@@ -2197,6 +2192,7 @@ function ExplorePageContent() {
     }
 
     return () => {
+      alive = false;
       if (unsub) unsub();
       for (const extra of extraUnsubs) {
         try {
@@ -2299,7 +2295,7 @@ function ExplorePageContent() {
     const result = sorted.filter((r) => {
       // CRITICAL: Exclude repos with "gittr.space" entity FIRST (corrupted repos)
       if (r.entity === "gittr.space") {
-        console.log(
+        exploreDebug(
           "❌ [Explore] Filtering out corrupted repo with entity 'gittr.space':",
           {
             repo: r.slug || r.repo,
@@ -2312,7 +2308,7 @@ function ExplorePageContent() {
       // CRITICAL: Entity must be npub format (starts with "npub")
       // Domain names are NOT valid entities
       if (r.entity && !r.entity.startsWith("npub")) {
-        console.log(
+        exploreDebug(
           "❌ [Explore] Filtering out repo with invalid entity format (not npub):",
           {
             repo: r.slug || r.repo,
@@ -2369,7 +2365,7 @@ function ExplorePageContent() {
           // Entity should have been derived in sorted useMemo - if not, skip this repo
           // (it will be fixed on next repos update, but we shouldn't mutate here)
           const derivedEntity = nip19.npubEncode(r.ownerPubkey);
-          console.log(
+          exploreDebug(
             "🔧 [Explore] Repo missing entity (should be fixed in sorted):",
             {
               repo: r.slug || r.repo,
@@ -2380,7 +2376,7 @@ function ExplorePageContent() {
           // Still allow it through - sorted should have fixed it
         } else {
           // No ownerPubkey - can't display this repo
-          console.warn(
+          exploreDebug(
             "⚠️ [Explore] Filtered out repo (no entity, no ownerPubkey):",
             {
               slug: r.slug,
@@ -2418,7 +2414,7 @@ function ExplorePageContent() {
           (userFilter.length >= 4 &&
             entity.toLowerCase().startsWith(userFilter.toLowerCase()));
         if (!matches) {
-          console.log(
+          exploreDebug(
             "🔍 [Explore] Filtered out repo (user filter):",
             r.slug || r.repo || r.name
           );
@@ -2525,7 +2521,7 @@ function ExplorePageContent() {
           // Replace with newer version
           const index = deduplicated.indexOf(existing);
           if (index >= 0) {
-            console.log(
+            exploreDebug(
               `🔄 [Explore] Replacing duplicate repo with newer version:`,
               {
                 repo: r.repo || r.slug,
@@ -2541,7 +2537,7 @@ function ExplorePageContent() {
           }
         } else {
           // Keep existing (it's newer or same)
-          console.log(
+          exploreDebug(
             `⏭️ [Explore] Keeping existing duplicate (newer or same):`,
             {
               repo: r.repo || r.slug,
@@ -2555,7 +2551,7 @@ function ExplorePageContent() {
     });
 
     if (deduplicated.length < result.length) {
-      console.log(
+      exploreDebug(
         `🔍 [Explore] Deduplicated repos: ${result.length} -> ${
           deduplicated.length
         } (removed ${result.length - deduplicated.length} duplicates)`
