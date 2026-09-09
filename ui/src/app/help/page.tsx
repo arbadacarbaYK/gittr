@@ -2011,9 +2011,12 @@ export default function HelpPage() {
               </p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm text-gray-300">
                 <li>
-                  <strong>Optional UI:</strong> Settings → SSH Keys. Kind 52 is
-                  signed with NIP-07, Amber / NIP-46 (bunker), or nsec — not
-                  only a browser extension.
+                  <strong>Optional UI:</strong> Settings → SSH Keys → Add Key
+                  (paste form under the button). Kind 52 is signed with NIP-07,
+                  Amber / NIP-46 (bunker), or nsec — approve the prompt.
+                  In-browser generate is off; use{" "}
+                  <code className="bg-gray-800 px-1 rounded">ssh-keygen</code>
+                  locally.
                 </li>
                 <li>
                   <strong>CLI, no UI:</strong>{" "}

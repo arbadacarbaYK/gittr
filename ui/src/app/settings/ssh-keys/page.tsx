@@ -9,19 +9,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_SSH_KEY, createSSHKeyEvent } from "@/lib/nostr/events";
+import { KIND_SSH_KEY } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import {
-  formatDate24h,
-  formatDateTime24h,
-  formatTime24h,
-} from "@/lib/utils/date-format";
+  formatSshKeyContent,
+  parseSshPublicKeyLine,
+  sshKeyBody,
+  sshKeyFingerprintHint,
+} from "@/lib/ssh/openssh-public-key";
+import { formatDateTime24h } from "@/lib/utils/date-format";
 
 import {
   AlertCircle,
@@ -35,7 +36,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { type Event as NostrEvent, getEventHash, signEvent } from "nostr-tools";
+import { getEventHash } from "nostr-tools";
 
 interface SSHKey {
   id: string;
@@ -45,13 +46,6 @@ interface SSHKey {
   fingerprint?: string;
   createdAt: number;
   lastUsed?: number;
-}
-
-/** Normalize OpenSSH pubkey line for dedupe (type + key body). */
-function sshKeyBody(publicKey: string): string {
-  const parts = publicKey.trim().split(/\s+/);
-  if (parts.length < 2) return publicKey.trim();
-  return `${parts[0]} ${parts[1]}`;
 }
 
 function sshKeyFromEvent(
@@ -67,21 +61,12 @@ function sshKeyFromEvent(
 ): SSHKey | null {
   const tryParseLine = (line: string): SSHKey | null => {
     const content = line.trim();
-    const parts = content.split(/\s+/);
-    if (parts.length < 2) return null;
-    const keyType = parts[0] || "";
-    const validKeyTypes = [
-      "ssh-rsa",
-      "ssh-ed25519",
-      "ecdsa-sha2-nistp256",
-      "ecdsa-sha2-nistp384",
-      "ecdsa-sha2-nistp521",
-    ];
-    if (!keyType || !validKeyTypes.includes(keyType)) return null;
+    const parsed = parseSshPublicKeyLine(content);
+    if (!parsed) return null;
     return {
       id: event.id,
-      title: parts.slice(2).join(" ") || `key-${event.id.slice(0, 8)}`,
-      keyType,
+      title: parsed.comment || `key-${event.id.slice(0, 8)}`,
+      keyType: parsed.keyType,
       publicKey: content,
       fingerprint: fingerprintFn(content),
       createdAt: (event.created_at || 0) * 1000,
@@ -170,6 +155,8 @@ export default function SSHKeysPage() {
   const [keyTitle, setKeyTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
+  const [addingKey, setAddingKey] = useState(false);
+  const addFormRef = useRef<HTMLDivElement | null>(null);
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState<string | null>(
     null
   );
@@ -188,13 +175,14 @@ export default function SSHKeysPage() {
   // Store popup check interval ID to clear it when message is received
   const popupCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const calculateFingerprint = useCallback((publicKey: string): string => {
-    // Simple fingerprint: first/last of key body (full ssh-keygen md5 needs crypto)
-    const parts = publicKey.trim().split(/\s+/);
-    const body = parts[1] || publicKey;
-    if (body.length < 16) return body;
-    return `${body.slice(0, 8)}…${body.slice(-8)}`;
-  }, []);
+  useEffect(() => {
+    if (!showAddForm) return;
+    addFormRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+    document.getElementById("public-key")?.focus();
+  }, [showAddForm]);
 
   // Load SSH keys from relays (kind 52) + localStorage cache
   const loadKeys = useCallback(async () => {
@@ -243,7 +231,7 @@ export default function SSHKeysPage() {
             (event) => {
               if (event.kind !== KIND_SSH_KEY) return;
               if (event.pubkey?.toLowerCase() !== pubkey.toLowerCase()) return;
-              const parsed = sshKeyFromEvent(event, calculateFingerprint);
+              const parsed = sshKeyFromEvent(event, sshKeyFingerprintHint);
               if (parsed) {
                 collected.set(parsed.id, parsed);
                 // Event may arrive after empty git-relay EOSEs — finish once
@@ -281,7 +269,7 @@ export default function SSHKeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [pubkey, subscribe, defaultRelays, calculateFingerprint]);
+  }, [pubkey, subscribe, defaultRelays]);
 
   useEffect(() => {
     setMounted(true);
@@ -654,155 +642,104 @@ export default function SSHKeysPage() {
     }
 
     setError(null);
-    setStatus("Adding SSH key...");
+    setAddingKey(true);
+    setStatus(
+      remoteSigner?.getSession() ? "Waiting for signer…" : "Adding SSH key..."
+    );
 
     try {
-      // Validate SSH key format
-      const keyParts = publicKeyInput.trim().split(/\s+/);
-      if (keyParts.length < 2 || !keyParts[0]) {
-        throw new Error(
-          "Invalid SSH key format. Expected: <key-type> <public-key> [title]"
-        );
-      }
+      const { keyType, keyContent, title } = formatSshKeyContent(
+        publicKeyInput,
+        {
+          title: keyTitle,
+          fallbackTitle: `gittr-space-${Date.now()}`,
+        }
+      );
 
-      const validKeyTypes = [
-        "ssh-rsa",
-        "ssh-ed25519",
-        "ecdsa-sha2-nistp256",
-        "ecdsa-sha2-nistp384",
-        "ecdsa-sha2-nistp521",
-      ];
-      const keyType = keyParts[0];
-      if (!validKeyTypes.includes(keyType)) {
-        throw new Error(
-          `Invalid key type: ${keyType}. Supported: ${validKeyTypes.join(", ")}`
-        );
-      }
-
-      // Get private key for signing
-      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      const signingCreds = await resolveSigningCredentials({
+        remoteSigner,
+        maxWaitMs: 30_000,
+      });
       if (!signingCreds) {
-        alert(NO_SIGNING_METHOD_MESSAGE);
+        setError(NO_SIGNING_METHOD_MESSAGE);
+        setStatus("");
         return;
       }
-      const { hasNip07, privateKey } = signingCreds;
-      let signerPubkey = pubkey;
+      const { signer } = signingCreds;
+      const signerPubkey = await signer.getPublicKey();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let sshKeyEvent: any = {
+        kind: KIND_SSH_KEY,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [],
+        content: keyContent,
+        pubkey: signerPubkey,
+        id: "",
+        sig: "",
+      };
+      sshKeyEvent.id = getEventHash(sshKeyEvent);
+      sshKeyEvent = await signer.signEvent(sshKeyEvent);
 
-      if (hasNip07 && window.nostr) {
-        try {
-          const pubkeyFromNip07 = await window.nostr.getPublicKey();
-          signerPubkey = pubkeyFromNip07;
-        } catch (err) {
-          console.warn("NIP-07 failed:", err);
-        }
-      }
+      const publishRelays = relaysForSshKeys(defaultRelays);
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      void publish(sshKeyEvent, publishRelays);
 
-      // Prepare key content with title
-      let keyContent = publicKeyInput.trim();
-      if (keyTitle && !keyParts[2]) {
-        keyContent = `${keyParts[0]} ${keyParts[1]} ${keyTitle}`;
-      } else if (!keyTitle && !keyParts[2]) {
-        keyContent = `${keyParts[0]} ${keyParts[1]} gittr-space-${Date.now()}`;
-      }
-
-      // Create SSH key event
-      let sshKeyEvent: any;
-      if (hasNip07 && window.nostr) {
-        // Use NIP-07
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const unsignedEvent: any = {
-          kind: KIND_SSH_KEY,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [],
-          content: keyContent,
-          pubkey: signerPubkey,
-          id: "",
-          sig: "",
-        };
-        unsignedEvent.id = getEventHash(unsignedEvent);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        sshKeyEvent = await window.nostr.signEvent(unsignedEvent);
-      } else if (privateKey) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        sshKeyEvent = createSSHKeyEvent(
-          { publicKey: keyContent, title: keyTitle },
-          privateKey
-        );
-      } else {
-        throw new Error("No signing method available");
-      }
-
-      // Publish to Nostr relays (user relays + defaults + open relays that
-      // accept bare kind 52 — git relays often reject these events)
-      if (publish) {
-        const publishRelays = relaysForSshKeys(defaultRelays);
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        void publish(sshKeyEvent, publishRelays);
-
-        // CRITICAL: Also send SSH key event directly to bridge API for immediate processing
-        // The bridge only watches for SSH keys from users with repository permissions via relay subscription,
-        // but sending directly ensures it's processed immediately even for new users
-        try {
-          const bridgeResponse = await fetch("/api/nostr/repo/event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(sshKeyEvent),
-          });
-          if (bridgeResponse.ok) {
-            console.log(
-              `✅ [SSH Keys] SSH key event sent directly to bridge: ${sshKeyEvent.id.slice(
-                0,
-                16
-              )}...`
-            );
-          } else {
-            console.warn(
-              `⚠️ [SSH Keys] Bridge API returned ${bridgeResponse.status} for SSH key event - bridge will receive via relay subscription`
-            );
-          }
-        } catch (bridgeError: any) {
+      // Send directly to the bridge so authorized_keys updates without waiting
+      // on relays (git relays often reject bare kind 52).
+      try {
+        const bridgeResponse = await fetch("/api/nostr/repo/event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sshKeyEvent),
+        });
+        if (bridgeResponse.ok) {
+          console.log(
+            `✅ [SSH Keys] SSH key event sent directly to bridge: ${sshKeyEvent.id.slice(
+              0,
+              16
+            )}...`
+          );
+        } else {
           console.warn(
-            `⚠️ [SSH Keys] Failed to send SSH key event to bridge API (will receive via relay):`,
-            bridgeError?.message
+            `⚠️ [SSH Keys] Bridge API returned ${bridgeResponse.status} for SSH key event - bridge will receive via relay subscription`
           );
         }
-
-        // Store locally for quick access
-        const newKey: SSHKey = {
-          id: sshKeyEvent.id,
-          title: keyTitle || keyParts[2] || `gittr-space-${Date.now()}`,
-          keyType: keyType,
-          publicKey: keyContent,
-          fingerprint: calculateFingerprint(keyContent),
-          createdAt: Date.now(),
-        };
-
-        const stored = JSON.parse(
-          localStorage.getItem(`gittr_ssh_keys_${pubkey}`) || "[]"
-        );
-        stored.push(newKey);
-        localStorage.setItem(
-          `gittr_ssh_keys_${pubkey}`,
-          JSON.stringify(stored)
-        );
-
-        setKeys(stored);
-        setStatus(
-          "SSH key added successfully! Published to Nostr relays and sent to bridge. The git-nostr-bridge will process it immediately. Note: If publishing fails, some relays may not accept KIND_52 (NIP-52 conflict)."
-        );
-        setShowAddForm(false);
-        setPublicKeyInput("");
-        setKeyTitle("");
-
-        // Dispatch event
-        window.dispatchEvent(
-          new CustomEvent("gittr:ssh-key-added", { detail: newKey })
+      } catch (bridgeError: any) {
+        console.warn(
+          `⚠️ [SSH Keys] Failed to send SSH key event to bridge API (will receive via relay):`,
+          bridgeError?.message
         );
       }
+
+      const newKey: SSHKey = {
+        id: sshKeyEvent.id,
+        title,
+        keyType,
+        publicKey: keyContent,
+        fingerprint: sshKeyFingerprintHint(keyContent),
+        createdAt: Date.now(),
+      };
+
+      const stored = JSON.parse(
+        localStorage.getItem(`gittr_ssh_keys_${pubkey}`) || "[]"
+      );
+      stored.push(newKey);
+      localStorage.setItem(`gittr_ssh_keys_${pubkey}`, JSON.stringify(stored));
+
+      setKeys(stored);
+      setStatus(
+        "SSH key added successfully! Published to Nostr relays and sent to the git host. If a relay rejects kind 52, the key can still work via the direct bridge POST."
+      );
+      setShowAddForm(false);
+      setPublicKeyInput("");
+      setKeyTitle("");
+
+      window.dispatchEvent(
+        new CustomEvent("gittr:ssh-key-added", { detail: newKey })
+      );
     } catch (error: any) {
       console.error("Error adding SSH key:", error);
       let errorMsg = error.message || "Failed to add SSH key";
-      // Check if it's a relay rejection (common with KIND_52 due to NIP-52 conflict)
       if (
         errorMsg.includes("rejected") ||
         errorMsg.includes("blocked") ||
@@ -813,15 +750,17 @@ export default function SSHKeysPage() {
       }
       setError(errorMsg);
       setStatus("");
+    } finally {
+      setAddingKey(false);
     }
-  }, [pubkey, publish, defaultRelays, publicKeyInput, keyTitle]);
+  }, [pubkey, publish, defaultRelays, publicKeyInput, keyTitle, remoteSigner]);
 
   // Delete SSH key
   const handleDeleteKey = useCallback(
     async (keyId: string) => {
       if (
         !confirm(
-          "Are you sure you want to delete this SSH key? You won&apos;t be able to use it for Git operations."
+          "Are you sure you want to delete this SSH key? You won't be able to use it for Git operations."
         )
       ) {
         return;
@@ -830,94 +769,63 @@ export default function SSHKeysPage() {
       try {
         const stored = JSON.parse(
           localStorage.getItem(`gittr_ssh_keys_${pubkey}`) || "[]"
-        );
-        const keyToDelete = stored.find((k: SSHKey) => k.id === keyId);
+        ) as SSHKey[];
+        const keyToDelete = stored.find((k) => k.id === keyId);
 
         if (!keyToDelete) {
           setError("SSH key not found");
           return;
         }
 
-        // Remove from localStorage
-        const filtered = stored.filter((k: SSHKey) => k.id !== keyId);
+        let revokedOnNostr = false;
+        if (pubkey && publish && defaultRelays && defaultRelays.length > 0) {
+          const signingCreds = await resolveSigningCredentials({
+            remoteSigner,
+            maxWaitMs: 30_000,
+          });
+          if (!signingCreds) {
+            setError(NO_SIGNING_METHOD_MESSAGE);
+            return;
+          }
+          const { signer } = signingCreds;
+          const authorPubkey = await signer.getPublicKey();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let deletionEvent: any = {
+            kind: 5,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ["e", keyToDelete.id],
+              ["key", keyToDelete.publicKey],
+              ["reason", "SSH key revocation"],
+            ],
+            content: `Revoked SSH key: ${keyToDelete.title || keyToDelete.id}`,
+            pubkey: authorPubkey,
+            id: "",
+            sig: "",
+          };
+          deletionEvent.id = getEventHash(deletionEvent);
+          deletionEvent = await signer.signEvent(deletionEvent);
+          publish(deletionEvent, defaultRelays);
+          revokedOnNostr = true;
+        }
+
+        const filtered = stored.filter((k) => k.id !== keyId);
         localStorage.setItem(
           `gittr_ssh_keys_${pubkey}`,
           JSON.stringify(filtered)
         );
         setKeys(filtered);
 
-        // Publish deletion event to Nostr (NIP-09: Deletion event)
-        if (pubkey && publish && defaultRelays && defaultRelays.length > 0) {
-          try {
-            const signingCreds = await resolveSigningCredentials({
-              remoteSigner,
-            });
-            if (!signingCreds) {
-              alert(NO_SIGNING_METHOD_MESSAGE);
-              return;
-            }
-            const { hasNip07, privateKey } = signingCreds;
-            if (privateKey || hasNip07) {
-              // Create NIP-09 deletion event pointing to the SSH key event
-              // For SSH keys, we use the key's public key as the identifier
-              // Note: We'd need the original event ID to properly reference it
-              // For now, we'll create a deletion event with the key content as reference
-              const { getEventHash, signEvent, getPublicKey } = await import(
-                "nostr-tools"
-              );
-              const authorPubkey = privateKey
-                ? getPublicKey(privateKey)
-                : hasNip07
-                ? await window.nostr.getPublicKey()
-                : pubkey;
-
-              // Create deletion event (NIP-09: kind 5)
-              // Tags: [["e", eventId, relay, "deletion"]] - but we don't have the original event ID
-              // Alternative: Create a revocation event with the key content
-              const deletionEvent = {
-                kind: 5, // NIP-09: Deletion
-                created_at: Math.floor(Date.now() / 1000),
-                tags: [
-                  // Reference the SSH key by its content (if we had the event ID, we'd use ["e", eventId])
-                  // For now, we'll use a tag to indicate which key is being revoked
-                  ["key", keyToDelete.publicKey],
-                  ["reason", "SSH key revocation"],
-                ],
-                content: `Revoked SSH key: ${
-                  keyToDelete.title || keyToDelete.id
-                }`,
-                pubkey: authorPubkey,
-                id: "",
-                sig: "",
-              };
-
-              deletionEvent.id = getEventHash(deletionEvent);
-
-              if (hasNip07 && window.nostr) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-                const signedEvent = await window.nostr.signEvent(
-                  deletionEvent as any
-                );
-                publish(signedEvent, defaultRelays);
-              } else if (privateKey) {
-                deletionEvent.sig = signEvent(deletionEvent, privateKey);
-                publish(deletionEvent, defaultRelays);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to publish SSH key deletion event:", err);
-            // Continue with local deletion even if Nostr publish fails
-          }
-        }
-
-        setStatus("SSH key deleted" + (publish ? " and revoked on Nostr" : ""));
+        setStatus(
+          "SSH key deleted" + (revokedOnNostr ? " and revoked on Nostr" : "")
+        );
         setTimeout(() => setStatus(""), 3000);
       } catch (error: any) {
-        setError("Failed to delete SSH key");
+        setError(error?.message || "Failed to delete SSH key");
         console.error("Error deleting SSH key:", error);
       }
     },
-    [pubkey, publish, defaultRelays]
+    [pubkey, publish, defaultRelays, remoteSigner]
   );
 
   // Copy public key to clipboard
@@ -1026,6 +934,7 @@ export default function SSHKeysPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           <Button
+            type="button"
             onClick={() => {
               setShowAddForm(true);
               setShowGenerateForm(false);
@@ -1039,6 +948,116 @@ export default function SSHKeysPage() {
           </Button>
         </div>
       </div>
+
+      {showAddForm && (
+        <div
+          ref={addFormRef}
+          id="add-ssh-key-form"
+          className="mb-6 border border-[#383B42] rounded p-6 bg-[#171B21]"
+        >
+          <h2 className="text-lg font-semibold mb-4">Add SSH Key</h2>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="public-key">Public Key</Label>
+              <Textarea
+                id="public-key"
+                value={publicKeyInput}
+                onChange={(e) => setPublicKeyInput(e.target.value)}
+                placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... My Key"
+                rows={3}
+                className="bg-[#0E1116] border-[#383B42] text-white font-mono text-sm"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Paste your public SSH key here (from ~/.ssh/id_*.pub). Then
+                approve the Nostr signature in your extension or Amber.
+              </p>
+            </div>
+
+            {githubKeySuggestions.length > 0 && (
+              <div className="rounded border border-[#383B42] bg-[#0E1116] p-3">
+                <p className="mb-2 text-xs font-medium text-gray-300">
+                  From GitHub ({githubUsername}) — click to fill
+                </p>
+                <ul className="space-y-2">
+                  {githubKeySuggestions.map((sug, i) => {
+                    const already = keys.some(
+                      (k) => sshKeyBody(k.publicKey) === sshKeyBody(sug.key)
+                    );
+                    return (
+                      <li key={`${sug.title}-${i}`}>
+                        <button
+                          type="button"
+                          disabled={already}
+                          onClick={() => {
+                            setPublicKeyInput(sug.key);
+                            if (sug.title) setKeyTitle(sug.title);
+                          }}
+                          className="w-full rounded border border-[#383B42] px-3 py-2 text-left text-xs hover:border-purple-500/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <span className="font-mono text-gray-300">
+                            {sug.key.slice(0, 48)}…
+                          </span>
+                          {sug.title ? (
+                            <span className="mt-1 block text-gray-500">
+                              {sug.title}
+                              {already ? " (already added)" : ""}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="key-title">Key Title (optional)</Label>
+              <Input
+                id="key-title"
+                value={keyTitle}
+                onChange={(e) => setKeyTitle(e.target.value)}
+                placeholder="My Laptop Key"
+                className="bg-[#0E1116] border-[#383B42] text-white"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={handleAddKey}
+                disabled={!publicKeyInput.trim() || addingKey}
+              >
+                {addingKey ? status || "Adding…" : "Add SSH Key"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setPublicKeyInput("");
+                  setKeyTitle("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
+          {error}
+        </div>
+      )}
+
+      {status && (
+        <div className="mb-4 p-4 bg-purple-900/20 border border-purple-700 rounded text-purple-400">
+          {status}
+        </div>
+      )}
 
       {/* GitHub OAuth Section - Moved above SSH Keys */}
       <div className="mb-6 p-4 bg-[#171B21] border border-[#383B42] rounded-lg">
@@ -1199,18 +1218,6 @@ export default function SSHKeysPage() {
         )}
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
-          {error}
-        </div>
-      )}
-
-      {status && (
-        <div className="mb-4 p-4 bg-purple-900/20 border border-purple-700 rounded text-purple-400">
-          {status}
-        </div>
-      )}
-
       {/* Info box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-700 rounded text-blue-400 max-w-2xl">
         <div className="flex items-start gap-2">
@@ -1222,7 +1229,7 @@ export default function SSHKeysPage() {
                 SSH keys are for <strong>git clone/push over SSH</strong> to{" "}
                 <code className="text-xs">git.gittr.space</code> (kind 52 →
                 bridge <code className="text-xs">authorized_keys</code>). They
-                are <strong>not</strong> related to GitHub OAuth below.
+                are <strong>not</strong> related to GitHub OAuth on this page.
               </li>
               <li>
                 This page lists kind-52 events from your relays (plus a local
@@ -1284,6 +1291,7 @@ export default function SSHKeysPage() {
             via <strong>Add Key</strong>.
           </p>
           <Button
+            type="button"
             variant="outline"
             onClick={() => {
               setShowGenerateForm(false);
@@ -1292,95 +1300,6 @@ export default function SSHKeysPage() {
           >
             Add Key instead
           </Button>
-        </div>
-      )}
-
-      {/* Add Key Form */}
-      {showAddForm && (
-        <div className="mb-6 border border-[#383B42] rounded p-6 bg-[#171B21]">
-          <h2 className="text-lg font-semibold mb-4">Add SSH Key</h2>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="public-key">Public Key</Label>
-              <Textarea
-                id="public-key"
-                value={publicKeyInput}
-                onChange={(e) => setPublicKeyInput(e.target.value)}
-                placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... My Key"
-                rows={3}
-                className="bg-[#0E1116] border-[#383B42] text-white font-mono text-sm"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Paste your public SSH key here (from ~/.ssh/id_*.pub)
-              </p>
-            </div>
-
-            {githubKeySuggestions.length > 0 && (
-              <div className="rounded border border-[#383B42] bg-[#0E1116] p-3">
-                <p className="mb-2 text-xs font-medium text-gray-300">
-                  From GitHub ({githubUsername}) — click to fill
-                </p>
-                <ul className="space-y-2">
-                  {githubKeySuggestions.map((sug, i) => {
-                    const already = keys.some(
-                      (k) => sshKeyBody(k.publicKey) === sshKeyBody(sug.key)
-                    );
-                    return (
-                      <li key={`${sug.title}-${i}`}>
-                        <button
-                          type="button"
-                          disabled={already}
-                          onClick={() => {
-                            setPublicKeyInput(sug.key);
-                            if (sug.title) setKeyTitle(sug.title);
-                          }}
-                          className="w-full rounded border border-[#383B42] px-3 py-2 text-left text-xs hover:border-purple-500/60 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <span className="font-mono text-gray-300">
-                            {sug.key.slice(0, 48)}…
-                          </span>
-                          {sug.title ? (
-                            <span className="mt-1 block text-gray-500">
-                              {sug.title}
-                              {already ? " (already added)" : ""}
-                            </span>
-                          ) : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-
-            <div>
-              <Label htmlFor="key-title">Key Title (optional)</Label>
-              <Input
-                id="key-title"
-                value={keyTitle}
-                onChange={(e) => setKeyTitle(e.target.value)}
-                placeholder="My Laptop Key"
-                className="bg-[#0E1116] border-[#383B42] text-white"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={handleAddKey} disabled={!publicKeyInput.trim()}>
-                Add SSH Key
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowAddForm(false);
-                  setPublicKeyInput("");
-                  setKeyTitle("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 

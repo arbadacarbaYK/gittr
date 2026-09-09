@@ -70,22 +70,19 @@ export function SSHGitHelp({
                 Go to <strong>Settings → SSH Keys</strong>
               </li>
               <li>
-                Either:
-                <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
-                  <li>
-                    <strong>Generate new key</strong>: Download private key,
-                    save to{" "}
-                    <code className="bg-gray-800 px-1 rounded">
-                      ~/.ssh/id_ed25519
-                    </code>
-                  </li>
-                  <li>
-                    <strong>Add existing key</strong>: Paste public key from{" "}
-                    <code className="bg-gray-800 px-1 rounded">
-                      ~/.ssh/id_*.pub
-                    </code>
-                  </li>
-                </ul>
+                Click <strong>Add Key</strong> — the paste form opens under the
+                button
+              </li>
+              <li>
+                Paste your public key from{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  ~/.ssh/id_*.pub
+                </code>{" "}
+                (create one with{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  ssh-keygen -t ed25519
+                </code>
+                ), then approve the Nostr signature in your extension or Amber
               </li>
             </ol>
           </div>

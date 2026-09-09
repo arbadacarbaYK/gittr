@@ -33,7 +33,7 @@ Publish a kind **52** event (SSH public key tag) to the same relays the bridge u
 
 #### Option 3: gittr.space
 
-**Settings → SSH Keys** — generate or paste a public key. The page **signs kind 52** with **NIP-07**, **NIP-46 remote signer (Amber / bunker)**, or nsec, then publishes to relays and POSTs to the bridge. Git-oriented relays may reject bare kind-52 events; the bridge POST still enables SSH. The Settings UI also queries general relays (`relay.damus.io`, `nos.lol`) so the key list does not look empty.
+**Settings → SSH Keys** — **Add Key** opens the paste form under the button. Paste a public key from `~/.ssh/id_*.pub` (generate with `ssh-keygen` on your machine; in-browser generate is disabled). The page **signs kind 52** with **NIP-07**, **NIP-46 remote signer (Amber / bunker)**, or nsec — approve the signer prompt — then publishes to relays and POSTs to the bridge. Git-oriented relays may reject bare kind-52 events; the bridge POST still enables SSH. The Settings UI also queries general relays (`relay.damus.io`, `nos.lol`) so the key list does not look empty.
 
 **Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events. If publishing fails, try a different relay (relay.damus.io, nos.lol typically work).
 

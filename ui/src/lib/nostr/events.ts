@@ -3,6 +3,7 @@ import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-qu
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
 import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
+import { formatSshKeyContent } from "@/lib/ssh/openssh-public-key";
 
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
 
@@ -1454,38 +1455,10 @@ export function createSSHKeyEvent(
 ): any {
   const pubkey = getPublicKey(privateKey);
 
-  // Validate SSH key format
-  const keyParts = sshKey.publicKey.trim().split(/\s+/);
-  if (keyParts.length < 2 || !keyParts[0]) {
-    throw new Error(
-      "Invalid SSH key format. Expected: <key-type> <public-key> [title]"
-    );
-  }
-
-  // Ensure key type is valid
-  const keyType = keyParts[0];
-  const validKeyTypes = [
-    "ssh-rsa",
-    "ssh-ed25519",
-    "ecdsa-sha2-nistp256",
-    "ecdsa-sha2-nistp384",
-    "ecdsa-sha2-nistp521",
-  ];
-  if (!validKeyTypes.includes(keyType)) {
-    throw new Error(
-      `Invalid key type: ${keyType}. Supported: ${validKeyTypes.join(", ")}`
-    );
-  }
-
-  // If title is provided and not in key, append it; otherwise use existing title
-  let keyContent = sshKey.publicKey.trim();
-  const publicKeyData = keyParts[1] || "";
-  if (sshKey.title && !keyParts[2]) {
-    keyContent = `${keyType} ${publicKeyData} ${sshKey.title}`;
-  } else if (!sshKey.title && !keyParts[2]) {
-    // Default title if none provided
-    keyContent = `${keyType} ${publicKeyData} gittr-${Date.now()}`;
-  }
+  const { keyContent } = formatSshKeyContent(sshKey.publicKey, {
+    title: sshKey.title,
+    fallbackTitle: `gittr-${Date.now()}`,
+  });
 
   const event = {
     kind: KIND_SSH_KEY,
