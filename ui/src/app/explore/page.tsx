@@ -972,12 +972,19 @@ function ExplorePageContent() {
         (peekExploreSessionCatalog() as Repo[] | null);
       // Prefer the larger session catalog when quota blocked persist — otherwise
       // every loadRepos() after a failed save snapped UI back to ~180 rows.
-      const list =
+      const rawList =
         mem && mem.length > fromLs.length
           ? mem
           : ((exploreCatalogRef.current = fromLs),
             writeExploreSessionCatalog(fromLs),
             fromLs);
+      const list = rawList.filter((r) =>
+        isRenderableRepoName(r.repo || r.slug || r.name)
+      );
+      if (list.length !== rawList.length) {
+        exploreCatalogRef.current = list;
+        writeExploreSessionCatalog(list);
+      }
 
       exploreDebug("🔍 [Explore] loadRepos - after loadStoredRepos:", {
         loadedCount: fromLs.length,
@@ -1036,12 +1043,12 @@ function ExplorePageContent() {
       if (!seed.length) return;
       try {
         const existing = readExploreCatalog() as any[];
-        const { list, added } = mergeExploreSeedIntoCatalog(
+        const { list, added, updated, removed } = mergeExploreSeedIntoCatalog(
           existing,
           seed,
           EXPLORE_SEED_CACHE_CAP
         );
-        if (added > 0 && !cancelled) {
+        if ((added > 0 || updated > 0 || removed > 0) && !cancelled) {
           const saved = commitExploreCatalog(list as Repo[], {
             immediate: true,
           });
@@ -1051,7 +1058,7 @@ function ExplorePageContent() {
             );
           }
           exploreDebug(
-            `🌱 [Explore] Seeded ${added} repos (cache now ${list.length})`
+            `🌱 [Explore] Seeded +${added} ~${updated} -${removed} (cache now ${list.length})`
           );
         }
       } catch (e) {

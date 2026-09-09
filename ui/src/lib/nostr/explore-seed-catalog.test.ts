@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  EXPLORE_SEED_SKIP_IF_SEO_ROWS,
   mergeExploreSeedIntoCatalog,
   seoSeedRowCount,
   shouldFetchExploreSeed,
@@ -17,16 +16,13 @@ describe("shouldFetchExploreSeed", () => {
     expect(shouldFetchExploreSeed(locals)).toBe(true);
   });
 
-  it("skips only after the SEO snapshot is already in the catalog", () => {
-    const seeded = Array.from(
-      { length: EXPLORE_SEED_SKIP_IF_SEO_ROWS },
-      (_, i) => ({
-        entity: "npub1seo",
-        repo: `snap-${i}`,
-        fromSeoSnapshot: true,
-      })
-    );
-    expect(shouldFetchExploreSeed(seeded)).toBe(false);
+  it("still fetches a large already-seeded catalog so timestamps and deletions reconcile", () => {
+    const seeded = Array.from({ length: 2000 }, (_, i) => ({
+      entity: "npub1seo",
+      repo: `snap-${i}`,
+      fromSeoSnapshot: true,
+    }));
+    expect(shouldFetchExploreSeed(seeded)).toBe(true);
   });
 });
 
@@ -81,5 +77,99 @@ describe("mergeExploreSeedIntoCatalog", () => {
     const extra = list.find((r) => r.repo === "pushed-only");
     expect(extra?.createdAt).toBeUndefined();
     expect(extra?.lastNostrEventCreatedAt).toBeUndefined();
+  });
+
+  it("replaces fake newest stamps on existing snapshot rows", () => {
+    const poisoned = 1_788_980_000_000;
+    const real = 1_700_000_000_000;
+    const { list, added, updated } = mergeExploreSeedIntoCatalog(
+      [
+        {
+          entity: "npub1aaa",
+          repo: "adventofcode-2025",
+          createdAt: poisoned,
+          lastNostrEventCreatedAt: Math.floor(poisoned / 1000),
+          fromSeoSnapshot: true,
+        },
+      ],
+      [
+        {
+          entity: "npub1aaa",
+          repo: "adventofcode-2025",
+          ownerPubkey: "aa".repeat(32),
+          lastActivity: real,
+        },
+      ]
+    );
+    expect(added).toBe(0);
+    expect(updated).toBe(1);
+    const row = list.find((r) => r.repo === "adventofcode-2025");
+    expect(row?.createdAt).toBe(real);
+    expect(row?.lastNostrEventCreatedAt).toBe(Math.floor(real / 1000));
+  });
+
+  it("drops snapshot-only rows that left the SEO file, keeps locals and live Nostr", () => {
+    const hex =
+      "7da083932c0e21087669074509b4e169b7ad9925c7a01c3fd3bd3dd0034d1336";
+    const { list, added, removed } = mergeExploreSeedIntoCatalog(
+      [
+        {
+          entity: "npub1aaa",
+          repo: "deleted-repo",
+          fromSeoSnapshot: true,
+        },
+        {
+          entity: "npub1aaa",
+          repo: hex,
+          fromSeoSnapshot: true,
+        },
+        { entity: "npub1local", repo: "bridge-only" },
+        {
+          entity: "npub1ccc",
+          repo: "live-only",
+          syncedFromNostr: true,
+        },
+      ],
+      [
+        {
+          entity: "npub1bbb",
+          repo: "iris-drive",
+          ownerPubkey: "bb".repeat(32),
+          lastActivity: 9,
+        },
+      ]
+    );
+    expect(added).toBe(1);
+    expect(removed).toBe(1);
+    expect(list.map((r) => r.repo).sort()).toEqual([
+      "bridge-only",
+      "iris-drive",
+      "live-only",
+    ]);
+  });
+
+  it("does not overwrite live Nostr timestamps with the snapshot", () => {
+    const { list, updated } = mergeExploreSeedIntoCatalog(
+      [
+        {
+          entity: "npub1aaa",
+          repo: "gittr",
+          createdAt: 9_000,
+          lastNostrEventCreatedAt: 9,
+          syncedFromNostr: true,
+          fromSeoSnapshot: true,
+        },
+      ],
+      [
+        {
+          entity: "npub1aaa",
+          repo: "gittr",
+          ownerPubkey: "aa".repeat(32),
+          lastActivity: 1,
+        },
+      ]
+    );
+    expect(updated).toBe(0);
+    expect(list[0]?.lastNostrEventCreatedAt).toBe(9);
   });
 });

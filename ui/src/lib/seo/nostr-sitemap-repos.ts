@@ -224,22 +224,26 @@ export async function fetchSitemapRepoPathsFromNostr(
     }
   };
 
-  return Promise.race([
-    run(),
-    new Promise<Map<string, number>>((resolve) => {
-      setTimeout(() => {
-        try {
-          pool.close(relays);
-        } catch {
-          /* ignore */
-        }
-        console.warn(
-          `[sitemap] Nostr repo index hard-capped after ${hardCapMs}ms`
-        );
-        resolve(new Map());
-      }, hardCapMs);
-    }),
-  ]);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<Map<string, number>>((resolve) => {
+    timeoutId = setTimeout(() => {
+      try {
+        pool.close(relays);
+      } catch {
+        /* ignore */
+      }
+      console.warn(
+        `[sitemap] Nostr repo index hard-capped after ${hardCapMs}ms`
+      );
+      resolve(new Map());
+    }, hardCapMs);
+  });
+
+  try {
+    return await Promise.race([run(), timedOut]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 /** Daily / manual SEO index: longer timeout + force past SITEMAP_SKIP_NOSTR. */
