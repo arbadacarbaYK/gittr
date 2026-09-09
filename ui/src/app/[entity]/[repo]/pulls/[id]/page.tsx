@@ -537,7 +537,7 @@ export default function PRDetailPage({
     };
   }, [subscribe, defaultRelays, prEventId]);
 
-  // NIP-34 content is markdown only; GitHub/Gitea sync stores metadata only.
+  // Description is markdown; file list comes from git (clone/c) or GitHub files API.
   useEffect(() => {
     if (!pr) return;
     if ((pr.changedFiles && pr.changedFiles.length > 0) || pr.path) {
@@ -2571,8 +2571,8 @@ export default function PRDetailPage({
               </h3>
               {loadingRemoteDiffs && !hasChanges && (
                 <p className="text-sm text-gray-400">
-                  Fetching the patch from git or GitHub. NIP-34 PRs do not embed
-                  file bodies in the event.
+                  Fetching the diff from git (the PR’s clone and commit tags),
+                  or from GitHub when this row is a forge import.
                 </p>
               )}
               {remoteDiffError && !hasChanges && (
@@ -2588,8 +2588,7 @@ export default function PRDetailPage({
                   (f) => f.diffPreview || prDiffLooksLikeUnifiedPatch(f.after)
                 ) && (
                   <p className="text-xs text-gray-500 mb-3">
-                    Patch preview from git or GitHub (the Nostr event is
-                    description text only).
+                    Patch preview from GitHub’s files API.
                   </p>
                 )}
               {hasChanges &&

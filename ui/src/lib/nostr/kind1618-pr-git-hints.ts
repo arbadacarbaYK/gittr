@@ -35,7 +35,7 @@ function firstTagValue(tags: unknown[] | undefined, name: string): string {
   return "";
 }
 
-/** Pull git fetch hints off a kind 1618 / 1619 event (content is markdown only). */
+/** Pull git fetch hints off a kind 1618 / 1619 event. */
 export function parseKind1618PrGitHints(
   tags: unknown[] | undefined | null
 ): Kind1618PrGitHints {
