@@ -593,8 +593,10 @@ export default function RelaysPage() {
         {nip65Expanded && (
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
-              Your preferred relays on Nostr (kind 10002). Status shows whether
-              this browser is connected. Changes are saved with your signer.
+              Your preferred relays on Nostr (kind 10002). gittr.space only
+              opens public relays in this browser — home, .local, and Tailscale
+              addresses stay on your list for other clients, but would otherwise
+              make Chrome ask to reach devices on your local network.
             </p>
 
             {!pubkey ? (

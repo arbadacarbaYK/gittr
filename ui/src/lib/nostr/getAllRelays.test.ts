@@ -33,4 +33,21 @@ describe("getAllRelays", () => {
       "wss://relay.example.com",
     ]);
   });
+
+  it("drops LAN/Tailscale NIP-65 relays on gittr.space", () => {
+    vi.stubGlobal("window", {
+      location: { hostname: "gittr.space" },
+    });
+    localStorage.setItem(
+      NIP65_RELAY_CACHE_KEY,
+      JSON.stringify([
+        { url: "wss://relay.example.com/" },
+        { url: "wss://umbrel.local:4848/" },
+      ])
+    );
+    expect(getAllRelays(["wss://relay.gittr.space"])).toEqual([
+      "wss://relay.gittr.space",
+      "wss://relay.example.com",
+    ]);
+  });
 });

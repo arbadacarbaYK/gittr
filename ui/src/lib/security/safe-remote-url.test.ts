@@ -16,6 +16,8 @@ describe("hostnameLooksPrivateOrLocal", () => {
     expect(hostnameLooksPrivateOrLocal("172.16.0.1")).toBe(true);
     expect(hostnameLooksPrivateOrLocal("169.254.169.254")).toBe(true);
     expect(hostnameLooksPrivateOrLocal("nas.local")).toBe(true);
+    expect(hostnameLooksPrivateOrLocal("umbrel.tail51469b.ts.net")).toBe(true);
+    expect(hostnameLooksPrivateOrLocal("100.64.1.2")).toBe(true);
   });
 
   it("allows public hosts", () => {

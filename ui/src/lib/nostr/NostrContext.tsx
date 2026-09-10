@@ -22,6 +22,11 @@ import {
 import { nip19 } from "nostr-tools";
 
 import useLocalStorage from "../hooks/useLocalStorage";
+import {
+  filterPrivateNetworkRelaysForPublicSite,
+  shouldFilterPrivateRelaysInBrowser,
+  urlLooksPrivateOrLocal,
+} from "../security/private-network-host";
 
 import {
   collectBlockedRelayPoolUrls,
@@ -42,6 +47,32 @@ import {
   hasStoredRemoteSignerSession,
   resolveNostrSigner,
 } from "./signer";
+
+const skippedPrivateRelays = new Set<string>();
+
+function noteSkippedPrivateRelay(url: string): void {
+  const key = url.trim().toLowerCase();
+  if (skippedPrivateRelays.has(key)) return;
+  skippedPrivateRelays.add(key);
+  console.info(
+    `[NostrContext] Skipping local/LAN/Tailscale relay from this public site: ${url}`
+  );
+}
+
+/** Amber bunker hosts, plus LAN/Tailscale when the page is gittr.space (not localhost). */
+function filterMainPoolRelays(relays: string[]): string[] {
+  const afterBunker = filterBunkerBlockedRelays(relays);
+  if (!shouldFilterPrivateRelaysInBrowser()) return afterBunker;
+  const kept: string[] = [];
+  for (const url of afterBunker) {
+    if (urlLooksPrivateOrLocal(url)) {
+      noteSkippedPrivateRelay(url);
+      continue;
+    }
+    kept.push(url);
+  }
+  return kept;
+}
 
 declare global {
   interface Window {
@@ -87,6 +118,7 @@ function createMainRelayPool(): RelayPool {
     } catch {
       /* fall back to full default relay list */
     }
+    initialRelays = filterPrivateNetworkRelaysForPublicSite(initialRelays);
   }
   // SSR / `next build` must not auto-reconnect — abandoned pools spam damus/wine
   // and climb MemoryHigh on the public frontend. Browser keeps reconnect.
@@ -161,6 +193,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         // Amber/NIP-46 owns these hosts on directPool — do not steal browser slots.
         return null;
       }
+      if (shouldFilterPrivateRelaysInBrowser() && urlLooksPrivateOrLocal(url)) {
+        noteSkippedPrivateRelay(url);
+        return null;
+      }
       const relay: any = relayPool.addOrGetRelay(url);
       // Only dial when the socket is fully CLOSED (status 3). nostr-relaypool's
       // connect() replaces the WebSocket whenever readyState !== OPEN, so calling
@@ -214,7 +250,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       // nostr-relaypool disallows using maxDelayMs and onEose together.
       // Strip Amber bunker hosts — subscribe → addOrGetRelay bypasses addRelay
       // and would re-steal sockets right after freeMainPoolBunkerCollisions.
-      const safeRelays = filterBunkerBlockedRelays(relays);
+      const safeRelays = filterMainPoolRelays(relays);
       if (safeRelays.length === 0) {
         return () => {};
       }
@@ -278,7 +314,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     if (remoteSignerRef.current) return; // Already initialized
 
     const publishFn = (event: any, relays: string[]) => {
-      const safeRelays = filterBunkerBlockedRelays(relays);
+      const safeRelays = filterMainPoolRelays(relays);
       if (safeRelays.length === 0) return;
       relayPool.publish(event, safeRelays);
     };
@@ -291,8 +327,8 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       onEose?: (relayUrl: string, minCreatedAt: number) => void,
       options?: any
     ) => {
-      // Keep behavior aligned with main subscribe wrapper (strip bunker hosts).
-      const safeRelays = filterBunkerBlockedRelays(relays);
+      // Keep behavior aligned with main subscribe wrapper (strip bunker + LAN).
+      const safeRelays = filterMainPoolRelays(relays);
       if (safeRelays.length === 0) {
         return () => {};
       }
@@ -415,7 +451,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   }, [removePubKey]);
 
   const publish = useCallback((event: any, relays: string[]) => {
-    const safeRelays = filterBunkerBlockedRelays(relays);
+    const safeRelays = filterMainPoolRelays(relays);
     console.log(`📤 [NostrContext] Publishing event:`, {
       eventId: event.id,
       kind: event.kind,
@@ -430,7 +466,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     });
     if (safeRelays.length === 0) {
       console.warn(
-        "[NostrContext] Publish skipped — all relays are Amber bunker hosts"
+        "[NostrContext] Publish skipped — no public relays left (Amber bunker and/or LAN hosts stripped)"
       );
       return;
     }

@@ -6,6 +6,11 @@
  * (localhost, loopback, private LAN, *.local), hide it from discovery.
  * Announces with zero clone tags stay visible (legacy / GRASP-only).
  */
+import {
+  hostnameLooksPrivateOrLocal,
+  shouldFilterPrivateRelaysInBrowser,
+  urlLooksPrivateOrLocal,
+} from "../security/private-network-host";
 import { isGraspServer, isHexPathGitHost } from "../utils/grasp-servers";
 
 /**
@@ -48,28 +53,6 @@ export function collectCloneUrlsFromTags(
     }
   }
   return out;
-}
-
-function hostnameLooksPrivateOrLocal(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/\.$/, "");
-  if (!h) return true;
-  if (
-    h === "localhost" ||
-    h === "0.0.0.0" ||
-    h === "::1" ||
-    h.endsWith(".localhost") ||
-    h.endsWith(".local") ||
-    h.endsWith(".internal")
-  ) {
-    return true;
-  }
-  if (h === "127.0.0.1" || h.startsWith("127.")) return true;
-  // IPv4 private / link-local
-  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  return false;
 }
 
 /**
@@ -414,7 +397,11 @@ export function gitCloneUrlsForFileFetch(
   urls: string[] | undefined | null
 ): string[] {
   if (!Array.isArray(urls)) return [];
-  return urls.filter((u) => typeof u === "string" && isLikelyGitCloneUrl(u));
+  const git = urls.filter(
+    (u) => typeof u === "string" && isLikelyGitCloneUrl(u)
+  );
+  if (!shouldFilterPrivateRelaysInBrowser()) return git;
+  return git.filter((u) => !urlLooksPrivateOrLocal(u));
 }
 
 /**

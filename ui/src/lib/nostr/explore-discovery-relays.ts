@@ -10,6 +10,7 @@
  *   3. Treated websites and git HTTPS hosts (gitworkshop.dev, git.gittr.space)
  *      as wss:// relays, burning browser WebSocket slots on guaranteed failures.
  */
+import { hostnameLooksPrivateOrLocal } from "../security/private-network-host";
 import { isGraspServer } from "../utils/grasp-servers";
 
 import { NIP34_DISCOVERY_RELAYS } from "./nip34-discovery-relays";
@@ -106,14 +107,7 @@ export function isUsableExploreDiscoveryRelay(
 
   const host = hostnameFromRelayUrl(withProto);
   if (!host) return false;
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host.endsWith(".localhost") ||
-    host.endsWith(".local")
-  ) {
-    return false;
-  }
+  if (hostnameLooksPrivateOrLocal(host)) return false;
   if (hostIsAutoDialBlocked(host)) return false;
   if (!opts?.allowCustomPort && relayHasNonDefaultPort(withProto)) {
     return false;

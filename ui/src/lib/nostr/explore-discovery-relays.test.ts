@@ -26,6 +26,12 @@ describe("isUsableExploreDiscoveryRelay", () => {
     );
     expect(isUsableExploreDiscoveryRelay("wss://github.com")).toBe(false);
     expect(isUsableExploreDiscoveryRelay("wss://localhost")).toBe(false);
+    expect(isUsableExploreDiscoveryRelay("wss://umbrel.local:4848")).toBe(
+      false
+    );
+    expect(
+      isUsableExploreDiscoveryRelay("wss://umbrel.tail51469b.ts.net:4848")
+    ).toBe(false);
   });
 
   it("rejects dead GRASP sockets and /grasp git paths", () => {

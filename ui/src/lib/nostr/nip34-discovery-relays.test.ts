@@ -42,4 +42,16 @@ describe("extraNostrRelaysFromRepoRemotes", () => {
       })
     ).toEqual([]);
   });
+
+  it("does not turn home / Tailscale remotes into browser WebSockets", () => {
+    expect(
+      extraNostrRelaysFromRepoRemotes({
+        relays: [
+          "wss://umbrel.local:4848",
+          "wss://umbrel.tail51469b.ts.net:4848",
+        ],
+        clone: ["https://umbrel.local:2222/npub1abc/backstory.git"],
+      })
+    ).toEqual([]);
+  });
 });

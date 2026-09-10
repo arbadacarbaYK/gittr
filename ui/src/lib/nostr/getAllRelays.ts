@@ -4,7 +4,11 @@
  *
  * Order: platform env defaults, then NIP-65 kind 10002 (Settings → Relays,
  * cached after last fetch/save), then legacy `gittr_user_relays`.
+ * On gittr.space (public origin), LAN / Tailscale / `.local` URLs are dropped
+ * so the browser does not prompt for local-network access.
  */
+import { filterPrivateNetworkRelaysForPublicSite } from "../security/private-network-host";
+
 import { readCachedNip65RelayUrls } from "./nip65-relay-cache";
 
 function pushRelay(out: string[], seen: Set<string>, url: string): void {
@@ -51,5 +55,5 @@ export function getAllRelays(defaultRelays: string[]): string[] {
     console.warn("[getAllRelays] Failed to load user relays:", e);
   }
 
-  return out;
+  return filterPrivateNetworkRelaysForPublicSite(out);
 }

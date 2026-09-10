@@ -18,6 +18,7 @@ Implementation:
 - `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` / `git show`
 - `ui/src/lib/git/bare-repo-tree-last-commits.ts` — last-commit dates on the Code file list
 - `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar clone list (forge `source` plus every pushable GRASP host)
+- `ui/src/lib/security/private-network-host.ts` — gittr.space never dials LAN / Tailscale / `.local` as relays or clones (Chrome local-network permission)
 
 ## Timeline (Code tab)
 

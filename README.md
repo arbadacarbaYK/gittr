@@ -33,6 +33,8 @@ Timeline and details: [FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md
 
 Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nostr mirror or a path off a centralized host—not a skin on top of another forge’s login. The repo sidebar **Git Server** stays that GitHub/GitLab/Codeberg URL; gittr/ngit mirrors stay in the clone list. Clearing browser storage does not turn published repos into “Local” — the live Nostr announcement is the source of truth. Long My Repositories / Refetch / Push messages use an in-app dialog that grows with the text (the browser’s own alert box used to clip them).
 
+**If Chrome asks gittr to “access devices on your local network”:** that is the browser blocking a public website from opening sockets to home machines (Umbrel, `.local`, Tailscale). gittr.space does **not** need that permission — it was a bug (your relay list or a repo announcement listing a home address). Block it. gittr is not scanning your LAN.
+
 ## Use it for
 
 - **Mirror / backup** — Push or import a repo. Files live on the **gitnostr** bridge (`git-nostr-bridge`, and/or upstream); metadata on relays.

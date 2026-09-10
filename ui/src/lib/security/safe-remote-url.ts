@@ -1,57 +1,19 @@
 /**
  * Outbound git/HTTP URL safety for clone, import, and file-fetch APIs.
- * Blocks localhost, private LAN, link-local, and metadata hostnames.
+ * Blocks localhost, private LAN, link-local, Tailscale, and metadata hostnames.
  * Optionally resolves DNS and re-checks resolved addresses (anti-rebinding).
  */
 import { promises as dns } from "dns";
 
-const METADATA_HOSTS = new Set([
-  "metadata.google.internal",
-  "metadata.google.com",
-  "169.254.169.254",
-]);
+import {
+  hostnameLooksPrivateOrLocal,
+  isPrivateOrLocalIp,
+} from "./private-network-host";
 
-export function hostnameLooksPrivateOrLocal(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/\.$/, "");
-  if (!h) return true;
-  if (METADATA_HOSTS.has(h)) return true;
-  if (
-    h === "localhost" ||
-    h === "0.0.0.0" ||
-    h === "::1" ||
-    h === "[::1]" ||
-    h.endsWith(".localhost") ||
-    h.endsWith(".local") ||
-    h.endsWith(".internal")
-  ) {
-    return true;
-  }
-  if (h === "127.0.0.1" || h.startsWith("127.")) return true;
-  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  // IPv6 ULA / link-local (hostname may be bare or bracketed)
-  const bare = h.replace(/^\[|\]$/g, "");
-  if (/^fe80:/i.test(bare) || /^f[cd][0-9a-f]{2}:/i.test(bare)) return true;
-  return false;
-}
-
-function isPrivateOrLocalIp(ip: string): boolean {
-  const addr = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!addr) return true;
-  if (addr === "::1" || addr === "0.0.0.0") return true;
-  if (addr.startsWith("127.")) return true;
-  if (/^10\./.test(addr)) return true;
-  if (/^192\.168\./.test(addr)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(addr)) return true;
-  if (/^169\.254\./.test(addr)) return true;
-  if (/^fe80:/i.test(addr) || /^f[cd][0-9a-f]{2}:/i.test(addr)) return true;
-  // IPv4-mapped IPv6 ::ffff:127.0.0.1 etc.
-  const mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (mapped?.[1]) return isPrivateOrLocalIp(mapped[1]);
-  return false;
-}
+export {
+  hostnameLooksPrivateOrLocal,
+  isPrivateOrLocalIp,
+} from "./private-network-host";
 
 /**
  * Normalize SSH / git:// remotes to an https URL for parsing only.

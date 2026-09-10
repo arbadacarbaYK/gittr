@@ -5,6 +5,7 @@
  *
  * Keep this module free of Node-only imports so the profile page can use it.
  */
+import { hostnameLooksPrivateOrLocal } from "../security/private-network-host";
 
 /** Small relay set for lightweight server-side stats. */
 export const PLATFORM_STATS_RELAYS = [
@@ -63,6 +64,10 @@ export function extraNostrRelaysFromRepoRemotes(opts: {
     try {
       const parsed = new URL(u);
       if (NOT_NOSTR_CLONE_HOST.test(parsed.hostname)) return;
+      // Never turn LAN / Tailscale / home hosts into browser WebSockets.
+      // A public repo announcement with relays=umbrel.local would otherwise
+      // make every visitor's browser probe their own local network.
+      if (hostnameLooksPrivateOrLocal(parsed.hostname)) return;
       const relay = `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, "");
       const key = relay.toLowerCase();
       if (seen.has(key)) return;
