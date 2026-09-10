@@ -39,7 +39,7 @@ The same snapshot **seeds `/explore`** (`GET /api/explore/seed?limit=3000` reads
 
 **Reverse forge lookup:** the SEO seed only stores `npub/repo` paths — **no** upstream URLs. To find whether a GitHub/GitLab/Codeberg/Gitea/… repo already has a Nostr announce (and get the **npub** to DM), use exact match on kind **30617** `source` / `forkedFrom`: MCP `findReposBySource` or `GET /api/nostr/repos-by-github?source=https://…`.
 
-**Client chrome on Explore:** leaving `/explore` uses soft `appNavigate` (`startTransition` + `router.push`) by default — hard `location.assign` remounted the whole app and felt like a ~10s tab freeze. Soft nav hard-assigns only after an 8s stall. Leaving a **Code** tab pushes urgently (hydrate `setState` starves the transition); the logo/home hard-loads `/` after ~1.2s only if that Code URL never changed. Repo tab metadata uses an RSC fast path (no Nostr in `generateMetadata` on Flight requests). Header search on Explore uses `router.replace` so `?q=` does not wipe the catalog.
+**Client chrome on Explore:** leaving `/explore` uses urgent soft `appNavigate` (`router.push`, not `startTransition`) — live catalog `setState` flushes starve concurrent transitions, so the header looked dead. Hard `location.assign` remounted the whole app and felt like a ~10s tab freeze; it is last-resort after an 8s stall (home from Explore/Code after ~1.2s if that URL never changed). Leaving Explore **cancels** the 120ms catalog UI flush. Repo tab metadata uses an RSC fast path (no Nostr in `generateMetadata` on Flight requests). Header search on Explore uses `router.replace` so `?q=` does not wipe the catalog.
 
 ```bash
 ./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP

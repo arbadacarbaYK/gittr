@@ -331,6 +331,22 @@ function ExplorePageContent() {
     null
   );
   const catalogUiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leavingExploreRef = useRef(false);
+
+  useEffect(() => {
+    leavingExploreRef.current = false;
+    return () => {
+      leavingExploreRef.current = true;
+      if (catalogUiTimerRef.current) {
+        clearTimeout(catalogUiTimerRef.current);
+        catalogUiTimerRef.current = null;
+      }
+      if (catalogPersistTimerRef.current) {
+        clearTimeout(catalogPersistTimerRef.current);
+        catalogPersistTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset page window when search/filter changes (keep scroll stable on Load more).
   useEffect(() => {
@@ -843,6 +859,7 @@ function ExplorePageContent() {
 
   // Load repos from localStorage and sync from Nostr
   const applyReposToUi = useCallback((list: Repo[]) => {
+    if (leavingExploreRef.current) return;
     const deletedRepos = JSON.parse(
       localStorage.getItem("gittr_deleted_repos") || "[]"
     ) as Array<{ entity: string; repo: string; deletedAt: number }>;
@@ -920,6 +937,7 @@ function ExplorePageContent() {
       exploreCatalogRef.current = list;
       writeExploreSessionCatalog(list);
       const flushUi = () => {
+        if (leavingExploreRef.current) return;
         if (exploreCatalogRef.current) {
           applyReposToUi(exploreCatalogRef.current);
         }
@@ -2212,6 +2230,14 @@ function ExplorePageContent() {
 
     return () => {
       alive = false;
+      if (catalogUiTimerRef.current) {
+        clearTimeout(catalogUiTimerRef.current);
+        catalogUiTimerRef.current = null;
+      }
+      if (catalogPersistTimerRef.current) {
+        clearTimeout(catalogPersistTimerRef.current);
+        catalogPersistTimerRef.current = null;
+      }
       if (unsub) unsub();
       for (const extra of extraUnsubs) {
         try {

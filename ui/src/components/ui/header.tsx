@@ -206,38 +206,62 @@ export function Header() {
     } catch {
       /* warm anyway */
     }
-    const manageable = loadStoredRepos()
-      .filter((repo) => repoAllowsUserToManagePRsAndIssues(repo, pubkey))
-      .map((repo) => {
-        const entity =
-          repo.entity ||
-          repo.slug?.split("/")[0] ||
-          repo.ownerPubkey?.slice(0, 8) ||
-          "";
-        const name =
-          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "";
-        return {
-          entity,
-          repo: name,
-          githubSourceUrl:
-            entity && name
-              ? resolveGithubUpstreamForTabs(entity, name, repo)
-              : null,
-        };
-      })
-      .filter((r) => r.entity && r.repo);
-    if (!manageable.length) return;
-    const cleanup = startWarmAllReposIssuePrFromNostr({
-      repos: manageable,
-      subscribe,
-      relays: getAllRelays(defaultRelays),
-    });
-    try {
-      sessionStorage.setItem(warmKey, String(Date.now()));
-    } catch {
-      /* ignore */
+    let cancelled = false;
+    let warmCleanup: (() => void) | undefined;
+    const startWarm = () => {
+      if (cancelled) return;
+      const manageable = loadStoredRepos()
+        .filter((repo) => repoAllowsUserToManagePRsAndIssues(repo, pubkey))
+        .map((repo) => {
+          const entity =
+            repo.entity ||
+            repo.slug?.split("/")[0] ||
+            repo.ownerPubkey?.slice(0, 8) ||
+            "";
+          const name =
+            repo.repo ||
+            repo.slug?.split("/")[1] ||
+            repo.name ||
+            repo.slug ||
+            "";
+          return {
+            entity,
+            repo: name,
+            githubSourceUrl:
+              entity && name
+                ? resolveGithubUpstreamForTabs(entity, name, repo)
+                : null,
+          };
+        })
+        .filter((r) => r.entity && r.repo);
+      if (!manageable.length) return;
+      warmCleanup = startWarmAllReposIssuePrFromNostr({
+        repos: manageable,
+        subscribe,
+        relays: getAllRelays(defaultRelays),
+      });
+      try {
+        sessionStorage.setItem(warmKey, String(Date.now()));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(() => startWarm(), { timeout: 2500 });
+    } else {
+      timeoutId = window.setTimeout(startWarm, 400);
     }
-    return cleanup;
+    return () => {
+      cancelled = true;
+      if (idleId != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      warmCleanup?.();
+    };
   }, [mounted, isLoggedIn, pubkey, subscribe, defaultRelays]);
 
   const navItems = useMemo(

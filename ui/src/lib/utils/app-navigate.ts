@@ -7,13 +7,14 @@
  * Browse must not hard-reload or await bunker warm.
  *
  * Soft RSC for repo tabs also must stay fast: generateMetadata skips Nostr on
- * Flight requests (isRscClientNavigation). startTransition keeps the chrome
- * responsive while the new segment streams in — except when leaving a Code
- * tab, Apps/Pages hub, or a profile URL, where setState storms starve the
- * transition (logo/home looked dead). Those leaves push urgently; home from
- * those pages also gets a short hard fallback if the URL never changes.
+ * Flight requests (isRscClientNavigation).
+ *
+ * Chrome clicks (`router.push`) are **urgent** — not wrapped in
+ * `startTransition`. Explore/Home/Issues live catalogs, Code hydrate, and
+ * profile 30617 flushes starve concurrent transitions, so the address bar and
+ * header look dead until React is idle (or the 8s hard fallback). Urgent push
+ * lets the click land immediately; hard `location.assign` remains last-resort.
  */
-import { startTransition } from "react";
 
 function normalizePath(href: string): string {
   try {
@@ -59,7 +60,8 @@ const RESERVED_TOP_SEGMENTS = new Set([
 ]);
 
 export function isExplorePath(pathname: string): boolean {
-  return pathname === "/explore" || pathname.startsWith("/explore/");
+  const path = canonicalPath(pathname || "");
+  return path === "/explore" || path.startsWith("/explore/");
 }
 
 export function isExploreHref(href: string): boolean {
@@ -76,6 +78,21 @@ export function isHeavyDirectoryPath(pathname: string): boolean {
 }
 
 /**
+ * Live Nostr catalogs that keep flushing `setState` after a click
+ * (Explore/Home ranking, global Issues/PRs, Repositories grid).
+ */
+export function isLiveCatalogPath(pathname: string): boolean {
+  const path = canonicalPath(pathname || "");
+  return (
+    path === "/" ||
+    isExplorePath(path) ||
+    path === "/issues" ||
+    path === "/pulls" ||
+    path === "/repositories"
+  );
+}
+
+/**
  * Profile URL `/{npub}` or `/{hex}` — live 30617 catalog flushes starve
  * startTransition the same way Code/Apps do, so logo/home looked dead ~8–10s.
  */
@@ -88,11 +105,12 @@ export function isProfileEntityPath(pathname: string): boolean {
   return true;
 }
 
-function isUrgentHomePath(pathname: string): boolean {
+export function isUrgentLeavePath(pathname: string): boolean {
   return (
     isRepoCodePath(pathname) ||
     isHeavyDirectoryPath(pathname) ||
-    isProfileEntityPath(pathname)
+    isProfileEntityPath(pathname) ||
+    isLiveCatalogPath(pathname)
   );
 }
 
@@ -128,9 +146,8 @@ export function softNavHardFallbackMs(
 ): number {
   if (
     canonicalPath(href) === "/" &&
-    (isRepoCodePath(currentPathname) ||
-      isHeavyDirectoryPath(currentPathname) ||
-      isProfileEntityPath(currentPathname))
+    isUrgentLeavePath(currentPathname) &&
+    canonicalPath(currentPathname) !== "/"
   ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
   }
@@ -198,13 +215,9 @@ export function appNavigate(
     const push = () => {
       router.push(href);
     };
-    // Code-tab setState (tree/README) starves startTransition; leave urgently
-    // so the logo and tabs actually commit instead of waiting forever.
-    if (isUrgentHomePath(startedOn)) {
-      push();
-    } else {
-      startTransition(push);
-    }
+    // Always urgent: live catalogs and Code hydrate starve startTransition,
+    // so chrome clicks looked dead until React was idle (or the 8s fallback).
+    push();
     let timeoutId = 0;
     let intervalId = 0;
     const clearWatchers = () => {

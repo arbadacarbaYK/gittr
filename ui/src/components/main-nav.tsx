@@ -42,6 +42,28 @@ export function MainNav({ items, children }: MainNavProps) {
     setShowMobileMenu(!showMobileMenu);
   };
 
+  React.useEffect(() => {
+    const hrefs = new Set<string>(["/"]);
+    for (const item of items || []) {
+      if (
+        item.disabled ||
+        item.openInNewTab ||
+        !item.href ||
+        item.href === "#"
+      ) {
+        continue;
+      }
+      hrefs.add(item.href);
+    }
+    for (const href of hrefs) {
+      try {
+        router.prefetch(href);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [items, router]);
+
   const handleNavClick = (
     e: React.MouseEvent<HTMLAnchorElement>,
     href: string,

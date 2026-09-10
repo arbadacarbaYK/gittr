@@ -13,6 +13,9 @@ export async function isRscClientNavigation(): Promise<boolean> {
     if (h.get("rsc") === "1") return true;
     if (h.has("next-router-state-tree")) return true;
     if (h.has("next-router-prefetch")) return true;
+    if (h.has("next-url")) return true;
+    const accept = h.get("accept") || "";
+    if (accept.includes("text/x-component")) return true;
     return false;
   } catch {
     return false;

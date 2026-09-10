@@ -4,8 +4,10 @@ import {
   SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS,
   SOFT_NAV_HARD_FALLBACK_MS,
   isHeavyDirectoryPath,
+  isLiveCatalogPath,
   isProfileEntityPath,
   isRepoCodePath,
+  isUrgentLeavePath,
   shouldApplySoftNavHardFallback,
   shouldHardNavigate,
   softNavHardFallbackMs,
@@ -43,6 +45,29 @@ describe("isHeavyDirectoryPath", () => {
     expect(isHeavyDirectoryPath("/pages")).toBe(true);
     expect(isHeavyDirectoryPath("/explore")).toBe(false);
     expect(isHeavyDirectoryPath(CODE_PATH)).toBe(false);
+  });
+});
+
+describe("isLiveCatalogPath", () => {
+  it("treats home, Explore, Issues, Pulls, and Repositories as live catalogs", () => {
+    expect(isLiveCatalogPath("/")).toBe(true);
+    expect(isLiveCatalogPath("/explore")).toBe(true);
+    expect(isLiveCatalogPath("/explore?q=gittr")).toBe(true);
+    expect(isLiveCatalogPath("/issues")).toBe(true);
+    expect(isLiveCatalogPath("/pulls")).toBe(true);
+    expect(isLiveCatalogPath("/repositories")).toBe(true);
+    expect(isLiveCatalogPath("/settings")).toBe(false);
+    expect(isLiveCatalogPath(CODE_PATH)).toBe(false);
+  });
+});
+
+describe("isUrgentLeavePath", () => {
+  it("includes live catalogs so chrome clicks are not starved", () => {
+    expect(isUrgentLeavePath("/explore")).toBe(true);
+    expect(isUrgentLeavePath("/")).toBe(true);
+    expect(isUrgentLeavePath("/issues")).toBe(true);
+    expect(isUrgentLeavePath(CODE_PATH)).toBe(true);
+    expect(isUrgentLeavePath("/settings")).toBe(false);
   });
 });
 
@@ -109,6 +134,15 @@ describe("softNavHardFallbackMs", () => {
         "/npub1q3sle0kvfsehgsuexttt3ugjd8xdklxfwwkh559wxckmzddywnws6cd26p"
       )
     ).toBe(SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS);
+  });
+
+  it("recovers home from Explore / Issues the same way", () => {
+    expect(softNavHardFallbackMs("/", "/explore")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/", "/issues")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
   });
 
   it("keeps the long stall window for other routes (avoid remount freeze)", () => {
