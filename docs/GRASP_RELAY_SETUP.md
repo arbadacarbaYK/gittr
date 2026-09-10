@@ -46,7 +46,7 @@ Restart the relay after changes.
 
 Follow upstream ngit/GRASP docs for your relay binary and git HTTP endpoint. Point gittr’s env and bridge config at your **public** `wss://` URL.
 
-A home Umbrel / Tailscale / `*.local` GRASP can live in your NIP-65 or kind **10317** list for other clients. **gittr.space will not open those sockets** from the browser (Chrome would otherwise ask to reach devices on your LAN). Use a public GRASP host, or run gittr itself on your LAN, if you need the home relay in the web UI.
+A home Umbrel / Tailscale / `*.local` GRASP can live in your NIP-65 or kind **10317** list for other clients. **gittr.space will not open those sockets** from the browser (Chrome would otherwise ask to reach devices on your LAN). Public clone hosts on the same announcement (ngit, shakespeare, nostrhub) are still used. Use a public GRASP host, or run gittr itself on your LAN, if you need the home relay in the web UI. Do not put `umbrel.local` on a public kind **30617** `relays` tag — it resolves to *each visitor’s* Umbrel, not yours.
 
 Verify: publish a kind **30617** from gittr, confirm the relay accepts it and that `POST /api/nostr/repo/clone` can reach your HTTPS clone URL from the app server.
 

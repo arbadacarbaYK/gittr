@@ -1501,6 +1501,7 @@ async function fetchFromNostrGit(
   // Import GRASP server detection function
   const {
     isGraspServer: isGraspServerFn,
+    isGittrBridgeHost: isGittrBridgeHostFn,
   } = require("@/lib/utils/grasp-servers");
   try {
     // Try git-nostr-bridge API first (if bridge has cloned the repo)
@@ -1622,128 +1623,146 @@ async function fetchFromNostrGit(
             branch
           );
           if (remoteFiles?.files?.length) {
-            // Await mirror briefly so file-content opens don't 404 while the
-            // UI already shows a tree from the temp GRASP listing.
-            try {
-              await Promise.race([
-                fetch("/api/nostr/repo/clone", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    cloneUrl: normalizedCloneUrl,
-                    ownerPubkey,
-                    repo,
-                  }),
-                }).then(async (r) => {
-                  if (!r.ok) {
-                    console.warn(
-                      `⚠️ [Git Source] Bare mirror clone after list: ${r.status}`
-                    );
-                    scheduleBareCloneToBridge(
-                      normalizedCloneUrl,
+            // Only persist onto git.gittr.space when this clone URL *is* our
+            // bridge. Foreign GRASP (shakespeare, ngit, nostrhub, home Umbrel)
+            // stays a temp listing — otherwise opening a repo writes someone
+            // else's tree onto Hetzner.
+            if (isGittrBridgeHostFn(normalizedCloneUrl)) {
+              try {
+                await Promise.race([
+                  fetch("/api/nostr/repo/clone", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      cloneUrl: normalizedCloneUrl,
                       ownerPubkey,
-                      repo
-                    );
-                  }
-                }),
-                new Promise((resolve) => setTimeout(resolve, 12000)),
-              ]);
-            } catch (err) {
-              console.warn(
-                "⚠️ [Git Source] Bare mirror after list failed:",
-                err
-              );
-              scheduleBareCloneToBridge(normalizedCloneUrl, ownerPubkey, repo);
+                      repo,
+                    }),
+                  }).then(async (r) => {
+                    if (!r.ok) {
+                      console.warn(
+                        `⚠️ [Git Source] Bare mirror clone after list: ${r.status}`
+                      );
+                      scheduleBareCloneToBridge(
+                        normalizedCloneUrl,
+                        ownerPubkey,
+                        repo
+                      );
+                    }
+                  }),
+                  new Promise((resolve) => setTimeout(resolve, 12000)),
+                ]);
+              } catch (err) {
+                console.warn(
+                  "⚠️ [Git Source] Bare mirror after list failed:",
+                  err
+                );
+                scheduleBareCloneToBridge(
+                  normalizedCloneUrl,
+                  ownerPubkey,
+                  repo
+                );
+              }
             }
             return remoteFiles;
           }
 
           // 2) Mirror onto gittr disk, then read bridge (fixes persistent copy)
-          try {
-            console.log(`🔍 [Git Source] Mirroring to bridge from:`, {
-              cloneUrl: normalizedCloneUrl,
-              ownerPubkey: ownerPubkey.slice(0, 16) + "...",
-              repo,
-            });
-
-            const cloneResponse = await fetch("/api/nostr/repo/clone", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+          // Only our bridge — never copy shakespeare/ngit/nostrhub onto Hetzner.
+          if (!isGittrBridgeHostFn(normalizedCloneUrl)) {
+            console.log(
+              `⏭️ [Git Source] Skip bare mirror — foreign GRASP stays temp: ${normalizedCloneUrl.substring(
+                0,
+                64
+              )}…`
+            );
+          } else {
+            try {
+              console.log(`🔍 [Git Source] Mirroring to bridge from:`, {
                 cloneUrl: normalizedCloneUrl,
-                ownerPubkey,
+                ownerPubkey: ownerPubkey.slice(0, 16) + "...",
                 repo,
-              }),
-            });
+              });
 
-            if (cloneResponse.ok) {
-              const cloneData = await cloneResponse.json();
-              console.log(`✅ [Git Source] Bare mirror clone OK:`, cloneData);
+              const cloneResponse = await fetch("/api/nostr/repo/clone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  cloneUrl: normalizedCloneUrl,
+                  ownerPubkey,
+                  repo,
+                }),
+              });
 
-              // Re-resolve branch after mirror (HEAD may not be main)
-              const afterClone = await fetchBridgeFilesResolvingBranch(
-                ownerPubkey,
-                repo,
-                branch
-              );
-              if (afterClone.payload?.files?.length) {
-                notifyGraspRepoCloned(
-                  afterClone.payload.files,
+              if (cloneResponse.ok) {
+                const cloneData = await cloneResponse.json();
+                console.log(`✅ [Git Source] Bare mirror clone OK:`, cloneData);
+
+                // Re-resolve branch after mirror (HEAD may not be main)
+                const afterClone = await fetchBridgeFilesResolvingBranch(
+                  ownerPubkey,
+                  repo,
+                  branch
+                );
+                if (afterClone.payload?.files?.length) {
+                  notifyGraspRepoCloned(
+                    afterClone.payload.files,
+                    ownerPubkey,
+                    repo
+                  );
+                  return {
+                    files: afterClone.payload.files,
+                    resolvedBranch: afterClone.resolvedBranch,
+                  };
+                }
+
+                if (afterClone.branchNotFound) {
+                  console.warn(
+                    `⚠️ [Git Source] Mirror exists but requested branch missing — not polling`
+                  );
+                  return null;
+                }
+
+                const mirroredUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+                  ownerPubkey
+                )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(
+                  afterClone.resolvedBranch || branch
+                )}`;
+                const mirrored = await awaitBridgeFilesAfterClone(
+                  mirroredUrl,
+                  afterClone.resolvedBranch || branch,
+                  4,
+                  1500
+                );
+                if (mirrored?.files?.length) {
+                  notifyGraspRepoCloned(mirrored.files, ownerPubkey, repo);
+                  return mirrored;
+                }
+
+                console.log(
+                  `⚠️ [Git Source] Mirror clone OK but bridge not readable yet; background poll`
+                );
+                startBackgroundBridgePoll(
+                  mirroredUrl,
+                  afterClone.resolvedBranch || branch,
                   ownerPubkey,
                   repo
                 );
-                return {
-                  files: afterClone.payload.files,
-                  resolvedBranch: afterClone.resolvedBranch,
-                };
-              }
-
-              if (afterClone.branchNotFound) {
-                console.warn(
-                  `⚠️ [Git Source] Mirror exists but requested branch missing — not polling`
+              } else {
+                const cloneError = await cloneResponse
+                  .json()
+                  .catch(() => ({ error: "Unknown error" }));
+                console.log(
+                  `⚠️ [Git Source] Bare mirror clone failed: ${cloneResponse.status}`,
+                  cloneError
                 );
-                return null;
               }
-
-              const mirroredUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
-                ownerPubkey
-              )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(
-                afterClone.resolvedBranch || branch
-              )}`;
-              const mirrored = await awaitBridgeFilesAfterClone(
-                mirroredUrl,
-                afterClone.resolvedBranch || branch,
-                4,
-                1500
-              );
-              if (mirrored?.files?.length) {
-                notifyGraspRepoCloned(mirrored.files, ownerPubkey, repo);
-                return mirrored;
-              }
-
-              console.log(
-                `⚠️ [Git Source] Mirror clone OK but bridge not readable yet; background poll`
-              );
-              startBackgroundBridgePoll(
-                mirroredUrl,
-                afterClone.resolvedBranch || branch,
-                ownerPubkey,
-                repo
-              );
-            } else {
-              const cloneError = await cloneResponse
-                .json()
-                .catch(() => ({ error: "Unknown error" }));
-              console.log(
-                `⚠️ [Git Source] Bare mirror clone failed: ${cloneResponse.status}`,
-                cloneError
+            } catch (cloneError: any) {
+              console.warn(
+                `⚠️ [Git Source] Bare mirror clone error:`,
+                cloneError.message
               );
             }
-          } catch (cloneError: any) {
-            console.warn(
-              `⚠️ [Git Source] Bare mirror clone error:`,
-              cloneError.message
-            );
           }
         } else if (isHttpsGrasp && !isGraspServerCheck) {
           // Home / self-hosted remotes that reuse /npub/repo path shape — try

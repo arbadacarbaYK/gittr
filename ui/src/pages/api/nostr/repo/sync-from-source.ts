@@ -13,6 +13,7 @@ import {
 } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
@@ -195,6 +196,13 @@ export default async function handler(
   }
   const { repoPath, repoName: safeRepoName } = resolvedRepo;
   const cloneUrl = normalizeCloneUrl(normalizedSource);
+  const urlSafety = await assertSafeOutboundGitUrl(cloneUrl);
+  if (!urlSafety.ok) {
+    return res.status(400).json({
+      error: "sourceUrl is invalid or targets a private/local host",
+      details: urlSafety.error,
+    });
+  }
 
   const authResult = await verifyNostrAuth(req, {
     expectedRepo: safeRepoName,

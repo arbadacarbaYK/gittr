@@ -1,6 +1,7 @@
 /**
  * Detect forge type and normalize clone URLs for Import (/new → /api/import-git).
  */
+import { hostnameLooksPrivateOrLocal } from "../security/private-network-host";
 
 export type GitForgeType =
   | "github"
@@ -181,20 +182,14 @@ export function isCloneableUpstreamSourceUrl(sourceUrl: string): boolean {
   // Nostr git mirrors use /npub1…/repo — bridge already hosts those; not "upstream forge"
   if (/\/npub1[a-z0-9]+(\/|$)/i.test(raw)) return false;
 
-  if (/(?:github|gitlab|codeberg)\.(?:com|org)/i.test(raw)) {
-    return true;
-  }
-
   try {
     const normalized = normalizeGitCloneUrl(raw);
     const parsed = parseOwnerRepoFromGitUrl(normalized);
     if (!parsed?.repo || !parsed.host) return false;
-    const host = parsed.host.toLowerCase();
-    if (
-      host === "localhost" ||
-      host.startsWith("127.") ||
-      host === "git.gittr.space"
-    ) {
+    const host = parsed.host.toLowerCase().replace(/^www\./, "");
+    // Hostname only — a path like `https://umbrel.xxx.ts.net/github.com/foo.git`
+    // must not count as GitHub.
+    if (hostnameLooksPrivateOrLocal(host) || host === "git.gittr.space") {
       return false;
     }
     return Boolean(

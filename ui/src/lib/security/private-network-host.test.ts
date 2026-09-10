@@ -4,6 +4,7 @@ import {
   filterPrivateNetworkRelaysForPublicSite,
   hostnameLooksPrivateOrLocal,
   isPrivateOrLocalIp,
+  omitHomeLanRelayUrls,
   shouldFilterPrivateRelaysInBrowser,
   urlLooksPrivateOrLocal,
 } from "./private-network-host";
@@ -75,5 +76,25 @@ describe("filterPrivateNetworkRelaysForPublicSite", () => {
         "wss://umbrel.local:4848",
       ])
     ).toEqual(["wss://relay.gittr.space", "wss://umbrel.local:4848"]);
+  });
+});
+
+describe("omitHomeLanRelayUrls", () => {
+  it("keeps public owner GRASP and drops only home/LAN/Tailscale", () => {
+    expect(
+      omitHomeLanRelayUrls([
+        "wss://git.shakespeare.diy/",
+        "wss://relay.ngit.dev/",
+        "wss://git.nostrhub.io/",
+        "wss://umbrel.local:4848/",
+        "wss://umbrel.tail51469b.ts.net:4848/",
+        "wss://relay.stewlab.win/",
+      ])
+    ).toEqual([
+      "wss://git.shakespeare.diy/",
+      "wss://relay.ngit.dev/",
+      "wss://git.nostrhub.io/",
+      "wss://relay.stewlab.win/",
+    ]);
   });
 });

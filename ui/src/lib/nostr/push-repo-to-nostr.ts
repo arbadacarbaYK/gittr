@@ -3,6 +3,7 @@
  * Gathers all repo data and publishes complete repository event
  */
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { omitHomeLanRelayUrls } from "@/lib/security/private-network-host";
 
 import { sanitizeForkedFromField } from "../repos/fork-attribution";
 import { OVERRIDE_IDB_MARKER_PREFIX } from "../repos/overrides-idb";
@@ -2075,9 +2076,9 @@ export async function pushRepoToNostr(
         .filter(Boolean)
         .slice(0, 8);
 
-      const announcementRelays = [
+      const announcementRelays = omitHomeLanRelayUrls([
         ...new Set([...Array.from(relayUrlsFromCloneUrls), ...publishSubset]),
-      ].slice(0, 12);
+      ]).slice(0, 12);
 
       if (announcementRelays.length > 0) {
         nip34Tags.push(["relays", ...announcementRelays]);

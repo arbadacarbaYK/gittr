@@ -2,6 +2,7 @@ import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
+import { isGittrBridgeHost, isGraspServer } from "@/lib/utils/grasp-servers";
 import {
   resolveBridgeOwnerTempPath,
   resolveBridgeRepoPath,
@@ -227,14 +228,11 @@ export default async function handler(
 
   // Do not permanently mirror other GRASP hosts onto this bridge (disk blow-up).
   // Forge imports (GitHub/…) into a git.gittr.space-hosted repo are still allowed;
-  // foreign ngit/shakespeare/etc. remotes stay on their servers — UI uses temp shallow fetch.
-  const lowerClone = normalizedCloneUrl.toLowerCase();
-  const isOurGrasp = lowerClone.includes("git.gittr.space");
-  const isOtherGrasp =
-    /relay\.ngit\.dev|git\.shakespeare\.diy|gitnostr\.com|ngit-relay|ngit\.danconwaydev|membrane-grasp/i.test(
-      lowerClone
-    );
-  if (isOtherGrasp && !isOurGrasp) {
+  // foreign ngit/shakespeare/nostrhub remotes stay on their servers — UI uses temp shallow fetch.
+  if (
+    isGraspServer(normalizedCloneUrl) &&
+    !isGittrBridgeHost(normalizedCloneUrl)
+  ) {
     return res.status(400).json({
       error:
         "Foreign GRASP remotes are not mirrored onto git.gittr.space; open them from their clone URL (temp fetch).",

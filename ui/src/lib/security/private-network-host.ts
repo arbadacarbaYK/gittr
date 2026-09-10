@@ -101,5 +101,19 @@ export function filterPrivateNetworkRelaysForPublicSite(
 ): string[] {
   if (!relays?.length) return relays || [];
   if (!shouldFilterPrivateRelaysInBrowser()) return relays;
-  return relays.filter((url) => !urlLooksPrivateOrLocal(url));
+  return omitHomeLanRelayUrls(relays);
+}
+
+/**
+ * Strip home/LAN/Tailscale URLs. Public GRASP (ngit, shakespeare, nostrhub, …)
+ * is never removed — only localhost, *.local, RFC1918, Tailscale.
+ * Use for untrusted NIP-34 `relays` tags and for what gittr itself publishes.
+ */
+export function omitHomeLanRelayUrls(urls: string[]): string[] {
+  if (!urls?.length) return [];
+  return urls.filter((url) => {
+    const t = String(url || "").trim();
+    if (!t) return false;
+    return !urlLooksPrivateOrLocal(t);
+  });
 }

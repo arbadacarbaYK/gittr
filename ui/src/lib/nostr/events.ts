@@ -3,6 +3,7 @@ import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-qu
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
 import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
+import { omitHomeLanRelayUrls } from "@/lib/security/private-network-host";
 import { formatSshKeyContent } from "@/lib/ssh/openssh-public-key";
 
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
@@ -325,16 +326,17 @@ export function buildUnsignedRepositoryEvent(
     tags.push(["clone", ...cleanedClone]);
   }
 
-  // NIP-34: one "relays" tag with multiple relay URLs
+  // NIP-34: one "relays" tag with multiple relay URLs.
+  // Never copy home Umbrel / Tailscale / localhost into a public announcement
+  // (shakespeare.diy did that; umbrel.local then probes every visitor's LAN).
   if (repo.relays && repo.relays.length > 0) {
-    const cleaned = repo.relays
-      .map((relay) =>
+    const cleaned = omitHomeLanRelayUrls(
+      repo.relays.map((relay) =>
         relay.startsWith("wss://") || relay.startsWith("ws://")
           ? relay
           : `wss://${relay}`
       )
-      .filter(Boolean)
-      .slice(0, 12);
+    ).slice(0, 12);
     if (cleaned.length > 0) {
       tags.push(["relays", ...cleaned]);
     }

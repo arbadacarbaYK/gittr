@@ -33,6 +33,7 @@ export const KNOWN_GRASP_DOMAINS = [
   "gitnostr.com",
   "ngit.danconwaydev.com",
   "git.shakespeare.diy",
+  "git.nostrhub.io",
   "git-01.uid.ovh",
   "git-02.uid.ovh",
   "git.jb55.com", // Read-only: jb55 hosts repos but only their own, not a public GRASP server for pushing
@@ -91,6 +92,12 @@ export function normalizeGraspHost(hostOrUrl: string): string {
       ?.split(":")[0]
       ?.toLowerCase() || ""
   );
+}
+
+/** HTTPS/SSH git host for this gittr deployment — the only GRASP we mirror onto disk. */
+export function isGittrBridgeHost(hostOrUrl: string): boolean {
+  const domain = normalizeGraspHost(hostOrUrl);
+  return domain === "git.gittr.space";
 }
 
 export function isGraspDomainExcludedFromPushing(hostOrUrl: string): boolean {

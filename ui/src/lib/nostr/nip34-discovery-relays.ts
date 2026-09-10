@@ -64,9 +64,9 @@ export function extraNostrRelaysFromRepoRemotes(opts: {
     try {
       const parsed = new URL(u);
       if (NOT_NOSTR_CLONE_HOST.test(parsed.hostname)) return;
-      // Never turn LAN / Tailscale / home hosts into browser WebSockets.
-      // A public repo announcement with relays=umbrel.local would otherwise
-      // make every visitor's browser probe their own local network.
+      // Untrusted announcement remotes: never dial LAN / Tailscale.
+      // Public owner GRASP (shakespeare, ngit, nostrhub) is not private and stays.
+      // `umbrel.local` in a public 30617 would resolve to *each visitor's* Umbrel.
       if (hostnameLooksPrivateOrLocal(parsed.hostname)) return;
       const relay = `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, "");
       const key = relay.toLowerCase();
