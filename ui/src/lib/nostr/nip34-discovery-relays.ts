@@ -64,9 +64,9 @@ export function extraNostrRelaysFromRepoRemotes(opts: {
     try {
       const parsed = new URL(u);
       if (NOT_NOSTR_CLONE_HOST.test(parsed.hostname)) return;
-      // Untrusted announcement remotes: never dial LAN / Tailscale.
-      // Public owner GRASP (shakespeare, ngit, nostrhub) is not private and stays.
-      // `umbrel.local` in a public 30617 would resolve to *each visitor's* Umbrel.
+      // Skip ONLY home/LAN/Tailscale. The rest of the announcement `relays`
+      // tag is still dialed — some repos exist only on the owner's custom
+      // public relay. Never drop shakespeare/ngit/orangepill/atlas/etc.
       if (hostnameLooksPrivateOrLocal(parsed.hostname)) return;
       const relay = `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, "");
       const key = relay.toLowerCase();

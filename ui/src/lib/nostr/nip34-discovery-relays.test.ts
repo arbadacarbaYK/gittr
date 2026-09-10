@@ -54,4 +54,24 @@ describe("extraNostrRelaysFromRepoRemotes", () => {
       })
     ).toEqual([]);
   });
+
+  it("still dials the owner's public custom relays (Code tab needs those)", () => {
+    expect(
+      extraNostrRelaysFromRepoRemotes({
+        relays: [
+          "wss://git.shakespeare.diy/",
+          "wss://relay.orangepill.dev/",
+          "wss://atlas.nostr.land/",
+          "wss://umbrel.local:4848/",
+          "wss://umbrel.tail51469b.ts.net:4848/",
+          "wss://relay.stewlab.win/",
+        ],
+      })
+    ).toEqual([
+      "wss://git.shakespeare.diy",
+      "wss://relay.orangepill.dev",
+      "wss://atlas.nostr.land",
+      "wss://relay.stewlab.win",
+    ]);
+  });
 });
