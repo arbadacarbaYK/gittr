@@ -21,6 +21,7 @@ import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { syncGithubProjectsForRepo } from "@/lib/utils/sync-github-repo-projects";
 
@@ -804,7 +805,9 @@ export default function ProjectsPage() {
             ) : null}
             {item.type === "issue" && item.issueId && (
               <Link
-                href={`/${entity}/${repo}/issues/${item.issueId}`}
+                href={`/${entity}/${repo}/issues/${shareableIssueOrPrPathId({
+                  id: item.issueId,
+                })}`}
                 className="mt-1.5 inline-block text-xs text-purple-400 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -813,7 +816,9 @@ export default function ProjectsPage() {
             )}
             {item.type === "pr" && item.prId && (
               <Link
-                href={`/${entity}/${repo}/pulls/${item.prId}`}
+                href={`/${entity}/${repo}/pulls/${shareableIssueOrPrPathId({
+                  id: item.prId,
+                })}`}
                 className="mt-1.5 inline-block text-xs text-purple-400 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1236,7 +1241,11 @@ export default function ProjectsPage() {
                         )}
                         {item.type === "issue" && item.issueId && (
                           <Link
-                            href={`/${entity}/${repo}/issues/${item.issueId}`}
+                            href={`/${entity}/${repo}/issues/${shareableIssueOrPrPathId(
+                              {
+                                id: item.issueId,
+                              }
+                            )}`}
                             className="text-xs text-purple-400 hover:text-purple-300"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -1245,7 +1254,11 @@ export default function ProjectsPage() {
                         )}
                         {item.type === "pr" && item.prId && (
                           <Link
-                            href={`/${entity}/${repo}/pulls/${item.prId}`}
+                            href={`/${entity}/${repo}/pulls/${shareableIssueOrPrPathId(
+                              {
+                                id: item.prId,
+                              }
+                            )}`}
                             className="text-xs text-purple-400 hover:text-purple-300"
                             onClick={(e) => e.stopPropagation()}
                           >

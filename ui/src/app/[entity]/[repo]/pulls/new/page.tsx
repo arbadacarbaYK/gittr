@@ -1008,7 +1008,7 @@ export default function NewPullRequestPage({
                       ["a", `30617:${finalOwnerPubkey}:${repo}`],
                       ["k", "1618"],
                     ],
-                    content: `Opened PR #${prId}`,
+                    content: `Opened pull request`,
                     pubkey: authorPubkey,
                     id: "",
                     sig: "",
@@ -1024,7 +1024,7 @@ export default function NewPullRequestPage({
                       rootEventAuthor: authorPubkey,
                       repoName: repo || "",
                       rootKind: 1618,
-                      content: `Opened PR #${prId}`,
+                      content: `Opened pull request`,
                     },
                     privateKey
                   );

@@ -91,6 +91,8 @@ import {
   findPullRequestRowIndexByRouteParam,
   isGithubStylePrId,
   isNostrHexIssueId,
+  issueOrPrDisplayNumber,
+  shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -1357,7 +1359,7 @@ export default function PRDetailPage({
                         ["merge-commit", commitId],
                         ["r", commitId],
                       ],
-                      content: `Merged PR #${pr.id}`,
+                      content: `Merged pull request`,
                       pubkey: authorPubkey,
                       id: "",
                       sig: "",
@@ -1374,7 +1376,7 @@ export default function PRDetailPage({
                         repoName: resolvedParams.repo,
                         rootKind: 1618,
                         mergeCommitId: commitId,
-                        content: `Merged PR #${pr.id}`,
+                        content: `Merged pull request`,
                       },
                       privateKey
                     );
@@ -1623,7 +1625,7 @@ export default function PRDetailPage({
                       typeof window !== "undefined"
                         ? `${window.location.origin}/${resolvedParams.entity}/${
                             resolvedParams.repo
-                          }/issues/${linkedIssue.id || linkedIssue.number}`
+                          }/issues/${shareableIssueOrPrPathId(linkedIssue)}`
                         : undefined,
                   }
                 );
@@ -2189,8 +2191,8 @@ export default function PRDetailPage({
                   ["k", "1618"],
                 ],
                 content: closing
-                  ? `Closed PR #${pr.id} without merging`
-                  : `Reopened PR #${pr.id}`,
+                  ? `Closed pull request without merging`
+                  : `Reopened pull request`,
                 pubkey: authorPubkey,
                 id: "",
                 sig: "",
@@ -2207,8 +2209,8 @@ export default function PRDetailPage({
                   repoName: resolvedParams.repo,
                   rootKind: 1618,
                   content: closing
-                    ? `Closed PR #${pr.id} without merging`
-                    : `Reopened PR #${pr.id}`,
+                    ? `Closed pull request without merging`
+                    : `Reopened pull request`,
                 },
                 privateKey
               );
@@ -2619,7 +2621,7 @@ export default function PRDetailPage({
                             </p>
                             <p className="text-yellow-400 text-xs mt-2">
                               ⚠️ Make sure this PR actually fixes issue #
-                              {linkedIssue.number || linkedIssue.id} before
+                              {issueOrPrDisplayNumber(linkedIssue)} before
                               merging.
                             </p>
                           </div>
@@ -3100,7 +3102,7 @@ export default function PRDetailPage({
                           💰 Bounty on linked issue
                         </p>
                         <p className="text-xs text-yellow-200">
-                          Issue #{linkedIssue.number || linkedIssue.id} has a{" "}
+                          Issue #{issueOrPrDisplayNumber(linkedIssue)} has a{" "}
                           <strong>{linkedIssue.bountyAmount} sats</strong>{" "}
                           bounty withdraw link created.
                         </p>
@@ -3150,7 +3152,7 @@ export default function PRDetailPage({
                       ⚠️ Bounty withdraw link cannot be released
                     </p>
                     <p className="text-xs text-yellow-200">
-                      Issue #{linkedIssue.number || linkedIssue.id} has a{" "}
+                      Issue #{issueOrPrDisplayNumber(linkedIssue)} has a{" "}
                       <strong>{linkedIssue.bountyAmount} sats</strong> bounty
                       withdraw link, but the PR author ({pr.author || "unknown"}
                       ) is not a valid Nostr user.

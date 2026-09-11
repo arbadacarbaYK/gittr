@@ -12,7 +12,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
+import {
+  issueOrPrDisplayNumber,
+  shareableIssueOrPrPathId,
+} from "@/lib/utils/issue-pr-status";
 
 import {
   AlertCircle,
@@ -493,11 +496,15 @@ export default function BountyHuntPage() {
                     <div className="flex items-center gap-2 text-purple-400">
                       <GitPullRequest className="h-4 w-4" />
                       <Link
-                        href={`/${issue.entity}/${issue.repo}/pulls/${issue.linkedPR}`}
+                        href={`/${issue.entity}/${
+                          issue.repo
+                        }/pulls/${shareableIssueOrPrPathId({
+                          id: issue.linkedPR,
+                        })}`}
                         className="hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        PR #{issue.linkedPR}
+                        PR #{issueOrPrDisplayNumber({ id: issue.linkedPR })}
                       </Link>
                       {issue.linkedPRTitle && (
                         <span className="text-gray-400">

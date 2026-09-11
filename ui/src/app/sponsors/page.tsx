@@ -12,6 +12,7 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
+import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 
 import { Coins, Heart, Package, TrendingUp, Zap } from "lucide-react";
 import Link from "next/link";
@@ -362,7 +363,9 @@ export default function SponsorsPage() {
                 {bountiesReceived.map((bounty, index) => {
                   const [entity, repoName] = bounty.repoId.split("/");
                   const repoLink = `/${bounty.repoId}`;
-                  const issueLink = `/${bounty.repoId}/issues/${bounty.issueId}`;
+                  const issueLink = `/${
+                    bounty.repoId
+                  }/issues/${shareableIssueOrPrPathId({ id: bounty.issueId })}`;
                   const isRedeemed = bounty.status === "redeemed";
 
                   return (

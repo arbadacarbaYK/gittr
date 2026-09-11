@@ -9,6 +9,7 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
+import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 
 import { CheckCircle2, Clock, Coins, X } from "lucide-react";
 import Link from "next/link";
@@ -118,7 +119,9 @@ export default function BountiesSettingsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <Coins className="h-4 w-4 text-yellow-400" />
                         <Link
-                          href={`/${entity}/${repo}/issues/${bounty.issueId}`}
+                          href={`/${entity}/${repo}/issues/${shareableIssueOrPrPathId(
+                            { id: bounty.issueId }
+                          )}`}
                           className="font-semibold hover:text-purple-400"
                         >
                           {bounty.issueTitle}

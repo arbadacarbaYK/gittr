@@ -121,7 +121,7 @@ The aggregate Issues and Pulls pages use real menus (not decorative GitHub place
 
 Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo**; on first visit every repo section starts **collapsed** (expand/collapse choices are remembered afterward).
 
-Nostr issue/PR links use the **event id** (`/issues/<64-hex>`). The `#2` in the UI is this browser’s local counter and is not on the Nostr event — do not share `/issues/2` expecting it to work logged out. GitHub-imported issues still use the forge number.
+Nostr issue/PR links use the **event id** (`/issues/<64-hex>`). The `#2` in the UI is this browser’s local counter and is not on the Nostr event — do not share `/issues/2` expecting it to work logged out. GitHub-imported issues still use the forge number. Notification DMs use the issue/PR **title** (the clickable URL is still the event id). gittr-mcp already uses event ids — no MCP tool change.
 
 ### Profile repo list (same for everyone)
 

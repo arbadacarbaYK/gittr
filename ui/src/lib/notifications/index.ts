@@ -1,7 +1,26 @@
 // Main notification service - dispatches via server deliver (recipient consent)
+import {
+  isNostrHexIssueId,
+  issueOrPrDisplayNumber,
+} from "../utils/issue-pr-status";
+
 import type { NotificationData } from "./nostr-dm";
 import { type EventKey } from "./prefs";
 import { sendTelegramChannelAnnouncement } from "./telegram-channel";
+
+/** Human phrase for DMs: title, or #N for forge rows — never `#` + 64-char event id. */
+export function notificationIssueOrPrPhrase(opts: {
+  kind: "issue" | "PR";
+  id?: string;
+  title?: string;
+}): string {
+  const title = String(opts.title || "").trim();
+  if (title) return `"${title}"`;
+  const id = String(opts.id || "").trim();
+  if (!id) return opts.kind === "issue" ? "an issue" : "a pull request";
+  if (isNostrHexIssueId(id)) return `${opts.kind} ${id.slice(0, 8)}`;
+  return `${opts.kind} #${issueOrPrDisplayNumber({ id, number: id })}`;
+}
 
 export interface NotificationEventData {
   eventType: EventKey;
@@ -97,7 +116,11 @@ export function formatNotificationMessage(
 
     case "issue_commented":
       return {
-        title: `New comment on issue #${context.issueId}`,
+        title: `New comment on ${notificationIssueOrPrPhrase({
+          kind: "issue",
+          id: context.issueId,
+          title: context.issueTitle,
+        })}`,
         message: `${context.authorName || "Someone"} commented on the issue`,
         url: context.url,
       };
@@ -111,7 +134,11 @@ export function formatNotificationMessage(
 
     case "pr_review":
       return {
-        title: `Review requested for PR #${context.prId}`,
+        title: `Review requested for ${notificationIssueOrPrPhrase({
+          kind: "PR",
+          id: context.prId,
+          title: context.prTitle,
+        })}`,
         message: `${context.authorName || "Someone"} requested your review`,
         url: context.url,
       };
@@ -127,7 +154,11 @@ export function formatNotificationMessage(
 
     case "bounty_funded":
       return {
-        title: `Bounty funded on issue #${context.issueId}`,
+        title: `Bounty funded on ${notificationIssueOrPrPhrase({
+          kind: "issue",
+          id: context.issueId,
+          title: context.issueTitle,
+        })}`,
         message: `A bounty has been added to the issue in ${repo}`,
         url: context.url,
       };
@@ -141,7 +172,11 @@ export function formatNotificationMessage(
 
     case "bounty_cancelled":
       return {
-        title: `Bounty cancelled on issue #${context.issueId}`,
+        title: `Bounty cancelled on ${notificationIssueOrPrPhrase({
+          kind: "issue",
+          id: context.issueId,
+          title: context.issueTitle,
+        })}`,
         message: `The bounty on "${
           context.issueTitle || "the issue"
         }" in ${repo} was cancelled because the issue was closed without a PR`,
@@ -153,9 +188,17 @@ export function formatNotificationMessage(
         title: `You were mentioned in ${repo}`,
         message: `${context.authorName || "Someone"} mentioned you in ${
           context.issueId
-            ? `issue #${context.issueId}`
+            ? notificationIssueOrPrPhrase({
+                kind: "issue",
+                id: context.issueId,
+                title: context.issueTitle,
+              })
             : context.prId
-            ? `PR #${context.prId}`
+            ? notificationIssueOrPrPhrase({
+                kind: "PR",
+                id: context.prId,
+                title: context.prTitle,
+              })
             : "a post"
         }`,
         url: context.url,

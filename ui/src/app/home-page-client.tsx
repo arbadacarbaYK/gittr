@@ -50,6 +50,7 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
+import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 import {
   checkBridgeExists,
   getRepoStatus,
@@ -1323,7 +1324,9 @@ export default function HomePage({
                 openBounties.slice(0, 5).map((bounty, idx) => {
                   const href = getRepoUrl(
                     bounty.entity,
-                    `${bounty.repoName}/issues/${bounty.issueId}`
+                    `${bounty.repoName}/issues/${shareableIssueOrPrPathId({
+                      id: bounty.issueId,
+                    })}`
                   );
                   return (
                     <Link
@@ -1562,7 +1565,9 @@ export default function HomePage({
                 {latestBounties.slice(0, 5).map((bounty, idx) => {
                   const href = getRepoUrl(
                     bounty.entity,
-                    `${bounty.repoName}/issues/${bounty.issueId}`
+                    `${bounty.repoName}/issues/${shareableIssueOrPrPathId({
+                      id: bounty.issueId,
+                    })}`
                   );
                   return (
                     <Link
