@@ -38,6 +38,7 @@ import {
 import {
   countMergedIssueComments,
   normalizeIssueListStatus,
+  shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -787,9 +788,10 @@ export default function RepoIssuesPage({
 
                       <Link
                         className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                        href={`${getRepoUrl(item.entity, item.repo)}/issues/${
-                          item.number
-                        }`}
+                        href={`${getRepoUrl(
+                          item.entity,
+                          item.repo
+                        )}/issues/${shareableIssueOrPrPathId(item)}`}
                       >
                         {item.title}
                         {item.needsNostrRepublish ? (

@@ -42,6 +42,7 @@ import {
   mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
   prStatusForNostrKind1618Merge,
+  shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -951,7 +952,9 @@ export default function RepoPullsPage({
 
                       <Link
                         className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                        href={`/${item.entity}/${item.repo}/pulls/${item.id}`}
+                        href={`/${item.entity}/${
+                          item.repo
+                        }/pulls/${shareableIssueOrPrPathId(item)}`}
                       >
                         {item.title}
                         {item.needsNostrRepublish ? (

@@ -12,6 +12,7 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
+import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 
 import {
   AlertCircle,
@@ -404,7 +405,9 @@ export default function BountyHuntPage() {
             return (
               <Link
                 key={`${issue.entity}/${issue.repo}/${issue.id}`}
-                href={`/${issue.entity}/${issue.repo}/issues/${issue.number}`}
+                href={`/${issue.entity}/${
+                  issue.repo
+                }/issues/${shareableIssueOrPrPathId(issue)}`}
                 className={`block border rounded-lg p-5 transition-all ${
                   isHighValue && isAvailable
                     ? "border-yellow-500/50 bg-yellow-900/10 hover:bg-yellow-900/20 hover:border-yellow-500 shadow-lg shadow-yellow-900/20"

@@ -130,6 +130,36 @@ export function isNostrHexIssueId(id: unknown): boolean {
   return /^[0-9a-f]{64}$/i.test(String(id ?? ""));
 }
 
+/**
+ * Path segment for `/issues/[id]` and `/pulls/[id]` that other browsers can open.
+ * Nostr rows use the 64-char event id. GitHub/Gitea imports keep the forge number.
+ * Local sequential `number` (#2) is display-only — it is not on the Nostr event.
+ */
+export function shareableIssueOrPrPathId(row: {
+  id?: string;
+  number?: string | number;
+}): string {
+  const id = String(row.id ?? "").trim();
+  const number = String(row.number ?? "").trim();
+  if (isGithubStyleIssueId(id) || isGithubStylePrId(id)) {
+    return number || id.replace(/^(issue|pr)-/i, "");
+  }
+  if (isNostrHexIssueId(id)) return id;
+  return id || number;
+}
+
+/** Friendly #N in the UI. Prefer local display number; never require it in the URL. */
+export function issueOrPrDisplayNumber(row: {
+  id?: string;
+  number?: string | number;
+}): string {
+  const number = String(row.number ?? "").trim();
+  if (number) return number;
+  const id = String(row.id ?? "").trim();
+  if (isNostrHexIssueId(id)) return id.slice(0, 8);
+  return id;
+}
+
 /** Dedupe assignee pubkeys (lowercase 64-char hex only). */
 export function normalizeAssigneePubkeys(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : [];

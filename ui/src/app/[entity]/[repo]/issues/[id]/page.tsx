@@ -72,6 +72,9 @@ import {
 } from "@/lib/utils/entity-resolver";
 import {
   findIssueRowIndexByRouteParam,
+  isGithubStyleIssueId,
+  isNostrHexIssueId,
+  issueOrPrDisplayNumber,
   loadMergedIssueComments,
   normalizeAssigneePubkeys,
 } from "@/lib/utils/issue-pr-status";
@@ -92,6 +95,7 @@ import {
 } from "lucide-react";
 import { Reply } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type UnsignedEvent, nip19 } from "nostr-tools";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
@@ -99,7 +103,7 @@ import remarkGfm from "remark-gfm";
 
 interface Issue {
   id: string;
-  /** Display number used in /issues/[id] URLs from the list view */
+  /** Local display #N only — shareable URLs use the Nostr event id. */
   number?: string;
   title: string;
   description: string;
@@ -145,6 +149,7 @@ export default function IssueDetailPage({
 }) {
   const resolvedParams = use(params);
   const { entity, repo, id } = resolvedParams; // Extract primitives to avoid stale closures
+  const router = useRouter();
   const {
     pubkey: currentUserPubkey,
     publish,
@@ -323,6 +328,15 @@ export default function IssueDetailPage({
     setLoading(true);
     loadIssueFromStorage();
   }, [loadIssueFromStorage]);
+
+  // Local #2 is this browser only. Put the Nostr event id in the address bar
+  // so copy-paste works for logged-out visitors.
+  useEffect(() => {
+    if (!issue?.id || !isNostrHexIssueId(issue.id)) return;
+    if (isGithubStyleIssueId(issue.id)) return;
+    if (id.toLowerCase() === issue.id.toLowerCase()) return;
+    router.replace(`/${entity}/${repo}/issues/${issue.id}`, { scroll: false });
+  }, [issue?.id, id, entity, repo, router]);
 
   useEffect(() => {
     const onIssueUpdated = () => loadIssueFromStorage();
@@ -1628,6 +1642,13 @@ export default function IssueDetailPage({
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">Issue not found</p>
+        {/^\d+$/.test(id) && !isNostrHexIssueId(id) ? (
+          <p className="mt-2 max-w-xl text-sm text-gray-500">
+            Numbers like #{id} are only unique in the browser that created them.
+            Open the issue from the list (the address bar will show a long id
+            you can share), or paste that long id in the URL.
+          </p>
+        ) : null}
         <Link
           href={`/${entity}/${repo}/issues`}
           className="text-purple-500 hover:underline"
@@ -1637,6 +1658,8 @@ export default function IssueDetailPage({
       </div>
     );
   }
+
+  const displayNumber = issueOrPrDisplayNumber(issue);
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
@@ -1658,7 +1681,7 @@ export default function IssueDetailPage({
           Issues
         </Link>
         {" / #"}
-        {id}
+        {displayNumber}
       </nav>
 
       {/* Issue Header */}
@@ -1671,7 +1694,7 @@ export default function IssueDetailPage({
               <CheckCircle2 className="h-5 w-5 text-purple-600" />
             )}
             <h1 className="text-2xl font-bold">{issue.title}</h1>
-            <Badge className="bg-gray-700">#{id}</Badge>
+            <Badge className="bg-gray-700">#{displayNumber}</Badge>
           </div>
           <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2">
             <span>

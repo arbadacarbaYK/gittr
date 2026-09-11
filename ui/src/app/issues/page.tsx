@@ -1,10 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_ISSUE, KIND_LABEL_OVERLAY } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -41,12 +47,13 @@ import {
   saveAggregateListPrefs,
   saveCollapsedRepoKeys,
 } from "@/lib/utils/global-issues-pr-list";
+import { sortListItems } from "@/lib/utils/issue-pr-list-search";
 import {
   countMergedIssueComments,
   mergeGithubIssuesAfterRefetch,
   normalizeIssueListStatus,
+  shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
-import { sortListItems } from "@/lib/utils/issue-pr-list-search";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { syncGithubIssuesForRepo } from "@/lib/utils/sync-github-repo-issues-prs";
 
@@ -102,7 +109,10 @@ function collectIssueRowsForAggregatedPage(userRepos: any[]): IIssueData[] {
       return;
     }
 
-    const repoIssues = readRepoIssuesFromLocalStorage(entity, repoName) as any[];
+    const repoIssues = readRepoIssuesFromLocalStorage(
+      entity,
+      repoName
+    ) as any[];
     const repoUnpushed = repo?.hasUnpushedEdits === true;
     const isFork = repoIsFork(repo);
 
@@ -225,9 +235,9 @@ function AggregateIssueRow({
             className={`text-zinc-200 hover:text-purple-500 ${
               hideRepoPrefix ? "pl-7" : "pl-7 sm:pl-3"
             }`}
-            href={`/${item.entity}/${item.repo}/issues/${
-              item.id?.startsWith("issue-") ? item.number : item.id
-            }`}
+            href={`/${item.entity}/${
+              item.repo
+            }/issues/${shareableIssueOrPrPathId(item)}`}
           >
             {item.title}
             {item.needsNostrRepublish ? (
@@ -859,9 +869,7 @@ export default function IssuesPage({}) {
     (key: string) => {
       startTransition(() => {
         setCollapsedRepos((prev) => {
-          const next = new Set(
-            prev ?? collapseAllRepoKeys(allRepoGroupKeys)
-          );
+          const next = new Set(prev ?? collapseAllRepoKeys(allRepoGroupKeys));
           const k = key.toLowerCase();
           if (next.has(k)) next.delete(k);
           else next.add(k);

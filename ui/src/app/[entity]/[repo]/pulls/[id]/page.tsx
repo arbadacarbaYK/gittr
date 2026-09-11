@@ -90,6 +90,7 @@ import {
 import {
   findPullRequestRowIndexByRouteParam,
   isGithubStylePrId,
+  isNostrHexIssueId,
 } from "@/lib/utils/issue-pr-status";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -581,6 +582,22 @@ export default function PRDetailPage({
     resolvedParams.repo,
     currentUserPubkey,
     prStorageRev,
+  ]);
+
+  useEffect(() => {
+    if (!pr?.id || !isNostrHexIssueId(pr.id) || isGithubStylePrId(pr.id))
+      return;
+    if (resolvedParams.id.toLowerCase() === pr.id.toLowerCase()) return;
+    router.replace(
+      `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/${pr.id}`,
+      { scroll: false }
+    );
+  }, [
+    pr?.id,
+    resolvedParams.id,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    router,
   ]);
 
   // Fill clone / commit tags if the list row was a thin warm upsert.
