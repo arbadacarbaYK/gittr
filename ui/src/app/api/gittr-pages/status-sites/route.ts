@@ -34,10 +34,10 @@ export async function GET(req: Request) {
     ? loaded.sites.filter((s) => pageBelongsToOwner(s, authorHex))
     : loaded.sites;
 
-  const sorted =
-    searchParams.get("sort") === "updated"
-      ? sortGatewaySitesByUpdated(owned)
-      : owned;
+  // Newest Push Manifest / snapshot first. `sort=updated` is accepted for
+  // Home and older clients; collapsing same-author rows used to clump an
+  // owner’s older sites at the top of `/pages`.
+  const sorted = sortGatewaySitesByUpdated(owned);
 
   const { page, total, hasMore } = sliceStatusSites(sorted, offset, limit);
 

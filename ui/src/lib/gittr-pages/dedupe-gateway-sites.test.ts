@@ -50,4 +50,30 @@ describe("dedupeGatewaySitesForDirectory", () => {
     );
     expect(dedupeGatewaySitesForDirectory(sites)).toHaveLength(80);
   });
+
+  it("lists the newest republish first, not every site by that author", () => {
+    const authorA = "a".repeat(64);
+    const authorB = "b".repeat(64);
+    const out = dedupeGatewaySitesForDirectory([
+      row({
+        title: "old A",
+        siteUrl: "https://old-a.pages.gittr.space/",
+        authorPubkeyHex: authorA,
+        updatedIso: "2024-01-01T00:00:00Z",
+      }),
+      row({
+        title: "fresh B",
+        siteUrl: "https://fresh-b.pages.gittr.space/",
+        authorPubkeyHex: authorB,
+        updatedIso: "2026-09-13T00:00:00Z",
+      }),
+      row({
+        title: "mid A",
+        siteUrl: "https://mid-a.pages.gittr.space/",
+        authorPubkeyHex: authorA,
+        updatedIso: "2026-08-01T00:00:00Z",
+      }),
+    ]);
+    expect(out.map((s) => s.title)).toEqual(["fresh B", "mid A", "old A"]);
+  });
 });

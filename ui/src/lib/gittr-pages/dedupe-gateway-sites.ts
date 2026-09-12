@@ -1,3 +1,4 @@
+import { sortGatewaySitesByUpdated } from "./paginate-gateway-sites";
 import type { GatewayStatusSiteRow } from "./parse-gateway-status-html";
 
 function siteHostnameKey(siteUrl: string): string {
@@ -185,9 +186,11 @@ export function dedupeGatewaySitesByHostname(
   return out;
 }
 
-/** Use on `/pages` payload: merge logical dupes, then hostname uniqueness. */
+/** Use on `/pages` payload: merge logical dupes, then hostname uniqueness, newest first. */
 export function dedupeGatewaySitesForDirectory(
   sites: GatewayStatusSiteRow[]
 ): GatewayStatusSiteRow[] {
-  return dedupeGatewaySitesByHostname(mergeDuplicateGatewayRows(sites));
+  return sortGatewaySitesByUpdated(
+    dedupeGatewaySitesByHostname(mergeDuplicateGatewayRows(sites))
+  );
 }

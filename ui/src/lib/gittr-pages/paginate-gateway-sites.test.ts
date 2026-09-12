@@ -4,6 +4,7 @@ import {
   parseStatusSitesAuthor,
   parseStatusSitesLimitOffset,
   sliceStatusSites,
+  sortGatewaySitesByUpdated,
 } from "./paginate-gateway-sites";
 
 describe("parseStatusSitesAuthor", () => {
@@ -63,5 +64,20 @@ describe("sliceStatusSites", () => {
       total: 5,
       hasMore: false,
     });
+  });
+});
+
+describe("sortGatewaySitesByUpdated", () => {
+  it("puts the newest updatedIso first", () => {
+    const out = sortGatewaySitesByUpdated([
+      { updatedIso: "2026-01-01T00:00:00Z" },
+      { updatedIso: "2026-09-13T12:00:00Z" },
+      { updatedIso: "" },
+    ]);
+    expect(out.map((s) => s.updatedIso)).toEqual([
+      "2026-09-13T12:00:00Z",
+      "2026-01-01T00:00:00Z",
+      "",
+    ]);
   });
 });

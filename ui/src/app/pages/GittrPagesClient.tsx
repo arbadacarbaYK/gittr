@@ -77,7 +77,9 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
 
     // First page only so cards can paint without waiting on ~2000 rows.
     const fresh = refreshNonce > 0 ? "&fresh=1" : "";
-    fetch(`/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}${fresh}`)
+    fetch(
+      `/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}&sort=updated${fresh}`
+    )
       .then(async (res) => {
         const data = (await res.json()) as ApiPayload & { error?: string };
         if (!res.ok) {
@@ -95,7 +97,9 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         }
         try {
           const rest = await fetch(
-            `/api/gittr-pages/status-sites${refreshNonce > 0 ? "?fresh=1" : ""}`
+            `/api/gittr-pages/status-sites?sort=updated${
+              refreshNonce > 0 ? "&fresh=1" : ""
+            }`
           );
           const full = (await rest.json()) as ApiPayload & { error?: string };
           if (!rest.ok) {
@@ -209,7 +213,8 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
               Published sites
             </h1>
             <p className="mt-3 text-base leading-relaxed text-gray-400">
-              Live sites you can open in a new tab. Only entries with a root{" "}
+              Live sites you can open in a new tab, newest Push Manifest first.
+              Only entries with a root{" "}
               <code className="text-gray-300">index.html</code> are listed here
               (manifest-only Blossom uploads without a homepage are omitted).
             </p>
