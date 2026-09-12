@@ -50,7 +50,10 @@ import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
+} from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -811,7 +814,7 @@ export default function RepoIssueNewPage() {
         <div className="flex-1 min-w-0">
           <div className="flex gap-3 mb-4">
             <Avatar className="w-8 h-8 overflow-hidden shrink-0">
-              {picture && picture.startsWith("http") ? (
+              {isDisplayableProfilePicture(picture) ? (
                 <AvatarImage
                   src={picture}
                   className="w-8 h-8 object-cover max-w-8 max-h-8"
@@ -975,7 +978,9 @@ export default function RepoIssueNewPage() {
                                       <div className="flex items-center gap-1.5">
                                         <Avatar className="h-4 w-4">
                                           {meta?.picture &&
-                                          meta.picture.startsWith("http") ? (
+                                          isDisplayableProfilePicture(
+                                            meta.picture
+                                          ) ? (
                                             <AvatarImage src={meta.picture} />
                                           ) : null}
                                           <AvatarFallback className="bg-gray-700 text-white text-[8px]">
@@ -1129,7 +1134,7 @@ export default function RepoIssueNewPage() {
                           >
                             <Avatar className="h-4 w-4">
                               {meta?.picture &&
-                              meta.picture.startsWith("http") ? (
+                              isDisplayableProfilePicture(meta.picture) ? (
                                 <AvatarImage src={meta.picture} />
                               ) : null}
                               <AvatarFallback className="bg-gray-700 text-white text-[8px]">

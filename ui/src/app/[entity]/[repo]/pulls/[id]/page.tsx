@@ -83,6 +83,7 @@ import {
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -2803,7 +2804,7 @@ export default function PRDetailPage({
                       <div className="flex items-start gap-3">
                         <Avatar className="h-8 w-8 flex-shrink-0">
                           {authorMeta?.picture &&
-                          authorMeta.picture.startsWith("http") ? (
+                          isDisplayableProfilePicture(authorMeta.picture) ? (
                             <AvatarImage src={authorMeta.picture} />
                           ) : null}
                           <AvatarFallback className="bg-gray-700 text-white text-xs">
@@ -2991,6 +2992,7 @@ export default function PRDetailPage({
                     meta?.display_name ||
                     meta?.name ||
                     pubkey.slice(0, 8) + "...";
+                  const picture = meta?.picture;
                   const npub =
                     pubkey && pubkey.length === 64
                       ? (() => {
@@ -3019,8 +3021,8 @@ export default function PRDetailPage({
                       title={tooltip}
                     >
                       <Avatar className="h-6 w-6 ring-1 ring-gray-500">
-                        {meta?.picture && meta.picture.startsWith("http") ? (
-                          <AvatarImage src={meta.picture} />
+                        {isDisplayableProfilePicture(picture) ? (
+                          <AvatarImage src={picture} />
                         ) : null}
                         <AvatarFallback className="bg-gray-700 text-white text-xs">
                           {displayName.slice(0, 2).toUpperCase()}

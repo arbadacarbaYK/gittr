@@ -31,6 +31,7 @@ import {
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -1002,7 +1003,7 @@ export default function RepoPullsPage({
                           {(() => {
                             const meta = authorMetadata[item.author];
                             const picture = meta?.picture;
-                            return picture && picture.startsWith("http") ? (
+                            return isDisplayableProfilePicture(picture) ? (
                               <AvatarImage src={picture} />
                             ) : null;
                           })()}

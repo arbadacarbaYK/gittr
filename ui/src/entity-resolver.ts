@@ -9,6 +9,8 @@
  *
  * We use npub format (GRASP protocol standard) for all entity identifiers - no 8-char prefixes.
  */
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
+
 import { nip19 } from "nostr-tools";
 
 /**
@@ -148,11 +150,7 @@ export function getEntityPicture(
   // CRITICAL: Use EXACT match only - no partial matching to avoid wrong user's picture
   const normalizedPubkey = pubkey.toLowerCase();
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
-  if (
-    meta?.picture &&
-    (meta.picture.startsWith("http") ||
-      /^data:image\//i.test(meta.picture.trim()))
-  ) {
+  if (isDisplayableProfilePicture(meta?.picture)) {
     return meta.picture.trim();
   }
   return null;

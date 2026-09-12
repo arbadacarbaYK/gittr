@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { cn } from "@/lib/utils";
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 
 import { nip19 } from "nostr-tools";
 
@@ -380,7 +381,7 @@ export function NostrUserSearch({
                 onMouseEnter={() => setSelectedIndex(index)}
               >
                 <Avatar className="h-8 w-8 flex-shrink-0">
-                  {user.picture && user.picture.startsWith("http") ? (
+                  {isDisplayableProfilePicture(user.picture) ? (
                     <AvatarImage src={user.picture} />
                   ) : null}
                   <AvatarFallback className="bg-gray-700 text-white text-xs">

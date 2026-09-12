@@ -29,6 +29,7 @@ import {
 } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -194,7 +195,7 @@ function AggregateIssueRow({
   const authorMeta = authorMetadata[item.author] || {};
   const authorPicture =
     typeof authorMeta.picture === "string" &&
-    authorMeta.picture.startsWith("http")
+    isDisplayableProfilePicture(authorMeta.picture)
       ? authorMeta.picture
       : null;
   let authorLabel =

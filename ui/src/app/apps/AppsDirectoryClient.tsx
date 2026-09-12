@@ -45,7 +45,10 @@ import {
   appNavigate,
   shouldPauseHeavyCatalogOnAnchorLeave,
 } from "@/lib/utils/app-navigate";
-import { ownerProfileHref } from "@/lib/utils/entity-resolver";
+import {
+  isDisplayableProfilePicture,
+  ownerProfileHref,
+} from "@/lib/utils/entity-resolver";
 
 import {
   ChevronDown,
@@ -1075,7 +1078,9 @@ export function AppsDirectoryClient() {
                                 height={28}
                                 src={
                                   authorMeta?.picture &&
-                                  authorMeta.picture.startsWith("http")
+                                  isDisplayableProfilePicture(
+                                    authorMeta.picture
+                                  )
                                     ? authorMeta.picture
                                     : "/logo.svg"
                                 }

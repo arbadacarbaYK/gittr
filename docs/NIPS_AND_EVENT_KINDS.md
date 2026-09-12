@@ -173,7 +173,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Tags**: `i` — `["i", "platform:identity", "<proof>"]` (proof optional but recommended)
 - **Replaceable**: one latest kind **10011** per pubkey
 - **Dual-layer with kind 0 (important)**:
-  - Kind **0** = profile card (`name`, `display_name`, and camelCase `displayName` some clients write; gittr reads all three before falling back to npub). The profile header uses the same `display_name` → `name` order as cards/header. Kind-0 `picture`/`banner` Blossom SHA-256 URLs retry public mirrors when the published host 502s.
+  - Kind **0** = profile card (`name`, `display_name`, and camelCase `displayName` some clients write; gittr reads all three before falling back to npub). The profile header uses the same `display_name` → `name` order as cards/header. Kind-0 **picture** is the avatar. gittr shows three shapes: a normal `https://` URL (nostr.build, etc.), a Blossom SHA-256 blob (retries `blossom.primal.net` / `blossom.dreamith.to` / `image.nostr.build` when the published host 502s), or an inline `data:image/…` SVG/PNG baked into the event. Kind **10011** is not a second avatar. Repo chrome is separate: NIP-34 `image` / logo file / bridge `/api/og/repo-image`, then the owner’s kind-0 picture, then `/logo.svg`.
   - Kind **10011** = external identity claims only
   - gittr **always reads and merges both**. A 10011 event must never wipe or block kind-0 name/avatar.
   - Legacy clients that put `i` on kind **0** are still read; claims are **unioned** with 10011 (same `platform:identity` prefers 10011 / proof).

@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
 } from "@/lib/utils/entity-resolver";
 import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
 import {
@@ -142,7 +143,7 @@ export default function HomePage({
       : null;
   const welcomeName = mounted && isLoggedIn && name ? name : null;
   const welcomePicture =
-    mounted && picture && picture.startsWith("http") ? picture : null;
+    mounted && isDisplayableProfilePicture(picture) ? picture : null;
   const welcomeMedia = useBlossomMediaSrc(welcomePicture);
   const avatarSrc = welcomeMedia.src || "/logo.svg";
   const showBanner =
@@ -1040,11 +1041,7 @@ export default function HomePage({
         userMetadata[normalizedPubkey] || userMetadata[ownerPubkey];
       if (metadata?.picture) {
         const picture = metadata.picture;
-        if (
-          picture &&
-          picture.trim().length > 0 &&
-          picture.startsWith("http")
-        ) {
+        if (isDisplayableProfilePicture(picture)) {
           return blossomMediaFallbackUrls(picture)[0] || picture;
         }
       }

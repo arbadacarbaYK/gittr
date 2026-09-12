@@ -26,6 +26,7 @@ import {
   getEntityPicture,
   getRepoOwnerPubkey,
   getUserMetadata,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -1854,7 +1855,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         <div className="flex flex-col md:flex-row items-start gap-6">
           {/* Avatar */}
           <div className="relative">
-            {picture && picture.startsWith("http") ? (
+            {isDisplayableProfilePicture(picture) ? (
               <img
                 src={picture}
                 alt={displayName}
@@ -1869,7 +1870,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             ) : null}
             <div
               className={`w-32 h-32 rounded-full border-4 border-[#171B21] bg-purple-600 flex items-center justify-center text-4xl font-bold text-white shrink-0 ${
-                picture && picture.startsWith("http") ? "hidden" : ""
+                isDisplayableProfilePicture(picture) ? "hidden" : ""
               }`}
             >
               {/* Use first 2 chars of displayName, but ensure it's not from npub or pubkey */}
@@ -2393,11 +2394,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                     metadataMap[ownerPubkey];
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
-                    if (
-                      picture &&
-                      picture.trim().length > 0 &&
-                      picture.startsWith("http")
-                    ) {
+                    if (isDisplayableProfilePicture(picture)) {
                       iconUrl = picture;
                       console.log(
                         `✅ [Profile] Using owner picture for repo ${

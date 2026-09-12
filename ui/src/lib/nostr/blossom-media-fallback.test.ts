@@ -55,6 +55,12 @@ describe("blossomMediaFallbackUrls", () => {
     expect(blossomMediaFallbackUrls("")).toEqual([]);
     expect(blossomMediaFallbackUrls("/logo.svg")).toEqual([]);
   });
+
+  it("passes through inline data:image kind-0 pictures", () => {
+    const svg = "data:image/svg+xml;base64,PHN2Zy8+";
+    expect(blossomMediaFallbackUrls(svg)).toEqual([svg]);
+    expect(blossomMediaFallbackUrls("javascript:alert(1)")).toEqual([]);
+  });
 });
 
 describe("nextBlossomMediaUrl", () => {

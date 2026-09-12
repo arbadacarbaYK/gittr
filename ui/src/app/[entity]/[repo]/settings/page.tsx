@@ -50,7 +50,10 @@ import {
   getRepoStorageKey,
   normalizeEntityForStorage,
 } from "@/lib/utils/entity-normalizer";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
+} from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
 
@@ -1571,6 +1574,7 @@ export default function RepoSettingsPage() {
                 meta?.name ||
                 owner.name ||
                 owner.pubkey.slice(0, 8) + "...";
+              const picture = meta?.picture;
               const isCurrentUser = owner.pubkey === pubkey;
 
               return (
@@ -1580,8 +1584,8 @@ export default function RepoSettingsPage() {
                 >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6 ring-2 ring-purple-500">
-                      {meta?.picture && meta.picture.startsWith("http") ? (
-                        <AvatarImage src={meta.picture} />
+                      {isDisplayableProfilePicture(picture) ? (
+                        <AvatarImage src={picture} />
                       ) : null}
                       <AvatarFallback className="bg-gray-700 text-white text-xs">
                         {displayName.slice(0, 2).toUpperCase()}
@@ -1638,6 +1642,7 @@ export default function RepoSettingsPage() {
                 meta?.name ||
                 maintainer.name ||
                 maintainer.pubkey.slice(0, 8) + "...";
+              const picture = meta?.picture;
               const isCurrentUser = maintainer.pubkey === pubkey;
 
               return (
@@ -1647,8 +1652,8 @@ export default function RepoSettingsPage() {
                 >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6 ring-2 ring-blue-500">
-                      {meta?.picture && meta.picture.startsWith("http") ? (
-                        <AvatarImage src={meta.picture} />
+                      {isDisplayableProfilePicture(picture) ? (
+                        <AvatarImage src={picture} />
                       ) : null}
                       <AvatarFallback className="bg-gray-700 text-white text-xs">
                         {displayName.slice(0, 2).toUpperCase()}

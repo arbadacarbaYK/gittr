@@ -3650,13 +3650,7 @@ export default function EntityPage({
                   if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
                     const ownerMeta = ownerMetaMap.get(ownerPubkey);
                     const picture = ownerMeta?.picture;
-                    if (
-                      picture &&
-                      picture.trim().length > 0 &&
-                      picture.startsWith("http")
-                    ) {
-                      iconUrl = blossomMediaFallbackUrls(picture)[0] || picture;
-                    }
+                    iconUrl = blossomMediaFallbackUrls(picture)[0] || null;
                   }
                   if (!iconUrl) {
                     let repoName =

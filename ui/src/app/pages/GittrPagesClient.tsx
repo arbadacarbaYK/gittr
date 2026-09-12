@@ -23,6 +23,7 @@ import {
   clampVisibleCount,
 } from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 
 import { ExternalLink, Globe, Loader2, Search, Zap } from "lucide-react";
 import Link from "next/link";
@@ -372,7 +373,9 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                                   height={28}
                                   src={
                                     authorMeta?.picture &&
-                                    authorMeta.picture.startsWith("http")
+                                    isDisplayableProfilePicture(
+                                      authorMeta.picture
+                                    )
                                       ? authorMeta.picture
                                       : "/logo.svg"
                                   }

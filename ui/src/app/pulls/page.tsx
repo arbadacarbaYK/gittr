@@ -31,6 +31,7 @@ import {
 } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -1111,7 +1112,7 @@ export default function PullsPage({}) {
                                   const meta = authorMetadata[item.author];
                                   const picture = meta?.picture;
                                   return picture &&
-                                    picture.startsWith("http") ? (
+                                    isDisplayableProfilePicture(picture) ? (
                                     <AvatarImage src={picture} />
                                   ) : null;
                                 })()}
@@ -1291,7 +1292,7 @@ export default function PullsPage({}) {
                             {(() => {
                               const meta = authorMetadata[item.author];
                               const picture = meta?.picture;
-                              return picture && picture.startsWith("http") ? (
+                              return isDisplayableProfilePicture(picture) ? (
                                 <AvatarImage src={picture} />
                               ) : null;
                             })()}

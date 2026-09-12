@@ -26,7 +26,10 @@ import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { formatDateTime24h } from "@/lib/utils/date-format";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
+} from "@/lib/utils/entity-resolver";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 import {
   getRepoStatus,
@@ -320,11 +323,7 @@ export function ReposList({
         ownerMetadata[normalizedKey] || ownerMetadata[ownerPubkey];
       if (metadata?.picture) {
         const picture = metadata.picture;
-        if (
-          picture &&
-          picture.trim().length > 0 &&
-          picture.startsWith("http")
-        ) {
+        if (isDisplayableProfilePicture(picture)) {
           return picture;
         }
       }

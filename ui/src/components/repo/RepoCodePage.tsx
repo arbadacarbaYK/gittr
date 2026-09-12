@@ -232,6 +232,7 @@ import { detectGitForge } from "@/lib/utils/detect-git-forge";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { filterDisplayCloneUrlsForSidebar } from "@/lib/utils/filter-display-clone-urls";
@@ -13803,12 +13804,9 @@ export function RepoCodePage() {
           ? ownerMetadata[ownerPubkey.toLowerCase()] ||
             ownerMetadata[ownerPubkey]
           : undefined;
-        if (
-          metadata?.picture &&
-          metadata.picture.trim().length > 0 &&
-          metadata.picture.startsWith("http")
-        ) {
-          if (!cancelled) setLogoUrl(metadata.picture);
+        const ownerPicture = metadata?.picture;
+        if (isDisplayableProfilePicture(ownerPicture)) {
+          if (!cancelled) setLogoUrl(ownerPicture);
           return;
         }
 

@@ -7,6 +7,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { cn } from "@/lib/utils";
 import { appNavigate } from "@/lib/utils/app-navigate";
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 
 import { usePathname, useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
@@ -62,7 +63,7 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
           {isLoggedIn && (
             <div className="flex items-center p-3 space-x-2">
               <Avatar className="w-8 h-8 overflow-hidden shrink-0">
-                {picture && picture.startsWith("http") ? (
+                {isDisplayableProfilePicture(picture) ? (
                   <AvatarImage
                     src={picture}
                     className="w-8 h-8 object-cover max-w-8 max-h-8"

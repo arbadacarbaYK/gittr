@@ -26,6 +26,7 @@ import {
   readRepoIssuesFromLocalStorage,
   readRepoPullsFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 import {
   normalizeIssueListStatus,
   normalizePrListStatus,
@@ -337,7 +338,7 @@ export function Header() {
             <DropdownMenuTrigger asChild>
               <div className="flex items-center cursor-pointer">
                 <Avatar className="w-8 h-8 overflow-hidden shrink-0">
-                  {picture && picture.startsWith("http") ? (
+                  {isDisplayableProfilePicture(picture) ? (
                     <AvatarImage
                       src={picture}
                       className="w-8 h-8 object-cover max-w-8 max-h-8"

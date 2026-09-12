@@ -12,6 +12,7 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
+import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 import {
   issueOrPrDisplayNumber,
   shareableIssueOrPrPathId,
@@ -523,7 +524,7 @@ export default function BountyHuntPage() {
                             {(() => {
                               const meta = authorMetadata[issue.linkedPRAuthor];
                               const picture = meta?.picture;
-                              return picture && picture.startsWith("http") ? (
+                              return isDisplayableProfilePicture(picture) ? (
                                 <AvatarImage src={picture} />
                               ) : null;
                             })()}
@@ -578,7 +579,7 @@ export default function BountyHuntPage() {
                           {(() => {
                             const meta = authorMetadata[issue.author];
                             const picture = meta?.picture;
-                            return picture && picture.startsWith("http") ? (
+                            return isDisplayableProfilePicture(picture) ? (
                               <AvatarImage src={picture} />
                             ) : null;
                           })()}

@@ -65,6 +65,7 @@ import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   getEntityDisplayName,
+  getEntityPicture,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
 import { getGraspServers } from "@/lib/utils/grasp-servers";
@@ -601,15 +602,7 @@ function ExplorePageContent() {
     const ownerPubkey = repo.entity
       ? getRepoOwnerPubkey(repo as any, repo.entity)
       : null;
-    let ownerPicture: string | null = null;
-    if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      const metadata =
-        ownerMetadata[ownerPubkey.toLowerCase()] || ownerMetadata[ownerPubkey];
-      const picture = metadata?.picture;
-      if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
-        ownerPicture = picture.trim();
-      }
-    }
+    const ownerPicture = getEntityPicture(ownerPubkey, ownerMetadata);
     const repoAny = repo as any;
     return resolveRepoDisplayIcon({
       logoUrl: repo.logoUrl,
@@ -2567,10 +2560,9 @@ function ExplorePageContent() {
               try {
                 iconUrl = resolveRepoIcon(r);
                 if (normalizedOwnerPubkey) {
-                  // CRITICAL: Use normalized pubkey for metadata lookup
                   ownerPicture =
-                    ownerMetadata[normalizedOwnerPubkey]?.picture ||
-                    ownerMetadata[ownerPubkey]?.picture;
+                    getEntityPicture(normalizedOwnerPubkey, ownerMetadata) ||
+                    undefined;
                 }
               } catch (error) {
                 console.error("⚠️ [Explore] Error resolving icons:", error);

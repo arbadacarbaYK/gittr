@@ -54,12 +54,16 @@ function candidateFor(origin: string, hash: string, ext: string): string {
  * Ordered URLs to try for a kind-0 picture/banner.
  * Original URL is included (first, unless its host is known-flaky).
  * Non-blossom http(s) URLs return `[original]` only.
+ * Inline `data:image/…` (SVG/PNG baked into kind 0) returns `[original]`.
  */
 export function blossomMediaFallbackUrls(
   url: string | null | undefined
 ): string[] {
   const original = (url || "").trim();
-  if (!original || !/^https?:\/\//i.test(original)) return [];
+  if (!original) return [];
+  // Kind-0 sometimes embeds an SVG/PNG (no host to mirror).
+  if (/^data:image\/[a-z0-9.+-]+/i.test(original)) return [original];
+  if (!/^https?:\/\//i.test(original)) return [];
 
   const parsed = extractBlossomSha256(original);
   if (!parsed) return [original];

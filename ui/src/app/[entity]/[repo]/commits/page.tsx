@@ -26,6 +26,7 @@ import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
   resolveEntityToPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
@@ -552,7 +553,9 @@ export default function CommitsPage({
                                     commit.authorPicture.startsWith("http")
                                       ? commit.authorPicture
                                       : meta?.picture &&
-                                        meta.picture.startsWith("http")
+                                        isDisplayableProfilePicture(
+                                          meta.picture
+                                        )
                                       ? meta.picture
                                       : null;
                                   return picture ? (

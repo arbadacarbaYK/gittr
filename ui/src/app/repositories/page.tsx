@@ -64,7 +64,10 @@ import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  getRepoOwnerPubkey,
+  isDisplayableProfilePicture,
+} from "@/lib/utils/entity-resolver";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import {
@@ -653,7 +656,7 @@ export default function RepositoriesPage() {
           if (
             picture &&
             picture.trim().length > 0 &&
-            picture.startsWith("http")
+            isDisplayableProfilePicture(picture)
           ) {
             return picture;
           }
