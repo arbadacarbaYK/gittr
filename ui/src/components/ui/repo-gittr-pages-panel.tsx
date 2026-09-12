@@ -286,14 +286,11 @@ export function RepoGittrPagesPanel({
             is media-only (no site <code className="text-amber-50/90">.js</code>{" "}
             etc.). Set{" "}
             <code className="text-amber-50/90">
-              NEXT_PUBLIC_BLOSSOM_URL=https://blossom.band
+              NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL=https://blossom.gittr.space
             </code>{" "}
-            (or{" "}
-            <code className="text-amber-50/90">
-              NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL
-            </code>
-            ), then <code className="text-amber-50/90">yarn build</code> +
-            restart <code className="text-amber-50/90">gittr-frontend</code>.{" "}
+            (Pages host; never APKs), then{" "}
+            <code className="text-amber-50/90">yarn build</code> + restart{" "}
+            <code className="text-amber-50/90">gittr-frontend</code>.{" "}
             <Link
               className="font-medium text-amber-200 underline underline-offset-2 hover:text-amber-50"
               href="/help"

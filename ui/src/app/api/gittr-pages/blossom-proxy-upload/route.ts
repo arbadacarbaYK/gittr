@@ -1,5 +1,7 @@
 import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 import {
+  blossomAuthServerHosts,
+  blossomAuthServerMatchesOrigin,
   gittrPagesBlossomOrigin,
   isMediaOnlyNostrBuildBlossom,
   rawGittrPagesBlossomEnvOrigin,
@@ -133,6 +135,27 @@ export async function POST(req: Request) {
   }
 
   const origin = gittrPagesBlossomOrigin();
+  if (!blossomAuthServerMatchesOrigin(body.authEvent?.tags, origin)) {
+    const tagged = blossomAuthServerHosts(body.authEvent?.tags).join(", ");
+    let originHost = origin;
+    try {
+      originHost = new URL(origin).hostname;
+    } catch {
+      /* keep origin */
+    }
+    return NextResponse.json(
+      {
+        error: "Auth token not valid for this server",
+        hint:
+          `Kind 24242 is tagged for ${
+            tagged || "(no server tag)"
+          } but this gittr uploads Pages to ${originHost}. ` +
+          "That is a host mismatch, not a bad Amber sign. Rebuild so the browser and the proxy share NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL (default https://blossom.gittr.space).",
+      },
+      { status: 401 }
+    );
+  }
+
   const authHeader =
     "Nostr " +
     Buffer.from(JSON.stringify(body.authEvent), "utf8").toString("base64url");
@@ -187,8 +210,26 @@ export async function POST(req: Request) {
     const outStatus = st >= 400 && st < 600 ? st : 502;
     let hint: string | undefined;
     if (st === 401) {
-      hint =
-        "401 = Blossom rejected the upload token (kind 24242). Sign with the same key as the repo owner. Amber / NIP-46 works; a NIP-07-only token from a different extension will fail here.";
+      const bodyText = text.toLowerCase();
+      if (bodyText.includes("not valid for this server")) {
+        let originHost = origin;
+        try {
+          originHost = new URL(origin).hostname;
+        } catch {
+          /* keep origin */
+        }
+        const tagged = blossomAuthServerHosts(body.authEvent?.tags).join(", ");
+        hint =
+          `401 = Blossom rejected the kind 24242 server tag (${
+            tagged || "none"
+          } vs upload host ${originHost}). ` +
+          "Amber already signed; the token was scoped to a different Blossom than this proxy PUTs to. " +
+          "Pages belong on blossom.gittr.space — set NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL, yarn build, restart gittr-frontend. " +
+          "If those already match, Blossom’s own publicDomain / nginx Host must be that same hostname.";
+      } else {
+        hint =
+          "401 = Blossom rejected the upload token (kind 24242). Sign with the same key as the repo owner. Amber / NIP-46 works; a NIP-07-only token from a different extension will fail here.";
+      }
     } else if (st === 415) {
       const bodyHasNostr = text.toLowerCase().includes("nostr.build");
       const envLooksNostr = isMediaOnlyNostrBuildBlossom(
