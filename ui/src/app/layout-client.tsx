@@ -316,7 +316,7 @@ export default function ClientLayout({
         <MigrationRunner />
         <AnonymousCleanupRunner />
         <Header />
-        <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%]">
+        <div className="mx-auto w-full max-w-[95%]">
           {children}
           <SiteFooter />
         </div>

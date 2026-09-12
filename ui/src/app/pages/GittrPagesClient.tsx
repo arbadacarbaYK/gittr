@@ -234,7 +234,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         ) : null}
       </div>
 
-      <div className="mx-auto mt-8 w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+      <div className="mt-8 w-full pb-16">
         <div className="mb-8 rounded-xl border border-[#383B42] bg-[#0E1116]/90 p-4 shadow-lg shadow-black/20">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
