@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
 import { nip19 } from "nostr-tools";
+import { describe, expect, it } from "vitest";
 
-import { getEntityDisplayName, ownerProfileHref } from "./entity-resolver";
+import {
+  getEntityDisplayName,
+  getEntityPicture,
+  ownerProfileHref,
+} from "./entity-resolver";
 
 describe("getEntityDisplayName identities hardening", () => {
   const pubkey = "a".repeat(64);
@@ -66,5 +70,35 @@ describe("ownerProfileHref", () => {
 
   it("keeps npub and other non-hex ids as a path segment", () => {
     expect(ownerProfileHref("npub1abc")).toBe("/npub1abc");
+  });
+});
+
+describe("getEntityPicture", () => {
+  const pubkey = "a".repeat(64);
+
+  it("accepts https and inline data:image pictures", () => {
+    expect(
+      getEntityPicture(pubkey, {
+        [pubkey]: { picture: "https://cdn.example/a.png" },
+      })
+    ).toBe("https://cdn.example/a.png");
+    expect(
+      getEntityPicture(pubkey, {
+        [pubkey]: { picture: "data:image/svg+xml;base64,PHN2Zy8+" },
+      })
+    ).toBe("data:image/svg+xml;base64,PHN2Zy8+");
+  });
+
+  it("rejects javascript and non-image data URLs", () => {
+    expect(
+      getEntityPicture(pubkey, {
+        [pubkey]: { picture: "javascript:alert(1)" },
+      })
+    ).toBeNull();
+    expect(
+      getEntityPicture(pubkey, {
+        [pubkey]: { picture: "data:text/html,<h1>x</h1>" },
+      })
+    ).toBeNull();
   });
 });

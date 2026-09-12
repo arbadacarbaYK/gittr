@@ -148,8 +148,12 @@ export function getEntityPicture(
   // CRITICAL: Use EXACT match only - no partial matching to avoid wrong user's picture
   const normalizedPubkey = pubkey.toLowerCase();
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
-  if (meta?.picture && meta.picture.startsWith("http")) {
-    return meta.picture;
+  if (
+    meta?.picture &&
+    (meta.picture.startsWith("http") ||
+      /^data:image\//i.test(meta.picture.trim()))
+  ) {
+    return meta.picture.trim();
   }
   return null;
 }

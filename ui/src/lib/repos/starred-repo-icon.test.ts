@@ -5,8 +5,7 @@ import {
   resolveStarredRepoIcon,
 } from "./starred-repo-icon";
 
-const NPUB =
-  "npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr";
+const NPUB = "npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr";
 // nip19 decode of above (hzrd149 / wok owner in prod fixtures — verify via getRepoOwnerPubkey path)
 const OWNER_HEX =
   "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
@@ -41,14 +40,17 @@ describe("resolveStarredRepoIcon", () => {
     expect(icon).toBe("https://cdn.example/logo.png");
   });
 
-  it("ignores non-http pictures", () => {
-    const icon = resolveStarredRepoIcon(
-      { entity: NPUB, repo: "wok" },
-      null,
-      {
-        [OWNER_HEX]: { picture: "data:image/png;base64,xxx" },
-      }
-    );
+  it("uses inline data:image kind-0 pictures", () => {
+    const icon = resolveStarredRepoIcon({ entity: NPUB, repo: "wok" }, null, {
+      [OWNER_HEX]: { picture: "data:image/svg+xml;base64,PHN2Zy8+" },
+    });
+    expect(icon).toBe("data:image/svg+xml;base64,PHN2Zy8+");
+  });
+
+  it("ignores javascript: pictures", () => {
+    const icon = resolveStarredRepoIcon({ entity: NPUB, repo: "wok" }, null, {
+      [OWNER_HEX]: { picture: "javascript:alert(1)" },
+    });
     expect(icon).toBeNull();
   });
 });

@@ -59,8 +59,12 @@ export default async function handler(
   }
 
   // Private repos: crawlers have no auth — never serve git objects; use default card.
+  const avatar =
+    req.query.avatar === "1" || String(req.query.avatar || "") === "true";
+
   const access = await assertRepoReadAccess(req, ownerHex, repoName);
   if (!access.ok) {
+    if (avatar) return res.status(404).end();
     const fallback = `${getPublicSiteUrl()}/opengraph-image`;
     res.setHeader("Cache-Control", "public, max-age=300");
     return res.redirect(302, fallback);
@@ -68,13 +72,15 @@ export default async function handler(
 
   const logo = await readRepoLogoFromBridge(ownerHex, repoName);
   if (!logo) {
+    if (avatar) return res.status(404).end();
     const fallback = `${getPublicSiteUrl()}/opengraph-image`;
     res.setHeader("Cache-Control", "public, max-age=300");
     return res.redirect(302, fallback);
   }
 
   // SVG previews are unreliable on Telegram/X — redirect to default card.
-  if (logo.contentType === "image/svg+xml") {
+  // Avatars in the gittr UI can render SVG.
+  if (logo.contentType === "image/svg+xml" && !avatar) {
     const fallback = `${getPublicSiteUrl()}/opengraph-image`;
     res.setHeader("Cache-Control", "public, max-age=300");
     return res.redirect(302, fallback);

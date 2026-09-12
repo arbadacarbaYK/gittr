@@ -109,6 +109,8 @@ Same winner as the tree. Branch comes from `?branch=`, then `filesBranch` / `res
 
 Relative README images (`![…](file-fetch.gif)`) resolve against **that markdown file’s folder**. Status badges (`img.shields.io` / badgen) stay **inline in a row** like GitHub; only non-badge images get the scrollable block wrapper.
 
+Repo **avatars** (Explore cards vs the repo header): stored / NIP-34 `image` → GitHub/GitLab/Codeberg raw logo file → bridge `/api/og/repo-image?avatar=1` (raw bytes) → owner kind-0 picture (`https` or inline `data:image/…` SVG). GRASP-only clones and `ai:user@host/…` strings are not GitHub. Never use JSON `file-content` as `<img src>` — that used to wipe the header to `/logo.svg`. The header stacks the same layers as Explore so a missing repo logo still shows the owner picture. Kind-0 pictures that are `data:image/svg+xml` were dropped on the header because it only accepted `http`.
+
 Normal READMEs (up to ~200 KB) format automatically; only enormous bodies need **Show formatted README**.
 
 ### Content states

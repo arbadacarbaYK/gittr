@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { RepoChromeStatsContext } from "@/lib/repos/repo-chrome-stats";
-
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -48,6 +46,7 @@ import {
   isOwner,
 } from "@/lib/repo-permissions";
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
+import { RepoChromeStatsContext } from "@/lib/repos/repo-chrome-stats";
 import {
   repoNavHref,
   resolveSharedRepoBranch,
@@ -61,6 +60,10 @@ import {
   repoPageChromeSignature,
 } from "@/lib/repos/repo-page-chrome";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
+import {
+  logoUrlFromNip34Tags,
+  resolveRepoDisplayIcon,
+} from "@/lib/repos/resolve-repo-display-icon";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -621,6 +624,10 @@ export default function RepoLayoutClient({
         if (cancelled || !latest) return;
         const publicRead = isPublicReadFromEvent(latest as any);
         const deleted = isRepoAnnouncementDeleted(latest as any);
+        const announcedLogo = logoUrlFromNip34Tags(
+          (latest as { tags?: string[][] }).tags
+        );
+        if (announcedLogo) setRepoLogo(announcedLogo);
         setRepo((prev: any) => {
           const nextPublicRead = deleted ? true : publicRead;
           if (
@@ -628,6 +635,9 @@ export default function RepoLayoutClient({
             prev.publicRead === nextPublicRead &&
             Boolean(prev.deleted) === deleted
           ) {
+            if (announcedLogo && prev.logoUrl !== announcedLogo) {
+              return { ...prev, logoUrl: announcedLogo };
+            }
             return prev;
           }
           return {
@@ -639,6 +649,7 @@ export default function RepoLayoutClient({
             // Soft-delete announcements stay discoverable as "deleted", not private.
             publicRead: nextPublicRead,
             deleted,
+            ...(announcedLogo ? { logoUrl: announcedLogo } : {}),
           };
         });
       }
@@ -738,292 +749,33 @@ export default function RepoLayoutClient({
         setIsOwnerUser(false);
       }
 
-      // Load repo logo if available
-      if (foundRepo) {
-        // Priority 1: Stored logoUrl (runtime property, not in type)
-        const repoAny = foundRepo as any;
-        if (repoAny.logoUrl) {
-          let logoUrl = repoAny.logoUrl.trim();
-          // Auto-add https:// if missing
-          if (
-            !logoUrl.startsWith("http://") &&
-            !logoUrl.startsWith("https://") &&
-            !logoUrl.startsWith("data:") &&
-            !logoUrl.startsWith("/") &&
-            logoUrl.includes(".") &&
-            !logoUrl.includes("@")
-          ) {
-            logoUrl = `https://${logoUrl}`;
-          }
-          if (
-            logoUrl.startsWith("http://") ||
-            logoUrl.startsWith("https://") ||
-            logoUrl.startsWith("data:") ||
-            logoUrl.startsWith("/")
-          ) {
-            setRepoLogo(logoUrl);
-            return;
-          }
-        }
-
-        // Priority 2: Logo files from repo
-        const repoName = (foundRepo.name || foundRepo.repo || "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-        const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
-
-        const candidates = (foundRepo.files || [])
-          .map((f: any) => f.path)
-          .filter((p: string) => {
-            const fileName = p.split("/").pop() || "";
-            const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
-            const extension = fileName.split(".").pop()?.toLowerCase() || "";
-            const isRoot = p.split("/").length === 1;
-
-            if (!imageExts.includes(extension)) return false;
-
-            // Match logo files, but exclude third-party logos (alby, etc.)
-            if (
-              baseName.includes("logo") &&
-              !baseName.includes("logo-alby") &&
-              !baseName.includes("alby-logo")
-            )
-              return true;
-
-            // Match repo-name-based files (e.g., "gittr.png" for gittr repo)
-            if (repoName && baseName === repoName) return true;
-
-            // Match common icon names in root directory only
-            if (
-              isRoot &&
-              (baseName === "repo" ||
-                baseName === "icon" ||
-                baseName === "favicon")
-            )
-              return true;
-
-            return false;
-          })
-          .sort((a: string, b: string) => {
-            const aParts = a.split("/");
-            const bParts = b.split("/");
-            const aName =
-              aParts[aParts.length - 1]
-                ?.replace(/\.[^.]+$/, "")
-                .toLowerCase() || "";
-            const bName =
-              bParts[bParts.length - 1]
-                ?.replace(/\.[^.]+$/, "")
-                .toLowerCase() || "";
-            const aIsRoot = aParts.length === 1;
-            const bIsRoot = bParts.length === 1;
-
-            // Priority 1: Exact "logo" match
-            if (aName === "logo" && bName !== "logo") return -1;
-            if (bName === "logo" && aName !== "logo") return 1;
-
-            // Priority 2: Repo-name-based files
-            if (
-              repoName &&
-              aName === repoName &&
-              bName !== repoName &&
-              bName !== "logo"
-            )
-              return -1;
-            if (
-              repoName &&
-              bName === repoName &&
-              aName !== repoName &&
-              aName !== "logo"
-            )
-              return 1;
-
-            // Priority 3: Root directory files
-            if (aName === "logo" && bName === "logo") {
-              if (aIsRoot && !bIsRoot) return -1;
-              if (!aIsRoot && bIsRoot) return 1;
-            }
-            if (aIsRoot && !bIsRoot) return -1;
-            if (!bIsRoot && aIsRoot) return 1;
-
-            // Priority 4: Format preference (png > svg > webp > jpg > gif > ico)
-            const formatPriority: Record<string, number> = {
-              png: 0,
-              svg: 1,
-              webp: 2,
-              jpg: 3,
-              jpeg: 3,
-              gif: 4,
-              ico: 5,
-            };
-            const aExt = a.split(".").pop()?.toLowerCase() || "";
-            const bExt = b.split(".").pop()?.toLowerCase() || "";
-            const aPrio = formatPriority[aExt] ?? 10;
-            const bPrio = formatPriority[bExt] ?? 10;
-
-            return aPrio - bPrio;
-          });
-
-        // Helper function to extract owner/repo from various URL formats
-        const extractOwnerRepo = (
-          urlString: string
-        ): { owner: string; repo: string; hostname: string } | null => {
-          try {
-            // Handle SSH format: git@github.com:owner/repo.git
-            if (urlString.includes("@") && urlString.includes(":")) {
-              const match = urlString.match(
-                /(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/
-              );
-              if (match && match[1] && match[2] && match[3]) {
-                const hostname = match[1]!;
-                const owner = match[2]!;
-                const repo = match[3]!.replace(/\.git$/, "");
-                return { owner, repo, hostname };
-              }
-            }
-
-            // Handle HTTPS/HTTP URLs
-            const url = new URL(urlString);
-            const parts = url.pathname.split("/").filter(Boolean);
-            if (parts.length >= 2 && parts[0] && parts[1]) {
-              return {
-                owner: parts[0],
-                repo: parts[1].replace(/\.git$/, ""),
-                hostname: url.hostname,
-              };
-            }
-          } catch (e) {
-            // Invalid URL format
-          }
-          return null;
-        };
-
-        // Try each candidate logo file
-        for (const logoPath of candidates) {
-          // Try sourceUrl first
-          const gitUrl: string | undefined = foundRepo.sourceUrl;
-          let ownerRepo: {
-            owner: string;
-            repo: string;
-            hostname: string;
-          } | null = null;
-
-          if (gitUrl) {
-            ownerRepo = extractOwnerRepo(gitUrl);
-          }
-
-          // If sourceUrl didn't work, try clone array
-          if (
-            !ownerRepo &&
-            foundRepo.clone &&
-            Array.isArray(foundRepo.clone) &&
-            foundRepo.clone.length > 0
-          ) {
-            // Find first GitHub/GitLab/Codeberg URL in clone array
-            const gitCloneUrl = foundRepo.clone.find(
-              (url: string) =>
-                url &&
-                (url.includes("github.com") ||
-                  url.includes("gitlab.com") ||
-                  url.includes("codeberg.org"))
-            );
-            if (gitCloneUrl) {
-              ownerRepo = extractOwnerRepo(gitCloneUrl);
-            }
-          }
-
-          // If we found a valid git URL, construct raw URL
-          if (ownerRepo) {
-            const { owner, repo, hostname } = ownerRepo;
-            const branch = foundRepo.defaultBranch || "main";
-
-            if (hostname === "github.com" || hostname.includes("github.com")) {
-              setRepoLogo(
-                `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-                  branch
-                )}/${logoPath}`
-              );
-              return;
-            } else if (
-              hostname === "gitlab.com" ||
-              hostname.includes("gitlab.com")
-            ) {
-              setRepoLogo(
-                `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
-                  branch
-                )}/${logoPath}`
-              );
-              return;
-            } else if (
-              hostname === "codeberg.org" ||
-              hostname.includes("codeberg.org")
-            ) {
-              setRepoLogo(
-                `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
-                  branch
-                )}/${logoPath}`
-              );
-              return;
-            }
-          }
-
-          // For Nostr-native repos without sourceUrl, try bridge API directly
-          // Get owner pubkey from entity or repo
-          let ownerPubkeyForBridge: string | undefined;
-          if (
-            resolvedParams.entity &&
-            resolvedParams.entity.length === 64 &&
-            /^[0-9a-f]{64}$/i.test(resolvedParams.entity)
-          ) {
-            ownerPubkeyForBridge = resolvedParams.entity;
-          } else if (
-            foundRepo.ownerPubkey &&
-            /^[0-9a-f]{64}$/i.test(foundRepo.ownerPubkey)
-          ) {
-            ownerPubkeyForBridge = foundRepo.ownerPubkey;
-          } else if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-            ownerPubkeyForBridge = ownerPubkey;
-          }
-
-          // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-          // Priority: repositoryName > name > repo > slug
-          const repoDataAny = foundRepo as any;
-          let repoName =
-            repoDataAny?.repositoryName ||
-            foundRepo.name ||
-            foundRepo.repo ||
-            foundRepo.slug;
-
-          // Extract repo name (handle paths like "host.example/my-repo")
-          if (
-            repoName &&
-            typeof repoName === "string" &&
-            repoName.includes("/")
-          ) {
-            const parts = repoName.split("/");
-            repoName = parts[parts.length - 1] || repoName;
-          }
-          if (repoName) {
-            repoName = String(repoName).replace(/\.git$/, "");
-          }
-
-          if (ownerPubkeyForBridge && repoName) {
-            const branch = foundRepo.defaultBranch || "main";
-            const bridgeApiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-              ownerPubkeyForBridge
-            )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
-              logoPath
-            )}&branch=${encodeURIComponent(branch)}`;
-
-            // For images, try using the API URL directly (browser can load it)
-            setRepoLogo(bridgeApiUrl);
-            return;
-          }
-        }
-      }
-
-      // No repo logo found
-      setRepoLogo(null);
+      // Same icon sources as Explore. Do not use JSON file-content as <img src>.
+      const ownerPk =
+        (foundRepo
+          ? getRepoOwnerPubkey(foundRepo, resolvedParams.entity)
+          : null) ||
+        ownerPubkey ||
+        null;
+      const repoAny = (foundRepo || {}) as Record<string, unknown>;
+      setRepoLogo(
+        resolveRepoDisplayIcon({
+          logoUrl: typeof repoAny.logoUrl === "string" ? repoAny.logoUrl : null,
+          files: foundRepo?.files,
+          sourceUrl: foundRepo?.sourceUrl,
+          clone: Array.isArray(foundRepo?.clone) ? foundRepo.clone : null,
+          defaultBranch: foundRepo?.defaultBranch,
+          ownerPubkey: ownerPk,
+          repoName:
+            (typeof repoAny.repositoryName === "string"
+              ? repoAny.repositoryName
+              : null) ||
+            foundRepo?.name ||
+            foundRepo?.repo ||
+            foundRepo?.slug ||
+            resolvedParams.repo,
+          nativeEvenWithoutFiles: true,
+        })
+      );
     } catch {}
   }, [
     resolvedParams.entity,
@@ -1884,13 +1636,6 @@ export default function RepoLayoutClient({
       ? `/${nip19.npubEncode(ownerPubkey)}`
       : `/${resolvedParams.entity}`;
 
-  const headerAvatarSrc =
-    mounted && repoLogo
-      ? repoLogo
-      : mounted && !repoLogo && ownerPicture
-      ? ownerPicture
-      : "/logo.svg";
-
   // Foreign clients sometimes announce storage paths ("<hex>/name") or other
   // junk as the NIP-34 d tag. Those identifiers can never resolve on our
   // routes, bridge, or GRASP mirrors — show a notice instead of mounting the
@@ -1948,18 +1693,31 @@ export default function RepoLayoutClient({
           <div className="mb-2 flex items-start gap-3 min-w-0">
             <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
               <img
-                src={headerAvatarSrc}
-                alt={ownerDisplayName}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  if (target.src !== "/logo.svg") {
-                    target.src = "/logo.svg";
-                  }
-                }}
-                referrerPolicy="no-referrer"
+                src="/logo.svg"
+                alt=""
+                className="absolute inset-0 h-full w-full object-contain"
                 suppressHydrationWarning
               />
+              {mounted && ownerPicture ? (
+                <img
+                  src={ownerPicture}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : null}
+              {mounted && repoLogo ? (
+                <img
+                  src={repoLogo}
+                  alt={ownerDisplayName}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : null}
             </div>
             <div className="min-w-0 pt-1">
               <div className="flex flex-wrap items-baseline gap-x-1 text-lg">

@@ -12,9 +12,9 @@
  * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with other Nostr git clients
  * - Full 64-char hex pubkeys
  */
-import { pickProfileDisplayName } from "../nostr/kind0-profile-fields";
-
 import { nip05, nip19 } from "nostr-tools";
+
+import { pickProfileDisplayName } from "../nostr/kind0-profile-fields";
 
 /**
  * Resolves an entity (npub format, NIP-05, or full pubkey) to a full 64-char pubkey
@@ -193,6 +193,20 @@ export function getEntityDisplayName(
 }
 
 /**
+ * Kind-0 pictures may be https or an inline `data:image/…` (some Nostr-only
+ * profiles ship an SVG badge). Reject `javascript:` and other non-image data.
+ */
+export function isDisplayableProfilePicture(
+  url: string | null | undefined
+): boolean {
+  const t = (url || "").trim();
+  if (!t) return false;
+  if (t.startsWith("https://") || t.startsWith("http://")) return true;
+  if (/^data:image\/[a-z0-9.+-]+/i.test(t)) return true;
+  return false;
+}
+
+/**
  * Gets the profile picture for an entity/pubkey
  *
  * @param pubkey - Full 64-char pubkey
@@ -209,8 +223,9 @@ export function getEntityPicture(
   // CRITICAL: Use EXACT match only - no partial matching to avoid wrong user's picture
   const normalizedPubkey = pubkey.toLowerCase();
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
-  if (meta?.picture && meta.picture.startsWith("http")) {
-    return meta.picture;
+  const picture = typeof meta?.picture === "string" ? meta.picture.trim() : "";
+  if (isDisplayableProfilePicture(picture)) {
+    return picture;
   }
   return null;
 }
