@@ -6,6 +6,7 @@ import {
   injectHtmlPreviewAutoHeight,
   previewAssetApiHref,
   resolveRepoRelativeAssetPath,
+  rewriteHtmlPreviewOutboundLinks,
   rewriteRelativeHtmlAssets,
 } from "./html-preview-base";
 
@@ -56,6 +57,32 @@ describe("rewriteRelativeHtmlAssets", () => {
   });
 });
 
+describe("rewriteHtmlPreviewOutboundLinks", () => {
+  it("sends gittr.space help links to a new tab", () => {
+    const html =
+      '<a href="https://gittr.space/help#what-is-gittr">Help → What you can do on gittr</a>';
+    expect(rewriteHtmlPreviewOutboundLinks(html)).toBe(
+      '<a href="https://gittr.space/help#what-is-gittr" target="_blank" rel="noopener noreferrer">Help → What you can do on gittr</a>'
+    );
+  });
+
+  it("leaves in-page hashes and existing targets alone", () => {
+    const html =
+      '<a href="#jobs">jobs</a><a href="https://gittr.space" target="_blank">x</a>';
+    expect(rewriteHtmlPreviewOutboundLinks(html)).toBe(html);
+  });
+
+  it("rewrites multiline tile anchors", () => {
+    const html = `<a
+              class="tile"
+              href="https://gittr.space/help#what-is-gittr"
+            >`;
+    const out = rewriteHtmlPreviewOutboundLinks(html);
+    expect(out).toContain('target="_blank"');
+    expect(out).toContain("noopener noreferrer");
+  });
+});
+
 describe("injectHtmlPreviewAutoHeight", () => {
   it("injects a height reporter for the Code-tab iframe", () => {
     const out = injectHtmlPreviewAutoHeight(
@@ -66,6 +93,14 @@ describe("injectHtmlPreviewAutoHeight", () => {
     expect(out).toContain("gittr-html-preview-end");
     expect(out).toContain("overflow:visible");
     expect(out).not.toContain("overflow:hidden");
+  });
+
+  it("opens http(s) preview clicks in a new tab", () => {
+    const out = injectHtmlPreviewAutoHeight(
+      '<!doctype html><html><body><a href="https://gittr.space/help#what-is-gittr">Help</a></body></html>'
+    );
+    expect(out).toContain('target="_blank"');
+    expect(out).toContain("window.open");
   });
 });
 

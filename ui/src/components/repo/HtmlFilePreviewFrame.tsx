@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import {
   HTML_PREVIEW_HEIGHT_MESSAGE,
+  HTML_PREVIEW_IFRAME_SANDBOX,
   injectHtmlPreviewAutoHeight,
 } from "@/lib/gittr-pages/html-preview-base";
 
@@ -60,7 +61,7 @@ export function HtmlFilePreviewFrame({
         minHeight: MIN_FRAME_PX,
         overflow: "hidden",
       }}
-      sandbox="allow-scripts allow-popups allow-forms allow-modals"
+      sandbox={HTML_PREVIEW_IFRAME_SANDBOX}
     />
   );
 }

@@ -19734,7 +19734,7 @@ export function RepoCodePage() {
                                   height: "min(2200px, max(90vh, 1400px))",
                                 }}
                                 title={selectedFile}
-                                sandbox="allow-scripts allow-popups allow-forms"
+                                sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
                               />
                             </div>
                           );
@@ -19823,7 +19823,9 @@ export function RepoCodePage() {
                               through gittr from the GitHub/GitLab/Codeberg tree
                               when a{" "}
                               <code className="text-zinc-300">source</code> URL
-                              exists. The real look is the live Nostr Page after{" "}
+                              exists. Links to gittr and the web open in a new
+                              tab — this frame cannot show gittr.space. The real
+                              look is the live Nostr Page after{" "}
                               <strong className="text-zinc-300">
                                 Push Manifest
                               </strong>

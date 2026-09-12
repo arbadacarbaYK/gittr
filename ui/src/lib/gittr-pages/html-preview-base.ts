@@ -76,18 +76,44 @@ export function previewAssetApiHref(args: {
 
 export const HTML_PREVIEW_HEIGHT_MESSAGE = "gittr-html-preview-height" as const;
 
+/** srcDoc preview: scripts + popups that escape the sandbox. gittr.space
+ *  cannot load *inside* this frame (X-Frame-Options / frame-src). */
+export const HTML_PREVIEW_IFRAME_SANDBOX =
+  "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals";
+
+/**
+ * Code-tab srcDoc cannot navigate to gittr.space (framed load is blocked).
+ * Force http(s) anchors into a new tab. In-page `#` hashes stay in the preview.
+ */
+export function rewriteHtmlPreviewOutboundLinks(html: string): string {
+  if (!html) return html;
+  return html.replace(/<a\b([^>]*?)>/gi, (full, attrs: string) => {
+    const hrefMatch = attrs.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    if (!hrefMatch) return full;
+    const href = (hrefMatch[1] || "").trim();
+    if (!/^https?:\/\//i.test(href)) return full;
+    if (/\btarget\s*=/i.test(attrs)) return full;
+    const spacer = attrs.length === 0 || /\s$/.test(attrs) ? "" : " ";
+    return `<a${attrs}${spacer}target="_blank" rel="noopener noreferrer">`;
+  });
+}
+
 /** Grow the Code-tab srcDoc iframe; sandbox has no allow-same-origin.
  *  Do not set overflow:hidden on html/body — that makes scrollHeight collapse
  *  to the iframe viewport and the preview never grows. */
 export function injectHtmlPreviewAutoHeight(html: string): string {
+  const prepared = rewriteHtmlPreviewOutboundLinks(html);
   const type = JSON.stringify(HTML_PREVIEW_HEIGHT_MESSAGE);
   const style = `<style id="gittr-html-preview-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}#gittr-html-preview-end{height:1px;margin:0;padding:0;border:0;clear:both;}</style>`;
-  const script = `<script id="gittr-html-preview-autoheight-script">(function(){var lastH=0;function mark(){var el=document.getElementById("gittr-html-preview-end");if(!el&&document.body){el=document.createElement("div");el.id="gittr-html-preview-end";document.body.appendChild(el);}return el}function h(){try{var end=mark();var fromEnd=0;if(end){var r=end.getBoundingClientRect();var y=window.scrollY||document.documentElement.scrollTop||0;fromEnd=Math.ceil(r.bottom+y)}var d=document.documentElement,b=document.body;return Math.max(fromEnd,d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${type},height:n},"*")}catch(e){}}try{if(window.ResizeObserver){new ResizeObserver(function(){report(false)}).observe(document.documentElement);if(document.body)new ResizeObserver(function(){report(false)}).observe(document.body)}}catch(e){}function onImg(){report(true)}Array.prototype.forEach.call(document.images||[],function(img){if(!img.complete)img.addEventListener("load",onImg)});window.addEventListener("load",function(){report(true);setTimeout(function(){report(true)},400);setTimeout(function(){report(true)},1600)});report(true);})();</script>`;
+  const script = `<script id="gittr-html-preview-autoheight-script">(function(){document.addEventListener("click",function(e){var n=e.target;while(n&&n.tagName!=="A")n=n.parentElement;if(!n)return;var h=n.getAttribute("href")||"";if(!/^https?:/i.test(h))return;e.preventDefault();try{window.open(h,"_blank","noopener,noreferrer")}catch(x){}},true);var lastH=0;function mark(){var el=document.getElementById("gittr-html-preview-end");if(!el&&document.body){el=document.createElement("div");el.id="gittr-html-preview-end";document.body.appendChild(el);}return el}function h(){try{var end=mark();var fromEnd=0;if(end){var r=end.getBoundingClientRect();var y=window.scrollY||document.documentElement.scrollTop||0;fromEnd=Math.ceil(r.bottom+y)}var d=document.documentElement,b=document.body;return Math.max(fromEnd,d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${type},height:n},"*")}catch(e){}}try{if(window.ResizeObserver){new ResizeObserver(function(){report(false)}).observe(document.documentElement);if(document.body)new ResizeObserver(function(){report(false)}).observe(document.body)}}catch(e){}function onImg(){report(true)}Array.prototype.forEach.call(document.images||[],function(img){if(!img.complete)img.addEventListener("load",onImg)});window.addEventListener("load",function(){report(true);setTimeout(function(){report(true)},400);setTimeout(function(){report(true)},1600)});report(true);})();</script>`;
   const end = `<div id="gittr-html-preview-end"></div>`;
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, `${style}\n${script}\n${end}\n</body>`);
+  if (/<\/body>/i.test(prepared)) {
+    return prepared.replace(
+      /<\/body>/i,
+      `${style}\n${script}\n${end}\n</body>`
+    );
   }
-  return `${html}\n${style}\n${script}\n${end}`;
+  return `${prepared}\n${style}\n${script}\n${end}`;
 }
 
 export function rewriteRelativeHtmlAssets(
