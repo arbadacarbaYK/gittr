@@ -2056,8 +2056,6 @@ export function RepoCodePage() {
     useState<string>("");
   const [pushStartedAt, setPushStartedAt] = useState<number | null>(null);
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
-  const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
-    useState<boolean>(false);
   /**
    * Same chevron collapse as Git Server / Clone URL.
    * Auto-opens once when the repo still needs Push (create / import / local edits)
@@ -2168,20 +2166,6 @@ export function RepoCodePage() {
     typeof resolvedParams.repo === "string"
       ? `gittr_post_source_refetch_hint_v1__${resolvedParams.entity}__${resolvedParams.repo}`
       : null;
-
-  useEffect(() => {
-    if (!postSourceRefetchHintKey || typeof window === "undefined") return;
-    try {
-      if (sessionStorage.getItem(postSourceRefetchHintKey) === "1") {
-        setShowPostSourceRefetchHint(true);
-        // Page reloads after refetch; keep Repository status expanded so Push is obvious.
-        setRepositoryStatusExpanded(true);
-        repositoryStatusAutoExpandDoneRef.current = true;
-      }
-    } catch {
-      // ignore
-    }
-  }, [postSourceRefetchHintKey]);
 
   const repoFromStorageForChrome = useMemo(() => {
     if (!mounted) return undefined;
@@ -17848,57 +17832,6 @@ export function RepoCodePage() {
 
   return (
     <div className="mt-4">
-      {showPostSourceRefetchHint && postSourceRefetchHintKey ? (
-        <div
-          className="mb-4 rounded-md border border-amber-700/55 bg-amber-950/40 px-3 py-3 text-sm text-amber-50/95"
-          role="status"
-        >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 space-y-2 text-xs leading-relaxed">
-              <p className="font-semibold text-amber-100">
-                You refetched from GitHub: files match the source now.
-              </p>
-              <p>
-                Nostr-only PRs/issues still exist on relays and can stay in your
-                list—their saved diffs are{" "}
-                <strong>not automatically valid</strong> against these new files
-                until you review them.
-              </p>
-              <p>
-                <strong>What to do:</strong> open{" "}
-                <Link
-                  className="text-purple-300 underline hover:text-purple-200"
-                  href={getRepoLink("pulls")}
-                >
-                  Pulls
-                </Link>{" "}
-                (and Issues if needed) → check each affected Nostr item → merge
-                again only if it still fits → then{" "}
-                <strong>Push to Nostr</strong> so others get the same tree +
-                story.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-row gap-2 sm:flex-col">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 border-amber-700/60 text-amber-100 hover:bg-amber-900/50"
-                onClick={() => {
-                  try {
-                    sessionStorage.removeItem(postSourceRefetchHintKey);
-                  } catch {
-                    // ignore
-                  }
-                  setShowPostSourceRefetchHint(false);
-                }}
-              >
-                Dismiss
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         <div
           id="gittr-repo-main"
@@ -21787,12 +21720,6 @@ export function RepoCodePage() {
                                         } catch {
                                           // ignore
                                         }
-                                        await appAlert(
-                                          `✅ Refetched from GitHub (${savedFileCount} files).\n\n` +
-                                            `Your local file tree now matches the source. Nostr-only PRs/issues still exist on relays and may still appear in gittr—their saved diffs are not automatically checked against these new files.\n\n` +
-                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr (bridge syncs the GitHub tip — no per-file upload for large repos).`,
-                                          "Refetch"
-                                        );
                                         window.location.reload();
                                       }
                                     } else {
@@ -21856,14 +21783,6 @@ export function RepoCodePage() {
                                       } catch {
                                         // ignore
                                       }
-                                      await appAlert(
-                                        `✅ Refetched from GitHub!\n\nFound ${
-                                          newFiles.filter(
-                                            (f: any) => f.type === "file"
-                                          ).length
-                                        } files.\n\nRepository created in localStorage.`,
-                                        "Refetch"
-                                      );
                                       window.location.reload();
                                     }
                                   } catch (error: any) {

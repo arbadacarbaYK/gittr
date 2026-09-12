@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -56,6 +63,7 @@ import {
   findStoredRepoForRoute,
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
+import { countVisibleRepoNavItems } from "@/lib/repos/repo-nav-overflow";
 import {
   githubHydrateShouldRetry,
   repoPageChromeSignature,
@@ -178,11 +186,7 @@ const menuItems = [
     icon: <Settings className="mr-2 h-4 w-4" />,
   },
 ];
-// Conservative width estimates for top repo nav overflow calculation.
-// The previous values were too large and pushed items into overflow too early.
-const MENU_ITEM_WIDTH = 130;
-const HEADER_RESERVED_WIDTH = 280;
-const FORCED_OVERFLOW_LINKS = new Set(["discussions", "insights", "settings"]);
+const REPO_NAV_OVERFLOW_BUTTON_WIDTH = 40;
 
 const WATCH_BUTTON_TITLE =
   "Watch / unwatch: followed repos (NIP-51 kind 10018). Separate from Star: NIP-25 kind 7 on the repo’s 30617 event, which is what your Stars page lists.";
@@ -208,8 +212,6 @@ export default function RepoLayoutClient({
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
   const router = useRouter();
-  // Use consistent default width on server and initial client render to prevent hydration mismatch
-  const [windowWidth, setWindowWidth] = useState(1920);
   const { pubkey, publish, subscribe, defaultRelays, remoteSigner } =
     useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
@@ -1574,27 +1576,6 @@ export default function RepoLayoutClient({
     window.location.href = `/new?fork=${resolvedParams.entity}/${resolvedParams.repo}`;
   }, [resolvedParams.entity, resolvedParams.repo, pubkey, router]);
 
-  useEffect(() => {
-    // Set initial window width after mount to prevent hydration mismatch
-    setWindowWidth(window.innerWidth);
-
-    // Debounce resize handler to prevent rapid recalculations and layout shifts
-    let resizeTimeout: NodeJS.Timeout;
-    const handleWindowResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        setWindowWidth(window.innerWidth);
-      }, 150); // Debounce by 150ms
-    };
-
-    window.addEventListener("resize", handleWindowResize);
-
-    return () => {
-      clearTimeout(resizeTimeout);
-      window.removeEventListener("resize", handleWindowResize);
-    };
-  }, []); // Add empty dependency array to prevent re-running on every render
-
   // Filter menu items: hide all tabs for unauthorized private-repo viewers;
   // hide Settings for non-owners on repos the viewer can access.
   const filteredMenuItems = useMemo(() => {
@@ -1605,40 +1586,48 @@ export default function RepoLayoutClient({
     });
   }, [isOwnerUser, canViewPrivateContent]);
 
-  // Memoize the number of visible menu items to prevent recalculation on every render
-  const pinnedOverflowItems = useMemo(
-    () =>
-      filteredMenuItems.filter(
-        (item) => item.link && FORCED_OVERFLOW_LINKS.has(item.link)
-      ),
-    [filteredMenuItems]
+  const navRowRef = useRef<HTMLDivElement>(null);
+  const measureNavRef = useRef<HTMLUListElement>(null);
+  const [visibleMenuItemsCount, setVisibleMenuItemsCount] = useState(
+    () => menuItems.length
   );
 
-  const primaryMenuItems = useMemo(
-    () =>
-      filteredMenuItems.filter(
-        (item) => !(item.link && FORCED_OVERFLOW_LINKS.has(item.link))
-      ),
-    [filteredMenuItems]
-  );
+  const updateVisibleMenuItemsCount = useCallback(() => {
+    const row = navRowRef.current;
+    const measure = measureNavRef.current;
+    if (!row || !measure) return;
+    const items = Array.from(measure.children) as HTMLElement[];
+    const itemWidths = items.map((el) => el.getBoundingClientRect().width);
+    const gapRaw = getComputedStyle(measure).columnGap || "16";
+    const gap = Number.parseFloat(gapRaw) || 16;
+    setVisibleMenuItemsCount(
+      countVisibleRepoNavItems({
+        availableWidth: row.clientWidth,
+        itemWidths,
+        overflowButtonWidth: REPO_NAV_OVERFLOW_BUTTON_WIDTH,
+        gap,
+      })
+    );
+  }, []);
 
-  const visibleMenuItemsCount = useMemo(() => {
-    const effectiveWidth = mounted ? windowWidth : 1920;
-    const availableWidth = Math.max(0, effectiveWidth - HEADER_RESERVED_WIDTH);
-    return Math.max(1, Math.floor(availableWidth / MENU_ITEM_WIDTH));
-  }, [mounted, windowWidth, primaryMenuItems.length]);
+  useLayoutEffect(() => {
+    updateVisibleMenuItemsCount();
+    const row = navRowRef.current;
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => updateVisibleMenuItemsCount());
+    observer.observe(row);
+    if (measureNavRef.current) observer.observe(measureNavRef.current);
+    return () => observer.disconnect();
+  }, [updateVisibleMenuItemsCount, filteredMenuItems, issueCount, prCount]);
 
   const visiblePrimaryItems = useMemo(
-    () => primaryMenuItems.slice(0, visibleMenuItemsCount),
-    [primaryMenuItems, visibleMenuItemsCount]
+    () => filteredMenuItems.slice(0, visibleMenuItemsCount),
+    [filteredMenuItems, visibleMenuItemsCount]
   );
 
   const overflowMenuItems = useMemo(
-    () => [
-      ...primaryMenuItems.slice(visibleMenuItemsCount),
-      ...pinnedOverflowItems,
-    ],
-    [primaryMenuItems, visibleMenuItemsCount, pinnedOverflowItems]
+    () => filteredMenuItems.slice(visibleMenuItemsCount),
+    [filteredMenuItems, visibleMenuItemsCount]
   );
 
   // Removed onClick handler that was interfering with navigation
@@ -1973,8 +1962,33 @@ export default function RepoLayoutClient({
           ) : null}
         </div>
 
-        <div className="flex justify-between items-center gap-4">
-          <div className="flex-1 overflow-x-auto">
+        <div
+          ref={navRowRef}
+          className="relative flex justify-between items-center gap-4"
+        >
+          <ul
+            ref={measureNavRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute -left-[9999px] top-0 my-4 flex items-center gap-x-4 whitespace-nowrap"
+          >
+            {filteredMenuItems.map((item, index) => (
+              <li
+                key={`measure-${item.name}-${item.link}-${index}`}
+                className="flex-shrink-0"
+              >
+                <span className="flex items-center whitespace-nowrap border-b-2 border-transparent px-3 py-4 text-sm">
+                  {item.icon}
+                  {item.name}{" "}
+                  {item.link === "issues" ? (
+                    <Badge className="ml-2">{issueCount}</Badge>
+                  ) : item.link === "pulls" ? (
+                    <Badge className="ml-2">{prCount}</Badge>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="min-w-0 flex-1 overflow-x-auto">
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
               {visiblePrimaryItems.map((item, index) => (
                 <li
@@ -2017,54 +2031,55 @@ export default function RepoLayoutClient({
             </ul>
           </div>
 
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger
-              className={clsx("flex items-center cursor-pointer", {
-                hidden: filteredMenuItems.length - visibleMenuItemsCount === 0,
-              })}
-              type="button"
-            >
-              <MoreHorizontal className="h-4 w-4 hover:text-white/80" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="py-1 px-0 w-40 relative -left-4 top-1"
-              onCloseAutoFocus={(e) => e.preventDefault()}
-              onInteractOutside={(e) => {
-                // Allow clicks to pass through to links
-                const target = e.target as HTMLElement;
-                if (target.closest("a")) {
-                  e.preventDefault();
-                }
-              }}
-            >
-              {overflowMenuItems.map((item, index) => (
-                <DropdownMenuItem
-                  key={`${item.name}-${item.link}-${index}`}
-                  className={clsx(
-                    "flex h-9 cursor-pointer items-center whitespace-nowrap p-4 text-sm text-white hover:bg-[var(--color-accent-primary)]",
-                    {
-                      "border-b-2 border-b-[var(--color-accent-primary)]":
+          {overflowMenuItems.length > 0 ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger
+                className="flex items-center cursor-pointer"
+                type="button"
+                aria-label="More repository tabs"
+              >
+                <MoreHorizontal className="h-4 w-4 hover:text-white/80" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="py-1 px-0 w-40 relative -left-4 top-1"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+                onInteractOutside={(e) => {
+                  // Allow clicks to pass through to links
+                  const target = e.target as HTMLElement;
+                  if (target.closest("a")) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                {overflowMenuItems.map((item, index) => (
+                  <DropdownMenuItem
+                    key={`${item.name}-${item.link}-${index}`}
+                    className={clsx(
+                      "flex h-9 cursor-pointer items-center whitespace-nowrap p-4 text-sm text-white hover:bg-[var(--color-accent-primary)]",
+                      {
+                        "border-b-2 border-b-[var(--color-accent-primary)]":
+                          item.name === "Code"
+                            ? isCodeTabActive
+                            : pathname.includes(
+                                `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
+                              ),
+                      }
+                    )}
+                    onSelect={() => {
+                      const href = getRepoLink(
+                        item.link || "",
                         item.name === "Code"
-                          ? isCodeTabActive
-                          : pathname.includes(
-                              `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
-                            ),
-                    }
-                  )}
-                  onSelect={() => {
-                    const href = getRepoLink(
-                      item.link || "",
-                      item.name === "Code"
-                    );
-                    appNavigate(href, router, pathname);
-                  }}
-                >
-                  {item.icon}
-                  {item.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                      );
+                      appNavigate(href, router, pathname);
+                    }}
+                  >
+                    {item.icon}
+                    {item.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
 
         <hr className="w-full -mt-[17px] border-b-0 border-lightgray" />

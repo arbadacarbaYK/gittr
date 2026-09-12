@@ -45,7 +45,7 @@ Code browser rows show **last commit message + relative time** for the currently
 **Fix**:
 - Clean forge mirrors (`source` set, `hasUnpushedEdits` false) call `POST /api/nostr/repo/sync-from-source` and announce those exact SHAs
 - Overrides after refetch are cache, not “dirty”
-- Forge Refetch must **not** set `hasUnpushedEdits` (that forced N× `/api/git/file-content` → 429 on large repos). Large trees (≥50 files) skip client hydrate; Push uses `shouldPreferBridgeSyncFromSource` (post-refetch hint / metadata-only recovery)
+- Forge Refetch must **not** set `hasUnpushedEdits` (that forced N× `/api/git/file-content` → 429 on large repos). Large trees (≥50 files) skip client hydrate; Push uses `shouldPreferBridgeSyncFromSource` (session flag `gittr_post_source_refetch_hint_v1__*` / metadata-only recovery — no on-page lecture banner)
 - Local-edit rewrite (`--allow-empty` / file overlay) only when `hasUnpushedEdits` is true (or no forge source) **and** the bridge-sync preference above does not apply
 - Bridge `handleRepositoryEvent` also `git fetch`es upstream when the bare repo already exists
 
