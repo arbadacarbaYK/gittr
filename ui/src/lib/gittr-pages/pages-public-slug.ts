@@ -1,3 +1,4 @@
+import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 import { slugToNsiteDTag } from "../nsite/nsite-url";
 import type { StoredRepo } from "../repos/storage";
 import { findRepoByEntityAndName } from "../utils/repo-finder";
@@ -69,9 +70,28 @@ export const GITTR_PAGES_RESERVED_SLUGS = new Set(
   ].map((s) => s.toLowerCase())
 );
 
-export function isReservedPagesSlug(dTag: string): boolean {
+/** Platform operator may use reserved product names (gittr, gittr-helper, …). */
+export const GITTR_PAGES_RESERVED_SLUG_EXEMPT_PUBKEYS = new Set([
+  GITTR_OWNER_PUBKEY_HEX.toLowerCase(),
+]);
+
+export function isPagesReservedSlugExemptOwner(
+  ownerPubkeyHex?: string | null
+): boolean {
+  const pk =
+    typeof ownerPubkeyHex === "string"
+      ? ownerPubkeyHex.trim().toLowerCase()
+      : "";
+  return !!pk && GITTR_PAGES_RESERVED_SLUG_EXEMPT_PUBKEYS.has(pk);
+}
+
+export function isReservedPagesSlug(
+  dTag: string,
+  ownerPubkeyHex?: string | null
+): boolean {
   const n = dTag.trim().toLowerCase();
   if (!n) return true;
+  if (isPagesReservedSlugExemptOwner(ownerPubkeyHex)) return false;
   if (GITTR_PAGES_RESERVED_SLUGS.has(n)) return true;
   /** Block obvious typosquats on reserved roots */
   for (const r of GITTR_PAGES_RESERVED_SLUGS) {
@@ -93,14 +113,17 @@ export function normalizePagesSiteSlugInput(raw: string): string {
  */
 export function resolveRepoPagesDTag(
   decodedRepoSlug: string,
-  repo?: Pick<StoredRepo, "pagesSiteSlug" | "repo" | "slug" | "name"> | null
+  repo?: Pick<
+    StoredRepo,
+    "pagesSiteSlug" | "repo" | "slug" | "name" | "ownerPubkey"
+  > | null
 ): string {
   const custom = repo?.pagesSiteSlug?.trim();
   if (!custom) {
     return slugToNsiteDTag(decodedRepoSlug);
   }
   const d = normalizePagesSiteSlugInput(custom);
-  if (isReservedPagesSlug(d)) {
+  if (isReservedPagesSlug(d, repo?.ownerPubkey)) {
     return slugToNsiteDTag(decodedRepoSlug);
   }
   return d;
@@ -176,7 +199,7 @@ export function evaluatePagesSiteSlugInput(args: {
     };
   }
   const d = normalizePagesSiteSlugInput(trimmed);
-  if (isReservedPagesSlug(d)) {
+  if (isReservedPagesSlug(d, args.ownerPubkeyHex)) {
     return {
       ok: false,
       message: `That name is reserved or too close to a reserved name (shop, donate, login, …). Pick another.`,

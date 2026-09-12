@@ -2,6 +2,10 @@
 export const GITTR_OWNER_NPUB =
   "npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc";
 
+/** Same identity as {@link GITTR_OWNER_NPUB} (kind-0 / NIP-5A author). */
+export const GITTR_OWNER_PUBKEY_HEX =
+  "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c";
+
 const GITTR_OWNER_BASE = `https://gittr.space/${GITTR_OWNER_NPUB}`;
 
 export function gittrRepoBrowse(repo: string, branch = "main"): string {

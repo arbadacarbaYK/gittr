@@ -45,6 +45,10 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
+import {
+  forgeRawDirectoryHref,
+  injectHtmlPreviewBaseHref,
+} from "@/lib/gittr-pages/html-preview-base";
 import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
@@ -1121,6 +1125,7 @@ export function RepoCodePage() {
       repo: repoForPages.repo,
       slug: repoForPages.slug,
       name: repoForPages.name,
+      ownerPubkey: ownerHexForPages,
     });
     return {
       namedUrl: buildNsiteSiteUrl(pagesBaseForSidebar, ownerHexForPages, {
@@ -19260,6 +19265,24 @@ export function RepoCodePage() {
                             : "Preview"}
                         </button>
                       )}
+                    {fileType === "html" &&
+                      htmlViewMode === "preview" &&
+                      pagesSiteListedByGateway === true &&
+                      (pagesSiteMatchedUrl ||
+                        candidateGittrPagesUrls?.namedUrl) && (
+                        <a
+                          className="text-sm text-teal-400 hover:text-teal-300 border border-teal-500/50 rounded px-2 py-1"
+                          href={
+                            pagesSiteMatchedUrl ||
+                            candidateGittrPagesUrls?.namedUrl ||
+                            "#"
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open live Page
+                        </a>
+                      )}
                     {selectedFile &&
                       (() => {
                         const rawUrl = getRawUrl(selectedFile);
@@ -19742,15 +19765,62 @@ export function RepoCodePage() {
                           htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
                         }
 
+                        htmlContent = injectHtmlPreviewBaseHref(
+                          htmlContent,
+                          forgeRawDirectoryHref({
+                            sourceUrl:
+                              effectiveSourceUrl || repoData?.sourceUrl || null,
+                            branch:
+                              selectedBranch ||
+                              repoData?.defaultBranch ||
+                              "main",
+                            filePath: selectedFile,
+                          })
+                        );
+
+                        const livePageUrl =
+                          pagesSiteListedByGateway === true
+                            ? pagesSiteMatchedUrl ||
+                              candidateGittrPagesUrls?.namedUrl ||
+                              null
+                            : null;
+
                         return (
-                          <div className="w-full h-[70vh] border border-[#383B42] rounded">
-                            {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
-                            <iframe
-                              srcDoc={htmlContent}
-                              className="w-full h-full border-0"
-                              title={selectedFile}
-                              sandbox="allow-scripts allow-popups allow-forms allow-modals"
-                            />
+                          <div className="w-full">
+                            <p className="px-3 py-2 text-[11px] leading-relaxed text-zinc-400 border-b border-[#383B42] bg-[#1e1f24]">
+                              Code preview is this file plus CSS/images from the
+                              GitHub/GitLab/Codeberg raw tree when a{" "}
+                              <code className="text-zinc-300">source</code> URL
+                              exists. The real look is the live Nostr Page after{" "}
+                              <strong className="text-zinc-300">
+                                Push Manifest
+                              </strong>
+                              {livePageUrl ? (
+                                <>
+                                  {" — "}
+                                  <a
+                                    className="text-teal-400 underline-offset-2 hover:underline"
+                                    href={livePageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    open it
+                                  </a>
+                                  .
+                                </>
+                              ) : (
+                                "."
+                              )}
+                            </p>
+                            <div className="w-full h-[70vh] border-0">
+                              {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
+                              <iframe
+                                srcDoc={htmlContent}
+                                className="w-full h-full border-0"
+                                title={selectedFile}
+                                sandbox="allow-scripts allow-popups allow-forms allow-modals"
+                              />
+                            </div>
                           </div>
                         );
                       })()
@@ -20345,6 +20415,7 @@ export function RepoCodePage() {
                       repo: repo.repo,
                       slug: repo.slug,
                       name: repo.name,
+                      ownerPubkey: ownerHexForPages,
                     });
                     gittrPagesUrls = {
                       namedUrl: buildNsiteSiteUrl(
@@ -22756,6 +22827,7 @@ export function RepoCodePage() {
                                             repo: repo.repo,
                                             slug: repo.slug,
                                             name: repo.name,
+                                            ownerPubkey: ownerHexForPush,
                                           }
                                         );
                                         const namedUrlPush = buildNsiteSiteUrl(
