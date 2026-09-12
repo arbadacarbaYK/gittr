@@ -261,3 +261,17 @@ export function getUserMetadata(
   // many times per render and the console.log spam itself causes jank.
   return {};
 }
+
+/** Profile path for an app/repo owner: `/npub…` when the id is 64-hex. */
+export function ownerProfileHref(pubkey: string): string | null {
+  const pk = String(pubkey || "").trim();
+  if (!pk) return null;
+  if (/^[0-9a-f]{64}$/i.test(pk)) {
+    try {
+      return `/${nip19.npubEncode(pk)}`;
+    } catch {
+      return `/${pk}`;
+    }
+  }
+  return `/${pk}`;
+}

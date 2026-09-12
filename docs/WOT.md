@@ -21,6 +21,8 @@ If the public oracle returns **502**, older code treated that like “no path”
 
 Logged-in `/apps` used to mount a TrustBadge on every card (~hundreds). Without throttling that fan-out hit `/api/wot/distance` once per card whenever the public oracle was 502, flooding the browser console and our proxy. The directory now paints 48 cards first (Load more), which also keeps the Home button from waiting ~8s on a starved soft navigation.
 
+Load more is **not** enough on its own: search can show one card while a live NIP-82 scrape still flushes the full catalog. After the server snapshot lands, `/apps` skips that live 4000/12000 subscribe. Leaving the hub pauses catalog `setState` so owner-name and chrome clicks are not ignored.
+
 Client `wot.ts` now: (1) coalesces in-flight requests for the same `(from,to)`, (2) caps concurrent oracle HTTP to 2, (3) opens a **60s circuit** after the first oracle failure so remaining badges return **Distance unknown** without more HTTP. Independent of NIP-46 / Amber bunker sockets.
 
 ## Public follow counts (profile legitimacy)

@@ -40,6 +40,12 @@ import {
   clampVisibleCount,
 } from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
+import {
+  PAUSE_HEAVY_CATALOG_EVENT,
+  appNavigate,
+  shouldPauseHeavyCatalogOnAnchorLeave,
+} from "@/lib/utils/app-navigate";
+import { ownerProfileHref } from "@/lib/utils/entity-resolver";
 
 import {
   ChevronDown,
@@ -50,7 +56,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 function CardSkeleton() {
@@ -203,6 +209,8 @@ function cardLabelsForApp(
 export function AppsDirectoryClient() {
   const { subscribe, defaultRelays } = useNostrContext();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<ParsedSoftwareApp[]>([]);
   const [releasesByApp, setReleasesByApp] = useState<
@@ -227,6 +235,9 @@ export function AppsDirectoryClient() {
   );
   const assetsRef = useRef<Set<string>>(new Set());
   const assetSubUnsubsRef = useRef<Array<() => void>>([]);
+  /** Stop catalog setState on leave — do not set this in subscribe cleanup
+   *  (a relaysKey rerun would freeze the page while still on /apps). */
+  const leavingRef = useRef(false);
 
   const relays = useMemo(
     () => relaysForSoftwareCatalog(defaultRelays),
@@ -235,6 +246,7 @@ export function AppsDirectoryClient() {
   const relaysKey = useMemo(() => relays.join("|"), [relays]);
 
   const refreshAppsFromRef = useCallback(() => {
+    if (leavingRef.current) return;
     const deleted = deletedEventIdsRef.current;
     const kept = rawAppEventsRef.current.filter(
       (ev) => !ev.id || !deleted.has(ev.id)
@@ -248,6 +260,7 @@ export function AppsDirectoryClient() {
   }, []);
 
   const pruneDeletedReleases = useCallback(() => {
+    if (leavingRef.current) return;
     const deleted = deletedEventIdsRef.current;
     const pruneMap = (src: Map<string, ParsedSoftwareRelease[]>) => {
       const next = new Map<string, ParsedSoftwareRelease[]>();
@@ -278,6 +291,7 @@ export function AppsDirectoryClient() {
 
   const flushCatalogUi = useCallback(() => {
     catalogFlushTimerRef.current = null;
+    if (leavingRef.current) return;
     if (catalogNeedsAppsRef.current) {
       catalogNeedsAppsRef.current = false;
       refreshAppsFromRef();
@@ -290,9 +304,75 @@ export function AppsDirectoryClient() {
   }, [refreshAppsFromRef]);
 
   const scheduleCatalogFlush = useCallback(() => {
+    if (leavingRef.current) return;
     if (catalogFlushTimerRef.current != null) return;
     catalogFlushTimerRef.current = setTimeout(flushCatalogUi, 280);
   }, [flushCatalogUi]);
+
+  const pauseCatalogForLeave = useCallback(() => {
+    leavingRef.current = true;
+    if (catalogFlushTimerRef.current != null) {
+      clearTimeout(catalogFlushTimerRef.current);
+      catalogFlushTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPause = () => pauseCatalogForLeave();
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        return;
+      }
+      const el = e.target;
+      if (!(el instanceof Element)) return;
+      const a = el.closest("a");
+      if (!(a instanceof HTMLAnchorElement)) return;
+      if (
+        !shouldPauseHeavyCatalogOnAnchorLeave({
+          href: a.getAttribute("href"),
+          currentPathname: pathname || "/apps",
+          target: a.getAttribute("target"),
+          download: a.hasAttribute("download"),
+        })
+      ) {
+        return;
+      }
+      pauseCatalogForLeave();
+    };
+    window.addEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [pauseCatalogForLeave, pathname]);
+
+  const goOwnerProfile = useCallback(
+    (
+      href: string,
+      e: {
+        preventDefault: () => void;
+        metaKey?: boolean;
+        ctrlKey?: boolean;
+        shiftKey?: boolean;
+        altKey?: boolean;
+        button?: number;
+      }
+    ) => {
+      if (
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey ||
+        (e.button != null && e.button !== 0)
+      ) {
+        return;
+      }
+      pauseCatalogForLeave();
+      appNavigate(href, router, pathname, e);
+    },
+    [pauseCatalogForLeave, router, pathname]
+  );
 
   const mergeReleaseEvent = useCallback(
     (event: NostrEventLike) => {
@@ -315,6 +395,7 @@ export function AppsDirectoryClient() {
       releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
       releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
     }) => {
+      if (leavingRef.current) return;
       if (data.apps?.length) {
         for (const a of data.apps) {
           rawAppEventsRef.current.push(
@@ -368,55 +449,9 @@ export function AppsDirectoryClient() {
     }
   }, [applyServerCatalog]);
 
-  const githubRepoKeys = useMemo(() => {
-    const ordered: string[] = [];
-    const seen = new Set<string>();
-    for (const a of apps) {
-      if (!a.repository) continue;
-      const spec = parseGitHubRepoSpec(a.repository);
-      if (!spec) continue;
-      const k = `${spec.owner}/${spec.repo}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      ordered.push(k);
-    }
-    return ordered.sort();
-  }, [apps]);
-
   const [ghStats, setGhStats] = useState<
     Record<string, { stars: number; forks: number }>
   >({});
-
-  useEffect(() => {
-    if (githubRepoKeys.length === 0) {
-      setGhStats({});
-      return;
-    }
-    let cancelled = false;
-    const specs = githubRepoKeys.slice(0, 25).map((k) => {
-      const [owner, repo] = k.split("/");
-      return { owner, repo };
-    });
-    fetch("/api/github/public-repo-stats", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repos: specs }),
-    })
-      .then((r) => r.json())
-      .then(
-        (data: {
-          stats?: Record<string, { stars: number; forks: number }>;
-        }) => {
-          if (!cancelled && data?.stats) setGhStats(data.stats);
-        }
-      )
-      .catch(() => {
-        if (!cancelled) setGhStats({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [githubRepoKeys.join(",")]);
 
   const requestAssetBatch = useCallback(
     (ids: string[], extraRelays: string[] = []) => {
@@ -433,11 +468,12 @@ export function AppsDirectoryClient() {
           [{ kinds: [KIND_SOFTWARE_ASSET], ids: chunk }],
           relayList,
           (event: NostrEventLike) => {
+            if (leavingRef.current) return;
             const a = parseSoftwareAsset(event);
             if (!a) return;
             assetsRef.current.add(a.id);
             setAssetsById((prev) => {
-              if (prev.has(a.id)) return prev;
+              if (leavingRef.current || prev.has(a.id)) return prev;
               const next = new Map(prev);
               next.set(a.id, a);
               return next;
@@ -455,6 +491,7 @@ export function AppsDirectoryClient() {
   const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
+    if (leavingRef.current) return;
     rawAppEventsRef.current = [];
     deletedEventIdsRef.current = new Set();
     releasesRef.current = new Map();
@@ -469,83 +506,98 @@ export function AppsDirectoryClient() {
     setLoadError(null);
 
     let cancelled = false;
+    let cleaned = false;
+    let liveUnsub = () => {};
 
     const finishLoading = () => {
-      if (!cancelled) setLoading(false);
+      if (!cancelled && !leavingRef.current) setLoading(false);
     };
 
     const stopTimer = setTimeout(() => {
       finishLoading();
     }, 18000);
 
-    void (async () => {
-      const ok = await fetchCatalogFromServer();
-      if (cancelled) return;
-      if (ok) finishLoading();
-    })();
-
-    const unsub = subscribe
-      ? subscribe(
-          [
-            { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
-            { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
-            { kinds: [5], limit: 2000 },
-          ],
-          relays,
-          (event: NostrEventLike) => {
-            if (cancelled) return;
-            if (event.kind === 5) {
-              let changed = false;
-              for (const t of event.tags || []) {
-                if (
-                  t[0] === "e" &&
-                  typeof t[1] === "string" &&
-                  /^[0-9a-f]{64}$/i.test(t[1])
-                ) {
-                  const id = t[1].toLowerCase();
-                  if (!deletedEventIdsRef.current.has(id)) {
-                    deletedEventIdsRef.current.add(id);
-                    changed = true;
-                  }
+    const startLiveCatalogFallback = () => {
+      if (!subscribe || cancelled || leavingRef.current || cleaned) return;
+      const unsub = subscribe(
+        [
+          { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
+          { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
+          { kinds: [5], limit: 2000 },
+        ],
+        relays,
+        (event: NostrEventLike) => {
+          if (cancelled || leavingRef.current) return;
+          if (event.kind === 5) {
+            let changed = false;
+            for (const t of event.tags || []) {
+              if (
+                t[0] === "e" &&
+                typeof t[1] === "string" &&
+                /^[0-9a-f]{64}$/i.test(t[1])
+              ) {
+                const id = t[1].toLowerCase();
+                if (!deletedEventIdsRef.current.has(id)) {
+                  deletedEventIdsRef.current.add(id);
+                  changed = true;
                 }
               }
-              if (changed) {
-                refreshAppsFromRef();
-                pruneDeletedReleases();
-              }
-              return;
             }
-            if (event.kind === KIND_SOFTWARE_APPLICATION) {
-              if (event.id && deletedEventIdsRef.current.has(event.id)) {
-                finishLoading();
-                return;
-              }
-              if (!isPublisherBlocklisted(event.pubkey)) {
-                rawAppEventsRef.current.push(event);
-                catalogNeedsAppsRef.current = true;
-                scheduleCatalogFlush();
-              }
+            if (changed) {
+              refreshAppsFromRef();
+              pruneDeletedReleases();
+            }
+            return;
+          }
+          if (event.kind === KIND_SOFTWARE_APPLICATION) {
+            if (event.id && deletedEventIdsRef.current.has(event.id)) {
               finishLoading();
               return;
             }
-            if (event.kind === KIND_SOFTWARE_RELEASE) {
-              mergeReleaseEvent(event);
+            if (!isPublisherBlocklisted(event.pubkey)) {
+              rawAppEventsRef.current.push(event);
+              catalogNeedsAppsRef.current = true;
+              scheduleCatalogFlush();
             }
-          },
-          // Deliver ASAP — 16s batching made the client fallback look "broken"
-          // for a long empty stretch after the server path returned [].
-          400
-        )
-      : () => {};
+            finishLoading();
+            return;
+          }
+          if (event.kind === KIND_SOFTWARE_RELEASE) {
+            mergeReleaseEvent(event);
+          }
+        },
+        // Deliver ASAP — 16s batching made the client fallback look "broken"
+        // for a long empty stretch after the server path returned [].
+        400
+      );
+      if (cleaned || cancelled || leavingRef.current) {
+        unsub();
+        return;
+      }
+      liveUnsub = unsub;
+    };
+
+    void (async () => {
+      const ok = await fetchCatalogFromServer();
+      if (cancelled || leavingRef.current) return;
+      if (ok) {
+        // Snapshot like /pages — a live 4000/12000 scrape starves chrome
+        // and owner-name clicks even when search shows one card.
+        finishLoading();
+        return;
+      }
+      startLiveCatalogFallback();
+    })();
 
     return () => {
       cancelled = true;
+      cleaned = true;
       clearTimeout(stopTimer);
       if (catalogFlushTimerRef.current != null) {
         clearTimeout(catalogFlushTimerRef.current);
         catalogFlushTimerRef.current = null;
       }
-      unsub();
+      liveUnsub();
       assetSubUnsubsRef.current.forEach((u) => {
         try {
           u();
@@ -567,8 +619,10 @@ export function AppsDirectoryClient() {
   ]);
 
   useEffect(() => {
+    if (leavingRef.current) return;
     if (loading || apps.length > 0) return;
     void fetchCatalogFromServer().then((ok) => {
+      if (leavingRef.current) return;
       if (!ok) {
         setLoadError(
           "Could not load apps from Nostr relays. Try again — no login or extension is required."
@@ -630,7 +684,16 @@ export function AppsDirectoryClient() {
       );
     }
     return list;
-  }, [apps, query, activeTag, releasesByApp, releasesByAppId, assetsById]);
+    // Release/asset maps only change card labels when a topic/platform pill
+    // is active — skip that walk on search-only updates.
+  }, [
+    apps,
+    query,
+    activeTag,
+    activeTag ? releasesByApp : null,
+    activeTag ? releasesByAppId : null,
+    activeTag ? assetsById : null,
+  ]);
 
   useEffect(() => {
     setVisibleCount(REPO_LIST_PAGE_SIZE);
@@ -641,6 +704,55 @@ export function AppsDirectoryClient() {
     () => filteredApps.slice(0, shownCount),
     [filteredApps, shownCount]
   );
+
+  const githubRepoKeys = useMemo(() => {
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const a of visibleApps) {
+      if (!a.repository) continue;
+      const spec = parseGitHubRepoSpec(a.repository);
+      if (!spec) continue;
+      const k = `${spec.owner}/${spec.repo}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      ordered.push(k);
+    }
+    return ordered.sort();
+  }, [visibleApps]);
+
+  useEffect(() => {
+    if (leavingRef.current) return;
+    if (githubRepoKeys.length === 0) {
+      setGhStats({});
+      return;
+    }
+    let cancelled = false;
+    const specs = githubRepoKeys.slice(0, 25).map((k) => {
+      const [owner, repo] = k.split("/");
+      return { owner, repo };
+    });
+    fetch("/api/github/public-repo-stats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repos: specs }),
+    })
+      .then((r) => r.json())
+      .then(
+        (data: {
+          stats?: Record<string, { stars: number; forks: number }>;
+        }) => {
+          if (!cancelled && !leavingRef.current && data?.stats) {
+            setGhStats(data.stats);
+          }
+        }
+      )
+      .catch(() => {
+        if (!cancelled && !leavingRef.current) setGhStats({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [githubRepoKeys.join(",")]);
 
   const profilePubkeys = useMemo(() => {
     const s = new Set<string>();
@@ -658,6 +770,7 @@ export function AppsDirectoryClient() {
   const metadataMap = useContributorMetadata(profilePubkeys);
 
   useEffect(() => {
+    if (leavingRef.current) return;
     if (!subscribe || visibleApps.length === 0) return;
     setAssetFetchSettled(false);
     const ids = new Set<string>();
@@ -674,7 +787,9 @@ export function AppsDirectoryClient() {
       for (const h of relayHints) hintRelays.add(h);
     }
     requestAssetBatch(Array.from(ids), Array.from(hintRelays));
-    const settleTimer = setTimeout(() => setAssetFetchSettled(true), 14000);
+    const settleTimer = setTimeout(() => {
+      if (!leavingRef.current) setAssetFetchSettled(true);
+    }, 14000);
     return () => clearTimeout(settleTimer);
   }, [
     subscribe,
@@ -924,10 +1039,7 @@ export function AppsDirectoryClient() {
                   : null;
                 const ghKey = ghSpec ? `${ghSpec.owner}/${ghSpec.repo}` : null;
                 const gh = ghKey ? ghStats[ghKey] : undefined;
-                const profileHref =
-                  app.pubkey && /^[0-9a-f]{64}$/i.test(app.pubkey)
-                    ? `/${nip19.npubEncode(app.pubkey)}`
-                    : `/${app.pubkey}`;
+                const profileHref = ownerProfileHref(app.pubkey);
 
                 return (
                   <li key={key}>
@@ -972,48 +1084,80 @@ export function AppsDirectoryClient() {
                           {app.appId}
                         </p>
                         <div className="mt-1 flex min-w-0 items-start gap-2">
-                          {/* Always show a pic — profile when ready, else default logo */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            alt=""
-                            className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
-                            height={28}
-                            src={
-                              authorMeta?.picture &&
-                              authorMeta.picture.startsWith("http")
-                                ? authorMeta.picture
-                                : "/logo.svg"
-                            }
-                            width={28}
-                            onError={(e) => {
-                              const el = e.currentTarget;
-                              if (!el.src.endsWith("/logo.svg")) {
-                                el.src = "/logo.svg";
-                              }
-                            }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline"
+                          {profileHref ? (
+                            <a
+                              className="flex min-w-0 flex-1 items-start gap-2 rounded-md outline-offset-2 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent-primary)]"
                               href={profileHref}
                               title={`${authorLabel} · ${npubForTitle(
                                 app.pubkey
                               )}`}
+                              onPointerDown={(e) => {
+                                if (
+                                  e.metaKey ||
+                                  e.ctrlKey ||
+                                  e.shiftKey ||
+                                  e.altKey ||
+                                  e.button !== 0
+                                ) {
+                                  return;
+                                }
+                                pauseCatalogForLeave();
+                              }}
+                              onClick={(e) => goOwnerProfile(profileHref, e)}
                             >
-                              {authorLabel}
-                            </Link>
-                            {authorMeta?.nip05?.trim() ? (
-                              <p
-                                className="truncate text-[11px] text-gray-500"
-                                title={authorMeta.nip05}
-                              >
-                                {authorMeta.nip05}
-                              </p>
-                            ) : null}
-                            <div className="mt-1">
-                              <TrustBadge targetPubkey={app.pubkey} />
-                            </div>
-                          </div>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                alt=""
+                                className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
+                                height={28}
+                                src={
+                                  authorMeta?.picture &&
+                                  authorMeta.picture.startsWith("http")
+                                    ? authorMeta.picture
+                                    : "/logo.svg"
+                                }
+                                width={28}
+                                onError={(e) => {
+                                  const el = e.currentTarget;
+                                  if (!el.src.endsWith("/logo.svg")) {
+                                    el.src = "/logo.svg";
+                                  }
+                                }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline">
+                                  {authorLabel}
+                                </span>
+                                {authorMeta?.nip05?.trim() ? (
+                                  <p
+                                    className="truncate text-[11px] text-gray-500"
+                                    title={authorMeta.nip05}
+                                  >
+                                    {authorMeta.nip05}
+                                  </p>
+                                ) : null}
+                                <div className="mt-1">
+                                  <TrustBadge targetPubkey={app.pubkey} />
+                                </div>
+                              </div>
+                            </a>
+                          ) : (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                alt=""
+                                className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
+                                height={28}
+                                src="/logo.svg"
+                                width={28}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-gray-400">
+                                  {authorLabel}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
                         {app.attributedPubkeys.length > 0 ? (
                           <p className="mt-1.5 text-[11px] leading-snug text-gray-500">
@@ -1193,12 +1337,14 @@ export function AppsDirectoryClient() {
           <Link
             className={cn(buttonVariants({ variant: "outline" }))}
             href="/explore"
+            onClick={(e) => appNavigate("/explore", router, pathname, e)}
           >
             Repos
           </Link>
           <Link
             className={cn(buttonVariants({ variant: "outline" }))}
             href="/pages"
+            onClick={(e) => appNavigate("/pages", router, pathname, e)}
           >
             Pages
           </Link>

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS,
   SOFT_NAV_HARD_FALLBACK_MS,
+  hrefLeavesCurrentPath,
   isHeavyDirectoryPath,
   isLiveCatalogPath,
   isProfileEntityPath,
@@ -10,6 +11,7 @@ import {
   isUrgentLeavePath,
   shouldApplySoftNavHardFallback,
   shouldHardNavigate,
+  shouldPauseHeavyCatalogOnAnchorLeave,
   softNavHardFallbackMs,
 } from "./app-navigate";
 
@@ -66,6 +68,7 @@ describe("isUrgentLeavePath", () => {
     expect(isUrgentLeavePath("/explore")).toBe(true);
     expect(isUrgentLeavePath("/")).toBe(true);
     expect(isUrgentLeavePath("/issues")).toBe(true);
+    expect(isUrgentLeavePath("/apps")).toBe(true);
     expect(isUrgentLeavePath(CODE_PATH)).toBe(true);
     expect(isUrgentLeavePath("/settings")).toBe(false);
   });
@@ -145,10 +148,87 @@ describe("softNavHardFallbackMs", () => {
     );
   });
 
+  it("recovers owner-profile and other leaves from Apps/Pages in about a second", () => {
+    expect(softNavHardFallbackMs("/npub1abc", "/apps")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/explore", "/apps")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/settings", "/pages")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+  });
+
+  it("keeps the long stall window when staying on /apps", () => {
+    expect(softNavHardFallbackMs("/apps", "/apps")).toBe(
+      SOFT_NAV_HARD_FALLBACK_MS
+    );
+    expect(softNavHardFallbackMs("/apps?q=zap", "/apps")).toBe(
+      SOFT_NAV_HARD_FALLBACK_MS
+    );
+  });
+
   it("keeps the long stall window for other routes (avoid remount freeze)", () => {
     expect(softNavHardFallbackMs("/explore", CODE_PATH)).toBe(
       SOFT_NAV_HARD_FALLBACK_MS
     );
     expect(softNavHardFallbackMs("/", "/")).toBe(SOFT_NAV_HARD_FALLBACK_MS);
+  });
+});
+
+describe("shouldPauseHeavyCatalogOnAnchorLeave", () => {
+  it("pauses when an in-app link leaves /apps", () => {
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/npub1abc",
+        currentPathname: "/apps",
+      })
+    ).toBe(true);
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/explore",
+        currentPathname: "/apps",
+      })
+    ).toBe(true);
+  });
+
+  it("does not pause same-hub, new-tab, or download clicks", () => {
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/apps?q=zapstore",
+        currentPathname: "/apps",
+      })
+    ).toBe(false);
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "https://github.com/foo/bar",
+        currentPathname: "/apps",
+        target: "_blank",
+      })
+    ).toBe(false);
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/npub1abc",
+        currentPathname: "/apps",
+        download: true,
+      })
+    ).toBe(false);
+  });
+
+  it("does not pause on light pages", () => {
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/explore",
+        currentPathname: "/settings",
+      })
+    ).toBe(false);
+  });
+});
+
+describe("hrefLeavesCurrentPath", () => {
+  it("treats a profile URL as leaving /apps", () => {
+    expect(hrefLeavesCurrentPath("/npub1abc", "/apps")).toBe(true);
+    expect(hrefLeavesCurrentPath("/apps?q=one", "/apps")).toBe(false);
   });
 });

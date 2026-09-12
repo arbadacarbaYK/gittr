@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { nip19 } from "nostr-tools";
 
-import { getEntityDisplayName } from "./entity-resolver";
+import { getEntityDisplayName, ownerProfileHref } from "./entity-resolver";
 
 describe("getEntityDisplayName identities hardening", () => {
   const pubkey = "a".repeat(64);
@@ -49,5 +50,21 @@ describe("getEntityDisplayName identities hardening", () => {
     expect(
       getEntityDisplayName(pubkey, { [pubkey]: { name: "BBakker" } }, undefined)
     ).toBe("BBakker");
+  });
+});
+
+describe("ownerProfileHref", () => {
+  it("encodes a 64-hex pubkey as /npub…", () => {
+    const hex = "aa".repeat(32);
+    expect(ownerProfileHref(hex)).toBe(`/${nip19.npubEncode(hex)}`);
+  });
+
+  it("returns null for an empty id", () => {
+    expect(ownerProfileHref("")).toBe(null);
+    expect(ownerProfileHref("   ")).toBe(null);
+  });
+
+  it("keeps npub and other non-hex ids as a path segment", () => {
+    expect(ownerProfileHref("npub1abc")).toBe("/npub1abc");
   });
 });

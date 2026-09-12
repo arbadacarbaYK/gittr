@@ -10,10 +10,12 @@
  * Flight requests (isRscClientNavigation).
  *
  * Chrome clicks (`router.push`) are **urgent** — not wrapped in
- * `startTransition`. Explore/Home/Issues live catalogs, Code hydrate, and
- * profile 30617 flushes starve concurrent transitions, so the address bar and
- * header look dead until React is idle (or the 8s hard fallback). Urgent push
- * lets the click land immediately; hard `location.assign` remains last-resort.
+ * `startTransition`. Explore/Home/Issues live catalogs, Code hydrate, Apps
+ * catalog flushes, and profile 30617 starve concurrent transitions, so the
+ * address bar, header, and `/apps` owner-name links look dead until React is
+ * idle. Leaving `/apps` or `/pages` also pauses the catalog and uses the
+ * 1.2s hard fallback (same as Home from Code). Urgent push lets the click
+ * land immediately; hard `location.assign` remains last-resort.
  */
 
 function normalizePath(href: string): string {
@@ -115,6 +117,57 @@ export function isUrgentLeavePath(pathname: string): boolean {
 }
 
 /**
+ * `/apps` (and `/pages`) listen for this so chrome Home/logo/nav can stop
+ * catalog `setState` before `router.push` — owner-name clicks used to look
+ * dead while a live 4000/12000 NIP-82 scrape kept flushing.
+ */
+export const PAUSE_HEAVY_CATALOG_EVENT = "gittr:pause-heavy-catalog";
+
+export function dispatchPauseHeavyCatalog(pathname?: string | null): void {
+  if (typeof window === "undefined") return;
+  const from = pathname || window.location.pathname;
+  if (!isHeavyDirectoryPath(from)) return;
+  try {
+    window.dispatchEvent(new Event(PAUSE_HEAVY_CATALOG_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when `href` is a different path than the current address bar. */
+export function hrefLeavesCurrentPath(
+  href: string,
+  currentPathname: string
+): boolean {
+  const current = canonicalPath(currentPathname);
+  try {
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      return canonicalPath(new URL(href).pathname) !== current;
+    }
+  } catch {
+    return true;
+  }
+  return canonicalPath(href) !== current;
+}
+
+/**
+ * Pointer-down on an in-app `<a>` that leaves `/apps` or `/pages`.
+ * New-tab / download / same-hub clicks keep the catalog running.
+ */
+export function shouldPauseHeavyCatalogOnAnchorLeave(opts: {
+  href: string | null;
+  currentPathname: string;
+  target?: string | null;
+  download?: boolean;
+}): boolean {
+  if (!isHeavyDirectoryPath(opts.currentPathname)) return false;
+  if (!opts.href || opts.href.startsWith("#")) return false;
+  if (opts.download) return false;
+  if ((opts.target || "").toLowerCase() === "_blank") return false;
+  return hrefLeavesCurrentPath(opts.href, opts.currentPathname);
+}
+
+/**
  * Repo Code tab: `/{entity}/{repo}` with no further segment.
  * Excludes reserved app routes like `/settings/profile`.
  */
@@ -144,6 +197,14 @@ export function softNavHardFallbackMs(
   href: string,
   currentPathname: string
 ): number {
+  // Owner-name on /apps is `/{npub}`, not Home. An 8s fallback made that
+  // click look ignored while the catalog was still flushing.
+  if (
+    isHeavyDirectoryPath(currentPathname) &&
+    canonicalPath(href) !== canonicalPath(currentPathname)
+  ) {
+    return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
+  }
   if (
     canonicalPath(href) === "/" &&
     isUrgentLeavePath(currentPathname) &&
@@ -207,6 +268,7 @@ export function appNavigate(
     window.location.assign(href);
     return;
   }
+  dispatchPauseHeavyCatalog(pathname);
   event?.preventDefault();
   if (router) {
     const startedOn = pathname || window.location.pathname;
