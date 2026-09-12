@@ -378,8 +378,20 @@ export function preferOwnerSoftwareApps(
     }
     out.push(pick);
   }
-  out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  return out;
+  return sortSoftwareAppsByCreatedAt(out);
+}
+
+/** Newest NIP-82 announce first (same clock Home / profile already use). */
+export function sortSoftwareAppsByCreatedAt<
+  T extends { createdAt?: number; name?: string }
+>(apps: T[]): T[] {
+  return [...apps].sort((a, b) => {
+    const d = (b.createdAt || 0) - (a.createdAt || 0);
+    if (d !== 0) return d;
+    return (a.name || "").localeCompare(b.name || "", undefined, {
+      sensitivity: "base",
+    });
+  });
 }
 
 /** Keep the newest replaceable snapshot per author + app id. */

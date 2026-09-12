@@ -11,6 +11,7 @@ import {
   parseSoftwareAsset,
   preferOwnerSoftwareApps,
   safeHttpUrlTag,
+  sortSoftwareAppsByCreatedAt,
 } from "./nip82-software";
 
 const appEvent = (tags: string[][]): NostrEventLike => ({
@@ -190,6 +191,17 @@ describe("preferOwnerSoftwareApps", () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.pubkey).toBe(zapstore);
     expect(out[0]?.icon).toBe("https://cdn.example.com/ok.png");
+  });
+});
+
+describe("sortSoftwareAppsByCreatedAt", () => {
+  it("puts the newest announce first", () => {
+    const out = sortSoftwareAppsByCreatedAt([
+      { name: "Zed", createdAt: 10 },
+      { name: "Amber", createdAt: 30 },
+      { name: "Citrine", createdAt: 20 },
+    ]);
+    expect(out.map((a) => a.name)).toEqual(["Amber", "Citrine", "Zed"]);
   });
 });
 

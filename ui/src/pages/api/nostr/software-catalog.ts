@@ -9,6 +9,7 @@ import {
   dedupeSoftwareApps,
   parseSoftwareRelease,
   preferOwnerSoftwareApps,
+  sortSoftwareAppsByCreatedAt,
 } from "@/lib/nostr/nip82-software";
 import { RELAY_ZAPSTORE } from "@/lib/nostr/software-catalog-relays";
 
@@ -163,9 +164,7 @@ async function fetchCatalogFromRelays(
     // Owner's own 32267 wins over Zapstore `#p` republications of the same id.
     apps = preferOwnerSoftwareApps(apps, authorScoped);
   }
-  apps.sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-  );
+  apps = sortSoftwareAppsByCreatedAt(apps);
 
   const toRecord = (m: Map<string, ParsedSoftwareRelease[]>) => {
     const out: Record<string, ParsedSoftwareRelease[]> = {};
@@ -225,8 +224,7 @@ export default async function handler(
       ? await fetchCatalogFromRelays(author)
       : await getGlobalCatalog();
     if (summary && !author) {
-      const apps = [...catalog.apps]
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      const apps = sortSoftwareAppsByCreatedAt(catalog.apps)
         .slice(0, 12)
         .map((a) => ({
           pubkey: a.pubkey,

@@ -28,6 +28,7 @@ import {
   pickAndroidApkAsset,
   pickLatestMainRelease,
   platformHintToLabel,
+  sortSoftwareAppsByCreatedAt,
 } from "@/lib/nostr/nip82-software";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -222,11 +223,7 @@ export function AppsDirectoryClient() {
       (ev) => !ev.id || !deleted.has(ev.id)
     );
     const map = dedupeSoftwareApps(kept);
-    setApps(
-      Array.from(map.values()).sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-      )
-    );
+    setApps(sortSoftwareAppsByCreatedAt(Array.from(map.values())));
   }, []);
 
   const pruneDeletedReleases = useCallback(() => {
@@ -787,8 +784,9 @@ export function AppsDirectoryClient() {
               Apps on Nostr
             </h1>
             <p className="mt-3 text-base leading-relaxed text-gray-400">
-              Installable software published to Nostr. No login or browser
-              extension required — listings load from public relays (including{" "}
+              Installable software published to Nostr, newest announce first. No
+              login or browser extension required — listings load from public
+              relays (including{" "}
               <code className="text-gray-500">relay.zapstore.dev</code>).
             </p>
           </div>
