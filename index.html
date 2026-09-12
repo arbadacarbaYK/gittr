@@ -198,29 +198,36 @@
               </ul>
             </article>
           </div>
+          <p class="hint" style="margin-top: 1.1rem">
+            Issues and PRs are shared (same signed events). The extras —
+            import, Pages, /apps, Lightning bounties, a git server you can
+            SSH to — live on <strong>gittr</strong>.
+          </p>
           <div class="compare cols-3">
             <article class="col here">
+              <p class="only">Only gittr among these three</p>
               <h3>gittr</h3>
               <ul>
-                <li>Hosted web forge: issues, PRs, import, Pages, /apps, bounties.</li>
-                <li>Runs its own git bridge (<strong>gitnostr</strong>).</li>
-                <li>Optional Lightning paywall on <code>git push</code>.</li>
+                <li>Import from GitHub, GitLab, Codeberg, or your own remote.</li>
+                <li>Static <strong>Pages</strong> and an <strong>/apps</strong> directory.</li>
+                <li>Lightning <strong>bounties</strong> on issues. Optional paywall on <code>git push</code>.</li>
+                <li>Its own git bridge: <strong>gitnostr</strong> on <code>git.gittr.space</code>.</li>
               </ul>
             </article>
             <article class="col">
               <h3>gitworkshop</h3>
               <ul>
                 <li>Hosted web client on the <strong>ngit</strong> stack.</li>
-                <li>Git via public GRASP hosts — no gittr-style import, Pages, or /apps.</li>
-                <li>Pairs with the ngit CLI, not this bridge.</li>
+                <li>Issues, PRs, repo zaps. Git via public GRASP hosts.</li>
+                <li>Pairs with the ngit CLI.</li>
               </ul>
             </article>
             <article class="col">
               <h3>gitplaza</h3>
               <ul>
-                <li>Linux desktop app — not a hosted forge.</li>
-                <li>Issues and patches on the same NIP-34 events.</li>
-                <li>Clone tags + GitWorkshop / ngit. No gittr bridge.</li>
+                <li>Linux desktop app — not a hosted website.</li>
+                <li>Issues and patches (diffs, revisions) on the same events.</li>
+                <li>Kanban and releases. Git via clone tags + GitWorkshop / ngit.</li>
               </ul>
             </article>
           </div>

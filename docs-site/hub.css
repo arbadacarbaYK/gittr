@@ -435,6 +435,14 @@ section {
   outline: 2px solid var(--teal);
   outline-offset: -1px;
 }
+.compare .col .only {
+  margin: 0 0 0.35rem;
+  color: var(--teal);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
 .compare .col h3 {
   margin: 0 0 0.45rem;
   font-size: 1.05rem;
