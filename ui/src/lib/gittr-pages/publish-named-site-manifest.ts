@@ -55,6 +55,8 @@ const STATIC_EXT = new Set([
   ".json",
   ".txt",
   ".md",
+  ".ts",
+  ".tsx",
   ".svg",
   ".png",
   ".jpg",

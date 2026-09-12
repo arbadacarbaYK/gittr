@@ -323,6 +323,9 @@ export function guessManifestFileContentType(filePath: string): string {
       return "text/plain; charset=utf-8";
     case ".md":
       return "text/markdown; charset=utf-8";
+    case ".ts":
+    case ".tsx":
+      return "text/plain; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
     case ".png":
