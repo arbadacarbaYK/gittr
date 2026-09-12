@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import { hydrateRepoOverrideBlobs } from "@/lib/repos/overrides-idb";
 import {
+  markdownImageShouldStayInline,
   mimeForRepoImagePath,
   resolveReadmeMarkdownImage,
 } from "@/lib/repos/resolve-readme-markdown-image";
@@ -238,12 +239,23 @@ export function ReadmeMarkdownImage({
     );
   }
 
-  return (
+  const inline = markdownImageShouldStayInline(src);
+  const img = (
     <img
       src={displaySrc}
       alt={alt}
       className={className}
-      style={{ maxWidth: "100%", width: "auto", height: "auto" }}
+      style={
+        inline
+          ? {
+              display: "inline",
+              height: "1.25rem",
+              width: "auto",
+              maxWidth: "none",
+              margin: 0,
+            }
+          : { maxWidth: "100%", width: "auto", height: "auto" }
+      }
       onError={async () => {
         if (apiTried || !meta.repoPath) {
           console.warn("⚠️ [README] Image failed to load:", src);
@@ -275,4 +287,12 @@ export function ReadmeMarkdownImage({
       }}
     />
   );
+  if (inline) {
+    return (
+      <span className="not-prose mx-0.5 inline-block align-middle leading-none">
+        {img}
+      </span>
+    );
+  }
+  return <div className="my-4 overflow-x-auto">{img}</div>;
 }

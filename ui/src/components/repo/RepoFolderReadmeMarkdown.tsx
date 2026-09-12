@@ -198,19 +198,17 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
           ...proseCodeSafeComponents,
           img: ({ ...props }: { src?: string; alt?: string }) => {
             return (
-              <div className="my-4 overflow-x-auto">
-                <ReadmeMarkdownImage
-                  src={props.src || ""}
-                  alt={props.alt || ""}
-                  branch={branch}
-                  forgeSourceUrl={forgeSourceUrl}
-                  cloneUrls={cloneUrls}
-                  ownerPubkey={ownerPubkey}
-                  repoName={repoName}
-                  entity={entity}
-                  markdownFilePath={markdownFilePath}
-                />
-              </div>
+              <ReadmeMarkdownImage
+                src={props.src || ""}
+                alt={props.alt || ""}
+                branch={branch}
+                forgeSourceUrl={forgeSourceUrl}
+                cloneUrls={cloneUrls}
+                ownerPubkey={ownerPubkey}
+                repoName={repoName}
+                entity={entity}
+                markdownFilePath={markdownFilePath}
+              />
             );
           },
           a: markdownAnchor as any,

@@ -107,7 +107,7 @@ Same winner as the tree. Branch comes from `?branch=`, then `filesBranch` / `res
 6. Remaining `clone[]` only if multifetch has no winners yet.
 7. Binary → base64 / data URL in the browser.
 
-Relative README images (`![…](file-fetch.gif)`) resolve against **that markdown file’s folder**.
+Relative README images (`![…](file-fetch.gif)`) resolve against **that markdown file’s folder**. Status badges (`img.shields.io` / badgen) stay **inline in a row** like GitHub; only non-badge images get the scrollable block wrapper.
 
 Normal READMEs (up to ~200 KB) format automatically; only enormous bodies need **Show formatted README**.
 

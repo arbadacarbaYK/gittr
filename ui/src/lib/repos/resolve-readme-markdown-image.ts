@@ -78,6 +78,37 @@ export function normalizeRepoRelPath(
   return p;
 }
 
+/**
+ * GitHub-style status badges are several `![…](https://img.shields.io/…)` in
+ * one paragraph. Wrapping every README `img` in a block `div` (for wide
+ * screenshots) put each badge on its own row with huge gaps.
+ */
+export function markdownImageShouldStayInline(src: string): boolean {
+  const raw = (src || "").trim();
+  if (!raw || !/^https?:\/\//i.test(raw)) return false;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    if (
+      host === "img.shields.io" ||
+      host === "shields.io" ||
+      host.endsWith(".shields.io") ||
+      host === "badgen.net" ||
+      host.endsWith(".badgen.net") ||
+      host === "badge.fury.io" ||
+      host === "flat.badgen.net"
+    ) {
+      return true;
+    }
+    const path = u.pathname.toLowerCase();
+    if (host === "github.com" && /\/badge\.svg$/i.test(path)) return true;
+    if (host.endsWith("gitlab.com") && /\/badges\//i.test(path)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function pickCloneUrl(clones: string[] | null | undefined): string {
   if (!Array.isArray(clones)) return "";
   for (const raw of clones) {

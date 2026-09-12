@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  markdownImageShouldStayInline,
   normalizeRepoRelPath,
   resolveReadmeMarkdownImage,
 } from "./resolve-readme-markdown-image";
@@ -35,6 +36,20 @@ describe("resolveReadmeMarkdownImage", () => {
     });
     expect(r?.primarySrc).toBe("https://example.com/x.png");
     expect(r?.preferApi).toBe(false);
+  });
+
+  it("keeps shields.io badges inline", () => {
+    expect(
+      markdownImageShouldStayInline(
+        "https://img.shields.io/badge/license-MIT-green"
+      )
+    ).toBe(true);
+    expect(
+      markdownImageShouldStayInline(
+        "https://raw.githubusercontent.com/o/r/main/shot.png"
+      )
+    ).toBe(false);
+    expect(markdownImageShouldStayInline("docs/logo.png")).toBe(false);
   });
 
   it("maps GitHub relative paths to raw.githubusercontent.com", () => {

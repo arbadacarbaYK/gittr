@@ -55,7 +55,9 @@ diagrams render with `securityLevel: "antiscript"`; the theme script in
 Relative image paths in READMEs (e.g. `![…](docs/assets/foo.png)` or `<img src="docs/wok.svg">`) must **display**
 on Nostr-native / GRASP repos via same-origin file APIs — see
 `ui/src/lib/repos/resolve-readme-markdown-image.ts` and
-`ReadmeMarkdownImage`. A same-folder name like `![…](file-fetch.gif)` is joined
+`ReadmeMarkdownImage`. Status-badge hosts (`img.shields.io`, badgen, …) render
+inline in one paragraph like GitHub; screenshots keep the scrollable block wrap.
+A same-folder name like `![…](file-fetch.gif)` is joined
 to the **markdown file’s directory**. Forge `sourceUrl` hotlinks are best-effort; SVG and failed
 raw URLs fall back to the gittr bridge (ownerPubkey+repo), not a guessed forge
 `/raw/` path. Do not invent forge `/raw/` URLs for `git.gittr.space`.

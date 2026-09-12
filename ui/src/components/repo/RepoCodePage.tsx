@@ -19819,25 +19819,21 @@ export function RepoCodePage() {
                                   ?.ownerPubkey ||
                                 null;
                               return (
-                                <div className="my-4 overflow-x-auto">
-                                  <ReadmeMarkdownImage
-                                    src={
-                                      typeof props.src === "string"
-                                        ? props.src
-                                        : ""
-                                    }
-                                    alt={props.alt || ""}
-                                    branch={branch}
-                                    forgeSourceUrl={forgeSourceUrl}
-                                    cloneUrls={cloneUrls}
-                                    ownerPubkey={ownerPk}
-                                    repoName={decodedRepo}
-                                    entity={resolvedParams.entity}
-                                    markdownFilePath={
-                                      selectedFile || "README.md"
-                                    }
-                                  />
-                                </div>
+                                <ReadmeMarkdownImage
+                                  src={
+                                    typeof props.src === "string"
+                                      ? props.src
+                                      : ""
+                                  }
+                                  alt={props.alt || ""}
+                                  branch={branch}
+                                  forgeSourceUrl={forgeSourceUrl}
+                                  cloneUrls={cloneUrls}
+                                  ownerPubkey={ownerPk}
+                                  repoName={decodedRepo}
+                                  entity={resolvedParams.entity}
+                                  markdownFilePath={selectedFile || "README.md"}
+                                />
                               );
                             },
                             a: fileMarkdownAnchor,
