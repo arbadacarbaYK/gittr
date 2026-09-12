@@ -19,6 +19,7 @@ import {
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
@@ -623,7 +624,7 @@ export default function RepoLayoutClient({
           limit: 5,
         },
       ],
-      getAllRelays(defaultRelays),
+      repoNostrQueryRelays(defaultRelays),
       (event) => {
         if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
           latest = event;
@@ -925,7 +926,7 @@ export default function RepoLayoutClient({
     const alreadyKnown = isHexEventId(cachedId);
     // Do not flip the Star button into a loading label on every persist.
     if (!alreadyKnown) setResolvingRepoEventId(true);
-    const relays = getAllRelays(defaultRelays);
+    const relays = repoNostrQueryRelays(defaultRelays);
     const applyId = (id: string | null | undefined) => {
       if (cancelled || !isHexEventId(id)) return false;
       setRelayRepoEventId(id);
@@ -1194,9 +1195,10 @@ export default function RepoLayoutClient({
 
   // Nostr issues/PRs → localStorage so tab badges update on Code (not only after click).
   useEffect(() => {
-    if (!mounted || !subscribe || !defaultRelays?.length) return;
+    if (!mounted || !subscribe) return;
     if (!resolvedParams.entity || !resolvedParams.repo) return;
-    const relays = getAllRelays(defaultRelays);
+    const relays = repoNostrQueryRelays(defaultRelays);
+    if (!relays.length) return;
     return startWarmRepoIssuePrFromNostr({
       entity: resolvedParams.entity,
       repo: resolvedParams.repo,

@@ -1,6 +1,10 @@
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { detectBareRepoDefaultBranch } from "@/lib/git/bare-repo-default-branch";
+import { parseGitLogPipeLines } from "@/lib/git/parse-git-log-pipe";
+import { cloneShallowAndListCommits } from "@/lib/git/shallow-clone-remote";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
+import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
@@ -166,6 +170,7 @@ export default async function handler(
     handleOptionsRequest(res, req);
     return;
   }
+  setCorsHeaders(res, req);
 
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -176,6 +181,7 @@ export default async function handler(
     repo: repoName,
     branch,
     limit,
+    cloneUrl: cloneUrlRaw,
   } = req.query;
 
   if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
@@ -201,6 +207,12 @@ export default async function handler(
     (typeof branch === "string" ? branch : "main").trim() || "main";
   const commitLimit = limit ? parseInt(limit as string, 10) : 100;
   const safeLimit = Math.min(Math.max(commitLimit, 1), 500); // Between 1 and 500
+  const cloneUrl =
+    typeof cloneUrlRaw === "string"
+      ? cloneUrlRaw.trim()
+      : Array.isArray(cloneUrlRaw)
+      ? String(cloneUrlRaw[0] || "").trim()
+      : "";
 
   // Use same directory resolution as other endpoints
   const reposDir = await resolveReposDir();
@@ -226,6 +238,35 @@ export default async function handler(
 
   try {
     if (!existsSync(repoPath)) {
+      if (cloneUrl) {
+        const rateLimitResult = await rateLimiters.gitFetch(req as any);
+        if (rateLimitResult) {
+          return res.status(429).json(JSON.parse(await rateLimitResult.text()));
+        }
+        const urlSafety = await assertSafeOutboundGitUrl(cloneUrl);
+        if (!urlSafety.ok) {
+          return res.status(400).json({
+            error: "cloneUrl blocked",
+            details: urlSafety.error,
+          });
+        }
+        const remote = await cloneShallowAndListCommits(
+          cloneUrl,
+          branchName,
+          safeLimit
+        );
+        if (!remote || remote.commits.length === 0) {
+          return res.status(404).json({
+            error: "Repository not found",
+            hint: "Remote clone did not return commits",
+          });
+        }
+        return res.status(200).json({
+          commits: remote.commits,
+          totalCount: remote.commits.length,
+          branch: remote.branch !== branchName ? remote.branch : undefined,
+        });
+      }
       return res.status(404).json({
         error: "Repository not found",
         hint: "Repository may not be cloned yet by git-nostr-bridge",
@@ -277,45 +318,7 @@ export default async function handler(
 
     const branchForMeta = effectiveBranch;
 
-    const commits: Commit[] = [];
-
-    if (stdout.trim()) {
-      const lines = stdout.trim().split("\n");
-      for (const line of lines) {
-        const parts = line.split("|");
-        if (parts.length >= 5) {
-          const [
-            hash,
-            message,
-            authorName,
-            authorEmail,
-            timestampStr,
-            ...parentHashes
-          ] = parts;
-
-          if (hash && message && timestampStr) {
-            const timestamp = parseInt(timestampStr, 10) * 1000; // Convert to milliseconds
-            const parentIds =
-              parentHashes.length > 0 && parentHashes[0]
-                ? parentHashes[0]
-                    .trim()
-                    .split(/\s+/)
-                    .filter((p) => p.length > 0)
-                : [];
-
-            commits.push({
-              id: hash.trim(),
-              message: message.trim(),
-              author: authorName?.trim() || authorEmail?.trim() || "unknown",
-              authorEmail: authorEmail?.trim(),
-              timestamp,
-              branch: branchForMeta,
-              parentIds: parentIds.length > 0 ? parentIds : undefined,
-            });
-          }
-        }
-      }
-    }
+    const commits: Commit[] = parseGitLogPipeLines(stdout, branchForMeta);
 
     const earliestUniqueCommit = await resolveEarliestUniqueCommit(
       repoPath,

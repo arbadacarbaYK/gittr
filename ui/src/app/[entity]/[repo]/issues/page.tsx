@@ -13,6 +13,7 @@ import {
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
+import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -258,10 +259,10 @@ export default function RepoIssuesPage({
 
   // Subscribe to Issues from Nostr relays for this repo
   useEffect(() => {
+    const queryRelays = repoNostrQueryRelays(defaultRelays);
     if (
       !subscribe ||
-      !defaultRelays ||
-      defaultRelays.length === 0 ||
+      queryRelays.length === 0 ||
       !resolvedParams.entity ||
       !resolvedParams.repo
     )
@@ -312,7 +313,7 @@ export default function RepoIssuesPage({
 
       const unsub = subscribe(
         filters,
-        defaultRelays,
+        queryRelays,
         (event, isAfterEose, relayURL) => {
           if (event.kind === KIND_ISSUE) {
             try {
@@ -510,7 +511,7 @@ export default function RepoIssuesPage({
 
         const statusUnsub = subscribe(
           statusFilters,
-          defaultRelays,
+          queryRelays,
           (event, isAfterEose, relayURL) => {
             if (cancelled) return;
 

@@ -28,6 +28,8 @@ import {
   syncGithubPullsForRepo,
 } from "@/lib/utils/sync-github-repo-issues-prs";
 
+import { eventBelongsToRepo } from "./event-belongs-to-repo";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SubscribeFn = (...args: any[]) => () => void;
 
@@ -91,27 +93,7 @@ function resolveOwnerHex(entity: string, repo: string): string | null {
   return null;
 }
 
-function eventBelongsToRepo(
-  event: { tags: string[][] },
-  entity: string,
-  repo: string,
-  ownerHex: string | null
-): boolean {
-  const aTag = event.tags.find((t) => t[0] === "a");
-  if (aTag?.[1]) {
-    const parts = aTag[1].split(":");
-    if (parts.length >= 3 && parts[0] === "30617") {
-      return parts[2] === repo;
-    }
-  }
-  const repoTag = event.tags.find((t) => t[0] === "repo");
-  if (!repoTag) return false;
-  const ownerOk =
-    repoTag[1] === entity || (ownerHex != null && repoTag[1] === ownerHex);
-  return ownerOk && repoTag[2] === repo;
-}
-
-function upsertIssue(entity: string, repo: string, event: any): void {
+export function upsertIssue(entity: string, repo: string, event: any): void {
   const key = getRepoStorageKey("gittr_issues", entity, repo);
   const existing = [...(readRepoIssuesFromLocalStorage(entity, repo) as any[])];
   const idx = existing.findIndex((i) => i.id === event.id);
@@ -151,7 +133,7 @@ function upsertIssue(entity: string, repo: string, event: any): void {
   window.dispatchEvent(new Event("gittr:issue-updated"));
 }
 
-function upsertPr(entity: string, repo: string, event: any): void {
+export function upsertPr(entity: string, repo: string, event: any): void {
   const key = getRepoStorageKey("gittr_prs", entity, repo);
   const existing = [...(readRepoPullsFromLocalStorage(entity, repo) as any[])];
   const idx = existing.findIndex((pr) => pr.id === event.id);

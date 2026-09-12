@@ -1,11 +1,15 @@
-import { sanitizeRepoTreePath } from "./bare-repo-ls-tree";
-import { httpBodyIsBinary } from "./file-bytes-look-like-text";
-
 import { exec } from "child_process";
 import * as fs from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
 import { promisify } from "util";
+
+import { sanitizeRepoTreePath } from "./bare-repo-ls-tree";
+import { httpBodyIsBinary } from "./file-bytes-look-like-text";
+import {
+  type GitLogPipeCommit,
+  parseGitLogPipeLines,
+} from "./parse-git-log-pipe";
 
 const execAsync = promisify(exec);
 
@@ -61,9 +65,16 @@ export function sanitizeGitBranch(branch: string | undefined): string {
   return b;
 }
 
+function sanitizeCloneDepth(depth: number | undefined): number {
+  const n = Math.floor(Number(depth) || 1);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 200);
+}
+
 async function cloneShallowToTempDir(
   sourceUrl: string,
-  branch: string
+  branch: string,
+  depth = 1
 ): Promise<string | null> {
   const tempDir = path.join(
     tmpdir(),
@@ -84,12 +95,13 @@ async function cloneShallowToTempDir(
   };
 
   const safeBr = sanitizeGitBranch(branch);
+  const safeDepth = sanitizeCloneDepth(depth);
 
   for (const attempt of attemptUrls) {
-    const withBranch = `git clone --depth 1 --branch ${JSON.stringify(
+    const withBranch = `git clone --depth ${safeDepth} --branch ${JSON.stringify(
       safeBr
     )} ${JSON.stringify(attempt)} ${JSON.stringify(tempDir)}`;
-    const noBranch = `git clone --depth 1 ${JSON.stringify(
+    const noBranch = `git clone --depth ${safeDepth} ${JSON.stringify(
       attempt
     )} ${JSON.stringify(tempDir)}`;
     for (const cmd of [withBranch, noBranch]) {
@@ -243,6 +255,60 @@ export async function cloneShallowAndReadFile(
     };
   } catch (e) {
     console.error("[shallow-clone] git show failed:", e);
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+}
+
+const COMMIT_LOG_DEPTH = 80;
+const LOG_TIMEOUT_MS = 30_000;
+
+/** Temp-fetch a remote (foreign GRASP included) and list recent commits. */
+export async function cloneShallowAndListCommits(
+  sourceUrl: string,
+  branch: string,
+  limit = 100
+): Promise<{ commits: GitLogPipeCommit[]; branch: string } | null> {
+  const safeLimit = Math.min(
+    Math.max(Math.floor(Number(limit) || 100), 1),
+    500
+  );
+  const tempDir = await cloneShallowToTempDir(
+    sourceUrl,
+    branch,
+    COMMIT_LOG_DEPTH
+  );
+  if (!tempDir) return null;
+
+  try {
+    let defaultBranch = sanitizeGitBranch(branch);
+    try {
+      const { stdout: branchOutput } = await execAsync(
+        `git -C ${JSON.stringify(tempDir)} rev-parse --abbrev-ref HEAD`,
+        { timeout: 5000 }
+      );
+      if (branchOutput.trim()) defaultBranch = branchOutput.trim();
+    } catch {
+      /* keep requested branch */
+    }
+
+    const { stdout } = await execAsync(
+      `git -C ${JSON.stringify(
+        tempDir
+      )} log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit}`,
+      { timeout: LOG_TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024 }
+    );
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    return {
+      commits: parseGitLogPipeLines(stdout, defaultBranch),
+      branch: defaultBranch,
+    };
+  } catch (e) {
+    console.error("[shallow-clone] git log failed:", e);
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } catch {

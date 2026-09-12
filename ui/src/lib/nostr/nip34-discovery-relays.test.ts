@@ -4,6 +4,7 @@ import {
   NIP34_DISCOVERY_RELAYS,
   extraNostrRelaysFromRepoRemotes,
   profileRepoRelaysForClient,
+  repoNostrQueryRelays,
 } from "./nip34-discovery-relays";
 
 describe("profileRepoRelaysForClient", () => {
@@ -20,6 +21,14 @@ describe("profileRepoRelaysForClient", () => {
     expect(relays[0]).toBe("wss://relay.damus.io");
     expect(relays.filter((u) => u === "wss://relay.ngit.dev")).toHaveLength(1);
     expect(relays).toContain("wss://git.shakespeare.diy");
+  });
+});
+
+describe("repoNostrQueryRelays", () => {
+  it("includes nos.lol so homepage PRs can open in a cold browser", () => {
+    const relays = repoNostrQueryRelays([]);
+    expect(relays).toContain("wss://nos.lol");
+    expect(relays).toContain("wss://relay.ngit.dev");
   });
 });
 

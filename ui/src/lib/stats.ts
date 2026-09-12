@@ -27,6 +27,7 @@ import {
 } from "./nostr/events";
 import { isRepoAnnouncementDeleted } from "./nostr/repo-deleted";
 import { isPublicReadFromEvent } from "./nostr/repo-public-read";
+import { headCommitIdFromRepoStateTags } from "./nostr/repo-state-head";
 import { hexPubkeyToNpub } from "./stats/live-recent-repos";
 import {
   getRepoOwnerPubkey,
@@ -1754,6 +1755,7 @@ export function getRecentPlatformActivitiesFromNostr(
           const repoName = dTag?.[1];
           if (!repoName || !user) return;
           const entity = hexPubkeyToNpub(user);
+          const headSha = headCommitIdFromRepoStateTags(event.tags);
           push({
             id: event.id,
             type: "commit_created",
@@ -1762,7 +1764,7 @@ export function getRecentPlatformActivitiesFromNostr(
             entity,
             repo: repoName,
             repoName,
-            metadata: { commitId: event.id },
+            metadata: { commitId: headSha || event.id },
           });
           return;
         }

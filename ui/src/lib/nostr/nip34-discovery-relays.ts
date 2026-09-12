@@ -7,6 +7,8 @@
  */
 import { hostnameLooksPrivateOrLocal } from "../security/private-network-host";
 
+import { getAllRelays } from "./getAllRelays";
+
 /** Small relay set for lightweight server-side stats. */
 export const PLATFORM_STATS_RELAYS = [
   "wss://relay.gittr.space",
@@ -26,6 +28,17 @@ export const NIP34_DISCOVERY_RELAYS = [
 export const PROFILE_REPOS_RELAYS = Array.from(
   new Set([...PLATFORM_STATS_RELAYS, ...NIP34_DISCOVERY_RELAYS])
 );
+
+/**
+ * Browser reads of NIP-34 repo data (issues, PRs, announcements).
+ * Env/user relays plus ngit / Shakespeare / nos.lol — homepage stats already
+ * see those hosts; a gittr-only subscribe cannot open the same events.
+ */
+export function repoNostrQueryRelays(
+  defaultRelays: string[] | undefined | null
+): string[] {
+  return profileRepoRelaysForClient(getAllRelays(defaultRelays || []));
+}
 
 /** Browser profile scan: app relays plus NIP-34 discovery (same as file fetch). */
 export function profileRepoRelaysForClient(defaultRelays: string[]): string[] {

@@ -39,6 +39,7 @@ import {
   prCommentsStorageKey,
   repoTagMatchesRoute,
 } from "@/lib/nostr/nip22-comment-thread";
+import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -69,6 +70,7 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { upsertPr } from "@/lib/repos/warm-repo-issue-pr-counts";
 import {
   getNostrPrivateKey,
   getSecureItem,
@@ -400,7 +402,8 @@ export default function PRDetailPage({
 
   // NIP-22 comments on this PR (kind 1111). Issues already did this; PRs did not.
   useEffect(() => {
-    if (!subscribe || !defaultRelays || !prEventId) return;
+    const queryRelays = repoNostrQueryRelays(defaultRelays);
+    if (!subscribe || !queryRelays.length || !prEventId) return;
     const unsub = subscribe(
       [
         {
@@ -409,7 +412,7 @@ export default function PRDetailPage({
           "#e": [prEventId],
         },
       ],
-      defaultRelays,
+      queryRelays,
       (event) => {
         if (event.kind !== KIND_COMMENT && event.kind !== 1) return;
         if (
@@ -564,14 +567,22 @@ export default function PRDetailPage({
         setPR(null);
         setLinkedIssue(null);
         setPrEventId(isHexEventId(id) ? id : null);
+        // Hex deep links still query Nostr; keep the spinner until that lands.
+        if (!isHexEventId(id)) setLoading(false);
       }
-      setLoading(false);
+      if (prData) setLoading(false);
     } catch (error) {
       console.error("Failed to load PR:", error);
       setPR(null);
       setLoading(false);
     }
   }, [id, entity, repo, currentUserPubkey, prStorageRev]);
+
+  useEffect(() => {
+    if (pr || !isHexEventId(id)) return;
+    const t = window.setTimeout(() => setLoading(false), 12000);
+    return () => window.clearTimeout(t);
+  }, [pr, id]);
 
   useEffect(() => {
     if (!pr?.id || !isNostrHexIssueId(pr.id) || isGithubStylePrId(pr.id))
@@ -608,14 +619,17 @@ export default function PRDetailPage({
     };
   }, [entity, repo, subscribe, defaultRelays]);
 
-  // Fill clone / commit tags if the list row was a thin warm upsert.
+  // Fill clone / commit tags; also create the row when this browser has no cache.
   useEffect(() => {
-    if (!subscribe || !defaultRelays || !prEventId) return;
+    const queryRelays = repoNostrQueryRelays(defaultRelays);
+    if (!subscribe || !queryRelays.length || !prEventId) return;
     const unsub = subscribe(
       [{ kinds: [KIND_PULL_REQUEST], ids: [prEventId] }],
-      defaultRelays,
+      queryRelays,
       (event) => {
-        if (event.kind !== KIND_PULL_REQUEST || event.id !== prEventId) return;
+        if (event.kind !== KIND_PULL_REQUEST) return;
+        if (String(event.id).toLowerCase() !== prEventId.toLowerCase()) return;
+        upsertPr(resolvedParams.entity, resolvedParams.repo, event);
         const hints = parseKind1618PrGitHints(event.tags);
         setPR((prev) => {
           if (!prev) return prev;

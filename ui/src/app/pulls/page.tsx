@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
+import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -330,13 +331,8 @@ export default function PullsPage({}) {
 
   // Subscribe to PRs from Nostr relays (kind 9804) for all user repos - handles PRs from any Nostr client
   useEffect(() => {
-    if (
-      !subscribe ||
-      !defaultRelays ||
-      defaultRelays.length === 0 ||
-      !currentUserPubkey
-    )
-      return;
+    const queryRelays = repoNostrQueryRelays(defaultRelays);
+    if (!subscribe || queryRelays.length === 0 || !currentUserPubkey) return;
 
     const repos = loadStoredRepos();
     const userRepos = repos.filter((repo: any) =>
@@ -412,7 +408,7 @@ export default function PullsPage({}) {
     let cancelled = false;
     const unsub = subscribe(
       filters,
-      defaultRelays,
+      queryRelays,
       (event, isAfterEose, relayURL) => {
         if (cancelled) return;
 

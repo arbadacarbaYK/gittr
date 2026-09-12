@@ -30,7 +30,11 @@ import {
   resolveEntityToPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
-import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
+import {
+  KNOWN_GRASP_DOMAINS,
+  isGittrBridgeHost,
+  normalizeGraspHost,
+} from "@/lib/utils/grasp-servers";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
@@ -144,14 +148,16 @@ function candidateCloneUrls(
 async function fetchBridgeCommits(
   ownerParam: string,
   repoName: string,
-  branch: string
+  branch: string,
+  cloneUrl?: string
 ): Promise<Commit[]> {
+  const cloneQs = cloneUrl ? `&cloneUrl=${encodeURIComponent(cloneUrl)}` : "";
   const res = await fetchBridgeRead(
     `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
       ownerParam
     )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
       branch
-    )}&limit=500`
+    )}&limit=500${cloneQs}`
   );
   if (!res.ok) return [];
   const data = (await res.json()) as {
@@ -180,14 +186,15 @@ async function fetchBridgeCommits(
   }));
 }
 
-/** Mirror clone URLs onto the bridge, then re-read git log (Code-tab parity). */
+/** Mirror git.gittr.space remotes onto the bridge, then re-read git log. */
 async function mirrorThenFetchCommits(
   ownerParam: string,
   repoName: string,
   branch: string,
   cloneUrls: string[]
 ): Promise<Commit[]> {
-  for (const cloneUrl of cloneUrls.slice(0, 6)) {
+  const gittrUrls = cloneUrls.filter((u) => isGittrBridgeHost(u));
+  for (const cloneUrl of gittrUrls.slice(0, 2)) {
     try {
       const cloneRes = await fetch("/api/nostr/repo/clone", {
         method: "POST",
@@ -310,14 +317,48 @@ export default function CommitsPage({
       if (ownerParam && repoName) {
         bridgeCommits = await fetchBridgeCommits(ownerParam, repoName, branch);
         if (!bridgeCommits.length) {
-          let recForClones = rec;
-          if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk)) {
+          const tried = new Set<string>();
+          const tryCloneUrls = async (urls: string[]) => {
+            for (const cloneUrl of urls) {
+              const key = cloneUrl.toLowerCase();
+              if (!cloneUrl || tried.has(key)) continue;
+              tried.add(key);
+              if (
+                isGittrBridgeHost(cloneUrl) ||
+                normalizeGraspHost(cloneUrl) === "relay.gittr.space"
+              ) {
+                continue;
+              }
+              bridgeCommits = await fetchBridgeCommits(
+                ownerParam,
+                repoName,
+                branch,
+                cloneUrl
+              );
+              if (bridgeCommits.length > 0) return;
+            }
+          };
+
+          await tryCloneUrls(
+            candidateCloneUrls(
+              entity,
+              repoName,
+              ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
+              rec
+            ).slice(0, 6)
+          );
+
+          if (
+            !bridgeCommits.length &&
+            ownerPk &&
+            /^[0-9a-f]{64}$/i.test(ownerPk)
+          ) {
             const hints = await fetchRepoCloneHintsFromProfile(
               ownerPk,
               repoName
             );
             if (hints && (hints.clone.length > 0 || hints.sourceUrl)) {
-              recForClones = {
+              const recForClones = {
                 ...(rec || {}),
                 clone: [
                   ...(hints.clone || []),
@@ -325,21 +366,27 @@ export default function CommitsPage({
                 ],
                 sourceUrl: hints.sourceUrl || rec?.sourceUrl,
               } as StoredRepo;
+              await tryCloneUrls(
+                candidateCloneUrls(entity, repoName, ownerPk, recForClones)
+              );
             }
           }
-          const clones = candidateCloneUrls(
-            entity,
-            repoName,
-            ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
-            recForClones
-          );
-          if (clones.length > 0) {
-            bridgeCommits = await mirrorThenFetchCommits(
-              ownerParam,
+
+          if (!bridgeCommits.length) {
+            const clones = candidateCloneUrls(
+              entity,
               repoName,
-              branch,
-              clones
+              ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
+              rec
             );
+            if (clones.length > 0) {
+              bridgeCommits = await mirrorThenFetchCommits(
+                ownerParam,
+                repoName,
+                branch,
+                clones
+              );
+            }
           }
         }
       }

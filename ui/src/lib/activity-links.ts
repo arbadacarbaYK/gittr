@@ -33,8 +33,15 @@ export function getActivityDeepPath(activity: {
           : "");
       return issueId ? `/issues/${issueId}` : "/issues";
     }
-    case "commit_created":
+    case "commit_created": {
+      const commitId =
+        typeof meta.commitId === "string" ? meta.commitId.trim() : "";
+      // Git SHAs are 7–40 hex; Nostr event ids are 64 and are not commit pages.
+      if (/^[0-9a-f]{7,40}$/i.test(commitId)) {
+        return `/commits/${commitId}`;
+      }
       return "/commits";
+    }
     case "release_created":
       return "/releases";
     case "bounty_created":

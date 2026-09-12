@@ -151,7 +151,7 @@ Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. F
 
 Wrong default branch is common (`main` vs `develop`). Files, file-content, and tree-last-commits fall back `main`↔`master`, then the bare HEAD, then other heads. Success includes the resolved `branch`.
 
-The gittr bridge **404s** `GET /api/nostr/repo/files` when this host is not in `clone[]`. That is expected: the UI then reads the owner’s announced clone host. Foreign GRASP is not permanently copied onto `git.gittr.space`.
+The gittr bridge **404s** `GET /api/nostr/repo/files` when this host is not in `clone[]`. That is expected: the UI then reads the owner’s announced clone host. Foreign GRASP is not permanently copied onto `git.gittr.space`. The **Commits** tab uses the same rule: `GET /api/nostr/repo/commits?cloneUrl=` temp-fetches git log; do not `POST /clone` ngit/Shakespeare onto the bridge (that 400s and used to paint “No commits found”).
 
 ## What “newest” means
 

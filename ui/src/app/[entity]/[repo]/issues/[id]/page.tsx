@@ -38,6 +38,7 @@ import {
   commentEventBelongsToThread,
   repoTagMatchesRoute,
 } from "@/lib/nostr/nip22-comment-thread";
+import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -54,6 +55,7 @@ import {
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
+import { upsertIssue } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import {
@@ -236,6 +238,12 @@ export default function IssueDetailPage({
       if (!issueData) {
         setIssue(null);
         setComments([]);
+        if (isNostrHexIssueId(id)) {
+          setIssueEventId(String(id).toLowerCase());
+        } else {
+          setIssueEventId(null);
+          setLoading(false);
+        }
         return;
       }
 
@@ -317,9 +325,9 @@ export default function IssueDetailPage({
         linkedIds: (issueData as { linkedIds?: string[] }).linkedIds,
       }) as Comment[];
       setComments(storedComments);
+      setLoading(false);
     } catch (error) {
       console.error("Failed to load issue:", error);
-    } finally {
       setLoading(false);
     }
   }, [entity, repo, id, currentUserPubkey, normalizeAssignees]);
@@ -329,6 +337,30 @@ export default function IssueDetailPage({
     setLoading(true);
     loadIssueFromStorage();
   }, [loadIssueFromStorage]);
+
+  useEffect(() => {
+    const queryRelays = repoNostrQueryRelays(defaultRelays);
+    if (!subscribe || !queryRelays.length || !isNostrHexIssueId(id)) return;
+    const hexId = String(id).toLowerCase();
+    const unsub = subscribe(
+      [{ kinds: [KIND_ISSUE], ids: [hexId] }],
+      queryRelays,
+      (event) => {
+        if (event.kind !== KIND_ISSUE) return;
+        if (String(event.id).toLowerCase() !== hexId) return;
+        upsertIssue(entity, repo, event);
+      }
+    );
+    return () => {
+      unsub();
+    };
+  }, [subscribe, defaultRelays, id, entity, repo]);
+
+  useEffect(() => {
+    if (issue || !isNostrHexIssueId(id)) return;
+    const t = window.setTimeout(() => setLoading(false), 12000);
+    return () => window.clearTimeout(t);
+  }, [issue, id]);
 
   // Local #2 is this browser only. Put the Nostr event id in the address bar
   // so copy-paste works for logged-out visitors.
