@@ -1,5 +1,7 @@
 "use client";
 
+import { isGithubNoreplyLookalikeOfAny } from "./github-login-lookalike";
+
 export type ContributorRole = "owner" | "maintainer" | "contributor";
 
 export interface ContributorLike {
@@ -109,7 +111,14 @@ export function sanitizeContributors<T extends ContributorLike>(
     sanitized.push(clone);
   }
 
-  return sanitized;
+  const knownLogins = sanitized
+    .map((c) => c.githubLogin)
+    .filter((login): login is string => !!login);
+
+  return sanitized.filter((c) => {
+    if (!c.githubLogin || c.pubkey) return true;
+    return !isGithubNoreplyLookalikeOfAny(c.githubLogin, knownLogins);
+  });
 }
 
 /**

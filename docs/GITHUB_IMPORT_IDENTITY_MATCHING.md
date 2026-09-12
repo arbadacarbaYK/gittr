@@ -138,6 +138,8 @@ The system **keeps ALL contributors**, even if they haven't linked their Nostr i
 
 This ensures you see the full contributor list, not just those who have claimed identities.
 
+**Exception — GitHub noreply lookalikes:** GitHub maps `{login}@users.noreply.github.com` to that login. One commit authored as `arbadacarbaYK` but emailed `arbadacarba@users.noreply.github.com` makes GitHub list a *different* account (`ArBaDaCarBa`) next to the real owner. gittr hides a GitHub-only login that is a long prefix of the forge owner / another contributor login (e.g. `arbadacarba` vs `arbadacarbaYK`). We do not invent that user; we stop copying GitHub’s mis-attribution into the sidebar.
+
 ### Query Performance
 - The Nostr query has a **10-second timeout**
 - Results are **cached for 5 minutes** to avoid repeated queries

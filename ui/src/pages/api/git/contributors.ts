@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { githubLoginIsOwnerLookalike } from "@/lib/utils/github-login-lookalike";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -75,11 +76,15 @@ export default async function handler(
 
       if (response.ok) {
         const data = await response.json();
-        contributors = data.map((c: any) => ({
-          login: c.login,
-          avatar_url: c.avatar_url,
-          contributions: c.contributions || 0,
-        }));
+        contributors = data
+          .map((c: any) => ({
+            login: c.login,
+            avatar_url: c.avatar_url,
+            contributions: c.contributions || 0,
+          }))
+          .filter(
+            (c: Contributor) => !githubLoginIsOwnerLookalike(c.login, owner)
+          );
       } else {
       }
     } else if (gitlabMatch) {

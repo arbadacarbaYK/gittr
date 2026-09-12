@@ -2,7 +2,9 @@
 
 ## Overview
 
-Contributors can come from multiple sources depending on the repo type:
+Contributors can come from multiple sources depending on the repo type.
+
+GitHub’s `/contributors` API is copied as-is except **noreply lookalikes**: if the forge owner is `arbadacarbaYK` and GitHub also returns `ArBaDaCarBa` because one commit used `arbadacarba@users.noreply.github.com`, that stranger is dropped (`github-login-lookalike.ts`). The sidebar still shows the Nostr owner plus the real GitHub identity.
 
 1. **External repos (GitHub/GitLab/Codeberg)**: Fetched from their APIs
 2. **Nostr-only repos**: Extracted from Nostr event "p" tags
