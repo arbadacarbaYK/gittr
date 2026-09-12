@@ -4,6 +4,8 @@ Git hosting and forge UI on [Nostr](https://github.com/nostr-protocol/nips): NIP
 
 Live: [gittr.space](https://gittr.space) · [Apps](https://gittr.space/apps) · [Pages](https://pages.gittr.space) · [Relay](https://relay.gittr.space) · [Legal](https://gittr.space/legal) · [Nostr schemata (NIPs)](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md)
 
+**Docs hub (Nostr Page):** root [`index.html`](./index.html) — clickable version of the platform map plus links into gittr / gitnostr / pyramid / nsite / gittr-mcp / helper-tools. After **Push Manifest**, it is listed on [gittr.space/pages](https://gittr.space/pages) as **gittr** (`https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr.pages.gittr.space/`). Sister cookbook: [helper-tools](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/).
+
 ## Where this sits (platform map)
 
 Super-high-level — who talks to whom. **You are here = gittr Client** (this repo, teal). Host URLs are the cyan-outlined host boxes (teal = this repo; cyan outline = host URLs). Detailed bridge diagrams live in [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).

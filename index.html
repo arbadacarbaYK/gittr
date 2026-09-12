@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>gittr map — where the docs live</title>
+    <meta
+      name="description"
+      content="One Nostr Page for the gittr universe: click the platform map, open gittr, gitnostr, pyramid, nsite, gittr-mcp, and the helper-tools cookbook."
+    />
+    <link rel="stylesheet" href="./docs-site/hub.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2314b8a6'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16'%3E★%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <a class="skip" href="#map">Skip to map</a>
+    <header class="topbar">
+      <div class="wrap topbar-inner">
+        <a class="brand" href="#top">
+          <span class="logo" aria-hidden="true">★</span>
+          gittr map
+        </a>
+        <nav class="topnav" aria-label="On this page">
+          <a href="#map">Click the map</a>
+          <a href="#docs">Docs by job</a>
+          <a href="#picture">README picture</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <div class="wrap hero">
+        <p class="kicker">Nostr Page · documentation hub</p>
+        <h1>One door for <em>every</em> gittr box.</h1>
+        <p class="lede">
+          Same picture as the gittr README — except here the boxes open things.
+          Repos, live hosts, and the written docs. The
+          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+            >helper-tools cookbook</a
+          >
+          is how you steal the client recipes. This page is how you find
+          <em>which machine</em> that recipe talks to.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#map">Click the map</a>
+          <a class="btn btn-ghost" href="https://gittr.space">Open gittr.space</a>
+          <a
+            class="btn btn-ghost"
+            href="https://gittr.space/help"
+            >Help center</a
+          >
+        </div>
+      </div>
+
+      <section id="map">
+        <div class="wrap">
+          <div class="section-title">
+            <h2>Click a box. Land on the repo or the host.</h2>
+          </div>
+          <p class="hint">
+            Teal outline = this repo (the website). Cyan outline = a hostname.
+            Yellow row = other people’s NIP-34 clients — same events, not our code.
+          </p>
+
+          <div class="zone people">
+            <p class="zone-label">People / agents</p>
+            <div class="tiles">
+              <a class="tile" href="https://gittr.space">
+                <div class="name">Human in browser</div>
+                <div class="host">gittr.space</div>
+                <div class="job">NIP-07, Amber, or nsec. Issues and PRs ride relays. Git bytes go through the bridge.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?branch=main"
+              >
+                <div class="name">AI agent via MCP</div>
+                <div class="host">gittr-mcp</div>
+                <div class="job">Cursor / Claude talking HTTP + Nostr. Not SSH. Same forge as humans.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FSSH_GIT_GUIDE.md&amp;branch=main"
+              >
+                <div class="name">CLI: gn / git / ngit</div>
+                <div class="host">terminal</div>
+                <div class="job">Laptop git to git.gittr.space. nostr:// needs git-remote-nostr (we don’t ship ngit).</div>
+              </a>
+            </div>
+          </div>
+
+          <div class="zone platform">
+            <p class="zone-label">gittr platform · hostnames</p>
+            <div class="tiles">
+              <a
+                class="tile here"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main"
+              >
+                <div class="name">gittr Client ★</div>
+                <div class="host">gittr.space · YOU ARE HERE</div>
+                <div class="job">Web UI: Code, issues, PRs, Push, Pages, Apps. This docs hub lives in that repo.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main"
+              >
+                <div class="name">gitnostr Bridge</div>
+                <div class="host">git.gittr.space</div>
+                <div class="job">Real git over SSH/HTTPS. Bare repos on disk. Kind 52 keys.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?branch=main"
+              >
+                <div class="name">gittr-mcp</div>
+                <div class="host">agents, not SSH</div>
+                <div class="job">MCP tools: create, push, PRs, issues, bounties. Same platform, no Amber popup.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway?branch=main"
+              >
+                <div class="name">Pages / nsite</div>
+                <div class="host">pages.gittr.space</div>
+                <div class="job">Static sites from Nostr (this page). Gateway code is the nsite-gateway fork.</div>
+              </a>
+              <a class="tile" href="https://blossom.gittr.space">
+                <div class="name">Blossom</div>
+                <div class="host">blossom.gittr.space</div>
+                <div class="job">Blob store for Pages files. Not git objects. Never put APKs here.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid?branch=main"
+              >
+                <div class="name">Pyramid relay</div>
+                <div class="host">relay.gittr.space</div>
+                <div class="job">Open forge relay + GRASP. wss for events. Not the git disk (that’s git.gittr.space).</div>
+              </a>
+              <a class="tile" href="https://gittr.space/help">
+                <div class="name">Lightning zaps</div>
+                <div class="host">LNbits / NWC / LNURL</div>
+                <div class="job">Repo zaps and issue bounties. Optional pay-to-push. Help center has the human flow.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+              >
+                <div class="name">helper-tools cookbook</div>
+                <div class="host">Nostr Page</div>
+                <div class="job">Steal production snippets. How to build another git Nostr client, with screenshots.</div>
+              </a>
+            </div>
+          </div>
+
+          <div class="zone nostr">
+            <p class="zone-label">Nostr + remotes</p>
+            <div class="tiles">
+              <a
+                class="tile"
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FNIPS_AND_EVENT_KINDS.md&amp;branch=main"
+              >
+                <div class="name">NIP-34 + GRASP</div>
+                <div class="host">protocol, not an app</div>
+                <div class="job">Signed repo / issue / PR events. Clone URLs can list several git hosts.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md"
+              >
+                <div class="name">Other Nostr relays</div>
+                <div class="host">same signed events</div>
+                <div class="job">gittr, ngit, gitworkshop, gitplaza, nak all read the notes. They do not share a codebase.</div>
+              </a>
+              <a
+                class="tile"
+                href="https://github.com/DanConwayDev/ngit-cli"
+              >
+                <div class="name">git remote nostr</div>
+                <div class="host">nostr://</div>
+                <div class="job">ngit helper. gittr shows the URL; day-to-day push here is SSH/HTTPS to the bridge.</div>
+              </a>
+            </div>
+          </div>
+
+          <div class="zone other">
+            <p class="zone-label">Same NIP-34 · other stacks (not gittr)</p>
+            <div class="tiles">
+              <a class="tile" href="https://gitworkshop.dev">
+                <div class="name">gitworkshop</div>
+                <div class="job">Dan Conway’s web client on ngit GRASP hosts.</div>
+              </a>
+              <a class="tile" href="https://codeberg.org/dluvian/gitplaza">
+                <div class="name">gitplaza</div>
+                <div class="job">Linux desktop forge. Landing/search is separate.</div>
+              </a>
+              <a class="tile" href="https://github.com/fiatjaf/nak">
+                <div class="name">nak git</div>
+                <div class="job">CLI for NIP-34 / GRASP. Not a web forge.</div>
+              </a>
+              <a class="tile" href="https://github.com">
+                <div class="name">GitHub / GitLab / Codeberg</div>
+                <div class="job">Import and mirror. gittr can refetch; Nostr stays the collaboration truth.</div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="picture">
+        <div class="wrap">
+          <div class="section-title">
+            <h2>The README picture, for orientation</h2>
+          </div>
+          <p class="hint">
+            Boxes above are the clickable version. This still is the map from the
+            gittr README — same neighborhoods, pretty pixels.
+          </p>
+          <figure class="picture">
+            <img
+              src="./docs/gittr-platform.png"
+              alt="gittr platform map: people, client, bridge, pages, blossom, pyramid relay, other NIP-34 stacks"
+              width="1600"
+              height="1100"
+            />
+            <figcaption>
+              Interactive NetDraw source:
+              <a
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2Fgittr-platform.netdraw.json&amp;branch=main"
+                >gittr-platform.netdraw.json</a
+              >
+              (open in
+              <a href="https://mr-r3b00t.github.io/net_draw/">NetDraw</a>
+              if you like walking a journey).
+            </figcaption>
+          </figure>
+          <figure class="picture">
+            <img
+              src="./docs/file-fetch.png"
+              alt="Where gittr Code-tab files come from: drafts, forges, bridge, other GRASP, helper-tools"
+              width="1600"
+              height="1100"
+            />
+            <figcaption>
+              Where Code-tab files come from —
+              <a
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FFILE_FETCHING_INSIGHTS.md&amp;branch=main"
+                >FILE_FETCHING_INSIGHTS.md</a
+              >.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="docs">
+        <div class="wrap">
+          <div class="section-title">
+            <h2>Docs by job — pick a mood</h2>
+          </div>
+          <div class="filters" role="toolbar" aria-label="Filter docs">
+            <button class="filter" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-filter="use" aria-pressed="false">I use gittr</button>
+            <button class="filter" type="button" data-filter="run" aria-pressed="false">I run the machines</button>
+            <button class="filter" type="button" data-filter="client" aria-pressed="false">I build a client</button>
+            <button class="filter" type="button" data-filter="agent" aria-pressed="false">I write an agent</button>
+          </div>
+          <div class="shelf">
+            <article class="card" data-tags="use">
+              <h3>Use gittr</h3>
+              <p>No compile step. Just the website.</p>
+              <ul>
+                <li><a href="https://gittr.space/help">Help center</a></li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FSSH_GIT_GUIDE.md&amp;branch=main"
+                    >SSH / git clone</a
+                  >
+                </li>
+                <li><a href="https://gittr.space/pages">Published Pages</a></li>
+                <li><a href="https://gittr.space/apps">Apps on Nostr</a></li>
+              </ul>
+            </article>
+            <article class="card" data-tags="run">
+              <h3>gittr (this website)</h3>
+              <p>Next.js UI. Production notes for operators.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=README.md&amp;branch=main"
+                    >README</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FSETUP_INSTRUCTIONS.md&amp;branch=main"
+                    >SETUP_INSTRUCTIONS</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FLOCAL_SETUP.md&amp;branch=main"
+                    >LOCAL_SETUP</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FNIPS_AND_EVENT_KINDS.md&amp;branch=main"
+                    >NIPs and kinds</a
+                  >
+                </li>
+              </ul>
+            </article>
+            <article class="card" data-tags="run">
+              <h3>gitnostr (git disk)</h3>
+              <p>The bridge. Where <code>git clone</code> actually talks.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=README.md&amp;branch=main"
+                    >README</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=docs%2FARCHITECTURE.md&amp;branch=main"
+                    >Architecture</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=SSH_GIT_GUIDE.md&amp;branch=main"
+                    >SSH guide</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FGIT_NOSTR_BRIDGE_SETUP.md&amp;branch=main"
+                    >Bridge setup (gittr copy)</a
+                  >
+                </li>
+              </ul>
+            </article>
+            <article class="card" data-tags="run">
+              <h3>pyramid (relay)</h3>
+              <p>git-adapted fork. Open kinds + GRASP. wss only.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid?file=README.md&amp;branch=main"
+                    >README</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid?file=FORGE.md&amp;branch=main"
+                    >FORGE.md</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FGRASP_RELAY_SETUP.md&amp;branch=main"
+                    >GRASP relay setup</a
+                  >
+                </li>
+                <li><a href="https://relay.gittr.space">Live dashboard</a></li>
+              </ul>
+            </article>
+            <article class="card" data-tags="run">
+              <h3>nsite-gateway (Pages)</h3>
+              <p>Serves this HTML from Blossom + kind 35128.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway?file=README.md&amp;branch=main"
+                    >Fork README</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=infra%2Fnsite-gateway%2FREADME.md&amp;branch=main"
+                    >Deploy sidecar</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FGITTR_PAGES_CURATION.md&amp;branch=main"
+                    >Curation / mute list</a
+                  >
+                </li>
+                <li><a href="https://pages.gittr.space/status">Gateway status</a></li>
+              </ul>
+            </article>
+            <article class="card" data-tags="client">
+              <h3>helper-tools (steal code)</h3>
+              <p>The fun cookbook + every snippet folder.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+                    >Cookbook Page</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?branch=main"
+                    >Repo on gittr</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?file=snippets%2Fnip34-repository-events%2FREADME.md&amp;branch=main"
+                    >Announce a repo (30617)</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?file=snippets%2Fnip5a-gittr-pages%2FREADME.md&amp;branch=main"
+                    >Make a Page (35128)</a
+                  >
+                </li>
+              </ul>
+            </article>
+            <article class="card" data-tags="agent">
+              <h3>gittr-mcp (agents)</h3>
+              <p>Install in Cursor / Claude. HTTPS + nsec. Not SSH.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?file=README.md&amp;branch=main"
+                    >README</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?file=docs%2FAGENT-QUICKSTART.md&amp;branch=main"
+                    >Agent quickstart</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?file=docs%2FMCP-HOSTS.md&amp;branch=main"
+                    >MCP hosts</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp?file=docs%2FSIGNING-GUIDE.md&amp;branch=main"
+                    >Signing guide</a
+                  >
+                </li>
+              </ul>
+            </article>
+            <article class="card" data-tags="use client">
+              <h3>Amber / wallets</h3>
+              <p>Signing is not paying. Two protocols.</p>
+              <ul>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2FNIP46_REMOTE_SIGNER_INTEGRATION.md&amp;branch=main"
+                    >NIP-46 remote signer</a
+                  >
+                </li>
+                <li>
+                  <a
+                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=ui%2FNWC_IMPLEMENTATION_NOTES.md&amp;branch=main"
+                    >NWC notes</a
+                  >
+                </li>
+                <li><a href="https://gittr.space/bounty-hunt">Bounty hunt</a></li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap">
+        <p>
+          After you edit this repo: <strong>Push to Nostr</strong>, then sidebar
+          <strong>Nostr Pages → Push Manifest</strong>. The public slug for this
+          repo is <code>gittr</code>. Sister page:
+          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+            >helper-tools cookbook</a
+          >.
+        </p>
+        <p>
+          Canonical repo list:
+          <a
+            href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs%2Fgittr-repo-links.md&amp;branch=main"
+            >gittr-repo-links.md</a
+          >
+          · live client
+          <a href="https://gittr.space">gittr.space</a>.
+        </p>
+      </div>
+    </footer>
+    <script src="./docs-site/hub.js"></script>
+  </body>
+</html>

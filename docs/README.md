@@ -1,5 +1,7 @@
 # Documentation index
 
+**Browser hub:** repo-root [`../index.html`](../index.html) (Nostr Page after Push Manifest, slug `gittr`) — clickable platform map + docs by job. Live: [gittr Pages](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr.pages.gittr.space/). Sister cookbook: [helper-tools Page](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/) · [repo](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools).
+
 Start here:
 
 | Doc | When |

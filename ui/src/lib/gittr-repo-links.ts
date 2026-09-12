@@ -22,6 +22,8 @@ export const GITTR_REPO_GITTR = gittrRepoBrowse("gittr");
 export const GITTR_REPO_GITNOSTR = gittrRepoBrowse("gitnostr");
 export const GITTR_REPO_HELPER_TOOLS = gittrRepoBrowse("gittr-helper-tools");
 export const GITTR_REPO_NSITE_GATEWAY = gittrRepoBrowse("nsite-gateway");
+export const GITTR_REPO_PYRAMID = gittrRepoBrowse("pyramid");
+export const GITTR_REPO_MCP = gittrRepoBrowse("gittr-mcp");
 
 /** Pages nsite blob host — never pin Apps / APKs here. */
 export const GITTR_BLOSSOM_ORIGIN = "https://blossom.gittr.space";

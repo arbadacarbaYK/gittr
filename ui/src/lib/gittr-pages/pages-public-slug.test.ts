@@ -17,6 +17,10 @@ describe("resolveRepoPagesDTag", () => {
   it("falls back to the truncated repo slug", () => {
     expect(resolveRepoPagesDTag("conference-loop", {})).toBe("conference-lo");
   });
+
+  it("lets the gittr repo keep d=gittr (reserved only blocks other repos' custom names)", () => {
+    expect(resolveRepoPagesDTag("gittr", {})).toBe("gittr");
+  });
 });
 
 describe("evaluatePagesSiteSlugInput", () => {
