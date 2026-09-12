@@ -341,6 +341,19 @@ export default function HelpPage() {
             when the code already lives elsewhere.
           </li>
           <li>
+            <strong className="text-white">SSH keys</strong> — Settings → SSH
+            Keys, then clone and push to{" "}
+            <code className="text-purple-200">git.gittr.space</code> like any
+            other git host.{" "}
+            <Link
+              href="#ssh-keys"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              SSH Keys
+            </Link>
+            .
+          </li>
+          <li>
             <strong className="text-white">Notifications</strong> — Nostr DMs
             and optional Telegram. Watched repos, issues, PRs, plus private
             security notices.{" "}
