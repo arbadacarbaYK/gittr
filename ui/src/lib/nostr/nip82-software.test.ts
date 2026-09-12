@@ -4,6 +4,8 @@ import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
   type NostrEventLike,
+  gittrRepoPathFromNip34A,
+  gittrRepoPathFromRepositoryUrl,
   parseSoftwareApp,
   parseSoftwareAsset,
   safeHttpUrlTag,
@@ -64,6 +66,37 @@ describe("parseSoftwareApp URL sanitizing", () => {
     expect(parsed?.webUrl).toBe("https://app.example.com/");
     expect(parsed?.icon).toBe("https://cdn.example.com/icon.png");
     expect(parsed?.repository).toBe("https://github.com/org/repo");
+  });
+});
+
+describe("gittrRepoPath from NIP-82 apps", () => {
+  const hex = "aa".repeat(32);
+
+  it("builds /{npub}/{repo} from a 30617 a-tag", () => {
+    const expected = gittrRepoPathFromNip34A(`30617:${hex}:cargo-limit`);
+    expect(expected).toMatch(/^\/npub1[a-z0-9]+\/cargo-limit$/);
+    const parsed = parseSoftwareApp(
+      appEvent([["a", `30617:${hex}:cargo-limit`]])
+    );
+    expect(parsed?.gittrRepoPath).toBe(expected);
+  });
+
+  it("uses a gittr.space repository URL when there is no a-tag", () => {
+    const npub = "npub1abc";
+    expect(
+      gittrRepoPathFromRepositoryUrl(`https://gittr.space/${npub}/demo`)
+    ).toBe(`/${npub}/demo`);
+    expect(gittrRepoPathFromRepositoryUrl("https://github.com/org/repo")).toBe(
+      null
+    );
+    expect(
+      gittrRepoPathFromRepositoryUrl("https://pages.gittr.space/npub1x/demo")
+    ).toBe(null);
+  });
+
+  it("ignores hostile or empty a-tags", () => {
+    expect(gittrRepoPathFromNip34A("30617:nothex:repo")).toBe(null);
+    expect(gittrRepoPathFromNip34A(`30617:${hex}:a/b`)).toBe(null);
   });
 });
 

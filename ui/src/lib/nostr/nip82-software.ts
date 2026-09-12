@@ -2,6 +2,7 @@
  * NIP-82 (draft): software catalog — kinds 32267 (app), 30063 (release), 3063 (asset).
  * Used to list Zapstore-compatible apps from relays (e.g. wss://relay.zapstore.dev).
  */
+import { nip19 } from "nostr-tools";
 
 export const KIND_SOFTWARE_APPLICATION = 32267;
 export const KIND_SOFTWARE_RELEASE = 30063;
@@ -53,6 +54,70 @@ export function safeHttpUrlTag(raw: string | undefined): string | undefined {
   }
 }
 
+/**
+ * NIP-34 pointer on a gittr-announced NIP-82 app: `30617:<owner-hex>:<repo-d>`.
+ * Zapstore-only listings usually omit this.
+ */
+export function gittrRepoPathFromNip34A(value: string): string | null {
+  const m = String(value || "")
+    .trim()
+    .match(/^30617:([0-9a-f]{64}):(.+)$/i);
+  if (!m?.[1] || !m[2]) return null;
+  const repo = m[2].trim();
+  if (!repo || /[\s/?#]/.test(repo)) return null;
+  const hex = m[1].toLowerCase();
+  try {
+    return `/${nip19.npubEncode(hex)}/${repo}`;
+  } catch {
+    return `/${hex}/${repo}`;
+  }
+}
+
+/** `https://gittr.space/{npub|hex}/{repo}` — not git/pages/blossom/relay hosts. */
+export function gittrRepoPathFromRepositoryUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    if (host !== "gittr.space" && !host.endsWith(".gittr.space")) return null;
+    if (
+      host.startsWith("git.") ||
+      host.startsWith("blossom.") ||
+      host.startsWith("relay.") ||
+      host.startsWith("pages.")
+    ) {
+      return null;
+    }
+    const segs = u.pathname.split("/").filter(Boolean);
+    if (segs.length < 2) return null;
+    const entity = segs[0]!;
+    const repo = segs[1]!;
+    if (!/^npub1/i.test(entity) && !/^[0-9a-f]{64}$/i.test(entity)) {
+      return null;
+    }
+    if (/[\s/?#]/.test(repo)) return null;
+    return `/${entity}/${repo}`;
+  } catch {
+    return null;
+  }
+}
+
+export function gittrRepoPathFromSoftwareEvent(
+  event: NostrEventLike,
+  repository?: string
+): string | undefined {
+  for (const t of event.tags || []) {
+    if (t[0] === "a" && typeof t[1] === "string") {
+      const path = gittrRepoPathFromNip34A(t[1]);
+      if (path) return path;
+    }
+  }
+  if (repository) {
+    const path = gittrRepoPathFromRepositoryUrl(repository);
+    if (path) return path;
+  }
+  return undefined;
+}
+
 export interface ParsedSoftwareApp {
   pubkey: string;
   appId: string;
@@ -71,6 +136,11 @@ export interface ParsedSoftwareApp {
    * NIP-82 attribution: other pubkeys as `p` tags (hex). Not exhaustive; publishers may omit.
    */
   attributedPubkeys: string[];
+  /**
+   * gittr Code-tab path (`/{npub}/{repo}`) when the event points at a NIP-34
+   * repo (`a` tag) or a gittr.space repository URL. Absent for most Zapstore apps.
+   */
+  gittrRepoPath?: string;
   content: string;
   createdAt: number;
   raw: NostrEventLike;
@@ -87,13 +157,14 @@ export function parseSoftwareApp(
     .map((x) => x.trim().toLowerCase())
     .filter((x) => /^[0-9a-f]{64}$/.test(x))
     .filter((x) => x !== event.pubkey.toLowerCase());
+  const repository = safeHttpUrlTag(readTag(event, "repository"));
   return {
     pubkey: event.pubkey,
     appId,
     name,
     summary: readTag(event, "summary"),
     icon: safeHttpUrlTag(readTag(event, "icon")),
-    repository: safeHttpUrlTag(readTag(event, "repository")),
+    repository,
     webUrl: safeHttpUrlTag(readTag(event, "url")),
     topics: readTagAll(event, "t")
       .map((x) => x.trim())
@@ -103,6 +174,7 @@ export function parseSoftwareApp(
       .filter(Boolean),
     license: readTag(event, "license"),
     attributedPubkeys,
+    gittrRepoPath: gittrRepoPathFromSoftwareEvent(event, repository),
     content: typeof event.content === "string" ? event.content : "",
     createdAt: event.created_at,
     raw: event,

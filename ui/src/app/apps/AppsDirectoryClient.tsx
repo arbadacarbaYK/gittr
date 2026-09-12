@@ -635,6 +635,7 @@ export function AppsDirectoryClient() {
           a.summary,
           a.appId,
           a.repository,
+          a.gittrRepoPath,
           a.webUrl,
           a.content,
           a.license,
@@ -1249,6 +1250,21 @@ export function AppsDirectoryClient() {
                             </span>
                           )}
 
+                          {app.gittrRepoPath ? (
+                            <a
+                              className={cn(
+                                buttonVariants({
+                                  size: "sm",
+                                  variant: "outline",
+                                })
+                              )}
+                              href={app.gittrRepoPath}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                            >
+                              Repo
+                            </a>
+                          ) : null}
                           {app.repository ? (
                             <a
                               className={cn(

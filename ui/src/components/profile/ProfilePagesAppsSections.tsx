@@ -122,9 +122,12 @@ export function ProfilePagesAppsSections({
             error?: string;
           };
           if (cancelled) return;
-          if (!pagesRes.ok) throw new Error(pagesData.error || `pages ${pagesRes.status}`);
+          if (!pagesRes.ok)
+            throw new Error(pagesData.error || `pages ${pagesRes.status}`);
           setPages(
-            (pagesData.sites || []).filter((s) => pageBelongsToOwner(s, ownerHex))
+            (pagesData.sites || []).filter((s) =>
+              pageBelongsToOwner(s, ownerHex)
+            )
           );
         } catch {
           if (!cancelled) setPages([]);
@@ -144,7 +147,8 @@ export function ProfilePagesAppsSections({
             error?: string;
           };
           if (cancelled) return;
-          if (!appsRes.ok) throw new Error(appsData.error || `apps ${appsRes.status}`);
+          if (!appsRes.ok)
+            throw new Error(appsData.error || `apps ${appsRes.status}`);
           const mine = (appsData.apps || []).filter((a) =>
             appBelongsToOwner(a, ownerHex)
           );
@@ -293,6 +297,21 @@ export function ProfilePagesAppsSections({
                       </p>
                     ) : null}
                     <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                      {app.gittrRepoPath ? (
+                        <a
+                          className={cn(
+                            buttonVariants({
+                              size: "sm",
+                              variant: "outline",
+                            })
+                          )}
+                          href={app.gittrRepoPath}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Repo
+                        </a>
+                      ) : null}
                       {app.webUrl || app.repository ? (
                         <a
                           className={cn(
