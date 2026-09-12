@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { pickManifestFileBytes } from "./manifest-file-bytes";
 import { isGittrPagesManifestPath } from "./pages-manifest-paths";
 
 describe("isGittrPagesManifestPath", () => {
@@ -36,5 +37,28 @@ describe("isGittrPagesManifestPath", () => {
   it("skips nested build/vendor folders even when not at the repo root", () => {
     expect(isGittrPagesManifestPath("docs/node_modules/foo.js")).toBe(false);
     expect(isGittrPagesManifestPath("site/.next/static/chunk.js")).toBe(false);
+  });
+});
+
+describe("pickManifestFileBytes", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  it("prefers git/bridge bytes over a leftover browser copy", () => {
+    const remote = enc("<html>new hub</html>");
+    const local = enc("<html>old map</html>");
+    expect(pickManifestFileBytes(remote, local)).toBe(remote);
+  });
+
+  it("uses the browser copy when git/bridge have nothing", () => {
+    const local = enc("<html>only local</html>");
+    expect(pickManifestFileBytes(null, local)).toBe(local);
+    expect(pickManifestFileBytes(new Uint8Array(), local)).toBe(local);
+  });
+
+  it("returns null when neither side has bytes", () => {
+    expect(pickManifestFileBytes(null, null)).toBeNull();
+    expect(
+      pickManifestFileBytes(new Uint8Array(), new Uint8Array())
+    ).toBeNull();
   });
 });

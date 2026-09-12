@@ -583,9 +583,10 @@ export function RepoGittrPagesPanel({
           <div className="space-y-2 rounded-xl border border-amber-900/20 bg-amber-950/[0.07] p-3">
             <SectionLabel>Publish live page — required</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
-              Uploads the homepage to Blossom and publishes the Pages manifest.
-              This is the step that makes the site openable. It is not a git
-              push and not an issue.
+              Uploads the homepage from GitHub/the git bridge (not leftover
+              editor cache) to Blossom and publishes the Pages manifest. This is
+              the step that makes the site openable. It is not a git push and
+              not an issue.
             </p>
             {manifestPublishBlocked ? (
               <p className="text-[10px] leading-relaxed text-amber-200/90">

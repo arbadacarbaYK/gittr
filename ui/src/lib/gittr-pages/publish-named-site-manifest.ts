@@ -7,6 +7,10 @@ import {
   gittrPagesBlossomOrigin,
   gittrPagesBlossomServerTag,
 } from "@/lib/gittr-pages/gittr-pages-blossom-origin";
+import {
+  pickManifestFileBytes,
+  uint8Equal,
+} from "@/lib/gittr-pages/manifest-file-bytes";
 import { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
@@ -338,27 +342,16 @@ async function fetchFileFromBridgeWithRepoFallback(
   return null;
 }
 
-/**
- * Resolve file bytes: localStorage → optional direct HTTPS URL → git source proxy → bridge file API.
- * `skipLocal`: manifest publish can refetch from git/bridge when browser storage has a JSON blob on a `.js` path.
- */
-async function resolveManifestFileBytes(
+async function fetchRemoteManifestFileBytes(
   file: MergedManifestFile,
   ctx: {
     gitSourceUrl?: string;
     defaultBranch: string;
     ownerPubkeyHex: string;
     repo: string;
-    /** Route / URL repo segment when it differs from `repo` (storage / bridge primary). */
     urlRepoSegment?: string;
-    skipLocal?: boolean;
   }
 ): Promise<Uint8Array | null> {
-  if (!ctx.skipLocal) {
-    const local = repoFileContentToBytes(file.content, file.isBinary);
-    if (local && local.length > 0) return local;
-  }
-
   if (file.remoteUrl) {
     try {
       const r = await fetch(file.remoteUrl, { credentials: "omit" });
@@ -396,10 +389,48 @@ async function resolveManifestFileBytes(
 }
 
 /**
- * Browser `gittr_files` often wins over git/bridge. If someone pasted JSON (activity feed, API
+ * Resolve file bytes: git/bridge first, then browser storage.
+ * `skipLocal`: ignore gittr_files / overrides (JSON-on-`.js` recovery).
+ */
+async function resolveManifestFileBytes(
+  file: MergedManifestFile,
+  ctx: {
+    gitSourceUrl?: string;
+    defaultBranch: string;
+    ownerPubkeyHex: string;
+    repo: string;
+    /** Route / URL repo segment when it differs from `repo` (storage / bridge primary). */
+    urlRepoSegment?: string;
+    skipLocal?: boolean;
+    onProgress?: (message: string) => void;
+  }
+): Promise<Uint8Array | null> {
+  const local = ctx.skipLocal
+    ? null
+    : repoFileContentToBytes(file.content, file.isBinary);
+  const remote = await fetchRemoteManifestFileBytes(file, ctx);
+  if (
+    remote &&
+    remote.length > 0 &&
+    local &&
+    local.length > 0 &&
+    !uint8Equal(remote, local)
+  ) {
+    const p = normalizeFilePath(file.path);
+    if (/index\.html$/i.test(p) || /\.css$/i.test(p)) {
+      ctx.onProgress?.(
+        `${p}: using GitHub/bridge — this browser still had an older copy`
+      );
+    }
+  }
+  return pickManifestFileBytes(remote, local);
+}
+
+/**
+ * Git/bridge already wins for normal files. If someone pasted JSON (activity feed, API
  * response) into `app-calendar.js`, local storage stays a JSON document while the bridge has
- * real JS — Blossom then returns 400 (MIME vs bytes). When normalized local bytes are strict
- * JSON on a script extension and a remote source exists, load bytes without localStorage.
+ * real JS — Blossom then returns 400 (MIME vs bytes). When normalized bytes are still strict
+ * JSON on a script extension, skip local and load git/bridge again.
  */
 async function preferRemoteWhenScriptPathLooksLikeJsonDocument(
   file: MergedManifestFile,
@@ -554,6 +585,7 @@ export async function publishNamedSiteManifest(
     ownerPubkeyHex,
     repo: storageRepo,
     urlRepoSegment,
+    onProgress,
   };
 
   const manifestPaths = merged.filter((f) => isGittrPagesManifestPath(f.path));
@@ -648,6 +680,16 @@ export async function publishNamedSiteManifest(
       error:
         "No file bytes could be read for upload. Check file contents in storage.",
     };
+  }
+  const indexStaged = staged.find(
+    (s) => s.webPath.replace(/\/+/g, "/").toLowerCase() === "/index.html"
+  );
+  if (indexStaged) {
+    onProgress?.(
+      `index.html sha256 ${indexStaged.sha256.slice(0, 16)}… (${
+        indexStaged.bytes.length
+      } bytes)`
+    );
   }
   if (
     !staged.some(
