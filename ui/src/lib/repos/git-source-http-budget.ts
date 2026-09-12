@@ -21,6 +21,15 @@ export function gitSourceHttpInflight(): number {
   return inflight;
 }
 
+export async function withGitSourceHttp<T>(fn: () => Promise<T>): Promise<T> {
+  noteGitSourceHttpStart();
+  try {
+    return await fn();
+  } finally {
+    noteGitSourceHttpEnd();
+  }
+}
+
 export function waitForGitSourceHttpIdle(maxMs = 5000): Promise<void> {
   if (inflight <= 0) return Promise.resolve();
   return new Promise((resolve) => {

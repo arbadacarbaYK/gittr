@@ -4,10 +4,19 @@
  * answers 401/403 (private repo), it retries once with a signed Nostr auth
  * header so owners and contributors can read their own private repos.
  */
+import { withGitSourceHttp } from "../repos/git-source-http-budget";
+
 import { getBridgeAuthHeaders } from "./bridge-auth";
 import { resolveNostrSigner } from "./signer";
 
 export async function fetchBridgeRead(
+  input: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  return withGitSourceHttp(() => fetchBridgeReadUnmetered(input, init));
+}
+
+async function fetchBridgeReadUnmetered(
   input: string,
   init: RequestInit = {}
 ): Promise<Response> {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  collectActiveMainPoolUrls,
   collectBlockedRelayPoolUrls,
   filterBunkerBlockedRelays,
   isBunkerMainPoolBlocked,
@@ -64,5 +65,16 @@ describe("bunker-main-pool-guard", () => {
         "WSS://NOS.LOL",
       ])
     ).toEqual(["wss://relay.primal.net/", "WSS://NOS.LOL"]);
+  });
+
+  it("collects CONNECTING and OPEN main-pool sockets, not CLOSED", () => {
+    expect(
+      collectActiveMainPoolUrls([
+        ["wss://relay.gittr.space", 1],
+        ["wss://nos.lol", 0],
+        ["wss://relay.damus.io", 3],
+        ["wss://relay.primal.net", 2],
+      ])
+    ).toEqual(["wss://relay.gittr.space", "wss://nos.lol"]);
   });
 });

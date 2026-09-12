@@ -764,10 +764,11 @@ export function RepoCodePage() {
     getRelayStatuses,
     remoteSigner,
   } = useNostrContext();
-  // Also get pubkey from session as fallback - use state to prevent hydration errors
+  // Also get pubkey from session as fallback - populate after mount only
+  // so the first client paint matches SSR (React #418).
   const [effectiveUserPubkey, setEffectiveUserPubkey] = useState<
     string | undefined
-  >(currentUserPubkey || undefined);
+  >(undefined);
 
   useEffect(() => {
     if (currentUserPubkey) {
@@ -815,6 +816,7 @@ export function RepoCodePage() {
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
   const [mounted, setMounted] = useState(false);
+  const hydratedUserPubkey = mounted ? currentUserPubkey : null;
   const [currentFolderReadme, setCurrentFolderReadme] = useState<string | null>(
     null
   );
@@ -1252,12 +1254,12 @@ export function RepoCodePage() {
   ]);
 
   const repoIsOwner = useMemo(() => {
-    if (!currentUserPubkey) return false;
-    const normalizedUser = currentUserPubkey.toLowerCase();
+    if (!hydratedUserPubkey) return false;
+    const normalizedUser = hydratedUserPubkey.toLowerCase();
     if (entityPubkey && normalizedUser === entityPubkey) return true;
     if (repoOwnerPubkey && normalizedUser === repoOwnerPubkey) return true;
     return false;
-  }, [currentUserPubkey, entityPubkey, repoOwnerPubkey]);
+  }, [hydratedUserPubkey, entityPubkey, repoOwnerPubkey]);
 
   /** Who receives repo zaps — never default to the viewer's pubkey (that sent tips to the wrong person). */
   const zapRecipientPubkey = useMemo((): string | null => {
@@ -2056,7 +2058,10 @@ export function RepoCodePage() {
       nostrPagesUrl: pagesUrl,
       announcedAppId:
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
-      siteOrigin: typeof window !== "undefined" ? window.location.origin : null,
+      siteOrigin:
+        mounted && typeof window !== "undefined"
+          ? window.location.origin
+          : null,
     }) as RepoLink[];
   }, [
     repoData?.links,
@@ -2066,6 +2071,7 @@ export function RepoCodePage() {
     pagesSiteListedByGateway,
     pagesSiteMatchedUrl,
     candidateGittrPagesUrls?.namedUrl,
+    mounted,
   ]);
   /** Iris Hashtree-only repos: no HTTPS git tree for the Code browser. */
   const hashtreeOnlyEmpty = useMemo(() => {
@@ -3038,8 +3044,8 @@ export function RepoCodePage() {
       .replace(/^_+|_+$/g, "");
   }, [userName]);
   const isOwner = useMemo(() => {
-    if (!resolvedParams?.entity || !currentUserPubkey) return false;
-    const normalizedUser = currentUserPubkey.toLowerCase();
+    if (!resolvedParams?.entity || !hydratedUserPubkey) return false;
+    const normalizedUser = hydratedUserPubkey.toLowerCase();
 
     // npub / hex profile route: logged-in user is the entity owner
     if (entityPubkey && normalizedUser === entityPubkey.toLowerCase()) {
@@ -3128,7 +3134,7 @@ export function RepoCodePage() {
   }, [
     ownerSlug,
     resolvedParams.entity,
-    currentUserPubkey,
+    hydratedUserPubkey,
     resolvedParams.repo,
     resolvedOwnerPubkey,
     entityPubkey,
@@ -18563,7 +18569,9 @@ export function RepoCodePage() {
                         })()}
                       </a>
                       <TrustBadge
-                        targetPubkey={ownerPubkeyForLink ?? entityPubkey}
+                        targetPubkey={
+                          mounted ? ownerPubkeyForLink ?? entityPubkey : null
+                        }
                       />
                       <span className="text-gray-400 whitespace-nowrap">
                         forked
@@ -18614,7 +18622,9 @@ export function RepoCodePage() {
                         })()}
                       </a>
                       <TrustBadge
-                        targetPubkey={ownerPubkeyForLink ?? entityPubkey}
+                        targetPubkey={
+                          mounted ? ownerPubkeyForLink ?? entityPubkey : null
+                        }
                       />
                     </>
                   )}

@@ -30,6 +30,18 @@ export function listBunkerMainPoolBlockedHosts(): string[] {
   return [...blockedHosts];
 }
 
+/**
+ * Main-pool sockets that are still using a browser slot (CONNECTING or OPEN).
+ * CLOSED (3) entries do not need to be closed before an Amber bunker dial.
+ */
+export function collectActiveMainPoolUrls(
+  statuses: Array<[string, number]>
+): string[] {
+  return statuses
+    .filter(([, status]) => status === 0 || status === 1)
+    .map(([url]) => url);
+}
+
 /** Strip bunker-owned hosts from a main-pool subscribe/publish relay list. */
 export function filterBunkerBlockedRelays(relays: string[]): string[] {
   if (!relays?.length || blockedHosts.size === 0) return relays || [];

@@ -225,6 +225,9 @@ export default function RepoLayoutClient({
   const [repo, setRepo] = useState<any>(null);
   const [repoLogo, setRepoLogo] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  // First paint must match SSR (logged-out). Pubkey from localStorage on the
+  // first client render was React #418 on Watch/Fork/Star titles.
+  const hydratedPubkey = mounted ? pubkey : null;
   const [isOwnerUser, setIsOwnerUser] = useState(false);
   const githubHydrateKeyRef = useRef<string>("");
   const loadRepoAndLogoRef = useRef<() => void>(() => {});
@@ -277,17 +280,23 @@ export default function RepoLayoutClient({
   const canViewPrivateContent = useMemo(() => {
     if (isDeletedRepo) return false;
     if (!isPrivateRepo) return true;
-    if (!pubkey || !repo) return false;
+    if (!hydratedPubkey || !repo) return false;
     const repoOwnerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
     const maintainers: string[] =
       (repo as { maintainers?: string[] }).maintainers || [];
     return hasPrivateRepoAccess(
-      pubkey,
+      hydratedPubkey,
       repo.contributors,
       repoOwnerPubkey,
       maintainers
     );
-  }, [isDeletedRepo, isPrivateRepo, pubkey, repo, resolvedParams.entity]);
+  }, [
+    isDeletedRepo,
+    isPrivateRepo,
+    hydratedPubkey,
+    repo,
+    resolvedParams.entity,
+  ]);
 
   const ownerHexForZaps = useMemo(() => {
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return "";
@@ -328,12 +337,12 @@ export default function RepoLayoutClient({
     () =>
       !!(
         mounted &&
-        pubkey &&
+        hydratedPubkey &&
         ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
         repoNostrEventId
       ),
-    [mounted, pubkey, ownerPubkey, repoNostrEventId]
+    [mounted, hydratedPubkey, ownerPubkey, repoNostrEventId]
   );
 
   const repoIdentifier = useMemo(
@@ -381,7 +390,8 @@ export default function RepoLayoutClient({
   );
   const nostrStarCount = nostrStarsAgg.count;
   const isNostrStarred =
-    !!pubkey && nostrStarsAgg.starers.includes(pubkey.toLowerCase());
+    !!hydratedPubkey &&
+    nostrStarsAgg.starers.includes(hydratedPubkey.toLowerCase());
 
   const importStarSnapshot =
     typeof repo?.stars === "number" && Number.isFinite(repo.stars)
@@ -434,11 +444,11 @@ export default function RepoLayoutClient({
     if (!repoNostrEventId) {
       return "No kind 30617 repo announcement on relays yet. Owner must Push to Nostr (or publish with gn) before stars work.";
     }
-    if (!pubkey) {
+    if (!hydratedPubkey) {
       return "Log in with Nostr to star on relays (NIP-25 kind 7).";
     }
     return "Star on Nostr (NIP-25 kind 7 on this repo’s 30617 event). First star works the same — no prior stars needed.";
-  }, [repoNostrEventId, resolvingRepoEventId, pubkey]);
+  }, [repoNostrEventId, resolvingRepoEventId, hydratedPubkey]);
 
   const zapBadgeTitle = useMemo(
     () =>
@@ -1847,7 +1857,7 @@ export default function RepoLayoutClient({
                     className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
                     title={
-                      !pubkey
+                      !hydratedPubkey
                         ? "Log in with Nostr to watch this repo"
                         : WATCH_BUTTON_TITLE
                     }
@@ -1878,7 +1888,7 @@ export default function RepoLayoutClient({
                     className="h-8 shrink-0 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
                     title={
-                      !pubkey
+                      !hydratedPubkey
                         ? "Log in with Nostr to fork this repo"
                         : undefined
                     }

@@ -12,11 +12,11 @@ function readStorage<T>(key: string, initialValue: T): T {
 }
 
 export default function useLocalStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T | null>(() =>
-    readStorage(key, initialValue)
-  );
+  // Always start from the caller’s initialValue. Reading localStorage in the
+  // useState initializer made the first client paint differ from SSR (React #418).
+  const [storedValue, setStoredValue] = useState<T | null>(initialValue);
 
-  // Re-read after mount so SSR/hydration does not stick on empty initialValue.
+  // Re-read after mount so logged-in chrome appears without a hydration mismatch.
   useEffect(() => {
     setStoredValue(readStorage(key, initialValue));
     // eslint-disable-next-line react-hooks/exhaustive-deps

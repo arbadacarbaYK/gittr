@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   bunkerPublishIsThin,
+  bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
+  bunkerRelayShouldKeepWaiting,
   expandBunkerRelays,
   getSessionUriRelays,
   nip46PrimaryEncryption,
@@ -210,5 +212,18 @@ describe("nip46 encryption preference", () => {
     expect(nip46PrimaryEncryption("get_public_key")).toBe("nip44");
     expect(nip46ShouldDualPublish("connect")).toBe(true);
     expect(nip46ShouldDualPublish("get_public_key")).toBe(true);
+  });
+});
+
+describe("bunker socket readyState", () => {
+  it("treats only OPEN as ready and only CONNECTING as waitable", () => {
+    expect(bunkerRelayIsOpen(1)).toBe(true);
+    expect(bunkerRelayIsOpen(0)).toBe(false);
+    expect(bunkerRelayIsOpen(3)).toBe(false);
+    expect(bunkerRelayShouldKeepWaiting(0)).toBe(true);
+    expect(bunkerRelayShouldKeepWaiting(1)).toBe(false);
+    expect(bunkerRelayShouldKeepWaiting(2)).toBe(false);
+    expect(bunkerRelayShouldKeepWaiting(3)).toBe(false);
+    expect(bunkerRelayShouldKeepWaiting(undefined)).toBe(false);
   });
 });

@@ -268,34 +268,12 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     []
   );
 
-  // Initialize pubkey - check both regular storage and remote signer session
-  // First try regular localStorage, then check remote signer session
-  const getInitialPubkey = (): string | null => {
-    if (typeof window === "undefined") return null;
-    try {
-      // First check regular pubkey storage
-      const storedPubkey = window.localStorage.getItem(WEB_STORAGE_KEYS.NPUB);
-      if (storedPubkey) {
-        try {
-          return JSON.parse(storedPubkey) as string;
-        } catch {
-          // Invalid JSON, continue to check remote signer
-        }
-      }
-      // If no regular pubkey, check remote signer session
-      const storedSession = loadStoredRemoteSignerSession();
-      if (storedSession?.userPubkey) {
-        return storedSession.userPubkey;
-      }
-    } catch (error) {
-      // Ignore errors during initialization
-    }
-    return null;
-  };
-
+  // Start logged-out on both SSR and the first client paint. useLocalStorage
+  // re-reads NPUB after mount; the effect below fills Amber-only sessions.
+  // Reading localStorage here used to throw React #418 (Watch/Star titles, owner chrome).
   const [pubkey, setPubKey, removePubKey] = useLocalStorage<string | null>(
     WEB_STORAGE_KEYS.NPUB,
-    getInitialPubkey()
+    null
   );
 
   // Initialize remote signer manager
@@ -304,10 +282,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     null
   );
   const [remoteSignerInitialized, setRemoteSignerInitialized] = useState(false);
-  const [signerReady, setSignerReady] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !!window.nostr || hasStoredRemoteSignerSession();
-  });
+  const [signerReady, setSignerReady] = useState(false);
 
   // Initialize remote signer manager with dependencies
   useEffect(() => {

@@ -11,10 +11,14 @@ import {
 import type { Event as NostrEvent } from "nostr-tools";
 import { nip44 as nip44v2 } from "nostr-tools-v2";
 
-import { waitForGitSourceHttpIdle } from "../repos/git-source-http-budget";
+import {
+  gitSourceHttpInflight,
+  waitForGitSourceHttpIdle,
+} from "../repos/git-source-http-budget";
 import { isGraspServer } from "../utils/grasp-servers";
 
 import {
+  collectActiveMainPoolUrls,
   isBunkerMainPoolBlocked,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
@@ -149,6 +153,21 @@ const NIP46_SIGNER_DEFAULT_RELAYS = [
 
 const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
+
+/** WebSocket readyState 1 = OPEN. */
+export function bunkerRelayIsOpen(status: number | undefined): boolean {
+  return status === 1;
+}
+
+/**
+ * nostr-tools v1 never auto-reconnects. Only CONNECTING (0) is worth waiting
+ * on; CLOSED (3) / CLOSING (2) must be dropped and redialed.
+ */
+export function bunkerRelayShouldKeepWaiting(
+  status: number | undefined
+): boolean {
+  return status === 0;
+}
 
 /**
  * Match nostr-tools SimplePool `_conn` keys. Their normalizeURL uses URL.href,
@@ -1748,6 +1767,7 @@ export class RemoteSignerManager {
     // every bunker dial lands CLOSED. Free collisions and pause briefly first.
     const dialTargets = this.buildBunkerTransportTargets(session);
     const alreadyOpen = await this.listDirectOpenRelays(dialTargets);
+    let suspendedMainPool: string[] = [];
     if (alreadyOpen.length === 0) {
       this.claimBunkerHostsForDirectPool(
         getSessionUriRelays(session).length > 0
@@ -1755,49 +1775,63 @@ export class RemoteSignerManager {
           : dialTargets
       );
       await waitForGitSourceHttpIdle(5000);
-      await this.waitForMainPoolBunkerSlotsClear();
+      console.warn("[RemoteSigner] Warming bunker sockets", {
+        gitSourceHttpInflight: gitSourceHttpInflight(),
+        mainPool: (this.deps.getRelayStatuses?.() || []).map(
+          ([url, status]) => `${normalizeRelayUrl(url)}:${status}`
+        ),
+      });
+      suspendedMainPool = this.suspendMainPoolForBunkerDial();
+      await this.waitForMainPoolIdle();
       await new Promise((r) => setTimeout(r, 600));
     }
-    let open = await this.ensureBunkerSocketsOpen(session);
-    if (open.length === 0) {
-      // One quiet retry after a longer breathe — Star often hits this under load.
-      console.warn(
-        "[RemoteSigner] Bunker warm empty — quiet retry after freeing main-pool slots"
-      );
-      this.claimBunkerHostsForDirectPool(dialTargets);
-      await waitForGitSourceHttpIdle(5000);
-      await this.waitForMainPoolBunkerSlotsClear();
-      await new Promise((r) => setTimeout(r, 1200));
-      this.resetDirectPool();
-      open = await this.ensureBunkerSocketsOpen(session);
-    }
-    if (open.length === 0) {
-      const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
-      console.error(
-        "[RemoteSigner] Bunker relay statuses after warm-up:",
-        JSON.stringify(statuses)
-      );
-      throw new Error(
-        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
-      );
-    }
-    this.lastBunkerWarmAt = Date.now();
-    this.attachBunkerTransportRecovery();
     try {
-      await this.startSubscription(session, open);
-    } catch (error) {
-      console.warn(
-        "[RemoteSigner] Failed to start subscription during transport warm-up:",
-        error
-      );
-    }
-    if (typeof window !== "undefined" && window.nostr) {
-      if (!this.originalNostr || window.nostr !== this.adapter) {
-        this.originalNostr = window.nostr;
+      let open = await this.ensureBunkerSocketsOpen(session);
+      if (open.length === 0) {
+        // One quiet retry after a longer breathe — Star often hits this under load.
+        console.warn(
+          "[RemoteSigner] Bunker warm empty — quiet retry after freeing main-pool slots"
+        );
+        this.claimBunkerHostsForDirectPool(dialTargets);
+        await waitForGitSourceHttpIdle(5000);
+        if (suspendedMainPool.length === 0) {
+          suspendedMainPool = this.suspendMainPoolForBunkerDial();
+        }
+        await this.waitForMainPoolIdle();
+        await new Promise((r) => setTimeout(r, 1200));
+        this.resetDirectPool();
+        open = await this.ensureBunkerSocketsOpen(session);
       }
+      if (open.length === 0) {
+        const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
+        console.error(
+          "[RemoteSigner] Bunker relay statuses after warm-up:",
+          JSON.stringify(statuses)
+        );
+        throw new Error(
+          "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
+        );
+      }
+      this.lastBunkerWarmAt = Date.now();
+      this.attachBunkerTransportRecovery();
+      try {
+        await this.startSubscription(session, open);
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] Failed to start subscription during transport warm-up:",
+          error
+        );
+      }
+      if (typeof window !== "undefined" && window.nostr) {
+        if (!this.originalNostr || window.nostr !== this.adapter) {
+          this.originalNostr = window.nostr;
+        }
+      }
+      this.applyNip07Adapter();
+      this.startBunkerKeepalive();
+    } finally {
+      this.resumeMainPoolAfterBunkerDial(suspendedMainPool);
     }
-    this.applyNip07Adapter();
-    this.startBunkerKeepalive();
   }
 
   /**
@@ -2101,10 +2135,11 @@ export class RemoteSignerManager {
   ): Promise<boolean> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      if (relay.status === 1) return true;
+      if (bunkerRelayIsOpen(relay.status)) return true;
+      if (!bunkerRelayShouldKeepWaiting(relay.status)) return false;
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    return relay.status === 1;
+    return bunkerRelayIsOpen(relay.status);
   }
 
   private async snapshotDirectRelayStatuses(
@@ -2138,8 +2173,8 @@ export class RemoteSignerManager {
 
     const waitOpen = async (relay: any): Promise<boolean> => {
       if (!relay) return false;
-      if (relay.status === 1) return true;
-      if (relay.status === 0) {
+      if (bunkerRelayIsOpen(relay.status)) return true;
+      if (bunkerRelayShouldKeepWaiting(relay.status)) {
         const waitMs = remaining();
         if (waitMs <= 0) return false;
         return this.waitForRelayStatusOpen(relay, waitMs);
@@ -2151,8 +2186,8 @@ export class RemoteSignerManager {
     try {
       let relay = this.getDirectRelayFromPool(url);
       if (relay) {
-        if (relay.status === 1) return true;
-        if (relay.status === 0) {
+        if (bunkerRelayIsOpen(relay.status)) return true;
+        if (bunkerRelayShouldKeepWaiting(relay.status)) {
           return this.waitForRelayStatusOpen(
             relay,
             Math.max(remaining(), 2000)
@@ -2178,17 +2213,24 @@ export class RemoteSignerManager {
           ]);
           if (await waitOpen(relay)) return true;
           // ensureRelay may have returned a still-CLOSED cache miss; drop and retry.
-          if (relay && relay.status !== 0 && relay.status !== 1) {
+          if (
+            relay &&
+            !bunkerRelayShouldKeepWaiting(relay.status) &&
+            !bunkerRelayIsOpen(relay.status)
+          ) {
+            console.warn(
+              `[RemoteSigner] ensureRelay returned CLOSED for ${url} (status=${relay.status})`
+            );
             this.dropDirectRelay(url);
           }
         } catch (error) {
           // Race lost — ensureRelay may still be connecting in _conn. Wait it out.
           const inFlight = this.getDirectRelayFromPool(url);
-          if (inFlight?.status === 0) {
+          if (inFlight && bunkerRelayShouldKeepWaiting(inFlight.status)) {
             if (await this.waitForRelayStatusOpen(inFlight, remaining())) {
               return true;
             }
-          } else if (inFlight?.status === 1) {
+          } else if (bunkerRelayIsOpen(inFlight?.status)) {
             return true;
           } else if (inFlight) {
             this.dropDirectRelay(url);
@@ -2208,12 +2250,12 @@ export class RemoteSignerManager {
 
     // One clean retry — never drop a CONNECTING socket to start over.
     const leftover = this.getDirectRelayFromPool(url);
-    if (leftover?.status === 1) return true;
-    if (leftover?.status === 0) {
+    if (bunkerRelayIsOpen(leftover?.status)) return true;
+    if (leftover && bunkerRelayShouldKeepWaiting(leftover.status)) {
       return this.waitForRelayStatusOpen(leftover, Math.max(remaining(), 800));
     }
     if (remaining() < 1500) {
-      return leftover?.status === 1;
+      return bunkerRelayIsOpen(leftover?.status);
     }
     try {
       this.dropDirectRelay(url);
@@ -2230,7 +2272,11 @@ export class RemoteSignerManager {
       return await waitOpen(relay);
     } catch (error) {
       const inFlight = this.getDirectRelayFromPool(url);
-      if (inFlight?.status === 0 && remaining() > 0) {
+      if (
+        inFlight &&
+        bunkerRelayShouldKeepWaiting(inFlight.status) &&
+        remaining() > 0
+      ) {
         if (await this.waitForRelayStatusOpen(inFlight, remaining())) {
           return true;
         }
@@ -2327,6 +2373,66 @@ export class RemoteSignerManager {
       );
       if (leftovers.length === 0) return;
       for (const [url] of leftovers) {
+        try {
+          this.deps.removeRelay?.(url);
+        } catch {
+          /* ignore */
+        }
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  /**
+   * Close CONNECTING/OPEN main-pool sockets so Amber’s dedicated pool can dial.
+   * Returns the URLs to re-open after bunker transport is ready.
+   */
+  private suspendMainPoolForBunkerDial(): string[] {
+    if (!this.deps.removeRelay || !this.deps.getRelayStatuses) return [];
+    const active = collectActiveMainPoolUrls(this.deps.getRelayStatuses());
+    if (active.length === 0) return [];
+    for (const url of active) {
+      try {
+        this.deps.removeRelay(url);
+      } catch {
+        /* ignore */
+      }
+    }
+    console.warn(
+      `[RemoteSigner] Suspended ${active.length} main-pool socket(s) so Amber can dial`,
+      active.map((u) => normalizeRelayUrl(u))
+    );
+    return active;
+  }
+
+  private resumeMainPoolAfterBunkerDial(urls: string[]) {
+    if (!this.deps.addRelay || urls.length === 0) return;
+    let restored = 0;
+    for (const url of urls) {
+      if (isBunkerMainPoolBlocked(url)) continue;
+      try {
+        this.deps.addRelay(url);
+        restored += 1;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (restored > 0) {
+      console.log(
+        `[RemoteSigner] Restored ${restored} main-pool socket(s) after bunker warm`
+      );
+    }
+  }
+
+  /** Wait until no main-pool socket is CONNECTING or OPEN. */
+  private async waitForMainPoolIdle(timeoutMs = 8000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const leftovers = collectActiveMainPoolUrls(
+        this.deps.getRelayStatuses?.() || []
+      );
+      if (leftovers.length === 0) return;
+      for (const url of leftovers) {
         try {
           this.deps.removeRelay?.(url);
         } catch {

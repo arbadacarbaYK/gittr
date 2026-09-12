@@ -314,37 +314,14 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
 
 ### 7. Bootstrap from Storage (Automatic Login)
 
-On app load, restore session synchronously to prevent UI flickering:
+On app load, hydrate identity **after mount** so SSR HTML matches the first client paint (React #418). `useLocalStorage` starts as `null` and re-reads NPUB in `useEffect`; Amber-only sessions fill from the stored bunker session in the same tick after mount.
 
 ```typescript
 // In NostrContext.tsx
 
-const getInitialPubkey = (): string | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    // Check regular localStorage pubkey first
-    const storedPubkey = window.localStorage.getItem(WEB_STORAGE_KEYS.NPUB);
-    if (storedPubkey) {
-      try {
-        return JSON.parse(storedPubkey) as string;
-      } catch {
-        // Invalid JSON, continue to check remote signer
-      }
-    }
-    // Check remote signer session
-    const storedSession = loadStoredRemoteSignerSession();
-    if (storedSession?.userPubkey) {
-      return storedSession.userPubkey;
-    }
-  } catch (error) {
-    // Ignore errors during initialization
-  }
-  return null;
-};
-
 const [pubkey, setPubKey, removePubKey] = useLocalStorage<string | null>(
   WEB_STORAGE_KEYS.NPUB,
-  getInitialPubkey()
+  null
 );
 
 // Bootstrap async connection (restores window.nostr adapter)
@@ -468,13 +445,13 @@ All signing operations automatically use the remote signer:
 3. **Always use `generatePrivateKey()`** (not `generateSecretKey()`) from nostr-tools
 4. **The NIP-07 adapter includes `getRelays()` and `nip44` support** for complete compatibility
 5. **Preserve original `window.nostr`** - capture it before applying adapter, restore on disconnect
-6. **Synchronous pubkey restoration** - check localStorage during initialization to prevent UI flickering
+6. **Pubkey restoration after mount** - do not read localStorage in a `useState` initializer (that is React #418 vs SSR). Re-read NPUB / bunker session after mount; header and Watch/Star titles stay logged-out until then.
 7. **Repair transport before every request** - `nostr-tools` v1 relay sockets never auto-reconnect. After a silent drop, `trySend` discards messages and the 24133 subscription is dead, so every RPC "times out" even though the signer is online. `sendRequest` calls `ensureDirectTransport()` first: wait out CONNECTING, re-dial CLOSED, and **force-drop stuck CONNECTING sockets** (ensureRelay timed out mid-dial but left a dead entry in `_conn`). Re-run `startSubscription` after any reconnect. Publish only to OPEN direct-pool relays — otherwise we log "Published" while Amber never sees the request.
 8. **Never call `relay.connect()` on a CONNECTING socket** - `nostr-relaypool`'s `connect()` replaces the WebSocket whenever `readyState !== OPEN`. Calling it once per request (e.g. from `addRelay`) kills every in-flight connection and the relay never reaches OPEN. Only dial when status is CLOSED (3).
 9. **Fail loudly on sign timeout** - a silent second 120s retry after a `sign_event` timeout just hides the failure. Throw an actionable error ("open your signer app, make sure it is online") so the UI can show it; repair transport in the background for the next attempt.
 10. **Do not mark ready after a failed reconnect probe** - restoring a cached session without a successful NIP-46 round-trip used to leave `state === "ready"` while Amber was offline. Callers then started a 120s `sign_event` that never popped Amber. Bootstrap keeps the cached pubkey/adapter for UI, but `isRpcHealthy()` stays false until `connect` succeeds. If `connect` times out, **throw** — never soft-continue on a cached pubkey alone (that was the "Amber open, no prompt" push bug).
 10b. **Page-load bootstrap must NOT dial Amber RPC or block navigation** - `bootstrapFromStorage` hydrates the cached pubkey + NIP-07 adapter, then **fire-and-forgets** a URI-first bunker WebSocket warm (no Amber popup / no `connect` RPC). Never `await` that warm on remount — hard nav + await was the ~10s tab spinner. `ensureBootstrapped()` resolves as soon as the adapter is attached and **must not join** `bunkerWarmInFlight` (browse/file-fetch use `isBunkerWarmInFlight` for HTTP caps only). Live `connect` still runs only in `ensureRpcHealthy` / `signEvent` when the user signs. Viewing public repos must never wait on the phone signer for RPC; WoT badges only need the cached pubkey.
-10c. **First sign after hydrate must warm bunker transport** - `ensureRpcHealthy` calls `prepareTransportForSession` → `ensureBunkerSocketsOpen`. Dial order under load: **wait for in-flight Code-tab git-source HTTP to drain** (`waitForGitSourceHttpIdle`), **URI relays first at concurrency 2**, then expand defaults, then reset+retry only when nothing is CONNECTING (status 0). Never call `connect()` on a cached CLOSED SimplePool entry — **drop and fresh `ensureRelay`** (SimplePool otherwise returns CLOSED forever). Claim bunker hosts so the app relaypool cannot re-open them; free colliding main-pool sockets by real pool keys. Proceed on the first OPEN. **Never `resetDirectPool` while any bunker socket is CONNECTING.** Repo Code file-fetch **fire-and-forgets** `ensureBootstrapped` and caps HTTP concurrency while warm is in flight — it must not join/await the warm. GRASP-native npub trees that already landed in `gittr_files` must **not** re-arm multifetch (that was “no files” after 6 files saved → all bunker relays status 3). Success logs: `URI-first bunker dial ready` / `Direct transport ready { open: >= 1 }`. Background warm failures stay debug-level; Push/Follow hard-fail with a clear error.
+10c. **First sign after hydrate must warm bunker transport** - `ensureRpcHealthy` calls `prepareTransportForSession` → `ensureBunkerSocketsOpen`. Dial order under load: **wait for in-flight Code-tab git-source HTTP to drain** (`waitForGitSourceHttpIdle`, including bridge `/api/nostr/repo/files` via `fetchBridgeRead`), **pause CONNECTING/OPEN main-pool sockets** so the browser has slots, **URI relays first at concurrency 2**, then expand defaults, then reset+retry only when nothing is CONNECTING (status 0). **Do not wait the full OPEN budget on a CLOSED socket** — nostr-tools v1 never auto-reconnects (`bunkerRelayShouldKeepWaiting` is status 0 only). Never call `connect()` on a cached CLOSED SimplePool entry — **drop and fresh `ensureRelay`** (SimplePool otherwise returns CLOSED forever). Claim bunker hosts so the app relaypool cannot re-open them; free colliding main-pool sockets by real pool keys. Proceed on the first OPEN. **Never `resetDirectPool` while any bunker socket is CONNECTING.** Repo Code file-fetch **fire-and-forgets** `ensureBootstrapped` and caps HTTP concurrency while warm is in flight — it must not join/await the warm. GRASP-native npub trees that already landed in `gittr_files` must **not** re-arm multifetch (that was “no files” after 6 files saved → all bunker relays status 3). Success logs: `URI-first bunker dial ready` / `Direct transport ready { open: >= 1 }`. Background warm failures stay debug-level; Push/Follow hard-fail with a clear error. If warm still lands all status 3, the console includes `gitSourceHttpInflight` and the main-pool snapshot, plus `Suspended N main-pool socket(s) so Amber can dial`.
 10d. **`sign_event` must not trust zombie OPEN sockets** - `publishDirectConfirmed` returns `{ urls, acked }`. Soft-continuing without a relay OK used to log “Published via direct pool” while Amber never saw the envelope (Push timeout; Star usually worked because it signed immediately on a fresh warm). For `sign_event` only: if `acked` is false, `resetDirectPool`, re-`ensureDirectTransport`, and republish once. On timeout, always reset the pool before the next attempt; log published URLs vs URI relays and overlap (Amber miss). **Push, Star, Watch, and Follow (kind 3)** all call `ensureRpcHealthy` at click start so bunker sockets are not idle/CLOSED through Code-tab file-fetch. Follow must **not** gate on `getState() === "ready"` or fall back to nsec after hydrate — background warm leaves state `"idle"` / `rpcHealthy=false` even when sockets are OPEN. `ensureRpcHealthy` also clears a stale `rpcHealthy` flag when no bunker socket is OPEN (Push success left healthy=true while sockets later died). `prepareTransportForSession` frees main-pool collisions and does a quiet retry before the “could not open any bunker relay” hard-fail.
 10e. **Client + Amber must share a bunker relay** - Publish and subscribe prefer OPEN sockets that intersect the bunker URI’s relays (`session.uriRelays`). Expansion (oxtr / theforest / primal / nos.lol, Damus last) is only for connectivity when URI hosts are cold. An OK from an expanded relay Amber is **not** listening on still yields `sign_event` timeout — that is a relay mismatch, not “Amber is offline.”
 10f. **Main-pool guard must cover subscribe, not only addRelay** - Homepage discovery calls `relayPool.subscribe` → `addOrGetRelay`, which bypasses the `addRelay` wrapper. After `freeMainPoolBunkerCollisions`, that path re-opened primal/nos/damus from `.env` and starved `directPool` (all bunker sockets stuck at readyState 3). `NostrContext` strips `isBunkerMainPoolBlocked` URLs from subscribe + publish before they hit the pool. **`removeRelay` is exact-key** (`relayByUrl.get(url)`): env URLs often keep a trailing `/` while the bunker list strips it, so “Freed 7 sockets” was counting calls, not closed sockets. Close via `getRelayStatuses()` keys that match after normalize. This guard is **app-wide** (`NostrProvider` in `layout-client`). On hydrate you may briefly see Chrome `WebSocket is closed before the connection is established` while colliding main-pool dials are aborted — expected cleanup. Success for **Push unblock** is `Direct transport ready { open: >= 1 }`; **publish** still wants URI overlap (10e / item 12) — one of seven is not enough for the Amber request itself.
