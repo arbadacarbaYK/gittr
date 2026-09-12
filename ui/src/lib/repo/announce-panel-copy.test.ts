@@ -16,19 +16,17 @@ describe("announcePanelSummaryLabel", () => {
     ).toBe("Announce v2.0.0");
   });
 
-  it("uses the loaded latest tag so the sidebar is never tagless", () => {
+  it("keeps the sidebar summary as Nostr Apps even when a tag is loaded", () => {
     expect(
       announcePanelSummaryLabel({
         loadedReleaseTag: "v7.0.1",
         variant: "sidebar",
       })
-    ).toBe("Announce v7.0.1");
+    ).toBe("Nostr Apps");
   });
 
-  it("says latest release on the sidebar before a tag is known", () => {
-    expect(announcePanelSummaryLabel({ variant: "sidebar" })).toBe(
-      "Nostr Apps · latest"
-    );
+  it("does not put latest on the collapsed sidebar button", () => {
+    expect(announcePanelSummaryLabel({ variant: "sidebar" })).toBe("Nostr Apps");
   });
 
   it("keeps the inline fallback before a tag is known", () => {

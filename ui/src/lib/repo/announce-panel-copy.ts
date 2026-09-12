@@ -8,12 +8,14 @@ export function announcePanelSummaryLabel(args: {
   loadedReleaseTag?: string | null;
   variant?: "sidebar" | "inline";
 }): string {
+  // Code sidebar sits next to "Nostr Pages" — keep that pair of names stable.
+  // Tag / "latest" copy lives inside the open panel, not on the summary.
+  if (args.variant === "sidebar") return "Nostr Apps";
   const preferred = (args.preferredTag || "").trim();
   if (preferred) return `Announce ${preferred}`;
   const loaded = (args.loadedReleaseTag || "").trim();
   if (loaded) return `Announce ${loaded}`;
-  if (args.variant === "inline") return "Announce on Nostr";
-  return "Nostr Apps · latest";
+  return "Announce on Nostr";
 }
 
 export function missingForgeSourceAnnounceMessage(): string {
