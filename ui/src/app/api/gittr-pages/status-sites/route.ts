@@ -2,6 +2,7 @@ import { loadGatewayStatusSites } from "@/lib/gittr-pages/load-gateway-status-si
 import {
   parseStatusSitesLimitOffset,
   sliceStatusSites,
+  sortGatewaySitesByUpdated,
 } from "@/lib/gittr-pages/paginate-gateway-sites";
 
 import { NextResponse } from "next/server";
@@ -25,11 +26,12 @@ export async function GET(req: Request) {
     );
   }
 
-  const { page, total, hasMore } = sliceStatusSites(
-    loaded.sites,
-    offset,
-    limit
-  );
+  const sorted =
+    searchParams.get("sort") === "updated"
+      ? sortGatewaySitesByUpdated(loaded.sites)
+      : loaded.sites;
+
+  const { page, total, hasMore } = sliceStatusSites(sorted, offset, limit);
 
   return NextResponse.json(
     {

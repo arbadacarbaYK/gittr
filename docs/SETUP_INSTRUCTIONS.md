@@ -106,8 +106,9 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 
 ### Homepage “Recent Activity” / “Your recent activity”
 
-- **Logged out:** shared platform feed from the leaderboard snapshot / live Nostr scan (commits, PRs, issues, repo creates across the network).
-- **Logged in:** only activity on **repos you own or can write** (local `gittr_activities` merged with the platform feed filtered by owner/access). Title becomes **Your recent activity**.
+- Same list for **logged-in and logged-out**. It is **not** this browser’s `gittr_activities` (that used to fill the grid with Imported/Created from localStorage when the leaderboard snapshot was empty).
+- Sources: live **`GET /api/stats/recent-repos`** (kind 30617), leaderboard issues/PRs/commits when present, **`GET /api/nostr/software-catalog?summary=1`** (newest NIP-82 apps), **`GET /api/gittr-pages/status-sites?limit=24&sort=updated`**. Caps so a repo-announce flood cannot hide apps/pages (up to 8 repo-lane + 3 apps + 3 pages).
+- Apps/pages fetches abort after 6s so a cold catalog scrape cannot stall the homepage; they fill in when the hub cache is warm.
 - Cards deep-link to the matching tab (`/pulls`, `/issues`, `/commits`, `/releases`, or a specific PR/issue id when known) and use a hard navigation to avoid soft-router crashes into heavy repo pages.
 - **Most Active Repos** and **Recent repositories** also use a full document load into the Code tab. A soft `<Link>` from `/` plus `history.replaceState(null)` while the README hydrated made Next 15 restore the homepage tree — repo loaded, README appeared, then a bounce back to `/` (worse on first visit / cold cache). Code-tab query updates now keep Next’s `__NA` history state (`replaceAppUrl`).
 

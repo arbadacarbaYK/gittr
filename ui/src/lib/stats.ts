@@ -42,7 +42,7 @@ export {
   hexPubkeyToNpub,
 } from "./stats/live-recent-repos";
 
-/** Home "Recent Activity" when browser has no local gittr_activities */
+/** Home "Recent Activity" public network feed (repos / apps / pages). */
 export type PlatformRecentActivity = {
   id: string;
   type: ActivityType;

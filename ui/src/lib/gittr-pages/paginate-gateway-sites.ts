@@ -19,6 +19,18 @@ export function parseStatusSitesLimitOffset(searchParams: {
   return { limit: Math.min(limitRaw, 500), offset };
 }
 
+export function sortGatewaySitesByUpdated<T extends { updatedIso?: string }>(
+  sites: T[]
+): T[] {
+  return [...sites].sort((a, b) => {
+    const tb = Date.parse((b.updatedIso || "").trim());
+    const ta = Date.parse((a.updatedIso || "").trim());
+    const nb = Number.isFinite(tb) ? tb : 0;
+    const na = Number.isFinite(ta) ? ta : 0;
+    return nb - na;
+  });
+}
+
 export function sliceStatusSites<T>(
   sites: T[],
   offset: number,

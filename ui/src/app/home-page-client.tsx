@@ -14,9 +14,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   getActivityIcon as activityIconForType,
   getActivityDeepPath,
+  getActivityHref,
   getActivityLabel,
 } from "@/lib/activity-links";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
+import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { blossomMediaFallbackUrls } from "@/lib/nostr/blossom-media-fallback";
 import { useBlossomMediaSrc } from "@/lib/nostr/useBlossomMediaSrc";
@@ -34,17 +36,20 @@ import {
   type PlatformRecentRepo,
   type RepoStats,
   type UserStats,
-  activityOnUsersRepo,
   getLatestBounties,
   getOpenBounties,
   getOwnBountyStats,
   getPlatformBountyStats,
-  getRecentActivity,
   getRecentBountyActivities,
   getTopBountyTakers,
   getTopDevsByPRs,
   getUserBountyActivityStats,
 } from "@/lib/stats";
+import {
+  type HomepageActivityApp,
+  mergeHomepageRecentActivity,
+  platformActivityToFeedItem,
+} from "@/lib/stats/homepage-recent-activity";
 import { cn } from "@/lib/utils";
 import {
   getEntityDisplayName,
@@ -190,7 +195,6 @@ export default function HomePage({
     releasedCount: number;
     offlineCount: number;
   } | null>(null);
-  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   const [liveRecentRepos, setLiveRecentRepos] = useState<PlatformRecentRepo[]>(
     []
   );
@@ -204,6 +208,10 @@ export default function HomePage({
   const [platformRecentActivities, setPlatformRecentActivities] = useState<
     PlatformRecentActivity[]
   >(() => initialLeaderboard?.recentActivities ?? []);
+  const [homepageApps, setHomepageApps] = useState<HomepageActivityApp[]>([]);
+  const [homepagePages, setHomepagePages] = useState<GatewayStatusSiteRow[]>(
+    []
+  );
   const [statsLoaded, setStatsLoaded] = useState(false);
   const hasInitialLeaderboard =
     (initialLeaderboard?.topRepos.length ?? 0) > 0 ||
@@ -464,6 +472,45 @@ export default function HomePage({
     };
   }, []);
 
+  // Newest apps + pages for Recent Activity (cached hubs — do not wait out a cold scrape).
+  useEffect(() => {
+    let cancelled = false;
+    const loadApps = async () => {
+      try {
+        const res = await fetch("/api/nostr/software-catalog?summary=1", {
+          signal: AbortSignal.timeout(6_000),
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { apps?: HomepageActivityApp[] };
+        if (Array.isArray(data.apps) && !cancelled) {
+          setHomepageApps(data.apps);
+        }
+      } catch (e) {
+        console.warn("[Home] software-catalog summary failed:", e);
+      }
+    };
+    const loadPages = async () => {
+      try {
+        const res = await fetch(
+          "/api/gittr-pages/status-sites?limit=24&sort=updated",
+          { signal: AbortSignal.timeout(6_000) }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { sites?: GatewayStatusSiteRow[] };
+        if (Array.isArray(data.sites) && !cancelled) {
+          setHomepagePages(data.sites);
+        }
+      } catch (e) {
+        console.warn("[Home] pages status-sites failed:", e);
+      }
+    };
+    void loadApps();
+    void loadPages();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const bridgeCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -586,12 +633,9 @@ export default function HomePage({
           setOwnBountyStats(getOwnBountyStats(pubkey)); // Show user's own bounty stats
           setRecentBountyActivities(getRecentBountyActivities(pubkey, 5)); // Recent bounty activities
           setUserBountyActivityStats(getUserBountyActivityStats(pubkey)); // Bounty activity stats
-          // Local fallback only — homepage prefers shared platformRecentActivities
-          setRecentActivity(getRecentActivity(10, pubkey));
         } else {
           setRecentBountyActivities([]);
           setUserBountyActivityStats(null);
-          setRecentActivity(getRecentActivity(10));
         }
         // Always load platform-wide bounty stats
         setPlatformBountyStats(getPlatformBountyStats());
@@ -601,7 +645,6 @@ export default function HomePage({
         setTopBountyTakers([]);
         setLatestBounties([]);
         setOpenBounties([]);
-        setRecentActivity([]);
       } finally {
         // Always set statsLoaded to true, even if there was an error
         // This ensures the grid container renders (even if empty)
@@ -623,44 +666,24 @@ export default function HomePage({
     };
   }, [pubkey]); // Personal stats only; leaderboard is loadPlatformLeaderboard()
 
-  // Logged-in: activity on YOUR repos only (local + filtered platform).
-  // Logged-out: shared global platform feed (same across browsers).
+  // Public Nostr/network feed for everyone — not this browser's gittr_activities.
   const displayRecentActivity = useMemo((): Activity[] => {
-    const mapPlatform = (a: PlatformRecentActivity): Activity => ({
-      id: a.id,
-      type: a.type,
-      timestamp: a.timestamp,
-      user: a.user,
-      entity: a.entity,
-      repo: a.repo,
-      repoName: a.repoName,
-      metadata: a.metadata,
-    });
-
-    if (hydratedPubkey) {
-      let repos: any[] = [];
-      try {
-        repos = loadStoredRepos();
-      } catch {
-        repos = [];
-      }
-      const fromPlatform = platformRecentActivities
-        .filter((a) => activityOnUsersRepo(a, hydratedPubkey, repos))
-        .map(mapPlatform);
-      const byId = new Map<string, Activity>();
-      for (const a of [...fromPlatform, ...recentActivity]) {
-        byId.set(a.id, a);
-      }
-      return Array.from(byId.values())
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 12);
-    }
-
-    if (platformRecentActivities.length > 0) {
-      return platformRecentActivities.map(mapPlatform);
-    }
-    return recentActivity;
-  }, [recentActivity, platformRecentActivities, hydratedPubkey]);
+    const recentRepos =
+      liveRecentRepos.length > 0 ? liveRecentRepos : platformRecentRepos;
+    return mergeHomepageRecentActivity({
+      leaderboard: platformRecentActivities,
+      recentRepos,
+      apps: homepageApps,
+      pages: homepagePages,
+      count: 12,
+    }).map(platformActivityToFeedItem);
+  }, [
+    liveRecentRepos,
+    platformRecentRepos,
+    platformRecentActivities,
+    homepageApps,
+    homepagePages,
+  ]);
 
   // Get metadata for user avatars (stats)
   const userPubkeys = useMemo(
@@ -1745,13 +1768,14 @@ export default function HomePage({
         {(statsLoaded || displayRecentActivity.length > 0) && (
           <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
             <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
-              {hydratedPubkey ? "Your recent activity" : "Recent Activity"}
+              Recent Activity
             </h3>
             {displayRecentActivity.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
                 {displayRecentActivity.slice(0, 12).map((activity) => {
                   const repoLabel =
                     activity.repoName || activity.repo || "repo";
+                  const directHref = getActivityHref(activity);
                   const deep = getActivityDeepPath(activity);
                   const repoNameOnly = (
                     activity.repoName ||
@@ -1760,12 +1784,13 @@ export default function HomePage({
                     ""
                   ).trim();
                   const href =
-                    activity.entity && repoNameOnly
+                    directHref ||
+                    (activity.entity && repoNameOnly
                       ? getRepoUrl(
                           activity.entity,
                           deep ? `${repoNameOnly}${deep}` : repoNameOnly
                         )
-                      : "";
+                      : "");
 
                   // Use mounted state to prevent hydration mismatch
                   const timeAgo = mounted
@@ -1819,10 +1844,9 @@ export default function HomePage({
               </div>
             ) : (
               <div className="text-[var(--color-text-secondary)]">
-                {pubkey
-                  ? "No recent activity on your repos yet."
-                  : !lbRecentActivitiesReady &&
-                    platformRecentActivities.length === 0
+                {liveRecentReposLoading &&
+                displayRecentActivity.length === 0 &&
+                platformRecentActivities.length === 0
                   ? "Loading recent activity..."
                   : "No recent activity yet."}
               </div>

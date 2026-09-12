@@ -29,7 +29,9 @@ export type ActivityType =
   | "bounty_claimed"
   | "repo_zapped"
   | "file_edited"
-  | "release_created";
+  | "release_created"
+  | "app_published"
+  | "page_published";
 
 export interface Activity {
   id: string;

@@ -181,6 +181,30 @@ async function fetchCatalogFromRelays(
   };
 }
 
+const GLOBAL_CACHE_MS = 120_000;
+let globalCache: { at: number; catalog: CatalogResponse } | null = null;
+let globalInflight: Promise<CatalogResponse> | null = null;
+
+async function getGlobalCatalog(): Promise<CatalogResponse> {
+  const now = Date.now();
+  if (globalCache && now - globalCache.at < GLOBAL_CACHE_MS) {
+    return globalCache.catalog;
+  }
+  if (!globalInflight) {
+    globalInflight = fetchCatalogFromRelays(null)
+      .then((catalog) => {
+        if (catalog.apps.length > 0) {
+          globalCache = { at: Date.now(), catalog };
+        }
+        return catalog;
+      })
+      .finally(() => {
+        globalInflight = null;
+      });
+  }
+  return globalInflight;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -196,7 +220,31 @@ export default async function handler(
       typeof authorRaw === "string" && /^[0-9a-f]{64}$/i.test(authorRaw)
         ? authorRaw.toLowerCase()
         : null;
-    const catalog = await fetchCatalogFromRelays(author);
+    const summary = req.query.summary === "1" || req.query.summary === "true";
+    const catalog = author
+      ? await fetchCatalogFromRelays(author)
+      : await getGlobalCatalog();
+    if (summary && !author) {
+      const apps = [...catalog.apps]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, 12)
+        .map((a) => ({
+          pubkey: a.pubkey,
+          appId: a.appId,
+          name: a.name,
+          createdAt: a.createdAt,
+          gittrRepoPath: a.gittrRepoPath,
+        }));
+      if (apps.length > 0) {
+        res.setHeader(
+          "Cache-Control",
+          "public, s-maxage=120, stale-while-revalidate=300"
+        );
+      } else {
+        res.setHeader("Cache-Control", "no-store");
+      }
+      return res.status(200).json({ apps, summary: true });
+    }
     // Never CDN-cache an empty catalog — that made /apps stick on zero after a race.
     // Author-scoped responses are short-lived (profile paint).
     if (catalog.apps.length > 0) {

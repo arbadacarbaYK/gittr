@@ -40,6 +40,9 @@ export function getActivityDeepPath(activity: {
     case "bounty_created":
     case "bounty_claimed":
       return "/issues";
+    case "app_published":
+    case "page_published":
+      return "";
     default:
       return "";
   }
@@ -65,6 +68,10 @@ export function getActivityLabel(type: string, repoLabel: string): string {
       return `Created ${repoLabel}`;
     case "repo_imported":
       return `Imported ${repoLabel}`;
+    case "app_published":
+      return `Published app ${repoLabel}`;
+    case "page_published":
+      return `Published page ${repoLabel}`;
     case "bounty_claimed":
       return `Bounty claimed in ${repoLabel}`;
     case "bounty_created":
@@ -96,6 +103,10 @@ export function getActivityIcon(type: string): string {
       return "📦";
     case "repo_imported":
       return "⬇️";
+    case "app_published":
+      return "📱";
+    case "page_published":
+      return "🌐";
     case "bounty_claimed":
     case "bounty_created":
       return "💰";
@@ -104,4 +115,22 @@ export function getActivityIcon(type: string): string {
     default:
       return "•";
   }
+}
+
+/** Absolute URL or in-app path. Apps/pages use metadata.href; repos stay empty. */
+export function getActivityHref(activity: {
+  type: string;
+  metadata?: {
+    href?: unknown;
+    [key: string]: unknown;
+  };
+}): string {
+  const href = activity.metadata?.href;
+  if (typeof href === "string") {
+    const t = href.trim();
+    if (t.startsWith("/") || /^https?:\/\//i.test(t)) return t;
+  }
+  if (activity.type === "app_published") return "/apps";
+  if (activity.type === "page_published") return "/pages";
+  return "";
 }
