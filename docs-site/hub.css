@@ -425,6 +425,16 @@ section {
 .compare.cols-3 {
   grid-template-columns: 1fr 1fr 1fr;
 }
+.compare.full {
+  grid-template-columns: 1fr;
+}
+.compare.full .col.here ul {
+  columns: 2;
+  column-gap: 1.5rem;
+}
+.compare.full .col.here li {
+  break-inside: avoid;
+}
 .compare .col {
   background: var(--panel);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -463,9 +473,19 @@ section {
 .compare .col a {
   color: var(--cyan);
 }
+@media (min-width: 960px) {
+  .compare.full .col.here ul {
+    columns: 3;
+  }
+}
 @media (max-width: 900px) {
   .compare.cols-3 {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .compare.full .col.here ul {
+    columns: 1;
   }
 }
 @media (max-width: 720px) {

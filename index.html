@@ -6,7 +6,7 @@
     <title>gittr documentation hub</title>
     <meta
       name="description"
-      content="Documentation hub for gittr: what you can do, a clickable platform map, and links into gittr, gitnostr, pyramid, nsite, gittr-mcp, and the gittr-snips cookbook."
+      content="Documentation hub for gittr: the hosted Nostr forge — issues, Pages, apps, notifications, Kanban, zap splits, bounties, profiles, and a clickable platform map."
     />
     <link rel="stylesheet" href="./docs-site/hub.css" />
     <link
@@ -41,11 +41,13 @@
             Git on Nostr. <em>Open a box.</em>
           </h1>
           <p class="lede">
-            gittr is a forge: issues, pull requests, static Pages, apps, and
-            Lightning. The conversation is signed Nostr events — any Nostr git
-            client can see the same issues and PRs. The files live on the git
-            servers and GRASP hosts you pushed to.
+            gittr is the hosted forge: issues, pull requests, static Pages, apps,
+            Lightning, notifications, Kanban, and a profile for your repos.
+            The conversation is signed Nostr events — any Nostr git client can
+            see the same issues and PRs. The files live on the git servers and
+            GRASP hosts you pushed to.
             This page is the public map of that platform — each box below is a door.
+            <a href="#jobs">What you can do</a> is the long list.
             <a href="#fit">How gittr fits</a>.
             Jobs match the
             <a href="https://gittr.space/help" target="_blank" rel="noopener noreferrer">Help center</a>. Client recipes
@@ -133,11 +135,47 @@
             </a>
             <a class="tile" href="https://gittr.space/bounty-hunt" target="_blank" rel="noopener noreferrer">
               <div class="name">Bounties &amp; zaps</div>
-              <div class="job">Fund issues and pay contributors over Lightning.</div>
+              <div class="job">Put sats on a feature, or leave a bounty sitting for someone who discloses a security issue. Pay over Lightning.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#payments" target="_blank" rel="noopener noreferrer">
+              <div class="name">Zap splits</div>
+              <div class="job">Share repo zaps with contributors (Zap Split Policy — Split (N) on the zap button).</div>
             </a>
             <a class="tile" href="https://gittr.space/import" target="_blank" rel="noopener noreferrer">
               <div class="name">Import</div>
               <div class="job">One repo or bulk from a forge — GitHub and Codeberg (they run it) or GitLab / Gitea / Forgejo (you can run it) — when the code already lives elsewhere.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#notifications" target="_blank" rel="noopener noreferrer">
+              <div class="name">Notifications</div>
+              <div class="job">Nostr DMs and optional Telegram. Watched repos, issues, PRs — plus private security notices.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#security-alerts" target="_blank" rel="noopener noreferrer">
+              <div class="name">CVE / dependency notices</div>
+              <div class="job">Dependencies tab plus optional CVE alerts as private DMs — never a public issue. Early Spoiler Alert DMs too.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/projects" target="_blank" rel="noopener noreferrer">
+              <div class="name">Kanban &amp; milestones</div>
+              <div class="job">Projects with Kanban and Roadmap. Milestones on the repo. Plan the work, then drag the cards.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#what-is-gittr" target="_blank" rel="noopener noreferrer">
+              <div class="name">Profile</div>
+              <div class="job">A styled npub page: repositories, Pages, apps, and an Activity Timeline (the contribution heatmap).</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#code-snippets" target="_blank" rel="noopener noreferrer">
+              <div class="name">Code snippets</div>
+              <div class="job">Select code in a file and Share as snippet (NIP-C0) — a standalone note on Nostr.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#repository-links" target="_blank" rel="noopener noreferrer">
+              <div class="name">Repo links</div>
+              <div class="job">Documentation, YouTube, Discord, Twitter, or any post — shown on the repo under contributors.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#repositories" target="_blank" rel="noopener noreferrer">
+              <div class="name">Fork, star, watch</div>
+              <div class="job">Fork copies the parent tree. Star and Watch sit on the repo toolbar. Stars has its own page.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#delete-repository" target="_blank" rel="noopener noreferrer">
+              <div class="name">Delete repository</div>
+              <div class="job">Owners can Delete Repository in Settings — signed, with a Nostr deletion marker. It cannot be undone.</div>
             </a>
           </div>
           <p class="hint" style="margin-top: 1.1rem">
@@ -172,7 +210,7 @@
             <div class="tile here">
               <div class="name">Web · gittr</div>
               <div class="host">gittr.space · YOU ARE HERE</div>
-              <div class="job">The forge UI: Code, issues, PRs, Pages, apps, import, bounties. Built on gitnostr.</div>
+              <div class="job">The forge UI: Code, issues, PRs, Pages, apps, notifications, projects, import, bounties. Built on gitnostr.</div>
             </div>
             <div class="tile">
               <div class="name">CLI · ngit</div>
@@ -200,9 +238,9 @@
             </article>
           </div>
           <p class="hint" style="margin-top: 1.1rem">
-            Issues and PRs are shared (same signed events). The extras —
-            import, Pages, /apps, Lightning bounties, a git server you can
-            SSH to — live on <strong>gittr</strong>.
+            Issues and PRs are shared (same signed events). The hosted forge —
+            import, Pages, /apps, Lightning, notifications, Kanban, profiles,
+            a git server you can SSH to — lives on <strong>gittr</strong>.
           </p>
           <div class="compare cols-3">
             <article class="col here">
@@ -211,7 +249,8 @@
               <ul>
                 <li>Import from GitHub, GitLab, Codeberg, or your own remote.</li>
                 <li>Static <strong>Pages</strong> and an <strong>/apps</strong> directory.</li>
-                <li>Lightning <strong>bounties</strong> on issues. Optional paywall on <code>git push</code>.</li>
+                <li>Lightning <strong>bounties</strong> and <strong>zap splits</strong>. Optional paywall on <code>git push</code>.</li>
+                <li>Hosted <strong>Projects</strong>: Kanban, Roadmap, milestones.</li>
                 <li>Its own git bridge: <strong>gitnostr</strong> on <code>git.gittr.space</code>.</li>
               </ul>
             </article>
@@ -228,7 +267,27 @@
               <ul>
                 <li>Linux desktop app — not a hosted website.</li>
                 <li>Issues and patches (diffs, revisions) on the same events.</li>
-                <li>Kanban and releases. Git via clone tags + GitWorkshop / ngit.</li>
+                <li>Desktop kanban and releases. Git via clone tags + GitWorkshop / ngit.</li>
+              </ul>
+            </article>
+          </div>
+          <div class="compare full">
+            <article class="col here">
+              <p class="only">The rest of the forge — gittr</p>
+              <h3>What the other two don’t ship as a hosted website</h3>
+              <ul>
+                <li><strong>Notifications</strong> — Nostr DMs and optional Telegram.</li>
+                <li><strong>CVE / dependency notices</strong> — private DMs, never a public issue. Spoiler Alert for early warnings.</li>
+                <li><strong>Kanban, Roadmap, milestones</strong> — Projects on the hosted forge, not only a desktop board.</li>
+                <li><strong>Zap Split Policy</strong> — share repo zaps with contributors.</li>
+                <li><strong>Bounties</strong> — fund a feature, or leave sats sitting for a security disclosure.</li>
+                <li><strong>Profile</strong> — styled npub page with repos, Pages, apps, and an Activity Timeline heatmap.</li>
+                <li><strong>Code snippets</strong> — Share as snippet (NIP-C0) from any file.</li>
+                <li><strong>Repository Links</strong> — docs, YouTube, Discord, Twitter, or any post on the repo.</li>
+                <li><strong>Fork, Star, Watch</strong> — fork copies the parent tree; stars have their own page.</li>
+                <li><strong>Delete Repository</strong> — owner-signed; Nostr deletion marker. Cannot be undone.</li>
+                <li><strong>Import + gitnostr</strong> — GitHub / GitLab / Codeberg / Gitea, or a Nostr-only repo on <code>git.gittr.space</code>.</li>
+                <li><strong>Pages + /apps</strong> — static sites and an app directory, not only git announces.</li>
               </ul>
             </article>
           </div>
@@ -473,6 +532,9 @@
                 </li>
                 <li><a href="https://gittr.space/pages" target="_blank" rel="noopener noreferrer">Published Pages</a></li>
                 <li><a href="https://gittr.space/apps" target="_blank" rel="noopener noreferrer">Apps on Nostr</a></li>
+                <li><a href="https://gittr.space/bounty-hunt" target="_blank" rel="noopener noreferrer">Bounty Hunt</a></li>
+                <li><a href="https://gittr.space/help#notifications" target="_blank" rel="noopener noreferrer">Notifications</a></li>
+                <li><a href="https://gittr.space/projects" target="_blank" rel="noopener noreferrer">Projects (Kanban)</a></li>
               </ul>
             </article>
             <article class="card" data-tags="run">

@@ -1,6 +1,6 @@
 # Documentation index
 
-**Browser hub:** repo-root [`../index.html`](../index.html) (Nostr Page after Push Manifest; public name is whatever you Save — currently `gittr-docu`) — use-cases, **how gittr fits vs ngit**, clickable platform map (sibling Pages stay in the same tab; GitHub/Codeberg vs Forgejo/Gitea/GitLab stay new-tab), docs by job. Live: [gittr-docu](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-docu.pages.gittr.space/). Sister cookbook: [gittr-snips](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/) · [repo](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools).
+**Browser hub:** repo-root [`../index.html`](../index.html) (Nostr Page after Push Manifest; public name is whatever you Save — currently `gittr-docu`) — **What you can do** (the hosted forge extras: notifications, Kanban, zap splits, bounties, profile, snippets, repo links, fork/star/watch, delete), **how gittr fits vs ngit**, clickable platform map (sibling Pages stay in the same tab; GitHub/Codeberg vs Forgejo/Gitea/GitLab stay new-tab), docs by job. Live: [gittr-docu](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-docu.pages.gittr.space/). Sister cookbook: [gittr-snips](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/) · [repo](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools).
 
 Start here:
 

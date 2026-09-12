@@ -313,12 +313,116 @@ export default function HelpPage() {
             .
           </li>
           <li>
-            <strong className="text-white">Bounties &amp; zaps</strong> — Fund
-            issues; pay contributors over Lightning (see Bounties below).
+            <strong className="text-white">Bounties &amp; zaps</strong> — Put
+            sats on a feature, or leave a bounty sitting for someone who
+            discloses a security issue. Pay over Lightning (see{" "}
+            <Link
+              href="#bounties"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Bounties
+            </Link>
+            ).
+          </li>
+          <li>
+            <strong className="text-white">Zap splits</strong> — Share repo zaps
+            with contributors (
+            <Link
+              href="#zap-split"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Zap Split Policy
+            </Link>
+            ).
           </li>
           <li>
             <strong className="text-white">Import</strong> — One repo or bulk
-            from GitHub/GitLab when you already host code elsewhere.
+            from a forge — GitHub and Codeberg, or GitLab / Gitea / Forgejo —
+            when the code already lives elsewhere.
+          </li>
+          <li>
+            <strong className="text-white">Notifications</strong> — Nostr DMs
+            and optional Telegram. Watched repos, issues, PRs, plus private
+            security notices.{" "}
+            <Link
+              href="#notifications"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Notifications
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">CVE / dependency notices</strong> —
+            Dependencies tab plus optional CVE alerts as private DMs — never a
+            public issue.{" "}
+            <Link
+              href="#security-alerts"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Security alerts
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Kanban &amp; milestones</strong> —
+            Projects with Kanban and Roadmap. Milestones on the repo.{" "}
+            <Link
+              href="/projects"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              /projects
+            </Link>
+            .{" "}
+            <Link
+              href="#projects"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Projects
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Profile</strong> — A styled npub
+            page: repositories, Pages, apps, and an Activity Timeline
+            (contribution heatmap).
+          </li>
+          <li>
+            <strong className="text-white">Code snippets</strong> — Select code
+            in a file and Share as snippet (NIP-C0).{" "}
+            <Link
+              href="#code-snippets"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Code snippets
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Repo links</strong> — Documentation,
+            YouTube, Discord, Twitter, or any post on the repo.{" "}
+            <Link
+              href="#repository-links"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Repository Links
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Fork, star, watch</strong> — Fork
+            copies the parent tree. Star and Watch sit on the repo toolbar.
+          </li>
+          <li>
+            <strong className="text-white">Delete repository</strong> — Owners
+            can Delete Repository in Settings. Signed; cannot be undone.{" "}
+            <Link
+              href="#delete-repository"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Delete Repository
+            </Link>
+            .
           </li>
         </ul>
       </HelpSection>
@@ -1000,6 +1104,26 @@ export default function HelpPage() {
                   zap receipts and this device&apos;s ledger where relevant.
                 </li>
               </ul>
+            </HelpTopic>
+
+            <HelpTopic id="repository-links" title={<>Repository Links</>}>
+              <p>
+                Repo Settings → <strong>Repository Links</strong> adds
+                documentation, Discord, Slack, YouTube, Twitter, GitHub, or
+                other URLs. They show on the repository page below contributors
+                — a YouTube video or a social post is a valid docs link, not
+                only a README.
+              </p>
+            </HelpTopic>
+
+            <HelpTopic id="delete-repository" title={<>Delete Repository</>}>
+              <p>
+                Owners use <strong>Delete Repository</strong> on the repo
+                Settings page. You must sign. gittr publishes a Nostr deletion
+                marker so other clients see it gone, hides it locally, and
+                best-effort removes related Pages and app announces. This cannot
+                be undone.
+              </p>
             </HelpTopic>
 
             <HelpTopic title={<>File Management</>}>
@@ -2247,6 +2371,7 @@ export default function HelpPage() {
         >
           <div className="space-y-2">
             <HelpTopic
+              id="zap-split"
               title={
                 <>
                   <Zap className="h-5 w-5 text-yellow-400" />
@@ -2256,9 +2381,11 @@ export default function HelpPage() {
             >
               <p>
                 Zap a repository to tip the owner (and optionally split among
-                contributors). <strong>Owner only</strong> resolves where the
-                invoice is paid <em>to</em> using the priority below. When the
-                LNURL-pay endpoint supports{" "}
+                contributors). Repo Settings → <strong>Zap Split Policy</strong>{" "}
+                sets weights. The zap button’s <strong>Split (N)</strong> mode
+                shares among those people. <strong>Owner only</strong> resolves
+                where the invoice is paid <em>to</em> using the priority below.
+                When the LNURL-pay endpoint supports{" "}
                 <a
                   href={SCHEMATA_NIP57}
                   target="_blank"
@@ -2422,10 +2549,13 @@ export default function HelpPage() {
             <HelpTopic id="bounties" title={<>Bounties</>}>
               <p>
                 Anyone can fund issues with bounties to incentivize
-                contributions. Bounties use LNURL-withdraw links created from
-                the bounty creator's LNbits wallet. The funds are reserved in
-                the creator's wallet and will be deducted when the PR author
-                claims the withdraw link.
+                contributions. Put sats on a new feature, or leave a bounty
+                sitting on an issue for someone who discloses a security problem
+                — there is no separate “CVE queue”; it is a normal issue with a
+                bounty. Bounties use LNURL-withdraw links created from the
+                bounty creator's LNbits wallet. The funds are reserved in the
+                creator's wallet and will be deducted when the PR author claims
+                the withdraw link.
               </p>
 
               <HelpSubTopic title={<>Requirements</>}>
@@ -3272,10 +3402,27 @@ export default function HelpPage() {
               </div>
             </HelpTopic>
 
+            <HelpTopic id="projects" title={<>Projects, Kanban, milestones</>}>
+              <p>
+                Each repo has <strong>Projects</strong> with{" "}
+                <strong>Kanban</strong> and <strong>Roadmap</strong> views. Drag
+                cards to update status. <strong>Milestones</strong> live in repo
+                Settings and on issues/PRs. Open{" "}
+                <Link
+                  href="/projects"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /projects
+                </Link>{" "}
+                for the aggregated board.
+              </p>
+            </HelpTopic>
+
             <HelpTopic title={<>Issues</>}>
               <p>
                 Track bugs, feature requests, and discussions. Add bounties to
-                incentivize solutions.
+                incentivize solutions — a new feature, or an issue sitting open
+                for someone who discloses a security problem.
               </p>
 
               <div className="mt-3 p-3 bg-green-900/20 border border-green-600/30 rounded">
