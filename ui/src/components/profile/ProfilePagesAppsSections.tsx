@@ -10,6 +10,7 @@ import { GittrPageDirectoryCard } from "@/components/pages/GittrPageDirectoryCar
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { authorPubkeyHexNormalized } from "@/lib/gittr-pages/author-card-label";
 import { pageBelongsToOwner } from "@/lib/gittr-pages/pages-owner-match";
+import { GITTR_PAGES_PUBLISHED_EVENT } from "@/lib/gittr-pages/pages-published";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import {
   type ParsedSoftwareApp,
@@ -32,6 +33,10 @@ type ProfilePagesAppsSectionsProps = {
 function runWhenIdle(fn: () => void, timeoutMs: number): () => void {
   if (typeof window === "undefined") {
     return () => {};
+  }
+  if (timeoutMs <= 0) {
+    const t = window.setTimeout(fn, 0);
+    return () => window.clearTimeout(t);
   }
   if (typeof window.requestIdleCallback === "function") {
     const id = window.requestIdleCallback(() => fn(), { timeout: timeoutMs });
@@ -67,6 +72,7 @@ export function ProfilePagesAppsSections({
   const [apps, setApps] = useState<ParsedSoftwareApp[]>([]);
   const [visiblePages, setVisiblePages] = useState(REPO_LIST_PAGE_SIZE);
   const [visibleApps, setVisibleApps] = useState(REPO_LIST_PAGE_SIZE);
+  const [pagesRefreshNonce, setPagesRefreshNonce] = useState(0);
 
   const profilePubkeys = useMemo(() => {
     const s = new Set<string>();
@@ -89,6 +95,19 @@ export function ProfilePagesAppsSections({
   }, [ownerHex]);
 
   useEffect(() => {
+    const onPublished = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ authorHex?: string }>).detail;
+      const hex = (detail?.authorHex || "").toLowerCase();
+      if (!ownerHex || (hex && hex !== ownerHex)) return;
+      setPagesRefreshNonce((n) => n + 1);
+    };
+    window.addEventListener(GITTR_PAGES_PUBLISHED_EVENT, onPublished);
+    return () => {
+      window.removeEventListener(GITTR_PAGES_PUBLISHED_EVENT, onPublished);
+    };
+  }, [ownerHex]);
+
+  useEffect(() => {
     if (!ownerHex) {
       setPages([]);
       setApps([]);
@@ -103,64 +122,69 @@ export function ProfilePagesAppsSections({
     lastCountsRef.current = { pages: 0, apps: 0 };
     onCountsRef.current?.({ pages: 0, apps: 0 });
 
-    const cancelIdle = runWhenIdle(() => {
-      if (cancelled) return;
-      setPagesLoading(true);
-      setAppsLoading(true);
-
-      void (async () => {
-        try {
-          const pagesRes = await fetch(
-            `/api/gittr-pages/status-sites?author=${encodeURIComponent(
-              ownerHex
-            )}`
-          );
-          const pagesData = (await pagesRes.json()) as {
-            sites?: GatewayStatusSiteRow[];
-            error?: string;
-          };
-          if (cancelled) return;
-          if (!pagesRes.ok)
-            throw new Error(pagesData.error || `pages ${pagesRes.status}`);
-          setPages(
-            (pagesData.sites || []).filter((s) =>
-              pageBelongsToOwner(s, ownerHex)
-            )
-          );
-        } catch {
-          if (!cancelled) setPages([]);
-        } finally {
-          if (!cancelled) setPagesLoading(false);
-        }
-
+    const cancelIdle = runWhenIdle(
+      () => {
         if (cancelled) return;
+        setPagesLoading(true);
+        setAppsLoading(true);
 
-        try {
-          // Author-scoped catalog — avoids scraping 4k Zapstore apps on every profile.
-          const appsRes = await fetch(
-            `/api/nostr/software-catalog?author=${encodeURIComponent(ownerHex)}`
-          );
-          const appsData = (await appsRes.json()) as {
-            apps?: ParsedSoftwareApp[];
-            error?: string;
-          };
+        void (async () => {
+          try {
+            const pagesRes = await fetch(
+              `/api/gittr-pages/status-sites?author=${encodeURIComponent(
+                ownerHex
+              )}&fresh=1`
+            );
+            const pagesData = (await pagesRes.json()) as {
+              sites?: GatewayStatusSiteRow[];
+              error?: string;
+            };
+            if (cancelled) return;
+            if (!pagesRes.ok)
+              throw new Error(pagesData.error || `pages ${pagesRes.status}`);
+            setPages(
+              (pagesData.sites || []).filter((s) =>
+                pageBelongsToOwner(s, ownerHex)
+              )
+            );
+          } catch {
+            if (!cancelled) setPages([]);
+          } finally {
+            if (!cancelled) setPagesLoading(false);
+          }
+
           if (cancelled) return;
-          if (!appsRes.ok)
-            throw new Error(appsData.error || `apps ${appsRes.status}`);
-          setApps(preferOwnerSoftwareApps(appsData.apps || [], ownerHex));
-        } catch {
-          if (!cancelled) setApps([]);
-        } finally {
-          if (!cancelled) setAppsLoading(false);
-        }
-      })();
-    }, 4000);
+
+          try {
+            // Author-scoped catalog — avoids scraping 4k Zapstore apps on every profile.
+            const appsRes = await fetch(
+              `/api/nostr/software-catalog?author=${encodeURIComponent(
+                ownerHex
+              )}`
+            );
+            const appsData = (await appsRes.json()) as {
+              apps?: ParsedSoftwareApp[];
+              error?: string;
+            };
+            if (cancelled) return;
+            if (!appsRes.ok)
+              throw new Error(appsData.error || `apps ${appsRes.status}`);
+            setApps(preferOwnerSoftwareApps(appsData.apps || [], ownerHex));
+          } catch {
+            if (!cancelled) setApps([]);
+          } finally {
+            if (!cancelled) setAppsLoading(false);
+          }
+        })();
+      },
+      pagesRefreshNonce > 0 ? 0 : 4000
+    );
 
     return () => {
       cancelled = true;
       cancelIdle();
     };
-  }, [ownerHex]);
+  }, [ownerHex, pagesRefreshNonce]);
 
   useEffect(() => {
     if (pagesLoading || appsLoading) return;

@@ -23,13 +23,17 @@ export type GatewayStatusSitesErr = {
   status: number;
 };
 
-const TTL_MS = 120_000;
+const TTL_MS = 15_000;
 let cache: { expires: number; payload: GatewayStatusSitesOk } | null = null;
 
-function pagesBase(): string {
+export function gittrPagesGatewayBase(): string {
   return (
     process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space"
   ).replace(/\/$/, "");
+}
+
+function pagesBase(): string {
+  return gittrPagesGatewayBase();
 }
 
 /** Test hook */
@@ -38,9 +42,10 @@ export function resetGatewayStatusSitesCacheForTests(): void {
 }
 
 /**
- * Parsed, blocklisted, browsable directory. Cached ~2 minutes so `/pages`
+ * Parsed, blocklisted, browsable directory. Cached ~15 seconds so `/pages`
  * first paint and later Load-more / profile checks do not re-download
- * ~2000 gateway rows on every request.
+ * ~2000 gateway rows on every request, but Push Manifest shows up on the
+ * next profile / Links pass.
  */
 export async function loadGatewayStatusSites(opts?: {
   fresh?: boolean;

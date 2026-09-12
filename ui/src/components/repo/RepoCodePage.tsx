@@ -53,6 +53,7 @@ import {
   extraPagesDTagsForRepo,
   resolveRepoPagesDTag,
 } from "@/lib/gittr-pages/pages-public-slug";
+import { notifyGittrPagesPublished } from "@/lib/gittr-pages/pages-published";
 import {
   loadPagesAutoReadme,
   loadPagesSiteSlugBackup,
@@ -23479,6 +23480,29 @@ export function RepoCodePage() {
                                   }
                                   setPagesManifestProgress(null);
                                   if (r.ok) {
+                                    const namedUrl =
+                                      candidateGittrPagesUrls?.namedUrl ||
+                                      gittrPagesUrls.namedUrl;
+                                    setPagesSiteListedByGateway(true);
+                                    setPagesSiteMatchedUrl(namedUrl);
+                                    setPagesSiteMatchedDTag(
+                                      gittrPagesUrls.dTag
+                                    );
+                                    notifyGittrPagesPublished({
+                                      authorHex: ownerHexForPages,
+                                      dTag: gittrPagesUrls.dTag,
+                                    });
+                                    try {
+                                      await fetch(
+                                        `/api/gittr-pages/ingest?author=${encodeURIComponent(
+                                          ownerHexForPages
+                                        )}&d=${encodeURIComponent(
+                                          gittrPagesUrls.dTag
+                                        )}`
+                                      );
+                                    } catch {
+                                      /* directory still refreshes below */
+                                    }
                                     setPagesGatewayRefresh((n) => n + 1);
                                     const serverListLine = r.serverListEventId
                                       ? `\nBlossom server list (kind 10063): ${
@@ -23498,7 +23522,7 @@ export function RepoCodePage() {
                                         r.confirmed
                                           ? "yes"
                                           : "pending — check /pages shortly"
-                                      }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`,
+                                      }${serverListLine}\n\nLive URL:\n${namedUrl}`,
                                       "gittr Pages"
                                     );
                                   } else {

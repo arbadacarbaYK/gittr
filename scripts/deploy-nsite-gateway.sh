@@ -81,16 +81,24 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'export DEBIAN_FRONTEND=noninterac
   docker --version
 '
 
-echo "🔧 Gateway .env (create from template only if missing — never overwrite existing)..."
+echo "🔧 Gateway .env (create from template if missing; always merge relay list)..."
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
   SRC="'"${REMOTE}"'/gittr-pages.production.env"
   DST="'"${REMOTE}"'/.env"
   if [[ -f "$DST" ]]; then
-    echo "   Keeping existing ${DST}"
+    echo "   Keeping existing ${DST} (merging NOSTR_RELAYS / RELAY_SYNC_INTERVAL / LOOKUP_RELAYS / MANIFEST_STALE_TIME)"
   else
     install -m 0600 -T "$SRC" "$DST"
     echo "   Created ${DST} from gittr-pages.production.env"
   fi
+  for KEYNAME in NOSTR_RELAYS RELAY_SYNC_INTERVAL LOOKUP_RELAYS MANIFEST_STALE_TIME; do
+    VAL="$(grep -E "^${KEYNAME}=" "$SRC" | tail -n1 || true)"
+    if [[ -n "$VAL" ]]; then
+      grep -v -E "^${KEYNAME}=" "$DST" > "${DST}.tmp" || true
+      mv "${DST}.tmp" "$DST"
+      echo "$VAL" >> "$DST"
+    fi
+  done
 '
 
 echo "🔧 Syncing Pages blocklist → gateway curation (GITTR_SYNC_MUTED_PUBKEYS)..."

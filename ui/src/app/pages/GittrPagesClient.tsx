@@ -11,6 +11,7 @@ import {
   siteHostname,
   siteKindLabel,
 } from "@/lib/gittr-pages/author-card-label";
+import { GITTR_PAGES_PUBLISHED_EVENT } from "@/lib/gittr-pages/pages-published";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
@@ -60,6 +61,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
   const [payload, setPayload] = useState<ApiPayload | null>(null);
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +75,8 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
     };
 
     // First page only so cards can paint without waiting on ~2000 rows.
-    fetch(`/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}`)
+    const fresh = refreshNonce > 0 ? "&fresh=1" : "";
+    fetch(`/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}${fresh}`)
       .then(async (res) => {
         const data = (await res.json()) as ApiPayload & { error?: string };
         if (!res.ok) {
@@ -90,7 +93,9 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
           setHydrating(true);
         }
         try {
-          const rest = await fetch("/api/gittr-pages/status-sites");
+          const rest = await fetch(
+            `/api/gittr-pages/status-sites${refreshNonce > 0 ? "?fresh=1" : ""}`
+          );
           const full = (await rest.json()) as ApiPayload & { error?: string };
           if (!rest.ok) {
             console.warn(
@@ -121,6 +126,14 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
       });
     return () => {
       cancelled = true;
+    };
+  }, [refreshNonce]);
+
+  useEffect(() => {
+    const onPublished = () => setRefreshNonce((n) => n + 1);
+    window.addEventListener(GITTR_PAGES_PUBLISHED_EVENT, onPublished);
+    return () => {
+      window.removeEventListener(GITTR_PAGES_PUBLISHED_EVENT, onPublished);
     };
   }, []);
 
@@ -323,10 +336,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                   : undefined;
                 return (
                   <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
-                    <GittrPageDirectoryCard
-                      site={s}
-                      authorMeta={authorMeta}
-                    />
+                    <GittrPageDirectoryCard site={s} authorMeta={authorMeta} />
                   </li>
                 );
               })}

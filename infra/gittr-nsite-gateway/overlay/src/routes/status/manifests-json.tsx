@@ -140,7 +140,7 @@ export async function statusManifestsJsonRoute(c: Context) {
     },
     200,
     {
-      "Cache-Control": "public, max-age=120",
+      "Cache-Control": "public, max-age=0, must-revalidate",
     },
   );
 }
