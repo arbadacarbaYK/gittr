@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 
+import { HtmlFilePreviewFrame } from "@/components/repo/HtmlFilePreviewFrame";
 import { ReadmeMarkdownImage } from "@/components/repo/ReadmeMarkdownImage";
 import { RepoFolderReadmeMarkdown } from "@/components/repo/RepoFolderReadmeMarkdown";
 import { appAlert } from "@/components/ui/app-dialog";
@@ -105,6 +106,7 @@ import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
 import {
   enrichRepoLinks,
   mergeAnnouncementLinksWithLocal,
+  nostrPagesLinkLabel,
   removeAutoNostrPagesLinks,
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
@@ -944,6 +946,9 @@ export function RepoCodePage() {
   const [pagesSiteMatchedUrl, setPagesSiteMatchedUrl] = useState<string | null>(
     null
   );
+  const [pagesSiteMatchedDTag, setPagesSiteMatchedDTag] = useState<
+    string | null
+  >(null);
   const [pagesGatewayRefresh, setPagesGatewayRefresh] = useState(0);
   const [pagesManifestProgress, setPagesManifestProgress] = useState<
     string | null
@@ -1119,11 +1124,12 @@ export function RepoCodePage() {
     const pagesBaseForSidebar = (
       process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space"
     ).replace(/\/$/, "");
+    const pagesSiteSlugForMatch =
+      repoData?.pagesSiteSlug ??
+      repoForPages.pagesSiteSlug ??
+      loadPagesSiteSlugBackup(resolvedParams.entity, decodedRepo);
     const dTag = resolveRepoPagesDTag(decodedRepo, {
-      pagesSiteSlug:
-        repoData?.pagesSiteSlug ??
-        repoForPages.pagesSiteSlug ??
-        loadPagesSiteSlugBackup(resolvedParams.entity, decodedRepo),
+      pagesSiteSlug: pagesSiteSlugForMatch,
       repo: repoForPages.repo,
       slug: repoForPages.slug,
       name: repoForPages.name,
@@ -1138,7 +1144,11 @@ export function RepoCodePage() {
         kind: "root",
       }),
       dTag,
-      extraDTags: extraPagesDTagsForRepo(decodedRepo, ownerHexForPages),
+      extraDTags: extraPagesDTagsForRepo(
+        decodedRepo,
+        ownerHexForPages,
+        pagesSiteSlugForMatch
+      ),
       ownerHex: ownerHexForPages,
     };
   }, [
@@ -1154,6 +1164,7 @@ export function RepoCodePage() {
     if (!candidateGittrPagesUrls?.namedUrl) {
       setPagesSiteListedByGateway(null);
       setPagesSiteMatchedUrl(null);
+      setPagesSiteMatchedDTag(null);
       return;
     }
     let cancelled = false;
@@ -1177,6 +1188,7 @@ export function RepoCodePage() {
           if (!cancelled) {
             setPagesSiteListedByGateway(null);
             setPagesSiteMatchedUrl(null);
+            setPagesSiteMatchedDTag(null);
           }
           return;
         }
@@ -1184,28 +1196,29 @@ export function RepoCodePage() {
           sites?: Array<{ siteUrl?: string }>;
         };
         const sites = Array.isArray(data.sites) ? data.sites : [];
-        const { gatewaySiteMatchesRepo } = await import(
+        const { pickBestGatewaySiteForRepo } = await import(
           "@/lib/gittr-pages/gateway-site-match"
         );
-        const hit = sites.find((s) =>
-          gatewaySiteMatchesRepo(
-            s.siteUrl,
-            wantNamed,
-            dTag,
-            "pages.gittr.space",
-            {
-              rootUrl: wantRoot,
-              extraDTags,
-            }
-          )
+        const hit = pickBestGatewaySiteForRepo(
+          sites,
+          wantNamed,
+          dTag,
+          "pages.gittr.space",
+          {
+            rootUrl: wantRoot,
+            extraDTags,
+            ownerPubkeyHex: ownerHex,
+          }
         );
         if (!cancelled) {
           setPagesSiteListedByGateway(!!hit);
           setPagesSiteMatchedUrl(hit?.siteUrl || null);
+          setPagesSiteMatchedDTag(hit?.matchedDTag || dTag || null);
         }
       } catch {
         if (!cancelled) setPagesSiteListedByGateway(null);
         if (!cancelled) setPagesSiteMatchedUrl(null);
+        if (!cancelled) setPagesSiteMatchedDTag(null);
       }
     })();
     return () => {
@@ -1235,15 +1248,14 @@ export function RepoCodePage() {
       if (idx < 0 || !repos[idx]) return;
       const current = repos[idx].links || [];
       let next: RepoLink[];
-      if (
-        pagesSiteListedByGateway === true &&
-        (pagesSiteMatchedUrl || candidateGittrPagesUrls?.namedUrl)
-      ) {
+      if (pagesSiteListedByGateway === true && pagesSiteMatchedUrl) {
         next = enrichRepoLinks({
           existing: current,
           sourceUrl: repos[idx].sourceUrl,
-          nostrPagesUrl:
-            pagesSiteMatchedUrl || candidateGittrPagesUrls?.namedUrl,
+          nostrPagesUrl: pagesSiteMatchedUrl,
+          nostrPagesLabel: nostrPagesLinkLabel(
+            pagesSiteMatchedDTag || candidateGittrPagesUrls?.dTag
+          ),
           cleanStaleAutoLinks: true,
         }) as RepoLink[];
       } else {
@@ -1267,7 +1279,9 @@ export function RepoCodePage() {
   }, [
     pagesSiteListedByGateway,
     pagesSiteMatchedUrl,
+    pagesSiteMatchedDTag,
     candidateGittrPagesUrls?.namedUrl,
+    candidateGittrPagesUrls?.dTag,
     resolvedParams.entity,
     decodedRepo,
   ]);
@@ -2062,9 +2076,7 @@ export function RepoCodePage() {
 
   const repoLinksList = useMemo(() => {
     const pagesUrl =
-      pagesSiteListedByGateway === true
-        ? pagesSiteMatchedUrl || candidateGittrPagesUrls?.namedUrl || null
-        : null;
+      pagesSiteListedByGateway === true ? pagesSiteMatchedUrl : null;
     // Drop auto Nostr Pages rows unless gateway confirmed (old false-positives /
     // stale 30617 tags must not keep showing).
     const existing =
@@ -2075,6 +2087,9 @@ export function RepoCodePage() {
       existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
       nostrPagesUrl: pagesUrl,
+      nostrPagesLabel: nostrPagesLinkLabel(
+        pagesSiteMatchedDTag || candidateGittrPagesUrls?.dTag
+      ),
       announcedAppId:
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
       siteOrigin:
@@ -2089,7 +2104,9 @@ export function RepoCodePage() {
     effectiveSourceUrl,
     pagesSiteListedByGateway,
     pagesSiteMatchedUrl,
+    pagesSiteMatchedDTag,
     candidateGittrPagesUrls?.namedUrl,
+    candidateGittrPagesUrls?.dTag,
     mounted,
   ]);
   /** Iris Hashtree-only repos: no HTTPS git tree for the Code browser. */
@@ -19708,11 +19725,14 @@ export function RepoCodePage() {
                             content.startsWith("https://"))
                         ) {
                           return (
-                            <div className="w-full h-[70vh] border border-[#383B42] rounded">
+                            <div className="w-full min-h-[70vh] border border-[#383B42] rounded overflow-hidden">
                               {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
                               <iframe
                                 src={content}
-                                className="w-full h-full border-0"
+                                className="w-full min-h-[70vh] border-0"
+                                style={{
+                                  height: "min(2200px, max(90vh, 1400px))",
+                                }}
                                 title={selectedFile}
                                 sandbox="allow-scripts allow-popups allow-forms"
                               />
@@ -19793,9 +19813,7 @@ export function RepoCodePage() {
 
                         const livePageUrl =
                           pagesSiteListedByGateway === true
-                            ? pagesSiteMatchedUrl ||
-                              candidateGittrPagesUrls?.namedUrl ||
-                              null
+                            ? pagesSiteMatchedUrl
                             : null;
 
                         return (
@@ -19826,15 +19844,10 @@ export function RepoCodePage() {
                                 "."
                               )}
                             </p>
-                            <div className="w-full h-[70vh] border-0">
-                              {/* Opaque sandbox: scripts OK for preview; no allow-same-origin so parent storage/cookies aren't reachable */}
-                              <iframe
-                                srcDoc={htmlContent}
-                                className="w-full h-full border-0"
-                                title={selectedFile}
-                                sandbox="allow-scripts allow-popups allow-forms allow-modals"
-                              />
-                            </div>
+                            <HtmlFilePreviewFrame
+                              html={htmlContent}
+                              title={selectedFile}
+                            />
                           </div>
                         );
                       })()
@@ -20424,10 +20437,16 @@ export function RepoCodePage() {
                     ownerHex: string;
                   } | null = null;
                   if (/^[0-9a-f]{64}$/.test(ownerHexForPages)) {
+                    const pagesSiteSlugForMatch =
+                      (repoData as StoredRepo | null | undefined)
+                        ?.pagesSiteSlug ??
+                      repo.pagesSiteSlug ??
+                      loadPagesSiteSlugBackup(
+                        resolvedParams.entity,
+                        decodedRepo
+                      );
                     const dTag = resolveRepoPagesDTag(decodedRepo, {
-                      pagesSiteSlug:
-                        (repoData as StoredRepo | null | undefined)
-                          ?.pagesSiteSlug ?? repo.pagesSiteSlug,
+                      pagesSiteSlug: pagesSiteSlugForMatch,
                       repo: repo.repo,
                       slug: repo.slug,
                       name: repo.name,
@@ -20442,7 +20461,8 @@ export function RepoCodePage() {
                       dTag,
                       extraDTags: extraPagesDTagsForRepo(
                         decodedRepo,
-                        ownerHexForPages
+                        ownerHexForPages,
+                        pagesSiteSlugForMatch
                       ),
                       ownerHex: ownerHexForPages,
                     };

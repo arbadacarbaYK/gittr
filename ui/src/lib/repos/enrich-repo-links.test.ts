@@ -62,4 +62,14 @@ describe("enrichRepoLinks", () => {
     ]);
     expect(links.find((l) => l.url.includes("pages"))?.label).toBe("Website");
   });
+
+  it("labels a confirmed Nostr Page with the public site name", () => {
+    const links = enrichRepoLinks({
+      existing: [],
+      nostrPagesUrl:
+        "https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-docu.pages.gittr.space/",
+      nostrPagesLabel: "Nostr Pages · gittr-docu",
+    });
+    expect(links[0]?.label).toBe("Nostr Pages · gittr-docu");
+  });
 });

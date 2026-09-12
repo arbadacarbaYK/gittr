@@ -129,11 +129,16 @@ export function defaultRepoPagesDTag(
 
 export function extraPagesDTagsForRepo(
   decodedRepoSlug: string,
-  ownerPubkeyHex?: string | null
+  ownerPubkeyHex?: string | null,
+  pagesSiteSlug?: string | null
 ): string[] {
   const out = new Set<string>();
   const truncated = slugToNsiteDTag(decodedRepoSlug).toLowerCase();
   if (truncated) out.add(truncated);
+  const custom = pagesSiteSlug?.trim();
+  if (custom) {
+    out.add(normalizePagesSiteSlugInput(custom).toLowerCase());
+  }
   if (isPagesReservedSlugExemptOwner(ownerPubkeyHex)) {
     const key = decodedRepoSlug.trim().toLowerCase();
     const canon = GITTR_PAGES_CANONICAL_D_TAGS[key];

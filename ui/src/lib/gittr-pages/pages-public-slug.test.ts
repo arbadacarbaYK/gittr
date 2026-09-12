@@ -100,5 +100,11 @@ describe("reserved Pages slugs", () => {
     expect(
       extraPagesDTagsForRepo("gittr-helper-tools", GITTR_OWNER_PUBKEY_HEX)
     ).toEqual(expect.arrayContaining(["gittr-snips", "gittr-helper"]));
+    expect(
+      extraPagesDTagsForRepo("my-zine", "a".repeat(64), "gittr docu")
+    ).toEqual(expect.arrayContaining(["gittr-docu", "my-zine"]));
+    expect(
+      extraPagesDTagsForRepo("cool-client", "b".repeat(64), "zine")
+    ).toEqual(expect.arrayContaining(["zine", "cool-client"]));
   });
 });

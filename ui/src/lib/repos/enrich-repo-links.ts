@@ -33,6 +33,19 @@ export type EnrichableRepoLink = {
 export const STALE_GITHUB_PAGES_LABEL = "GitHub Pages";
 export const NOSTR_PAGES_LINK_LABEL = "Nostr Pages";
 
+/** Sidebar label: keep the auto prefix so we can drop the row if the gateway unlist it. */
+export function nostrPagesLinkLabel(dTag?: string | null): string {
+  const d = (dTag || "").trim();
+  return d ? `${NOSTR_PAGES_LINK_LABEL} · ${d}` : NOSTR_PAGES_LINK_LABEL;
+}
+
+export function isAutoNostrPagesLabel(label?: string | null): boolean {
+  const t = (label || "").trim();
+  return (
+    t === NOSTR_PAGES_LINK_LABEL || t.startsWith(`${NOSTR_PAGES_LINK_LABEL} ·`)
+  );
+}
+
 function normalizeUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
@@ -133,7 +146,7 @@ export function removeAutoNostrPagesLinks(
   return list.filter((link) => {
     if (!link?.url) return false;
     const label = (link.label || "").trim();
-    if (label === NOSTR_PAGES_LINK_LABEL && isGittrPagesHost(link.url)) {
+    if (isAutoNostrPagesLabel(label) && isGittrPagesHost(link.url)) {
       return false;
     }
     return true;
@@ -161,7 +174,7 @@ export const stripInventedAnnouncementLinks = (
       {
         type: "docs",
         url: confirmed.endsWith("/") ? confirmed : `${confirmed}/`,
-        label: NOSTR_PAGES_LINK_LABEL,
+        label: nostrPagesLinkLabel(),
       },
     ]);
   }
@@ -189,6 +202,8 @@ export type EnrichRepoLinksInput = {
    * Never pass a URL merely built from owner + d-tag.
    */
   nostrPagesUrl?: string | null;
+  /** Public Pages name (NIP-5A `d`) — shown on the About → Links row. */
+  nostrPagesLabel?: string | null;
   announcedAppId?: string | null;
   siteOrigin?: string | null;
   /** @deprecated ignored */
@@ -253,7 +268,10 @@ export function enrichRepoLinks(
     additions.push({
       type: "docs",
       url: pagesUrl.endsWith("/") ? pagesUrl : `${pagesUrl}/`,
-      label: NOSTR_PAGES_LINK_LABEL,
+      label:
+        input.nostrPagesLabel?.trim() ||
+        nostrPagesLinkLabel() ||
+        NOSTR_PAGES_LINK_LABEL,
     });
   }
 

@@ -428,11 +428,12 @@ export function RepoGittrPagesPanel({
               This is the public Pages address (1–13 letters, numbers, or
               hyphens). Longer names are shortened —{" "}
               <code className="text-zinc-400">conference-loop</code> becomes{" "}
-              <code className="text-zinc-400">conference-lo</code>. Saving does
-              not push git. After the site is live, use{" "}
+              <code className="text-zinc-400">conference-lo</code>. Whatever
+              name you save here is what About → Links looks for after{" "}
               <strong className="font-medium text-zinc-300">
                 Push Manifest
-              </strong>{" "}
+              </strong>
+              . Saving does not push git. After the site is live, Push Manifest
               again so visitors get the new address.
             </p>
             {pagesReadiness?.namedUrl ? (

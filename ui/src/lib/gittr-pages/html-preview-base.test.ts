@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   forgeRawDirectoryHref,
   forgeRawFileHref,
+  injectHtmlPreviewAutoHeight,
   previewAssetApiHref,
   resolveRepoRelativeAssetPath,
   rewriteRelativeHtmlAssets,
@@ -52,6 +53,19 @@ describe("rewriteRelativeHtmlAssets", () => {
         filePath: "index.html",
       })
     ).toBe(html);
+  });
+});
+
+describe("injectHtmlPreviewAutoHeight", () => {
+  it("injects a height reporter for the Code-tab iframe", () => {
+    const out = injectHtmlPreviewAutoHeight(
+      "<!doctype html><html><body><p>hi</p></body></html>"
+    );
+    expect(out).toContain("gittr-html-preview-height");
+    expect(out).toContain("postMessage");
+    expect(out).toContain("gittr-html-preview-end");
+    expect(out).toContain("overflow:visible");
+    expect(out).not.toContain("overflow:hidden");
   });
 });
 

@@ -74,6 +74,22 @@ export function previewAssetApiHref(args: {
   return origin ? `${origin}${path}` : path;
 }
 
+export const HTML_PREVIEW_HEIGHT_MESSAGE = "gittr-html-preview-height" as const;
+
+/** Grow the Code-tab srcDoc iframe; sandbox has no allow-same-origin.
+ *  Do not set overflow:hidden on html/body — that makes scrollHeight collapse
+ *  to the iframe viewport and the preview never grows. */
+export function injectHtmlPreviewAutoHeight(html: string): string {
+  const type = JSON.stringify(HTML_PREVIEW_HEIGHT_MESSAGE);
+  const style = `<style id="gittr-html-preview-autoheight">html,body{height:auto!important;min-height:0!important;overflow:visible!important;}#gittr-html-preview-end{height:1px;margin:0;padding:0;border:0;clear:both;}</style>`;
+  const script = `<script id="gittr-html-preview-autoheight-script">(function(){var lastH=0;function mark(){var el=document.getElementById("gittr-html-preview-end");if(!el&&document.body){el=document.createElement("div");el.id="gittr-html-preview-end";document.body.appendChild(el);}return el}function h(){try{var end=mark();var fromEnd=0;if(end){var r=end.getBoundingClientRect();var y=window.scrollY||document.documentElement.scrollTop||0;fromEnd=Math.ceil(r.bottom+y)}var d=document.documentElement,b=document.body;return Math.max(fromEnd,d?d.scrollHeight:0,d?d.offsetHeight:0,b?b.scrollHeight:0,b?b.offsetHeight:0)}catch(e){return 0}}function report(force){var n=h();if(n<1)return;if(!force&&Math.abs(n-lastH)<8)return;lastH=n;try{parent.postMessage({type:${type},height:n},"*")}catch(e){}}try{if(window.ResizeObserver){new ResizeObserver(function(){report(false)}).observe(document.documentElement);if(document.body)new ResizeObserver(function(){report(false)}).observe(document.body)}}catch(e){}function onImg(){report(true)}Array.prototype.forEach.call(document.images||[],function(img){if(!img.complete)img.addEventListener("load",onImg)});window.addEventListener("load",function(){report(true);setTimeout(function(){report(true)},400);setTimeout(function(){report(true)},1600)});report(true);})();</script>`;
+  const end = `<div id="gittr-html-preview-end"></div>`;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${style}\n${script}\n${end}\n</body>`);
+  }
+  return `${html}\n${style}\n${script}\n${end}`;
+}
+
 export function rewriteRelativeHtmlAssets(
   html: string,
   args: HtmlPreviewRewriteArgs | null | undefined
