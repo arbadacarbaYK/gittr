@@ -426,7 +426,9 @@ export function RepoGittrPagesPanel({
             <SectionLabel>Site name — optional</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
               This is the public Pages address (1–13 letters, numbers, or
-              hyphens). Longer names are shortened —{" "}
+              hyphens). That cap is DNS, not taste: the host is{" "}
+              <code className="text-zinc-400">{"{50-char key}{name}"}</code> as
+              one label, and DNS labels max at 63. Longer names are shortened —{" "}
               <code className="text-zinc-400">conference-loop</code> becomes{" "}
               <code className="text-zinc-400">conference-lo</code>. Whatever
               name you save here is what About → Links looks for after{" "}

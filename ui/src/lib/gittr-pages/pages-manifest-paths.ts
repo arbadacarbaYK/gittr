@@ -26,6 +26,7 @@ const SKIP_PATH_PREFIXES = [
   "infra/",
   "scripts/",
   "data/",
+  "bin/",
   "_local-only-backup/",
   "_hetzner_backup/",
   ".github/",

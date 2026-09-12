@@ -31,6 +31,7 @@ describe("isGittrPagesManifestPath", () => {
     expect(isGittrPagesManifestPath("scripts/upload_to_hetzner.sh")).toBe(
       false
     );
+    expect(isGittrPagesManifestPath("bin/git-nostr-bridge")).toBe(false);
     expect(isGittrPagesManifestPath(".github/workflows/ci.yml")).toBe(false);
   });
 

@@ -35,6 +35,20 @@ describe("resolveRepoPagesDTag", () => {
         ownerPubkey: GITTR_OWNER_PUBKEY_HEX,
       })
     ).toBe("gittr-snips");
+    expect(
+      resolveRepoPagesDTag("gitnostr", { ownerPubkey: GITTR_OWNER_PUBKEY_HEX })
+    ).toBe("gitnostr");
+    expect(
+      resolveRepoPagesDTag("gittr-mcp", { ownerPubkey: GITTR_OWNER_PUBKEY_HEX })
+    ).toBe("gittr-mcp");
+    expect(
+      resolveRepoPagesDTag("pyramid", { ownerPubkey: GITTR_OWNER_PUBKEY_HEX })
+    ).toBe("pyramid");
+    expect(
+      resolveRepoPagesDTag("nsite-gateway", {
+        ownerPubkey: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe("nsite-gateway");
   });
 });
 

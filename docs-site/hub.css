@@ -174,6 +174,22 @@ img {
   padding: 0.45rem 0.2rem 0.55rem;
   color: #1a1a1a;
 }
+.polaroid.plain {
+  background: #0e1018;
+  color: var(--ink);
+  border-color: var(--acid);
+}
+.polaroid.plain .host-mark {
+  font-family: var(--mono);
+  font-size: clamp(1.05rem, 2.6vw, 1.55rem);
+  color: var(--teal);
+  padding: 2.2rem 1rem 1.4rem;
+  text-align: center;
+  line-height: 1.35;
+}
+.polaroid.plain figcaption {
+  color: var(--muted);
+}
 .burst {
   position: absolute;
   width: 72px;

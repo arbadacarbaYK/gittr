@@ -68,6 +68,10 @@ export const GITTR_DOC_GITNOSTR_SSH = gittrRepoFile(
 export const GITTR_PAGES_CANONICAL_D_TAGS: Readonly<Record<string, string>> = {
   gittr: "gittr-docu",
   "gittr-helper-tools": "gittr-snips",
+  gitnostr: "gitnostr",
+  "gittr-mcp": "gittr-mcp",
+  pyramid: "pyramid",
+  "nsite-gateway": "nsite-gateway",
 };
 
 /** Older names still listed on the gateway, matched so Links stay honest. */

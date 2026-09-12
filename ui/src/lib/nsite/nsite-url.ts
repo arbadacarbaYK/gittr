@@ -11,7 +11,8 @@ export function getPagesHostname(pagesBaseUrl: string): string {
 }
 
 /**
- * NIP-5A: named-site label is 50-char pubkeyB36 + d tag (1–13 chars), no separator.
+ * NIP-5A named-site host is one DNS label: 50-char pubkeyB36 + d tag, no
+ * separator. DNS labels max out at 63 characters, so the d tag is 1–13.
  */
 export function buildNsiteSiteUrl(
   pagesBaseUrl: string,
