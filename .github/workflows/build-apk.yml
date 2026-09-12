@@ -1,278 +1,114 @@
 name: Build and Release APK
 
+# Thin WebView APK for Zapstore / GitHub app-store indexers.
+# gittr is a hosted Next.js forge — this does not static-export the site.
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required to create releases
-      actions: read     # Required to read workflow status
-    
+      contents: write
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: main  # Always use latest main branch
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'yarn'
-          cache-dependency-path: ui/yarn.lock
-
-      - name: Install dependencies
-        working-directory: ./ui
-        run: yarn install --frozen-lockfile
-
-      - name: Build Next.js app for Capacitor
-        working-directory: ./ui
-        env:
-          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL || 'https://gittr.space' }}
-          NEXT_PUBLIC_GIT_SERVER_URL: ${{ secrets.NEXT_PUBLIC_GIT_SERVER_URL || 'https://git.gittr.space' }}
-          NEXT_PUBLIC_GIT_SSH_BASE: ${{ secrets.NEXT_PUBLIC_GIT_SSH_BASE || 'git.gittr.space' }}
-          NEXT_PUBLIC_NOSTR_RELAYS: ${{ secrets.NEXT_PUBLIC_NOSTR_RELAYS || 'wss://relay.gittr.space,wss://gitnostr.com,wss://relay.ngit.dev,wss://ngit.danconwaydev.com,wss://relay.damus.io,wss://nos.lol,wss://relay.azzamo.net,wss://relay.primal.net' }}
-        run: |
-          # Build Next.js app
-          yarn build
-          # Prepare static assets for Capacitor
-          # Note: Next.js App Router doesn't support full static export
-          # We copy static assets and create a minimal entry point
-          mkdir -p out
-          cp -r public out/ 2>/dev/null || true
-          # Copy Next.js static chunks
-          mkdir -p out/_next/static
-          cp -r .next/static/* out/_next/static/ 2>/dev/null || true
-          # Create index.html entry point
-          # This is a minimal loader - for full functionality, the app should load from server
-          cat > out/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>gittr</title>
-            <script>
-              // Load Next.js app - redirect to server for full functionality
-              // For offline mode, would need Next.js standalone build
-              if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                window.location.href = 'https://gittr.space';
-              }
-            </script>
-          </head>
-          <body>
-            <div id="__next">Loading gittr...</div>
-          </body>
-          </html>
-          EOF
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
 
-      - name: Check for Capacitor setup
-        working-directory: ./ui
-        id: capacitor-check
+      - name: Version from tag
+        id: ver
         run: |
-          if [ -f "capacitor.config.ts" ] || [ -f "capacitor.config.js" ]; then
-            echo "capacitor_configured=true" >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
           else
-            echo "capacitor_configured=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Capacitor not configured. Please set up Capacitor first:"
-            echo "  cd ui && npx cap init 'gittr' 'com.gittr.app'"
-            echo "  npx cap add android"
-            exit 1
+            VERSION="0.0.0-dev.${GITHUB_RUN_NUMBER}"
           fi
-
-      - name: Add Android platform if missing
-        working-directory: ./ui
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
-        run: |
-          if [ ! -d "android" ]; then
-            echo "Android platform not found, adding it..."
-            npx cap add android
+          echo "version_name=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            MA="${VERSION%%.*}"
+            REST="${VERSION#*.}"
+            MI="${REST%%.*}"
+            PA="${REST#*.}"
+            echo "version_code=$((MA * 10000 + MI * 100 + PA))" >> "$GITHUB_OUTPUT"
           else
-            echo "Android platform already exists"
+            echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
+          echo "apk_name=gittr-${VERSION}.apk" >> "$GITHUB_OUTPUT"
 
-      - name: Sync Capacitor
-        working-directory: ./ui
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
-        run: npx cap sync android
-
-      - name: Setup Android Keystore and Signing Config
-        working-directory: ./ui/android
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
-        run: |
-          # Create .android directory if it doesn't exist
-          mkdir -p ~/.android
-          
-          # Generate debug keystore if it doesn't exist
-          if [ ! -f ~/.android/debug.keystore ]; then
-            echo "Generating debug keystore..."
-            keytool -genkey -v -keystore ~/.android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-            echo "✅ Debug keystore created"
-          else
-            echo "✅ Debug keystore already exists"
-          fi
-          
-          # Verify app/build.gradle exists (it should after cap sync)
-          if [ ! -f app/build.gradle ]; then
-            echo "❌ ERROR: app/build.gradle not found after cap sync!"
-            exit 1
-          fi
-          echo "✅ app/build.gradle exists - signing will be handled by Gradle build"
-
-      - name: Build APK
-        working-directory: ./ui/android
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+      - name: Unpack private keystore if provided
         env:
-          RELEASE_STORE_FILE: ${{ secrets.RELEASE_STORE_FILE }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          chmod +x ./gradlew
-          
-          # Check if real release keys are available
-          if [ -n "$RELEASE_STORE_FILE" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
-            echo "✅ Using real release signing keys from GitHub secrets"
-            # Decode base64 keystore if provided as secret
-            if [ -f "$RELEASE_STORE_FILE" ]; then
-              echo "✅ Keystore file found at: $RELEASE_STORE_FILE"
-            else
-              # If RELEASE_STORE_FILE is base64 encoded, decode it
-              echo "$RELEASE_STORE_FILE" | base64 -d > /tmp/release.keystore 2>/dev/null && RELEASE_STORE_FILE=/tmp/release.keystore || true
-              if [ -f "$RELEASE_STORE_FILE" ]; then
-                echo "✅ Decoded keystore from base64 secret"
-              else
-                echo "⚠️ WARNING: Release keystore not found, falling back to debug keystore"
-                RELEASE_STORE_FILE=""
-              fi
-            fi
-          fi
-          
-          # Fallback to debug keystore if release keys not available
-          if [ -z "$RELEASE_STORE_FILE" ] || [ ! -f "$RELEASE_STORE_FILE" ]; then
-            echo "⚠️ Using debug keystore (release keys not configured)"
-            if [ ! -f ~/.android/debug.keystore ]; then
-              echo "❌ ERROR: Debug keystore not found!"
-              exit 1
-            fi
-            RELEASE_STORE_FILE="$HOME/.android/debug.keystore"
-            RELEASE_STORE_PASSWORD="android"
-            RELEASE_KEY_ALIAS="androiddebugkey"
-            RELEASE_KEY_PASSWORD="android"
-          fi
-          
-          echo "✅ Building APK with keystore: $RELEASE_STORE_FILE"
-          
-          # Build with signing - capture full output for debugging
-          if ./gradlew assembleRelease \
-            -PRELEASE_STORE_FILE="$RELEASE_STORE_FILE" \
-            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
-            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
-            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" \
-            --stacktrace 2>&1 | tee /tmp/gradle-build.log; then
-            echo "✅ Gradle build completed successfully"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/gittr-release.p12
+            echo "ANDROID_KEYSTORE_FILE=/tmp/gittr-release.p12" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Using ANDROID_KEYSTORE_BASE64 secret"
           else
-            echo "❌ Gradle build failed! Full log:"
-            cat /tmp/gradle-build.log
-            echo "---"
-            echo "Checking for APK files despite error..."
-            find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
-            exit 1
-          fi
-          
-          # Show build summary
-          echo "---"
-          echo "Build summary:"
-          grep -i "BUILD\|FAILED\|SUCCESS\|ERROR" /tmp/gradle-build.log | tail -10 || true
-          
-          # Verify APK is signed
-          echo "Verifying APK signature..."
-          APK_FILE=$(find ./app/build/outputs/apk/release -name "*.apk" | head -1)
-          if [ -n "$APK_FILE" ]; then
-            if command -v apksigner &> /dev/null; then
-              apksigner verify --print-certs "$APK_FILE" && echo "✅ APK is signed" || echo "⚠️ APK signature verification failed"
-            else
-              echo "⚠️ apksigner not available, cannot verify signature"
-            fi
+            echo "Using committed android-app/keystore/gittr-ci.p12"
           fi
 
-      - name: Find APK
-        id: find-apk
-        working-directory: ./ui/android
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+      - name: Build release APK
+        working-directory: android-app
         run: |
-          echo "Searching for APK files..."
-          echo "Current directory: $(pwd)"
-          echo "Directory structure:"
-          ls -la app/build/outputs/ 2>/dev/null || echo "app/build/outputs/ does not exist"
-          echo "---"
-          echo "All APK files found:"
-          find . -name "*.apk" -type f 2>/dev/null | head -20 || echo "No APK files found"
-          echo "---"
-          echo "Checking build outputs:"
-          find ./app/build -type f -name "*.apk" 2>/dev/null | head -10 || echo "No APK in app/build"
-          echo "---"
-          
-          APK_PATH=$(find ./app/build/outputs/apk/release -name "*.apk" -type f 2>/dev/null | head -1)
-          if [ -z "$APK_PATH" ]; then
-            echo "APK not found in ./app/build/outputs/apk/release, searching elsewhere..."
-            APK_PATH=$(find . -name "*.apk" -type f -path "*/release/*" 2>/dev/null | head -1)
-          fi
-          if [ -z "$APK_PATH" ]; then
-            echo "APK not found in release folders, searching all locations..."
-            APK_PATH=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
-          fi
-          if [ -z "$APK_PATH" ]; then
-            echo "❌ ERROR: No APK file found!"
-            echo "Build outputs directory contents:"
-            ls -la app/build/outputs/ 2>/dev/null || echo "app/build/outputs/ does not exist"
-            echo "---"
-            echo "Full app/build directory structure:"
-            find app/build -type d 2>/dev/null | head -20 || echo "app/build does not exist"
-            echo "---"
-            echo "Gradle build log (last 50 lines):"
-            tail -50 /tmp/gradle-build.log 2>/dev/null || echo "No build log found"
-            exit 1
-          fi
-          # Convert to absolute path
-          APK_PATH=$(realpath "$APK_PATH")
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "✅ Found APK: $APK_PATH"
-          ls -lh "$APK_PATH"
+          gradle assembleRelease \
+            -PversionName="${{ steps.ver.outputs.version_name }}" \
+            -PversionCode="${{ steps.ver.outputs.version_code }}"
+
+      - name: Name APK
+        id: apk
+        run: |
+          SRC="android-app/app/build/outputs/apk/release/app-release.apk"
+          test -f "$SRC"
+          DEST="${{ steps.ver.outputs.apk_name }}"
+          cp "$SRC" "$DEST"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          ls -lh "$DEST"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
         with:
           name: gittr-apk
-          path: ${{ steps.find-apk.outputs.apk_path }}
+          path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
-      - name: Create Release with APK
-        uses: softprops/action-gh-release@v1
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true' && steps.find-apk.outputs.apk_path != ''
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.find-apk.outputs.apk_path }}
+          files: ${{ steps.apk.outputs.path }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+          body: |
+            ## gittr Android (`space.gittr.app`)
+
+            Standalone wrapper around **https://gittr.space** (same hosted forge as the PWA). Not an offline self-hosted copy.
+
+            - Sign in with **Amber / NIP-46** — browser extensions are not available in this APK.
+            - Install the `.apk` below, or announce this tag from the gittr repo **Releases** tab (NIP-82 / Zapstore).
+            - Self-hosters still clone the git repo; this package always opens gittr.space.
+
+            See `android-app/README.md` and `zapstore.yaml`.
           token: ${{ secrets.GITHUB_TOKEN }}

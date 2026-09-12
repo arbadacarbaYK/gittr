@@ -1,0 +1,24 @@
+# Zapstore / other Nostr app stores: index GitHub Releases that attach an APK.
+# Tag v* → .github/workflows/build-apk.yml uploads gittr-<version>.apk
+#
+# First publish (whitelist): commit this file, then from a machine with your
+# signer run:  SIGN_WITH=nsec1…  zsp publish -y zapstore.yaml
+# Or announce the same GitHub tag from gittr.space Releases / Nostr Apps.
+# Do not put an nsec in CI.
+
+name: gittr
+summary: Nostr git forge — repos, issues, PRs, Pages, and Lightning bounties
+description: >
+  gittr is a hosted Nostr git forge (NIP-34). This Android package opens
+  https://gittr.space in a standalone window. Sign in with Amber or another
+  NIP-46 remote signer. Self-hosters install from the git repository instead.
+repository: https://github.com/arbadacarbaYK/gittr
+homepage: https://gittr.space
+license: AGPL-3.0
+icon: ui/public/android-chrome-512x512.png
+pubkey: npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc
+tags:
+  - git
+  - nostr
+  - bitcoin
+  - lightning

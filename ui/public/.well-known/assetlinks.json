@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "space.gittr.app",
+      "sha256_cert_fingerprints": [
+        "98:45:6F:B8:CF:F2:F0:71:24:86:2B:41:43:3D:B0:B6:A7:09:2D:8F:2C:3B:63:8A:A8:F2:0A:EA:98:E5:05:17"
+      ]
+    }
+  }
+]

@@ -52,6 +52,20 @@ const nextConfig = {
         ],
       },
       {
+        // Android App Links (gittr APK space.gittr.app) — Play/Chrome fetch this.
+        source: "/.well-known/assetlinks.json",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/json",
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=300, must-revalidate",
+          },
+        ],
+      },
+      {
         // NIP-05: browsers on other origins (clients, nostr.watch) must be able to fetch this.
         source: "/.well-known/nostr.json",
         headers: [

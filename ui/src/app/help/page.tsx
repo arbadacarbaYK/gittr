@@ -797,6 +797,33 @@ export default function HelpPage() {
                 </li>
               </ul>
             </HelpTopic>
+            <HelpTopic title={<>Android APK (Zapstore / GitHub)</>}>
+              <p>
+                Other Nostr app stores look for a GitHub{" "}
+                <strong className="text-white">Release</strong> with an{" "}
+                <code className="text-purple-200">.apk</code>. Tagging{" "}
+                <code className="text-purple-200">v*</code> on{" "}
+                <a
+                  href="https://github.com/arbadacarbaYK/gittr"
+                  className="text-purple-400 hover:text-purple-300"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  arbadacarbaYK/gittr
+                </a>{" "}
+                builds a thin app (
+                <code className="text-purple-200">space.gittr.app</code>) that
+                opens gittr.space — same site as this PWA, not an offline
+                self-hosted copy. Sign in with Amber / a remote signer; browser
+                extensions are not inside the APK. After the Release exists,
+                announce that tag from this repo’s{" "}
+                <strong className="text-white">Releases</strong> tab or Code
+                sidebar <strong className="text-white">Nostr Apps</strong>{" "}
+                (NIP-82). <code className="text-purple-200">zapstore.yaml</code>{" "}
+                in the git repo is what Zapstore uses to whitelist the
+                publisher.
+              </p>
+            </HelpTopic>
             <p className="text-sm text-gray-400">
               Note: In-app browsers (Telegram/Twitter, etc.) often block PWA
               install. Open in the system browser. Offline mode only shows a

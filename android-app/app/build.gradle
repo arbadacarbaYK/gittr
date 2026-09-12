@@ -1,0 +1,61 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+def versionNameProp = project.findProperty("versionName") ?: "0.0.0-dev"
+def versionCodeProp = (project.findProperty("versionCode") ?: "1") as int
+
+android {
+    namespace "space.gittr.app"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "space.gittr.app"
+        minSdk 26
+        targetSdk 35
+        versionCode versionCodeProp
+        versionName versionNameProp
+    }
+
+    signingConfigs {
+        release {
+            def store = file("../keystore/gittr-ci.p12")
+            def override = System.getenv("ANDROID_KEYSTORE_FILE")
+            if (override) {
+                store = file(override)
+            }
+            storeFile store
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "gittr-android-ci"
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "gittr"
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: "gittr-android-ci"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+        debug {
+            signingConfig signingConfigs.release
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.activity:activity-ktx:1.9.3"
+    implementation "androidx.webkit:webkit:1.12.1"
+}

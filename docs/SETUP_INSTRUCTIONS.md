@@ -63,6 +63,8 @@ yarn build
 
 PWA: optional; needs HTTPS in production (`ui/public/site.webmanifest`, `sw.js`).
 
+**gittr as a Nostr Android app:** other stores (Zapstore, gittr `/apps`) index **GitHub Releases with an APK**, not “install from git”. Pushing a `v*` tag runs [`.github/workflows/build-apk.yml`](../.github/workflows/build-apk.yml): a thin WebView APK (`space.gittr.app`) that opens `https://gittr.space`. It does **not** static-export Next.js (App Router cannot). Sources live in [`android-app/`](../android-app/README.md). Root [`zapstore.yaml`](../zapstore.yaml) is the Zapstore whitelist file (`repository` + owner npub). After the GitHub Release has the `.apk`, announce that tag from the gittr repo **Releases** tab / **Nostr Apps** (same NIP-82 flow as any other forge app). Optional `zsp publish -y zapstore.yaml` from a machine with `SIGN_WITH` (nsec or bunker) — never store an nsec in Actions. Optional GitHub secrets `ANDROID_KEYSTORE_BASE64` + passwords override the public CI keystore in `android-app/keystore/`. Digital Asset Links: `ui/public/.well-known/assetlinks.json`.
+
 ### Homepage “Most Active” leaderboard (server snapshot)
 
 The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr relay scans run **outside** live Next:

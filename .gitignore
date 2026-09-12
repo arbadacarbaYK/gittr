@@ -3,6 +3,13 @@ node_modules
 dist
 build
 
+# Android wrapper (CI builds the APK)
+android-app/.gradle/
+android-app/app/build/
+android-app/local.properties
+android-app/**/*.apk
+android-app/**/*.aab
+
 # build tools
 .vite
 .vite/**
