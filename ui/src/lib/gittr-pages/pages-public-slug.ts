@@ -1,4 +1,8 @@
-import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
+import {
+  GITTR_OWNER_PUBKEY_HEX,
+  GITTR_PAGES_ALIAS_D_TAGS,
+  GITTR_PAGES_CANONICAL_D_TAGS,
+} from "../gittr-repo-links";
 import { slugToNsiteDTag } from "../nsite/nsite-url";
 import type { StoredRepo } from "../repos/storage";
 import { findRepoByEntityAndName } from "../utils/repo-finder";
@@ -111,6 +115,36 @@ export function normalizePagesSiteSlugInput(raw: string): string {
  * otherwise derived from the URL repo segment (truncated, e.g. conference-loop
  * → conference-lo).
  */
+export function defaultRepoPagesDTag(
+  decodedRepoSlug: string,
+  ownerPubkeyHex?: string | null
+): string {
+  if (isPagesReservedSlugExemptOwner(ownerPubkeyHex)) {
+    const canon =
+      GITTR_PAGES_CANONICAL_D_TAGS[decodedRepoSlug.trim().toLowerCase()];
+    if (canon) return canon;
+  }
+  return slugToNsiteDTag(decodedRepoSlug);
+}
+
+export function extraPagesDTagsForRepo(
+  decodedRepoSlug: string,
+  ownerPubkeyHex?: string | null
+): string[] {
+  const out = new Set<string>();
+  const truncated = slugToNsiteDTag(decodedRepoSlug).toLowerCase();
+  if (truncated) out.add(truncated);
+  if (isPagesReservedSlugExemptOwner(ownerPubkeyHex)) {
+    const key = decodedRepoSlug.trim().toLowerCase();
+    const canon = GITTR_PAGES_CANONICAL_D_TAGS[key];
+    if (canon) out.add(canon.toLowerCase());
+    for (const alias of GITTR_PAGES_ALIAS_D_TAGS[key] || []) {
+      out.add(alias.toLowerCase());
+    }
+  }
+  return [...out];
+}
+
 export function resolveRepoPagesDTag(
   decodedRepoSlug: string,
   repo?: Pick<
@@ -120,11 +154,11 @@ export function resolveRepoPagesDTag(
 ): string {
   const custom = repo?.pagesSiteSlug?.trim();
   if (!custom) {
-    return slugToNsiteDTag(decodedRepoSlug);
+    return defaultRepoPagesDTag(decodedRepoSlug, repo?.ownerPubkey);
   }
   const d = normalizePagesSiteSlugInput(custom);
   if (isReservedPagesSlug(d, repo?.ownerPubkey)) {
-    return slugToNsiteDTag(decodedRepoSlug);
+    return defaultRepoPagesDTag(decodedRepoSlug, repo?.ownerPubkey);
   }
   return d;
 }
@@ -195,7 +229,7 @@ export function evaluatePagesSiteSlugInput(args: {
     return {
       ok: true,
       stored: undefined,
-      dTag: slugToNsiteDTag(args.decodedRepoSlug),
+      dTag: defaultRepoPagesDTag(args.decodedRepoSlug, args.ownerPubkeyHex),
     };
   }
   const d = normalizePagesSiteSlugInput(trimmed);

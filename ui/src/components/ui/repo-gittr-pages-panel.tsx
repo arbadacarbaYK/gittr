@@ -40,6 +40,8 @@ export type GittrPagesReadiness = {
   hasEverPushedToNostr: boolean;
   namedUrl: string;
   dTag: string;
+  extraDTags?: string[];
+  ownerPubkeyHex?: string;
 };
 
 type RepoGittrPagesPanelProps = {
@@ -200,6 +202,8 @@ export function RepoGittrPagesPanel({
     null
   );
 
+  const extraPagesMatchKey = (pagesReadiness?.extraDTags || []).join(",");
+
   useEffect(() => {
     if (!pagesReadiness?.namedUrl) {
       setGatewayListsSite(null);
@@ -208,13 +212,15 @@ export function RepoGittrPagesPanel({
     let cancelled = false;
     const want = pagesReadiness.namedUrl.replace(/\/$/, "").toLowerCase();
     const dTag = pagesReadiness.dTag?.toLowerCase() || "";
+    const extraDTags = pagesReadiness.extraDTags || [];
+    const ownerHex = pagesReadiness.ownerPubkeyHex;
     (async () => {
       try {
-        const res = await fetch(
-          gatewayRefreshNonce > 0
-            ? "/api/gittr-pages/status-sites?fresh=1"
-            : "/api/gittr-pages/status-sites"
-        );
+        const qs = new URLSearchParams();
+        if (gatewayRefreshNonce > 0) qs.set("fresh", "1");
+        if (ownerHex) qs.set("author", ownerHex);
+        const suffix = qs.toString() ? `?${qs.toString()}` : "";
+        const res = await fetch(`/api/gittr-pages/status-sites${suffix}`);
         if (!res.ok) {
           if (!cancelled) setGatewayListsSite(null);
           return;
@@ -227,7 +233,9 @@ export function RepoGittrPagesPanel({
           "@/lib/gittr-pages/gateway-site-match"
         );
         const hit = sites.some((s) =>
-          gatewaySiteMatchesRepo(s.siteUrl, want, dTag)
+          gatewaySiteMatchesRepo(s.siteUrl, want, dTag, "pages.gittr.space", {
+            extraDTags,
+          })
         );
         if (!cancelled) setGatewayListsSite(hit);
       } catch {
@@ -237,7 +245,13 @@ export function RepoGittrPagesPanel({
     return () => {
       cancelled = true;
     };
-  }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag, gatewayRefreshNonce]);
+  }, [
+    pagesReadiness?.namedUrl,
+    pagesReadiness?.dTag,
+    extraPagesMatchKey,
+    pagesReadiness?.ownerPubkeyHex,
+    gatewayRefreshNonce,
+  ]);
 
   const slugPreview = slugDraft.trim()
     ? normalizePagesSiteSlugInput(slugDraft)

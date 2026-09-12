@@ -1,3 +1,5 @@
+import { pubkeyHexToPubkeyB36 } from "./nsite/pubkey-base36";
+
 /** Operator repos on gittr — canonical browse URLs (see docs/gittr-repo-links.md). */
 export const GITTR_OWNER_NPUB =
   "npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc";
@@ -58,3 +60,31 @@ export const GITTR_DOC_GITNOSTR_SSH = gittrRepoFile(
   "gitnostr",
   "SSH_GIT_GUIDE.md"
 );
+
+/**
+ * Public NIP-5A `d` tags for platform repos (1–13 chars). Repo slugs like
+ * `gittr-helper-tools` cannot be the Pages name as-is.
+ */
+export const GITTR_PAGES_CANONICAL_D_TAGS: Readonly<Record<string, string>> = {
+  gittr: "gittr-docu",
+  "gittr-helper-tools": "gittr-snips",
+};
+
+/** Older names still listed on the gateway, matched so Links stay honest. */
+export const GITTR_PAGES_ALIAS_D_TAGS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  gittr: ["gittr"],
+  "gittr-helper-tools": ["gittr-helper", "helper-tools"],
+};
+
+export function gittrOwnerPagesNamedUrl(dTag: string): string {
+  const b36 = pubkeyHexToPubkeyB36(GITTR_OWNER_PUBKEY_HEX);
+  return `https://${b36}${dTag}.pages.gittr.space/`;
+}
+
+/** Docs hub (this repo’s root index.html). */
+export const GITTR_PAGES_HUB_URL = gittrOwnerPagesNamedUrl("gittr-docu");
+
+/** Client cookbook (gittr-helper-tools repo). */
+export const GITTR_PAGES_SNIPS_URL = gittrOwnerPagesNamedUrl("gittr-snips");

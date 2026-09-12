@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>gittr map — where the docs live</title>
+    <title>gittr documentation hub</title>
     <meta
       name="description"
-      content="One Nostr Page for the gittr universe: click the platform map, open gittr, gitnostr, pyramid, nsite, gittr-mcp, and the helper-tools cookbook."
+      content="Documentation hub for gittr: what you can do, a clickable platform map, and links into gittr, gitnostr, pyramid, nsite, gittr-mcp, and the gittr-snips cookbook."
     />
     <link rel="stylesheet" href="./docs-site/hub.css" />
     <link
@@ -15,44 +15,95 @@
     />
   </head>
   <body>
-    <a class="skip" href="#map">Skip to map</a>
+    <a class="skip" href="#jobs">Skip to what you can do</a>
     <header class="topbar">
       <div class="wrap topbar-inner">
         <a class="brand" href="#top">
           <span class="logo" aria-hidden="true">★</span>
-          gittr map
+          gittr docs
         </a>
         <nav class="topnav" aria-label="On this page">
-          <a href="#map">Click the map</a>
+          <a href="#jobs">What you can do</a>
+          <a href="#map">Platform map</a>
           <a href="#docs">Docs by job</a>
-          <a href="#picture">README picture</a>
+          <a href="#picture">Diagrams</a>
         </nav>
       </div>
     </header>
 
     <main id="top">
       <div class="wrap hero">
-        <p class="kicker">Nostr Page · documentation hub</p>
-        <h1>One door for <em>every</em> gittr box.</h1>
+        <p class="kicker">Documentation hub · Nostr Page</p>
+        <h1>Git on Nostr, mapped for humans.</h1>
         <p class="lede">
-          Same picture as the gittr README — except here the boxes open things.
-          Repos, live hosts, and the written docs. The
-          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
-            >helper-tools cookbook</a
-          >
-          is how you steal the client recipes. This page is how you find
-          <em>which machine</em> that recipe talks to.
+          gittr is a forge: issues, pull requests, static Pages, apps, and
+          Lightning on the same signed events as other NIP-34 clients. This page
+          is the public map of that platform. Jobs below match the
+          <a href="https://gittr.space/help">Help center</a>. Client recipes
+          live on
+          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
+            >gittr-snips</a
+          >.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#map">Click the map</a>
+          <a class="btn btn-primary" href="#jobs">What you can do</a>
           <a class="btn btn-ghost" href="https://gittr.space">Open gittr.space</a>
+          <a class="btn btn-ghost" href="https://gittr.space/help">Help center</a>
           <a
             class="btn btn-ghost"
-            href="https://gittr.space/help"
-            >Help center</a
+            href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
+            >gittr-snips cookbook</a
           >
         </div>
       </div>
+
+      <section id="jobs">
+        <div class="wrap">
+          <div class="section-title">
+            <h2>What you can do on gittr</h2>
+          </div>
+          <p class="hint">
+            Same jobs as
+            <a href="https://gittr.space/help#what-is-gittr">Help → What you can do on gittr</a>.
+            Start here if you want the product, not the wiring diagram.
+          </p>
+          <div class="tiles">
+            <a class="tile" href="https://gittr.space/help#what-is-gittr">
+              <div class="name">Mirror &amp; backup</div>
+              <div class="job">Copy repos from a forge or your own server onto Nostr git relays (GRASP).</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#what-is-gittr">
+              <div class="name">Issues &amp; PRs on Nostr</div>
+              <div class="job">Reviews, merge, and push updated repo state so other clients see the same tree.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#gittr-pages">
+              <div class="name">Nostr Pages</div>
+              <div class="job">Publish a static site from a repo (root index.html, then Push Manifest). Browse /pages.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/apps">
+              <div class="name">Nostr apps</div>
+              <div class="job">Discover installers on /apps. Owners announce a real Release tag from the Code sidebar.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/help#releases">
+              <div class="name">Releases</div>
+              <div class="job">Forge download assets and NIP-82 listings. A local listing, an announce, and Push to Nostr are three steps.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/bounty-hunt">
+              <div class="name">Bounties &amp; zaps</div>
+              <div class="job">Fund issues and pay contributors over Lightning.</div>
+            </a>
+            <a class="tile" href="https://gittr.space/import">
+              <div class="name">Import</div>
+              <div class="job">One repo or bulk from GitHub / GitLab when the code already lives elsewhere.</div>
+            </a>
+          </div>
+          <p class="hint" style="margin-top: 1.1rem">
+            Getting started:
+            <a href="https://gittr.space/help#getting-started">log in</a>
+            → create or import a repo → payments are optional (NWC / LNURL).
+          </p>
+        </div>
+      </section>
 
       <section id="map">
         <div class="wrap">
@@ -146,11 +197,11 @@
               </a>
               <a
                 class="tile"
-                href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+                href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
               >
-                <div class="name">helper-tools cookbook</div>
-                <div class="host">Nostr Page</div>
-                <div class="job">Steal production snippets. How to build another git Nostr client, with screenshots.</div>
+                <div class="name">gittr-snips cookbook</div>
+                <div class="host">Nostr Page · gittr-snips</div>
+                <div class="job">Production snippets for building another Git + Nostr client, with screenshots.</div>
               </a>
             </div>
           </div>
@@ -212,11 +263,12 @@
       <section id="picture">
         <div class="wrap">
           <div class="section-title">
-            <h2>The README picture, for orientation</h2>
+            <h2>Platform diagrams</h2>
           </div>
           <p class="hint">
-            Boxes above are the clickable version. This still is the map from the
-            gittr README — same neighborhoods, pretty pixels.
+            The tiles above are the clickable map. These stills are the same
+            neighborhoods as in the gittr README — useful when you want the
+            whole picture at once.
           </p>
           <figure class="picture">
             <img
@@ -257,7 +309,7 @@
       <section id="docs">
         <div class="wrap">
           <div class="section-title">
-            <h2>Docs by job — pick a mood</h2>
+            <h2>Docs by job</h2>
           </div>
           <div class="filters" role="toolbar" aria-label="Filter docs">
             <button class="filter" type="button" data-filter="all" aria-pressed="true">All</button>
@@ -393,12 +445,12 @@
               </ul>
             </article>
             <article class="card" data-tags="client">
-              <h3>helper-tools (steal code)</h3>
-              <p>The fun cookbook + every snippet folder.</p>
+              <h3>gittr-snips (client recipes)</h3>
+              <p>Cookbook Page plus every snippet folder in gittr-helper-tools.</p>
               <ul>
                 <li>
                   <a
-                    href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
+                    href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
                     >Cookbook Page</a
                   >
                 </li>
@@ -480,11 +532,14 @@
       <div class="wrap">
         <p>
           After you edit this repo: <strong>Push to Nostr</strong>, then sidebar
-          <strong>Nostr Pages → Push Manifest</strong>. The public slug for this
-          repo is <code>gittr</code>. Sister page:
-          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkhelper-tools.pages.gittr.space/"
-            >helper-tools cookbook</a
-          >.
+          <strong>Nostr Pages → Push Manifest</strong>. The public Pages name for
+          this hub is <code>gittr-docu</code> (NIP-5A names are 1–13 characters;
+          do not use the repo slug <code>gittr</code> as the live host). Sister
+          cookbook:
+          <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
+            >gittr-snips</a
+          >
+          (repo <code>gittr-helper-tools</code>).
         </p>
         <p>
           Canonical repo list:

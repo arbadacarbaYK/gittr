@@ -22,7 +22,7 @@ describe("pageBelongsToOwner", () => {
 
   it("matches named NIP-5A hosts (pubkeyB36 + d-tag), not only npub", () => {
     const b36 = pubkeyHexToPubkeyB36(GITTR_OWNER_PUBKEY_HEX);
-    const url = `https://${b36}helper-tools.pages.gittr.space/`;
+    const url = `https://${b36}gittr-snips.pages.gittr.space/`;
     expect(pageBelongsToOwner({ siteUrl: url }, GITTR_OWNER_PUBKEY_HEX)).toBe(
       true
     );

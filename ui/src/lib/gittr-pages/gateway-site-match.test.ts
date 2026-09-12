@@ -21,6 +21,18 @@ describe("gatewaySiteMatchesRepo", () => {
     ).toBe(true);
   });
 
+  it("matches an extra published d-tag when the default slug is stale", () => {
+    expect(
+      gatewaySiteMatchesRepo(
+        "https://k3fakeb36gittr-snips.pages.gittr.space/",
+        "https://k3fakeb36gittr-helper.pages.gittr.space/",
+        "gittr-helper",
+        "pages.gittr.space",
+        { extraDTags: ["gittr-snips"] }
+      )
+    ).toBe(true);
+  });
+
   it("does not match a different npub root", () => {
     expect(
       gatewaySiteMatchesRepo(

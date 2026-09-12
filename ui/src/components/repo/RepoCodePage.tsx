@@ -49,6 +49,7 @@ import { rewriteRelativeHtmlAssets } from "@/lib/gittr-pages/html-preview-base";
 import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
+  extraPagesDTagsForRepo,
   resolveRepoPagesDTag,
 } from "@/lib/gittr-pages/pages-public-slug";
 import {
@@ -1137,6 +1138,8 @@ export function RepoCodePage() {
         kind: "root",
       }),
       dTag,
+      extraDTags: extraPagesDTagsForRepo(decodedRepo, ownerHexForPages),
+      ownerHex: ownerHexForPages,
     };
   }, [
     mounted,
@@ -1161,13 +1164,15 @@ export function RepoCodePage() {
       .replace(/\/$/, "")
       .toLowerCase();
     const dTag = candidateGittrPagesUrls.dTag.toLowerCase();
+    const extraDTags = candidateGittrPagesUrls.extraDTags || [];
+    const ownerHex = candidateGittrPagesUrls.ownerHex;
     (async () => {
       try {
-        const res = await fetch(
-          pagesGatewayRefresh > 0
-            ? "/api/gittr-pages/status-sites?fresh=1"
-            : "/api/gittr-pages/status-sites"
-        );
+        const qs = new URLSearchParams();
+        if (pagesGatewayRefresh > 0) qs.set("fresh", "1");
+        if (ownerHex) qs.set("author", ownerHex);
+        const suffix = qs.toString() ? `?${qs.toString()}` : "";
+        const res = await fetch(`/api/gittr-pages/status-sites${suffix}`);
         if (!res.ok) {
           if (!cancelled) {
             setPagesSiteListedByGateway(null);
@@ -1190,6 +1195,7 @@ export function RepoCodePage() {
             "pages.gittr.space",
             {
               rootUrl: wantRoot,
+              extraDTags,
             }
           )
         );
@@ -1209,6 +1215,8 @@ export function RepoCodePage() {
     candidateGittrPagesUrls?.namedUrl,
     candidateGittrPagesUrls?.rootUrl,
     candidateGittrPagesUrls?.dTag,
+    candidateGittrPagesUrls?.extraDTags,
+    candidateGittrPagesUrls?.ownerHex,
     pagesGatewayRefresh,
   ]);
 
@@ -20412,6 +20420,8 @@ export function RepoCodePage() {
                   let gittrPagesUrls: {
                     namedUrl: string;
                     dTag: string;
+                    extraDTags: string[];
+                    ownerHex: string;
                   } | null = null;
                   if (/^[0-9a-f]{64}$/.test(ownerHexForPages)) {
                     const dTag = resolveRepoPagesDTag(decodedRepo, {
@@ -20430,6 +20440,11 @@ export function RepoCodePage() {
                         { kind: "named", dTag }
                       ),
                       dTag,
+                      extraDTags: extraPagesDTagsForRepo(
+                        decodedRepo,
+                        ownerHexForPages
+                      ),
+                      ownerHex: ownerHexForPages,
                     };
                   }
                   const ownerPubkeyForAcl = (
@@ -23263,7 +23278,9 @@ export function RepoCodePage() {
                             <span className="mx-1.5 text-zinc-600">·</span>
                             <a
                               className="text-violet-400 underline-offset-2 hover:underline"
-                              href={gittrPagesUrls.namedUrl}
+                              href={
+                                pagesSiteMatchedUrl || gittrPagesUrls.namedUrl
+                              }
                               rel="noopener noreferrer"
                               target="_blank"
                               title="Canonical site for this repo (NIP-5A named host)"
@@ -23334,6 +23351,8 @@ export function RepoCodePage() {
                                   ),
                                   namedUrl: gittrPagesUrls.namedUrl,
                                   dTag: gittrPagesUrls.dTag,
+                                  extraDTags: gittrPagesUrls.extraDTags,
+                                  ownerPubkeyHex: gittrPagesUrls.ownerHex,
                                 }}
                                 chainActionsDisabled={isPushing || isRefetching}
                                 canChainNostrRefetch={

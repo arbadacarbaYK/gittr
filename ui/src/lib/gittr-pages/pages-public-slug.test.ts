@@ -4,6 +4,7 @@ import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 
 import {
   evaluatePagesSiteSlugInput,
+  extraPagesDTagsForRepo,
   isReservedPagesSlug,
   resolveRepoPagesDTag,
 } from "./pages-public-slug";
@@ -21,8 +22,19 @@ describe("resolveRepoPagesDTag", () => {
     expect(resolveRepoPagesDTag("conference-loop", {})).toBe("conference-lo");
   });
 
-  it("lets the gittr repo keep d=gittr (reserved only blocks other repos' custom names)", () => {
+  it("lets the gittr repo keep d=gittr when the owner is unknown", () => {
     expect(resolveRepoPagesDTag("gittr", {})).toBe("gittr");
+  });
+
+  it("uses published Pages names for platform repos", () => {
+    expect(
+      resolveRepoPagesDTag("gittr", { ownerPubkey: GITTR_OWNER_PUBKEY_HEX })
+    ).toBe("gittr-docu");
+    expect(
+      resolveRepoPagesDTag("gittr-helper-tools", {
+        ownerPubkey: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe("gittr-snips");
   });
 });
 
@@ -86,10 +98,7 @@ describe("reserved Pages slugs", () => {
       expect(ev.stored).toBe("gittr-helper");
     }
     expect(
-      resolveRepoPagesDTag("gittr-helper-tools", {
-        pagesSiteSlug: "gittr-helper",
-        ownerPubkey: GITTR_OWNER_PUBKEY_HEX,
-      })
-    ).toBe("gittr-helper");
+      extraPagesDTagsForRepo("gittr-helper-tools", GITTR_OWNER_PUBKEY_HEX)
+    ).toEqual(expect.arrayContaining(["gittr-snips", "gittr-helper"]));
   });
 });

@@ -6,23 +6,13 @@ import { getPagesHostname } from "../nsite/nsite-url";
  * Do NOT use substring includes(dTag): for dTag "gittr", every
  * `*.pages.gittr.space` URL contains "gittr" and false-positives.
  */
-export function gatewaySiteMatchesRepo(
-  siteUrl: string | undefined | null,
-  namedUrl: string,
+function hostnameMatchesNamedDTag(
+  siteUrl: string,
   dTag: string,
-  pagesHost = "pages.gittr.space",
-  extra?: { rootUrl?: string | null }
+  pagesHost: string
 ): boolean {
-  const u = (siteUrl || "").replace(/\/$/, "").toLowerCase();
-  if (!u) return false;
-  const want = namedUrl.replace(/\/$/, "").toLowerCase();
-  if (want && u === want) return true;
-  const rootWant = (extra?.rootUrl || "").replace(/\/$/, "").toLowerCase();
-  if (rootWant && u === rootWant) return true;
-
-  const d = (dTag || "").trim().toLowerCase();
+  const d = dTag.trim().toLowerCase();
   if (!d) return false;
-
   let host = pagesHost.toLowerCase();
   try {
     host = getPagesHostname(
@@ -31,10 +21,8 @@ export function gatewaySiteMatchesRepo(
   } catch {
     /* keep */
   }
-
-  // Named site host: {pubkeyB36}{dTag}.{pagesHost}
   try {
-    const hostname = new URL(u).hostname.toLowerCase();
+    const hostname = new URL(siteUrl).hostname.toLowerCase();
     if (hostname === `${d}.${host}`) return true;
     if (
       hostname.endsWith(`${d}.${host}`) &&
@@ -43,7 +31,33 @@ export function gatewaySiteMatchesRepo(
       return true;
     }
   } catch {
-    if (u.endsWith(`${d}.${host}`)) return true;
+    if (siteUrl.endsWith(`${d}.${host}`)) return true;
+  }
+  return false;
+}
+
+export function gatewaySiteMatchesRepo(
+  siteUrl: string | undefined | null,
+  namedUrl: string,
+  dTag: string,
+  pagesHost = "pages.gittr.space",
+  extra?: { rootUrl?: string | null; extraDTags?: string[] }
+): boolean {
+  const u = (siteUrl || "").replace(/\/$/, "").toLowerCase();
+  if (!u) return false;
+  const want = namedUrl.replace(/\/$/, "").toLowerCase();
+  if (want && u === want) return true;
+  const rootWant = (extra?.rootUrl || "").replace(/\/$/, "").toLowerCase();
+  if (rootWant && u === rootWant) return true;
+
+  const tags = [dTag, ...(extra?.extraDTags || [])]
+    .map((t) => (t || "").trim().toLowerCase())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  for (const d of tags) {
+    if (seen.has(d)) continue;
+    seen.add(d);
+    if (hostnameMatchesNamedDTag(u, d, pagesHost)) return true;
   }
   return false;
 }
