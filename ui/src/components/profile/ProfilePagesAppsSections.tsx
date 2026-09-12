@@ -8,9 +8,8 @@ import {
 } from "@/components/apps/SoftwareAppDirectoryCard";
 import { GittrPageDirectoryCard } from "@/components/pages/GittrPageDirectoryCard";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
-import {
-  authorPubkeyHexNormalized,
-} from "@/lib/gittr-pages/author-card-label";
+import { authorPubkeyHexNormalized } from "@/lib/gittr-pages/author-card-label";
+import { pageBelongsToOwner } from "@/lib/gittr-pages/pages-owner-match";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import {
   type ParsedSoftwareApp,
@@ -22,7 +21,6 @@ import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 
 import { Globe, Smartphone } from "lucide-react";
 import Link from "next/link";
-import { nip19 } from "nostr-tools";
 
 type ProfilePagesAppsSectionsProps = {
   /** Full 64-char hex pubkey of the profile owner */
@@ -30,27 +28,6 @@ type ProfilePagesAppsSectionsProps = {
   /** Optional: surface counts for the profile stats row */
   onCountsChange?: (counts: { pages: number; apps: number }) => void;
 };
-
-/** Match Pages rows via authorPubkeyHex or npub… hostname (gateway convention). */
-function pageBelongsToOwner(
-  site: GatewayStatusSiteRow,
-  ownerHex: string
-): boolean {
-  const h = ownerHex.toLowerCase();
-  if (site.authorPubkeyHex?.toLowerCase() === h) return true;
-  try {
-    const first = new URL(site.siteUrl).hostname.split(".")[0]?.trim() ?? "";
-    if (!first.toLowerCase().startsWith("npub1")) return false;
-    const decoded = nip19.decode(first);
-    return (
-      decoded.type === "npub" &&
-      typeof decoded.data === "string" &&
-      decoded.data.toLowerCase() === h
-    );
-  } catch {
-    return false;
-  }
-}
 
 function runWhenIdle(fn: () => void, timeoutMs: number): () => void {
   if (typeof window === "undefined") {

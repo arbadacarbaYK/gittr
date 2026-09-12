@@ -7,6 +7,7 @@ import {
   gittrPagesBlossomOrigin,
   gittrPagesBlossomServerTag,
 } from "@/lib/gittr-pages/gittr-pages-blossom-origin";
+import { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
@@ -35,59 +36,11 @@ const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 const MAX_FILES = 2000;
 const KIND_BLOSSOM_SERVER_LIST = 10063;
 
-const SKIP_PATH_PREFIXES = [
-  "node_modules/",
-  ".git/",
-  "dist/",
-  "build/",
-  ".next/",
-  "target/",
-  "__tests__/",
-  "coverage/",
-];
-
-const STATIC_EXT = new Set([
-  ".html",
-  ".htm",
-  ".css",
-  ".js",
-  ".mjs",
-  ".json",
-  ".txt",
-  ".md",
-  ".ts",
-  ".tsx",
-  ".svg",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".ico",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".otf",
-  ".map",
-  ".xml",
-  ".webmanifest",
-  ".wasm",
-]);
+export { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
 
 function extOf(path: string): string {
   const i = path.lastIndexOf(".");
   return i >= 0 ? path.slice(i).toLowerCase() : "";
-}
-
-export function isGittrPagesManifestPath(path: string): boolean {
-  const n = normalizeFilePath(path).toLowerCase();
-  if (!n) return false;
-  for (const p of SKIP_PATH_PREFIXES) {
-    if (n.startsWith(p)) return false;
-  }
-  const ext = extOf(n);
-  if (ext && STATIC_EXT.has(ext)) return true;
-  return n === "robots.txt" || n.endsWith("/robots.txt");
 }
 
 function toWebAbsolutePath(normalizedPath: string): string {
@@ -637,6 +590,11 @@ export async function publishNamedSiteManifest(
       MAX_TOTAL_BYTES / 1e6
     )} MB total)…`
   );
+  if (manifestPaths.length > 250) {
+    onProgress?.(
+      `Large site (${manifestPaths.length} files). Forge trees like ui/ are skipped; if this is still huge, trim the Page to index.html plus css/images.`
+    );
+  }
 
   type Staged = {
     file: MergedManifestFile;

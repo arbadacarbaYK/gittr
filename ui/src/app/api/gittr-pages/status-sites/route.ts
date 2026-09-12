@@ -13,7 +13,8 @@ export const revalidate = 120;
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { limit, offset } = parseStatusSitesLimitOffset(searchParams);
-  const loaded = await loadGatewayStatusSites();
+  const fresh = searchParams.get("fresh") === "1";
+  const loaded = await loadGatewayStatusSites({ fresh });
 
   if ("error" in loaded) {
     return NextResponse.json(

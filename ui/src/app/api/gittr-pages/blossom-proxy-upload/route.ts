@@ -88,7 +88,13 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "Invalid JSON body",
+        hint: "The upload POST was not valid JSON (often truncated because the request was huge). gittr Pages skips ui/, android-app/, node_modules, and other forge trees so a docs hub is tens of files, not hundreds.",
+      },
+      { status: 400 }
+    );
   }
 
   const sha256 = (body.sha256 || "").toLowerCase();

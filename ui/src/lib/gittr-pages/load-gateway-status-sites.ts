@@ -42,23 +42,29 @@ export function resetGatewayStatusSitesCacheForTests(): void {
  * first paint and later Load-more / profile checks do not re-download
  * ~2000 gateway rows on every request.
  */
-export async function loadGatewayStatusSites(): Promise<
-  GatewayStatusSitesOk | GatewayStatusSitesErr
-> {
+export async function loadGatewayStatusSites(opts?: {
+  fresh?: boolean;
+}): Promise<GatewayStatusSitesOk | GatewayStatusSitesErr> {
   const now = Date.now();
-  if (cache && cache.expires > now) {
+  const fresh = opts?.fresh === true;
+  if (!fresh && cache && cache.expires > now) {
     return cache.payload;
   }
 
   const base = pagesBase();
   const statusUrl = `${base}/status`;
   const manifestsUrl = `${base}/status/manifests.json`;
+  const jsonHeaders = { Accept: "application/json" } as const;
+  const htmlHeaders = { Accept: "text/html" } as const;
+  const jsonFetch = fresh
+    ? { headers: jsonHeaders, cache: "no-store" as const }
+    : { headers: jsonHeaders, next: { revalidate: 120 } };
+  const htmlFetch = fresh
+    ? { headers: htmlHeaders, cache: "no-store" as const }
+    : { headers: htmlHeaders, next: { revalidate: 120 } };
 
   try {
-    const jsonRes = await fetch(manifestsUrl, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 120 },
-    });
+    const jsonRes = await fetch(manifestsUrl, jsonFetch);
 
     let payload: GatewayStatusSitesOk;
 
@@ -80,10 +86,7 @@ export async function loadGatewayStatusSites(): Promise<
         },
       };
     } else {
-      const res = await fetch(statusUrl, {
-        headers: { Accept: "text/html" },
-        next: { revalidate: 120 },
-      });
+      const res = await fetch(statusUrl, htmlFetch);
 
       if (!res.ok) {
         return {

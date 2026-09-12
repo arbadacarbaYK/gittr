@@ -70,6 +70,10 @@ type RepoGittrPagesPanelProps = {
   ) => Promise<
     { ok: true } | { ok: false; message: string; suggestions?: string[] }
   >;
+  /** Live line while Push Manifest is hashing / uploading / signing. */
+  manifestProgress?: string | null;
+  /** Bumped after a successful manifest so the checklist re-reads the gateway. */
+  gatewayRefreshNonce?: number;
 };
 
 const btnMultiline = cn(
@@ -143,6 +147,8 @@ export function RepoGittrPagesPanel({
   onFocusSiteFiles,
   pagesSiteSlug = null,
   onCommitPagesSiteSlug,
+  manifestProgress = null,
+  gatewayRefreshNonce = 0,
 }: RepoGittrPagesPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -204,7 +210,11 @@ export function RepoGittrPagesPanel({
     const dTag = pagesReadiness.dTag?.toLowerCase() || "";
     (async () => {
       try {
-        const res = await fetch("/api/gittr-pages/status-sites");
+        const res = await fetch(
+          gatewayRefreshNonce > 0
+            ? "/api/gittr-pages/status-sites?fresh=1"
+            : "/api/gittr-pages/status-sites"
+        );
         if (!res.ok) {
           if (!cancelled) setGatewayListsSite(null);
           return;
@@ -227,7 +237,7 @@ export function RepoGittrPagesPanel({
     return () => {
       cancelled = true;
     };
-  }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag]);
+  }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag, gatewayRefreshNonce]);
 
   const slugPreview = slugDraft.trim()
     ? normalizePagesSiteSlugInput(slugDraft)
@@ -589,48 +599,59 @@ export function RepoGittrPagesPanel({
                 </Button>
               ) : null}
               {isOwnerSession && onPublishNamedSiteManifest ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    manifestBusy ||
-                    chainActionsDisabled ||
-                    manifestPublishBlocked
-                  }
-                  title={
-                    manifestPublishBlocked
-                      ? !siteOk
-                        ? "Add a root index.html first."
-                        : "Push to Nostr first (unpushed file or README edits), then publish the page."
-                      : undefined
-                  }
-                  className={cn(
-                    btnMultiline,
-                    "border-amber-700/45 bg-amber-950/20 text-amber-50 hover:bg-amber-950/35"
-                  )}
-                  onClick={() => {
-                    void (async () => {
-                      if (!hasGittrPagesEntryFile(pagesReadiness?.files)) {
-                        alert(
-                          "Cannot push manifest yet: this repo has no static page entry file in root (for example index.html). Add one first."
-                        );
-                        return;
-                      }
-                      setManifestBusy(true);
-                      try {
-                        await onPublishNamedSiteManifest();
-                      } finally {
-                        setManifestBusy(false);
-                      }
-                    })();
-                  }}
-                >
-                  <Upload className="h-4 w-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 text-left font-medium">
-                    {manifestBusy ? "Push Manifest…" : "Push Manifest"}
-                  </span>
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      manifestBusy ||
+                      chainActionsDisabled ||
+                      manifestPublishBlocked
+                    }
+                    title={
+                      manifestPublishBlocked
+                        ? !siteOk
+                          ? "Add a root index.html first."
+                          : "Push to Nostr first (unpushed file or README edits), then publish the page."
+                        : undefined
+                    }
+                    className={cn(
+                      btnMultiline,
+                      "border-amber-700/45 bg-amber-950/20 text-amber-50 hover:bg-amber-950/35"
+                    )}
+                    onClick={() => {
+                      void (async () => {
+                        if (!hasGittrPagesEntryFile(pagesReadiness?.files)) {
+                          alert(
+                            "Cannot push manifest yet: this repo has no static page entry file in root (for example index.html). Add one first."
+                          );
+                          return;
+                        }
+                        setManifestBusy(true);
+                        try {
+                          await onPublishNamedSiteManifest();
+                        } catch (err) {
+                          const msg =
+                            err instanceof Error ? err.message : String(err);
+                          alert(`Manifest publish failed:\n\n${msg}`);
+                        } finally {
+                          setManifestBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    <Upload className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 text-left font-medium">
+                      {manifestBusy ? "Push Manifest…" : "Push Manifest"}
+                    </span>
+                  </Button>
+                  {manifestBusy && manifestProgress ? (
+                    <p className="text-[10px] leading-relaxed text-zinc-500">
+                      {manifestProgress}
+                    </p>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </div>

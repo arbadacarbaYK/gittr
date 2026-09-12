@@ -45,10 +45,7 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
-import {
-  forgeRawDirectoryHref,
-  injectHtmlPreviewBaseHref,
-} from "@/lib/gittr-pages/html-preview-base";
+import { rewriteRelativeHtmlAssets } from "@/lib/gittr-pages/html-preview-base";
 import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
@@ -946,6 +943,10 @@ export function RepoCodePage() {
   const [pagesSiteMatchedUrl, setPagesSiteMatchedUrl] = useState<string | null>(
     null
   );
+  const [pagesGatewayRefresh, setPagesGatewayRefresh] = useState(0);
+  const [pagesManifestProgress, setPagesManifestProgress] = useState<
+    string | null
+  >(null);
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
   /** Bumps when file tree is persisted so safeFiles re-reads gittr_files. */
   const [filesTreeBump, setFilesTreeBump] = useState(0);
@@ -1162,7 +1163,11 @@ export function RepoCodePage() {
     const dTag = candidateGittrPagesUrls.dTag.toLowerCase();
     (async () => {
       try {
-        const res = await fetch("/api/gittr-pages/status-sites");
+        const res = await fetch(
+          pagesGatewayRefresh > 0
+            ? "/api/gittr-pages/status-sites?fresh=1"
+            : "/api/gittr-pages/status-sites"
+        );
         if (!res.ok) {
           if (!cancelled) {
             setPagesSiteListedByGateway(null);
@@ -1204,6 +1209,7 @@ export function RepoCodePage() {
     candidateGittrPagesUrls?.namedUrl,
     candidateGittrPagesUrls?.rootUrl,
     candidateGittrPagesUrls?.dTag,
+    pagesGatewayRefresh,
   ]);
 
   // Persist a real Nostr Pages URL into repo.links when gateway lists it;
@@ -19765,18 +19771,17 @@ export function RepoCodePage() {
                           htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
                         }
 
-                        htmlContent = injectHtmlPreviewBaseHref(
-                          htmlContent,
-                          forgeRawDirectoryHref({
-                            sourceUrl:
-                              effectiveSourceUrl || repoData?.sourceUrl || null,
-                            branch:
-                              selectedBranch ||
-                              repoData?.defaultBranch ||
-                              "main",
-                            filePath: selectedFile,
-                          })
-                        );
+                        htmlContent = rewriteRelativeHtmlAssets(htmlContent, {
+                          sourceUrl:
+                            effectiveSourceUrl || repoData?.sourceUrl || null,
+                          branch:
+                            selectedBranch || repoData?.defaultBranch || "main",
+                          filePath: selectedFile,
+                          origin:
+                            typeof window !== "undefined"
+                              ? window.location.origin
+                              : null,
+                        });
 
                         const livePageUrl =
                           pagesSiteListedByGateway === true
@@ -19788,8 +19793,9 @@ export function RepoCodePage() {
                         return (
                           <div className="w-full">
                             <p className="px-3 py-2 text-[11px] leading-relaxed text-zinc-400 border-b border-[#383B42] bg-[#1e1f24]">
-                              Code preview is this file plus CSS/images from the
-                              GitHub/GitLab/Codeberg raw tree when a{" "}
+                              Code preview is this file plus CSS/images loaded
+                              through gittr from the GitHub/GitLab/Codeberg tree
+                              when a{" "}
                               <code className="text-zinc-300">source</code> URL
                               exists. The real look is the live Nostr Page after{" "}
                               <strong className="text-zinc-300">
@@ -23293,6 +23299,8 @@ export function RepoCodePage() {
                                   null
                                 }
                                 onCommitPagesSiteSlug={commitRepoPagesSiteSlug}
+                                manifestProgress={pagesManifestProgress}
+                                gatewayRefreshNonce={pagesGatewayRefresh}
                                 autoReadmeOnPush={gittrPagesAutoReadme}
                                 onAutoReadmeOnPushChange={(value) => {
                                   setGittrPagesAutoReadme(value);
@@ -23470,27 +23478,48 @@ export function RepoCodePage() {
                                       warmErr
                                     );
                                   }
-                                  const r = await publishNamedSiteManifest({
-                                    entity: resolvedParams.entity,
-                                    repo: resolvedParams.repo,
-                                    ownerPubkeyHex: ownerHexForPages,
-                                    dTag: gittrPagesUrls.dTag,
-                                    siteTitle: title,
-                                    siteDescription: desc,
-                                    sourceUrl,
-                                    gitSourceUrl,
-                                    defaultBranch: defaultBranchForManifest,
-                                    publish,
-                                    subscribe,
-                                    defaultRelays,
-                                    signEvent: signer.signEvent,
-                                    getPublicKey: signer.getPublicKey,
-                                    onProgress: (m) =>
-                                      console.log(
-                                        `[gittr Pages manifest] ${m}`
-                                      ),
-                                  });
+                                  setPagesManifestProgress(null);
+                                  let r: Awaited<
+                                    ReturnType<typeof publishNamedSiteManifest>
+                                  >;
+                                  try {
+                                    r = await publishNamedSiteManifest({
+                                      entity: resolvedParams.entity,
+                                      repo: resolvedParams.repo,
+                                      ownerPubkeyHex: ownerHexForPages,
+                                      dTag: gittrPagesUrls.dTag,
+                                      siteTitle: title,
+                                      siteDescription: desc,
+                                      sourceUrl,
+                                      gitSourceUrl,
+                                      defaultBranch: defaultBranchForManifest,
+                                      publish,
+                                      subscribe,
+                                      defaultRelays,
+                                      signEvent: signer.signEvent,
+                                      getPublicKey: signer.getPublicKey,
+                                      onProgress: (m) => {
+                                        console.log(
+                                          `[gittr Pages manifest] ${m}`
+                                        );
+                                        setPagesManifestProgress(m);
+                                      },
+                                    });
+                                  } catch (pubErr) {
+                                    const msg =
+                                      pubErr instanceof Error
+                                        ? pubErr.message
+                                        : String(pubErr);
+                                    setPagesManifestProgress(null);
+                                    void appAlert(
+                                      `Manifest publish failed:\n\n${msg}`,
+                                      "gittr Pages"
+                                    );
+                                    return;
+                                  }
+                                  setPagesManifestProgress(null);
                                   if (r.ok) {
+                                    setPagesGatewayRefresh((n) => n + 1);
                                     const serverListLine = r.serverListEventId
                                       ? `\nBlossom server list (kind 10063): ${
                                           r.serverListEventId
@@ -23500,7 +23529,7 @@ export function RepoCodePage() {
                                             : "pending — relays may need a moment"
                                         }`
                                       : "";
-                                    await appAlert(
+                                    void appAlert(
                                       `Pages manifest published.\n\nEvent id:\n${
                                         r.manifestEventId
                                       }\n\nFiles in manifest: ${
@@ -23513,7 +23542,7 @@ export function RepoCodePage() {
                                       "gittr Pages"
                                     );
                                   } else {
-                                    await appAlert(
+                                    void appAlert(
                                       `Manifest publish failed:\n\n${r.error}`,
                                       "gittr Pages"
                                     );
