@@ -41,3 +41,36 @@ export function gatewayIngestUrl(
   if (dTag) qs.set("d", dTag);
   return `${base}/status/ingest?${qs.toString()}`;
 }
+
+export type PagesIngestClientResult = {
+  ok: boolean;
+  found?: boolean;
+};
+
+/** After Push Manifest: ask gittr to ingest this pubkey+d and bust the directory cache. */
+export async function pokeGittrPagesIngest(
+  authorHex: string,
+  dTag: string
+): Promise<PagesIngestClientResult | null> {
+  try {
+    const res = await fetch(
+      `/api/gittr-pages/ingest?author=${encodeURIComponent(
+        authorHex
+      )}&d=${encodeURIComponent(dTag)}`
+    );
+    const raw = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      gateway?: { found?: boolean };
+    } | null;
+    const found =
+      raw && raw.gateway && typeof raw.gateway.found === "boolean"
+        ? raw.gateway.found
+        : undefined;
+    return {
+      ok: raw && typeof raw.ok === "boolean" ? raw.ok : res.ok,
+      found,
+    };
+  } catch {
+    return null;
+  }
+}

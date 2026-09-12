@@ -21,3 +21,15 @@ export function announcePanelSummaryLabel(args: {
 export function missingForgeSourceAnnounceMessage(): string {
   return "Link a GitHub, Codeberg, or GitLab source first (Settings → source). Announce always uses a hashed installer on a real forge Release tag — not a tagless app. Nostr-only file upload is not available yet; Releases can still save notes in this browser.";
 }
+
+export function formatAppAnnounceSuccessCopy(input: {
+  appId: string;
+  version: string;
+}): string {
+  return `✅ Live as ${input.appId}@${input.version}. See Apps.`;
+}
+
+export function formatAppAnnounceErrorCopy(message: string): string {
+  const body = (message || "").trim() || "Publish failed";
+  return `❌ ${body}`;
+}

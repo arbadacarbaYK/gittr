@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   announcePanelSummaryLabel,
+  formatAppAnnounceErrorCopy,
+  formatAppAnnounceSuccessCopy,
   missingForgeSourceAnnounceMessage,
 } from "./announce-panel-copy";
 
@@ -26,12 +28,28 @@ describe("announcePanelSummaryLabel", () => {
   });
 
   it("does not put latest on the collapsed sidebar button", () => {
-    expect(announcePanelSummaryLabel({ variant: "sidebar" })).toBe("Nostr Apps");
+    expect(announcePanelSummaryLabel({ variant: "sidebar" })).toBe(
+      "Nostr Apps"
+    );
   });
 
   it("keeps the inline fallback before a tag is known", () => {
     expect(announcePanelSummaryLabel({ variant: "inline" })).toBe(
       "Announce on Nostr"
+    );
+  });
+});
+
+describe("app announce popup copy", () => {
+  it("uses the same check / fail marks as repo push", () => {
+    expect(
+      formatAppAnnounceSuccessCopy({
+        appId: "space.gittr.app",
+        version: "1.2.0",
+      })
+    ).toBe("✅ Live as space.gittr.app@1.2.0. See Apps.");
+    expect(formatAppAnnounceErrorCopy("No signing method")).toBe(
+      "❌ No signing method"
     );
   });
 });

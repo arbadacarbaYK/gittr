@@ -18,9 +18,25 @@
     });
   });
 
+  function isGittrPagesHost(href) {
+    try {
+      var host = new URL(href, window.location.href).hostname.toLowerCase();
+      return (
+        host === "pages.gittr.space" || host.endsWith(".pages.gittr.space")
+      );
+    } catch (err) {
+      return false;
+    }
+  }
+
   Array.prototype.slice
     .call(document.querySelectorAll('a[href^="http"]'))
     .forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      if (isGittrPagesHost(href)) {
+        a.removeAttribute("target");
+        return;
+      }
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer");
     });

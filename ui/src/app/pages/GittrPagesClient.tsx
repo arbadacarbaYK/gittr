@@ -5,13 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { GittrPageDirectoryCard } from "@/components/pages/GittrPageDirectoryCard";
 import { buttonVariants } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
-import {
-  authorPubkeyHexNormalized,
-  authorSearchTokens,
-  siteHostname,
-  siteKindLabel,
-} from "@/lib/gittr-pages/author-card-label";
+import { authorPubkeyHexNormalized } from "@/lib/gittr-pages/author-card-label";
 import { GITTR_PAGES_PUBLISHED_EVENT } from "@/lib/gittr-pages/pages-published";
+import {
+  pagesSiteMatchesQuery,
+  queryNeedsKind0Names,
+} from "@/lib/gittr-pages/pages-search";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
@@ -57,6 +56,7 @@ function CardSkeleton() {
 export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
   const [loading, setLoading] = useState(true);
   const [hydrating, setHydrating] = useState(false);
+  const [hydrateFailed, setHydrateFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<ApiPayload | null>(null);
   const [query, setQuery] = useState("");
@@ -67,6 +67,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setHydrateFailed(false);
     setVisibleCount(REPO_LIST_PAGE_SIZE);
 
     const apply = (data: ApiPayload) => {
@@ -102,11 +103,13 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
               "[pages] Full directory hydrate failed:",
               full.error || rest.status
             );
+            if (!cancelled) setHydrateFailed(true);
             return;
           }
           apply(full);
         } catch (hydrateErr) {
           console.warn("[pages] Full directory hydrate failed:", hydrateErr);
+          if (!cancelled) setHydrateFailed(true);
         } finally {
           if (!cancelled) {
             setHydrating(false);
@@ -141,44 +144,42 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
     setVisibleCount(REPO_LIST_PAGE_SIZE);
   }, [query]);
 
+  const profilePubkeys = useMemo(() => {
+    const ids = new Set<string>();
+    const sites = payload?.sites ?? [];
+    const q = query.trim();
+    const pool =
+      q && queryNeedsKind0Names(q)
+        ? sites
+        : q
+        ? sites.filter((s) => pagesSiteMatchesQuery(s, q))
+        : sites.slice(0, visibleCount);
+    for (const row of pool) {
+      const hex = authorPubkeyHexNormalized(row.authorPubkeyHex);
+      if (hex) ids.add(hex);
+    }
+    return Array.from(ids);
+  }, [payload, query, visibleCount]);
+  const metadataMap = useContributorMetadata(profilePubkeys);
+
   const filtered = useMemo(() => {
     const sites = payload?.sites ?? [];
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) {
       return sites;
     }
     return sites.filter((s) => {
-      const hay = [
-        s.title,
-        authorSearchTokens(s),
-        s.description,
-        s.siteUrl,
-        siteHostname(s.siteUrl),
-        siteKindLabel(s.siteKind),
-        s.updatedLabel,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
+      const hex = authorPubkeyHexNormalized(s.authorPubkeyHex);
+      const authorMeta = hex ? metadataMap[hex] : undefined;
+      return pagesSiteMatchesQuery(s, q, { authorMeta });
     });
-  }, [payload, query]);
+  }, [payload, query, metadataMap]);
 
   const shownCount = clampVisibleCount(visibleCount, filtered.length);
   const visible = useMemo(
     () => filtered.slice(0, shownCount),
     [filtered, shownCount]
   );
-
-  const profilePubkeys = useMemo(() => {
-    const ids = new Set<string>();
-    for (const row of visible) {
-      const hex = authorPubkeyHexNormalized(row.authorPubkeyHex);
-      if (hex) ids.add(hex);
-    }
-    return Array.from(ids);
-  }, [visible]);
-  const metadataMap = useContributorMetadata(profilePubkeys);
 
   const base = pagesBase.replace(/\/$/, "");
   const statusPageUrl = `${base}/status`;
@@ -244,18 +245,39 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
 
       <div className="mt-8 w-full pb-16">
         <div className="mb-8 rounded-xl border border-[#383B42] bg-[#0E1116]/90 p-4 shadow-lg shadow-black/20">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-            <input
-              aria-label="Search sites"
-              className="w-full rounded-lg border border-[#383B42] bg-[#171B21] py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-gray-500 focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-primary)]/40"
-              disabled={loading || !!error}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by site name, author, or description…"
-              type="search"
-              value={query}
-            />
-          </div>
+          <form
+            role="search"
+            onSubmit={(e) => {
+              e.preventDefault();
+            }}
+          >
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                aria-hidden
+              />
+              <input
+                aria-label="Search sites"
+                autoComplete="off"
+                className="w-full rounded-lg border border-[#383B42] bg-[#171B21] py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-gray-500 focus:border-[var(--color-accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-primary)]/40"
+                disabled={loading && !payload}
+                name="q"
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by site name, author, or description…"
+                type="search"
+                value={query}
+              />
+            </div>
+          </form>
+          {query.trim() && !loading && !error ? (
+            <p className="mt-2 text-xs text-gray-500" aria-live="polite">
+              {filtered.length === 1 ? "1 match" : `${filtered.length} matches`}
+              {hydrating ? " · still loading the rest of the directory" : ""}
+              {hydrateFailed
+                ? " · search is only on the first page until the full list loads"
+                : ""}
+            </p>
+          ) : null}
           <p className="mt-3 text-xs leading-relaxed text-gray-500">
             <a
               className="font-medium text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
@@ -322,6 +344,8 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             No sites match your search. Clear the box to see the full list.
             {hydrating
               ? " Still loading remaining sites — try again in a moment."
+              : hydrateFailed
+              ? " Only the first page of sites loaded — try a more specific name, or refresh."
               : ""}
           </p>
         )}

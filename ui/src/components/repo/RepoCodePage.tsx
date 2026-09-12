@@ -53,7 +53,14 @@ import {
   extraPagesDTagsForRepo,
   resolveRepoPagesDTag,
 } from "@/lib/gittr-pages/pages-public-slug";
-import { notifyGittrPagesPublished } from "@/lib/gittr-pages/pages-published";
+import {
+  formatPagesManifestErrorAlert,
+  formatPagesManifestSuccessAlert,
+} from "@/lib/gittr-pages/pages-manifest-alert";
+import {
+  notifyGittrPagesPublished,
+  pokeGittrPagesIngest,
+} from "@/lib/gittr-pages/pages-published";
 import {
   loadPagesAutoReadme,
   loadPagesSiteSlugBackup,
@@ -23473,7 +23480,7 @@ export function RepoCodePage() {
                                         : String(pubErr);
                                     setPagesManifestProgress(null);
                                     void appAlert(
-                                      `Manifest publish failed:\n\n${msg}`,
+                                      formatPagesManifestErrorAlert(msg),
                                       "gittr Pages"
                                     );
                                     return;
@@ -23492,42 +23499,27 @@ export function RepoCodePage() {
                                       authorHex: ownerHexForPages,
                                       dTag: gittrPagesUrls.dTag,
                                     });
-                                    try {
-                                      await fetch(
-                                        `/api/gittr-pages/ingest?author=${encodeURIComponent(
-                                          ownerHexForPages
-                                        )}&d=${encodeURIComponent(
-                                          gittrPagesUrls.dTag
-                                        )}`
-                                      );
-                                    } catch {
-                                      /* directory still refreshes below */
-                                    }
+                                    const ingest = await pokeGittrPagesIngest(
+                                      ownerHexForPages,
+                                      gittrPagesUrls.dTag
+                                    );
                                     setPagesGatewayRefresh((n) => n + 1);
-                                    const serverListLine = r.serverListEventId
-                                      ? `\nBlossom server list (kind 10063): ${
-                                          r.serverListEventId
-                                        }\nServer-list relay confirmation: ${
-                                          r.serverListConfirmed
-                                            ? "yes"
-                                            : "pending — relays may need a moment"
-                                        }`
-                                      : "";
                                     void appAlert(
-                                      `Pages manifest published.\n\nEvent id:\n${
-                                        r.manifestEventId
-                                      }\n\nFiles in manifest: ${
-                                        r.pathCount
-                                      }\nRelay confirmation: ${
-                                        r.confirmed
-                                          ? "yes"
-                                          : "pending — check /pages shortly"
-                                      }${serverListLine}\n\nLive URL:\n${namedUrl}`,
+                                      formatPagesManifestSuccessAlert({
+                                        manifestEventId: r.manifestEventId,
+                                        pathCount: r.pathCount,
+                                        confirmed: r.confirmed,
+                                        namedUrl,
+                                        serverListEventId: r.serverListEventId,
+                                        serverListConfirmed:
+                                          r.serverListConfirmed,
+                                        ingestFound: ingest?.found,
+                                      }),
                                       "gittr Pages"
                                     );
                                   } else {
                                     void appAlert(
-                                      `Manifest publish failed:\n\n${r.error}`,
+                                      formatPagesManifestErrorAlert(r.error),
                                       "gittr Pages"
                                     );
                                   }

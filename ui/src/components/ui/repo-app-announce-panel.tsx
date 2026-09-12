@@ -15,6 +15,7 @@ import {
 } from "@/lib/nostr/software-announce-build";
 import {
   announcePanelSummaryLabel,
+  formatAppAnnounceErrorCopy,
   missingForgeSourceAnnounceMessage,
 } from "@/lib/repo/announce-panel-copy";
 import type {
@@ -34,6 +35,7 @@ import {
   Package,
   RefreshCw,
   Smartphone,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -435,10 +437,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
 
         {error ? (
           <div
-            className="rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
+            className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
             role="alert"
           >
-            {error}
+            <XCircle
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300"
+              aria-hidden
+            />
+            <span>{formatAppAnnounceErrorCopy(error)}</span>
           </div>
         ) : null}
 
@@ -578,29 +584,37 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         </div>
 
         {publishResult ? (
-          <div className="rounded-md border border-[var(--color-accent-primary)]/35 bg-[var(--color-accent-primary)]/10 px-2.5 py-2 text-[11px] leading-snug text-[var(--color-text-primary)]">
-            Live as {publishResult.appId}@{publishResult.version}. See{" "}
-            <Link href="/apps" className="underline underline-offset-2">
-              Apps
-            </Link>
-            .
-            {publishResult.whitelistHint ? (
-              <p className="mt-1.5 text-amber-100/95">
-                For Zapstore catalog indexing, add{" "}
-                <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code>{" "}
-                at the GitHub / Codeberg / GitLab repo root (pubkey +
-                repository), then publish again.{" "}
-                <a
-                  href={ZAPSTORE_PUBLISH_DOCS}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2"
-                >
-                  Zapstore publish docs
-                </a>
-                .
-              </p>
-            ) : null}
+          <div className="flex items-start gap-2 rounded-md border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-2 text-[11px] leading-snug text-[var(--color-text-primary)]">
+            <CheckCircle2
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400"
+              aria-hidden
+            />
+            <div>
+              ✅ Live as {publishResult.appId}@{publishResult.version}. See{" "}
+              <Link href="/apps" className="underline underline-offset-2">
+                Apps
+              </Link>
+              .
+              {publishResult.whitelistHint ? (
+                <p className="mt-1.5 text-amber-100/95">
+                  For Zapstore catalog indexing, add{" "}
+                  <code className="rounded bg-zinc-900 px-1">
+                    zapstore.yaml
+                  </code>{" "}
+                  at the GitHub / Codeberg / GitLab repo root (pubkey +
+                  repository), then publish again.{" "}
+                  <a
+                    href={ZAPSTORE_PUBLISH_DOCS}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    Zapstore publish docs
+                  </a>
+                  .
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : (
           <p className="text-[10px] leading-snug text-zinc-500">

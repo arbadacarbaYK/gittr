@@ -92,3 +92,8 @@ export const GITTR_PAGES_HUB_URL = gittrOwnerPagesNamedUrl("gittr-docu");
 
 /** Client cookbook (gittr-helper-tools repo). */
 export const GITTR_PAGES_SNIPS_URL = gittrOwnerPagesNamedUrl("gittr-snips");
+
+export const GITTR_PAGES_GITNOSTR_URL = gittrOwnerPagesNamedUrl("gitnostr");
+export const GITTR_PAGES_MCP_URL = gittrOwnerPagesNamedUrl("gittr-mcp");
+export const GITTR_PAGES_NSITE_URL = gittrOwnerPagesNamedUrl("nsite-gateway");
+export const GITTR_PAGES_PYRAMID_URL = gittrOwnerPagesNamedUrl("pyramid");
