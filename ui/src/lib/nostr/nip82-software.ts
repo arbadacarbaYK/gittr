@@ -59,7 +59,8 @@ export function safeHttpUrlTag(raw: string | undefined): string | undefined {
  * longer resolves (browser `ERR_NAME_NOT_RESOLVED`). Current icons live on
  * `cdn.zapstore.dev` without a `.webp` suffix — and old hashes usually 404
  * there too. Drop the dead host so cards show the letter/package fallback
- * instead of a broken image.
+ * instead of a broken image. Profile and /apps both use the Package tile
+ * fallback when no live icon URL remains.
  */
 export function normalizeSoftwareIconUrl(
   raw: string | undefined
@@ -184,7 +185,9 @@ export function parseSoftwareApp(
     appId,
     name,
     summary: readTag(event, "summary"),
-    icon: normalizeSoftwareIconUrl(readTag(event, "icon")),
+    icon:
+      normalizeSoftwareIconUrl(readTag(event, "icon")) ||
+      normalizeSoftwareIconUrl(readTag(event, "image")),
     repository,
     webUrl: safeHttpUrlTag(readTag(event, "url")),
     topics: readTagAll(event, "t")

@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import {
+  SoftwareAppDirectoryCard,
+  SoftwareAppProfileFooter,
+} from "@/components/apps/SoftwareAppDirectoryCard";
+import { GittrPageDirectoryCard } from "@/components/pages/GittrPageDirectoryCard";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
+import {
+  authorPubkeyHexNormalized,
+} from "@/lib/gittr-pages/author-card-label";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import {
   type ParsedSoftwareApp,
   appDedupKey,
   preferOwnerSoftwareApps,
 } from "@/lib/nostr/nip82-software";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
-import { cn } from "@/lib/utils";
 
-import { ExternalLink, Globe, Smartphone } from "lucide-react";
+import { Globe, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
 
@@ -59,7 +66,7 @@ function runWhenIdle(fn: () => void, timeoutMs: number): () => void {
 
 /**
  * Profile sections for this person's Nostr Pages (gateway) and Apps (NIP-82).
- * Mirrors the stacked Repositories block style — not tabs.
+ * Cards use the same chrome as /pages and /apps.
  *
  * Load order: wait for browser idle (after repos/meta paint), then Pages HTTP,
  * then author-scoped Apps — so the full Zapstore scrape does not fight profile-repos.
@@ -83,6 +90,21 @@ export function ProfilePagesAppsSections({
   const [apps, setApps] = useState<ParsedSoftwareApp[]>([]);
   const [visiblePages, setVisiblePages] = useState(REPO_LIST_PAGE_SIZE);
   const [visibleApps, setVisibleApps] = useState(REPO_LIST_PAGE_SIZE);
+
+  const profilePubkeys = useMemo(() => {
+    const s = new Set<string>();
+    if (ownerHex) s.add(ownerHex);
+    for (const a of apps) {
+      s.add(a.pubkey.toLowerCase());
+      for (const p of a.attributedPubkeys) s.add(p.toLowerCase());
+    }
+    for (const site of pages) {
+      const hex = authorPubkeyHexNormalized(site.authorPubkeyHex);
+      if (hex) s.add(hex);
+    }
+    return Array.from(s);
+  }, [ownerHex, apps, pages]);
+  const metadataMap = useContributorMetadata(profilePubkeys);
 
   useEffect(() => {
     setVisiblePages(REPO_LIST_PAGE_SIZE);
@@ -196,37 +218,17 @@ export function ProfilePagesAppsSections({
             </Link>
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pages.slice(0, visiblePages).map((s) => (
-              <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
-                <article className="flex h-full min-h-[10rem] flex-col rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
-                  <h3 className="line-clamp-2 text-lg font-semibold text-white">
-                    {s.title}
-                  </h3>
-                  {s.description ? (
-                    <p className="mt-2 line-clamp-2 text-sm text-gray-400">
-                      {s.description}
-                    </p>
-                  ) : null}
-                  <p className="mt-2 text-xs text-gray-500">
-                    {s.pathCount} path{s.pathCount === 1 ? "" : "s"}
-                    {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
-                  </p>
-                  <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-3">
-                    <a
-                      className={cn(
-                        buttonVariants({ size: "sm", variant: "default" })
-                      )}
-                      href={s.siteUrl}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      Open site
-                      <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                    </a>
-                  </div>
-                </article>
-              </li>
-            ))}
+            {pages.slice(0, visiblePages).map((s) => {
+              const hex = authorPubkeyHexNormalized(s.authorPubkeyHex);
+              return (
+                <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
+                  <GittrPageDirectoryCard
+                    site={s}
+                    authorMeta={hex ? metadataMap[hex] : undefined}
+                  />
+                </li>
+              );
+            })}
           </ul>
           <LoadMoreButton
             visibleCount={Math.min(visiblePages, pages.length)}
@@ -257,86 +259,12 @@ export function ProfilePagesAppsSections({
           <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {apps.slice(0, visibleApps).map((app) => (
               <li key={appDedupKey(app.pubkey, app.appId)}>
-                <article className="flex h-full min-h-[10rem] gap-3 rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
-                  <div className="shrink-0">
-                    {app.icon ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={app.icon}
-                        alt=""
-                        className="h-14 w-14 shrink-0 rounded-xl border border-[#383B42]/80 object-cover bg-[#171B21]"
-                        onError={(e) => {
-                          const el = e.currentTarget;
-                          el.style.display = "none";
-                          const sib =
-                            el.nextElementSibling as HTMLElement | null;
-                          if (sib) sib.style.display = "flex";
-                        }}
-                      />
-                    ) : null}
-                    <div
-                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21] text-lg font-bold text-gray-400"
-                      style={{ display: app.icon ? "none" : "flex" }}
-                    >
-                      {app.name.slice(0, 1).toUpperCase()}
-                    </div>
-                  </div>
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <h3 className="truncate text-lg font-semibold text-white">
-                      {app.name}
-                    </h3>
-                    {app.summary ? (
-                      <p className="mt-1 line-clamp-2 text-sm text-gray-400">
-                        {app.summary}
-                      </p>
-                    ) : null}
-                    <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                      {app.gittrRepoPath ? (
-                        <a
-                          className={cn(
-                            buttonVariants({
-                              size: "sm",
-                              variant: "outline",
-                            })
-                          )}
-                          href={app.gittrRepoPath}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Repo
-                        </a>
-                      ) : null}
-                      {app.webUrl || app.repository ? (
-                        <a
-                          className={cn(
-                            buttonVariants({
-                              size: "sm",
-                              variant: "default",
-                            })
-                          )}
-                          href={app.webUrl || app.repository}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Open
-                          <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                        </a>
-                      ) : (
-                        <Link
-                          className={cn(
-                            buttonVariants({
-                              size: "sm",
-                              variant: "outline",
-                            })
-                          )}
-                          href="/apps"
-                        >
-                          View in Apps
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </article>
+                <SoftwareAppDirectoryCard
+                  app={app}
+                  authorMeta={metadataMap[app.pubkey.toLowerCase()]}
+                  metadataMap={metadataMap}
+                  footer={<SoftwareAppProfileFooter app={app} />}
+                />
               </li>
             ))}
           </ul>

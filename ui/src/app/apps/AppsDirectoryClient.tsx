@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { SoftwareAppDirectoryCard } from "@/components/apps/SoftwareAppDirectoryCard";
 import { buttonVariants } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
-import { TrustBadge } from "@/components/ui/trust-badge";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
 import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
 import {
   parseGitHubRepoSpec,
@@ -31,10 +30,7 @@ import {
   platformHintToLabel,
 } from "@/lib/nostr/nip82-software";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
-import {
-  type Metadata,
-  useContributorMetadata,
-} from "@/lib/nostr/useContributorMetadata";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
   REPO_LIST_PAGE_SIZE,
   clampVisibleCount,
@@ -45,10 +41,6 @@ import {
   appNavigate,
   shouldPauseHeavyCatalogOnAnchorLeave,
 } from "@/lib/utils/app-navigate";
-import {
-  isDisplayableProfilePicture,
-  ownerProfileHref,
-} from "@/lib/utils/entity-resolver";
 
 import {
   ChevronDown,
@@ -83,31 +75,6 @@ function shortNpub(hex: string): string {
   } catch {
     return hex.slice(0, 12) + "…";
   }
-}
-
-function profileDisplayName(
-  meta: Metadata | undefined,
-  fallbackNpubShort: string
-): string {
-  return pickProfileDisplayName(meta) || fallbackNpubShort;
-}
-
-function npubForTitle(hex: string): string {
-  try {
-    if (/^[0-9a-f]{64}$/i.test(hex)) {
-      return nip19.npubEncode(hex);
-    }
-  } catch {
-    // ignore
-  }
-  return hex;
-}
-
-function formatStarCount(n: number): string {
-  if (n < 1000) return String(n);
-  const k = n / 1000;
-  const s = k >= 10 ? k.toFixed(0) : k.toFixed(1);
-  return `${s.replace(/\.0$/, "")}k`;
 }
 
 function upsertReleaseInMap(
@@ -1008,181 +975,23 @@ export function AppsDirectoryClient() {
                 );
                 const labels = cardLabelsForApp(app, assetEvents);
                 const apk = pickAndroidApkAsset(assetEvents);
-                const npubShort = shortNpub(app.pubkey);
                 const authorMeta = metadataMap[app.pubkey.toLowerCase()];
-                const authorLabel = profileDisplayName(authorMeta, npubShort);
                 const ghSpec = app.repository
                   ? parseGitHubRepoSpec(app.repository)
                   : null;
                 const ghKey = ghSpec ? `${ghSpec.owner}/${ghSpec.repo}` : null;
                 const gh = ghKey ? ghStats[ghKey] : undefined;
-                const profileHref = ownerProfileHref(app.pubkey);
 
                 return (
                   <li key={key}>
-                    <article
-                      className={cn(
-                        "group relative flex h-full min-h-[10rem] gap-4 overflow-hidden rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-5 shadow-md transition",
-                        "hover:-translate-y-0.5 hover:border-[var(--color-accent-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5"
-                      )}
-                    >
-                      <div className="shrink-0">
-                        {app.icon ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            alt=""
-                            className="h-16 w-16 rounded-xl border border-[#383B42]/80 bg-[#171B21] object-cover"
-                            height={64}
-                            src={app.icon}
-                            width={64}
-                            onError={(e) => {
-                              const el = e.currentTarget;
-                              el.style.display = "none";
-                              const sib =
-                                el.nextElementSibling as HTMLElement | null;
-                              if (sib) sib.style.display = "flex";
-                            }}
-                          />
-                        ) : null}
-                        <div
-                          className="h-16 w-16 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21]"
-                          style={{
-                            display: app.icon ? "none" : "flex",
-                          }}
-                        >
-                          <Package className="h-8 w-8 text-gray-600" />
-                        </div>
-                      </div>
-                      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-                        <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
-                          {app.name}
-                        </h2>
-                        <p className="mt-0.5 truncate font-mono text-xs text-gray-500">
-                          {app.appId}
-                        </p>
-                        <div className="mt-1 flex min-w-0 items-start gap-2">
-                          {profileHref ? (
-                            <a
-                              className="flex min-w-0 flex-1 items-start gap-2 rounded-md outline-offset-2 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent-primary)]"
-                              href={profileHref}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                              title={`${authorLabel} · ${npubForTitle(
-                                app.pubkey
-                              )}`}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                alt=""
-                                className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
-                                height={28}
-                                src={
-                                  authorMeta?.picture &&
-                                  isDisplayableProfilePicture(
-                                    authorMeta.picture
-                                  )
-                                    ? authorMeta.picture
-                                    : "/logo.svg"
-                                }
-                                width={28}
-                                onError={(e) => {
-                                  const el = e.currentTarget;
-                                  if (!el.src.endsWith("/logo.svg")) {
-                                    el.src = "/logo.svg";
-                                  }
-                                }}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline">
-                                  {authorLabel}
-                                </span>
-                                {authorMeta?.nip05?.trim() ? (
-                                  <p
-                                    className="truncate text-[11px] text-gray-500"
-                                    title={authorMeta.nip05}
-                                  >
-                                    {authorMeta.nip05}
-                                  </p>
-                                ) : null}
-                                <div className="mt-1">
-                                  <TrustBadge targetPubkey={app.pubkey} />
-                                </div>
-                              </div>
-                            </a>
-                          ) : (
-                            <>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                alt=""
-                                className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
-                                height={28}
-                                src="/logo.svg"
-                                width={28}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium text-gray-400">
-                                  {authorLabel}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        {app.attributedPubkeys.length > 0 ? (
-                          <p className="mt-1.5 text-[11px] leading-snug text-gray-500">
-                            <span className="text-gray-600">With </span>
-                            {app.attributedPubkeys.slice(0, 3).map((pk, i) => (
-                              <span key={pk}>
-                                {i > 0 ? ", " : ""}
-                                {profileDisplayName(
-                                  metadataMap[pk],
-                                  shortNpub(pk)
-                                )}
-                              </span>
-                            ))}
-                            {app.attributedPubkeys.length > 3
-                              ? ` +${app.attributedPubkeys.length - 3}`
-                              : ""}
-                          </p>
-                        ) : null}
-                        {gh || app.license ? (
-                          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
-                            {gh ? (
-                              <span title="From GitHub public API (stars / forks)">
-                                ⭐ {formatStarCount(gh.stars)}
-                                {gh.forks > 0
-                                  ? ` · ${formatStarCount(gh.forks)} forks`
-                                  : ""}
-                              </span>
-                            ) : null}
-                            {app.license ? (
-                              <span
-                                className="rounded border border-[#383B42]/80 bg-[#171B21]/60 px-1.5 py-0.5 font-mono text-[10px] text-gray-400"
-                                title="SPDX license (NIP-82)"
-                              >
-                                {app.license}
-                              </span>
-                            ) : null}
-                          </p>
-                        ) : null}
-                        {labels.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {labels.map((lb) => (
-                              <span
-                                key={lb}
-                                className="rounded-full border border-[#383B42] bg-[#171B21]/90 px-2 py-0.5 text-[11px] font-medium text-gray-400"
-                              >
-                                {lb}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                        {app.summary ? (
-                          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-gray-400">
-                            {app.summary}
-                          </p>
-                        ) : null}
-
-                        <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-4">
+                    <SoftwareAppDirectoryCard
+                      app={app}
+                      authorMeta={authorMeta}
+                      metadataMap={metadataMap}
+                      labels={labels}
+                      gh={gh}
+                      footer={
+                        <>
                           {apk?.url ? (
                             <a
                               className={cn(
@@ -1302,9 +1111,9 @@ export function AppsDirectoryClient() {
                               <ExternalLink className="ml-1.5 h-3 w-3" />
                             </a>
                           ) : null}
-                        </div>
-                      </div>
-                    </article>
+                        </>
+                      }
+                    />
                   </li>
                 );
               })}

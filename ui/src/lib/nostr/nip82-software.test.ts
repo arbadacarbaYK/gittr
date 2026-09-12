@@ -57,6 +57,23 @@ describe("parseSoftwareApp URL sanitizing", () => {
     expect(parsed?.repository).toBeUndefined();
   });
 
+  it("uses image tag when icon is missing", () => {
+    const parsed = parseSoftwareApp(
+      appEvent([["image", "https://cdn.example.com/from-image.png"]])
+    );
+    expect(parsed?.icon).toBe("https://cdn.example.com/from-image.png");
+  });
+
+  it("prefers icon over image", () => {
+    const parsed = parseSoftwareApp(
+      appEvent([
+        ["icon", "https://cdn.example.com/icon.png"],
+        ["image", "https://cdn.example.com/from-image.png"],
+      ])
+    );
+    expect(parsed?.icon).toBe("https://cdn.example.com/icon.png");
+  });
+
   it("keeps legit https urls", () => {
     const parsed = parseSoftwareApp(
       appEvent([
