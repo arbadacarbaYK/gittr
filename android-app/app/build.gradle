@@ -10,6 +10,10 @@ android {
     namespace "space.gittr.app"
     compileSdk 35
 
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId "space.gittr.app"
         minSdk 26
@@ -26,6 +30,7 @@ android {
                 store = file(override)
             }
             storeFile store
+            storeType "pkcs12"
             storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "gittr-android-ci"
             keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "gittr"
             keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: "gittr-android-ci"
@@ -57,5 +62,4 @@ android {
 dependencies {
     implementation "androidx.appcompat:appcompat:1.7.0"
     implementation "androidx.activity:activity-ktx:1.9.3"
-    implementation "androidx.webkit:webkit:1.12.1"
 }

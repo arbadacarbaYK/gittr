@@ -26,6 +26,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Android SDK platform 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ]; then
+            echo "ANDROID_SDK_ROOT/ANDROID_HOME not set"
+            exit 1
+          fi
+          echo "sdk.dir=$SDK" > android-app/local.properties
+          echo "Using Android SDK at $SDK"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -72,7 +84,7 @@ jobs:
       - name: Build release APK
         working-directory: android-app
         run: |
-          gradle assembleRelease \
+          gradle assembleRelease --stacktrace \
             -PversionName="${{ steps.ver.outputs.version_name }}" \
             -PversionCode="${{ steps.ver.outputs.version_code }}"
 
