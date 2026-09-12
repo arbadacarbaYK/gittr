@@ -8,6 +8,7 @@ import {
   appDedupKey,
   dedupeSoftwareApps,
   parseSoftwareRelease,
+  preferOwnerSoftwareApps,
 } from "@/lib/nostr/nip82-software";
 import { RELAY_ZAPSTORE } from "@/lib/nostr/software-catalog-relays";
 
@@ -157,7 +158,12 @@ async function fetchCatalogFromRelays(
   }
 
   const appMap = dedupeSoftwareApps(rawApps);
-  const apps = Array.from(appMap.values()).sort((a, b) =>
+  let apps = Array.from(appMap.values());
+  if (authorScoped) {
+    // Owner's own 32267 wins over Zapstore `#p` republications of the same id.
+    apps = preferOwnerSoftwareApps(apps, authorScoped);
+  }
+  apps.sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
   );
 

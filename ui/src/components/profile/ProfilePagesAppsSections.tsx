@@ -8,6 +8,7 @@ import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-statu
 import {
   type ParsedSoftwareApp,
   appDedupKey,
+  preferOwnerSoftwareApps,
 } from "@/lib/nostr/nip82-software";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { cn } from "@/lib/utils";
@@ -22,12 +23,6 @@ type ProfilePagesAppsSectionsProps = {
   /** Optional: surface counts for the profile stats row */
   onCountsChange?: (counts: { pages: number; apps: number }) => void;
 };
-
-function appBelongsToOwner(app: ParsedSoftwareApp, ownerHex: string): boolean {
-  const h = ownerHex.toLowerCase();
-  if (app.pubkey.toLowerCase() === h) return true;
-  return (app.attributedPubkeys || []).some((p) => p.toLowerCase() === h);
-}
 
 /** Match Pages rows via authorPubkeyHex or npub… hostname (gateway convention). */
 function pageBelongsToOwner(
@@ -149,19 +144,7 @@ export function ProfilePagesAppsSections({
           if (cancelled) return;
           if (!appsRes.ok)
             throw new Error(appsData.error || `apps ${appsRes.status}`);
-          const mine = (appsData.apps || []).filter((a) =>
-            appBelongsToOwner(a, ownerHex)
-          );
-          const seen = new Set<string>();
-          const unique: ParsedSoftwareApp[] = [];
-          for (const a of mine) {
-            const k = appDedupKey(a.pubkey, a.appId);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            unique.push(a);
-          }
-          unique.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          setApps(unique);
+          setApps(preferOwnerSoftwareApps(appsData.apps || [], ownerHex));
         } catch {
           if (!cancelled) setApps([]);
         } finally {
@@ -275,18 +258,29 @@ export function ProfilePagesAppsSections({
             {apps.slice(0, visibleApps).map((app) => (
               <li key={appDedupKey(app.pubkey, app.appId)}>
                 <article className="flex h-full min-h-[10rem] gap-3 rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-4 transition hover:border-[var(--color-accent-primary)]/50">
-                  {app.icon ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={app.icon}
-                      alt=""
-                      className="h-14 w-14 shrink-0 rounded-xl border border-[#383B42]/80 object-cover bg-[#171B21]"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21] text-lg font-bold text-gray-400">
+                  <div className="shrink-0">
+                    {app.icon ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={app.icon}
+                        alt=""
+                        className="h-14 w-14 shrink-0 rounded-xl border border-[#383B42]/80 object-cover bg-[#171B21]"
+                        onError={(e) => {
+                          const el = e.currentTarget;
+                          el.style.display = "none";
+                          const sib =
+                            el.nextElementSibling as HTMLElement | null;
+                          if (sib) sib.style.display = "flex";
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21] text-lg font-bold text-gray-400"
+                      style={{ display: app.icon ? "none" : "flex" }}
+                    >
                       {app.name.slice(0, 1).toUpperCase()}
                     </div>
-                  )}
+                  </div>
                   <div className="min-w-0 flex-1 flex flex-col">
                     <h3 className="truncate text-lg font-semibold text-white">
                       {app.name}

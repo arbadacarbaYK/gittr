@@ -55,6 +55,27 @@ export function safeHttpUrlTag(raw: string | undefined): string | undefined {
 }
 
 /**
+ * Zapstore used to publish `https://cdn.zap.store/<sha>.webp`. That host no
+ * longer resolves (browser `ERR_NAME_NOT_RESOLVED`). Current icons live on
+ * `cdn.zapstore.dev` without a `.webp` suffix — and old hashes usually 404
+ * there too. Drop the dead host so cards show the letter/package fallback
+ * instead of a broken image.
+ */
+export function normalizeSoftwareIconUrl(
+  raw: string | undefined
+): string | undefined {
+  const url = safeHttpUrlTag(raw);
+  if (!url) return undefined;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host === "cdn.zap.store" || host === "zap.store") return undefined;
+    return url;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * NIP-34 pointer on a gittr-announced NIP-82 app: `30617:<owner-hex>:<repo-d>`.
  * Zapstore-only listings usually omit this.
  */
@@ -163,7 +184,7 @@ export function parseSoftwareApp(
     appId,
     name,
     summary: readTag(event, "summary"),
-    icon: safeHttpUrlTag(readTag(event, "icon")),
+    icon: normalizeSoftwareIconUrl(readTag(event, "icon")),
     repository,
     webUrl: safeHttpUrlTag(readTag(event, "url")),
     topics: readTagAll(event, "t")
@@ -308,6 +329,54 @@ export function pickAndroidApkAsset(
 
 export function appDedupKey(pubkey: string, appId: string): string {
   return `${pubkey}:${appId}`;
+}
+
+export function softwareAppBelongsToOwner(
+  app: ParsedSoftwareApp,
+  ownerHex: string
+): boolean {
+  const h = ownerHex.toLowerCase();
+  if (app.pubkey.toLowerCase() === h) return true;
+  return (app.attributedPubkeys || []).some((p) => p.toLowerCase() === h);
+}
+
+/**
+ * One card per package id on a profile. Prefer the owner's own 32267 over a
+ * Zapstore (or other) republish that only tagged them in `p`. Keep attributed
+ * listings when the owner never published that app id themselves.
+ */
+export function preferOwnerSoftwareApps(
+  apps: ParsedSoftwareApp[],
+  ownerHex: string
+): ParsedSoftwareApp[] {
+  const h = ownerHex.toLowerCase();
+  const mine = apps.filter((a) => softwareAppBelongsToOwner(a, h));
+  const byId = new Map<string, ParsedSoftwareApp[]>();
+  for (const a of mine) {
+    const id = a.appId.trim().toLowerCase();
+    const list = byId.get(id) ?? [];
+    list.push(a);
+    byId.set(id, list);
+  }
+  const out: ParsedSoftwareApp[] = [];
+  for (const group of byId.values()) {
+    const owned = group.filter((a) => a.pubkey.toLowerCase() === h);
+    const pool = owned.length > 0 ? owned : group;
+    const pick = [...pool].sort(
+      (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+    )[0];
+    if (!pick) continue;
+    if (!pick.icon) {
+      const borrowed = group.find((a) => a.icon)?.icon;
+      if (borrowed) {
+        out.push({ ...pick, icon: borrowed });
+        continue;
+      }
+    }
+    out.push(pick);
+  }
+  out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return out;
 }
 
 /** Keep the newest replaceable snapshot per author + app id. */
