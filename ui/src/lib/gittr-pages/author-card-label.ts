@@ -89,7 +89,7 @@ export function cardAuthorProfileHref(row: {
   authorDisplay?: string;
   authorPubkeyHex?: string;
 }): string | null {
-  const hex = (row.authorPubkeyHex || "").trim();
+  const hex = authorPubkeyHexNormalized(row.authorPubkeyHex);
   if (hex) {
     return ownerProfileHref(hex);
   }
@@ -98,4 +98,39 @@ export function cardAuthorProfileHref(row: {
     return ownerProfileHref(d);
   }
   return null;
+}
+
+export function authorPubkeyHexNormalized(
+  hex: string | undefined
+): string | null {
+  const h = String(hex || "")
+    .toLowerCase()
+    .replace(/^0x/, "")
+    .trim();
+  return /^[0-9a-f]{64}$/.test(h) ? h : null;
+}
+
+/** Hostname shown like Apps' package id. */
+export function siteHostname(siteUrl: string): string {
+  try {
+    return new URL(siteUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+export function siteKindLabel(
+  kind: GatewayStatusSiteRow["siteKind"]
+): string | null {
+  if (kind === "named") return "Named";
+  if (kind === "root") return "Npub site";
+  return null;
+}
+
+export function formatPagesStatCount(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n < 1000) return String(Math.trunc(n));
+  const k = n / 1000;
+  const s = k >= 10 ? k.toFixed(0) : k.toFixed(1);
+  return `${s.replace(/\.0$/, "")}k`;
 }

@@ -4,13 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import {
+  authorPubkeyHexNormalized,
   authorSearchTokens,
   cardAuthorPrimary,
   cardAuthorProfileHref,
   cardAuthorTooltip,
+  formatPagesStatCount,
+  siteHostname,
+  siteKindLabel,
 } from "@/lib/gittr-pages/author-card-label";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
+import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
   REPO_LIST_PAGE_SIZE,
   clampVisibleCount,
@@ -39,9 +46,14 @@ type GittrPagesClientProps = {
 function CardSkeleton() {
   return (
     <li className="animate-pulse rounded-xl border border-[#383B42]/80 bg-[#0E1116]/60 p-4">
-      <div className="h-5 w-[78%] max-w-[14rem] rounded bg-gray-800" />
-      <div className="mt-3 h-4 w-1/2 rounded bg-gray-800/80" />
-      <div className="mt-4 h-9 w-28 rounded-md bg-gray-800" />
+      <div className="flex gap-4">
+        <div className="h-16 w-16 shrink-0 rounded-xl bg-gray-800" />
+        <div className="flex-1 space-y-2">
+          <div className="h-5 w-3/4 max-w-[14rem] rounded bg-gray-800" />
+          <div className="h-4 w-1/2 rounded bg-gray-800/80" />
+          <div className="h-9 w-32 rounded-md bg-gray-800" />
+        </div>
+      </div>
     </li>
   );
 }
@@ -133,6 +145,8 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         authorSearchTokens(s),
         s.description,
         s.siteUrl,
+        siteHostname(s.siteUrl),
+        siteKindLabel(s.siteKind),
         s.updatedLabel,
       ]
         .filter(Boolean)
@@ -143,7 +157,20 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
   }, [payload, query]);
 
   const shownCount = clampVisibleCount(visibleCount, filtered.length);
-  const visible = filtered.slice(0, shownCount);
+  const visible = useMemo(
+    () => filtered.slice(0, shownCount),
+    [filtered, shownCount]
+  );
+
+  const profilePubkeys = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of visible) {
+      const hex = authorPubkeyHexNormalized(row.authorPubkeyHex);
+      if (hex) ids.add(hex);
+    }
+    return Array.from(ids);
+  }, [visible]);
+  const metadataMap = useContributorMetadata(profilePubkeys);
 
   const base = pagesBase.replace(/\/$/, "");
   const statusPageUrl = `${base}/status`;
@@ -291,54 +318,143 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
           </p>
         )}
 
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
             : visible.map((s) => {
                 const authorPrimary = cardAuthorPrimary(s);
                 const authorTip = cardAuthorTooltip(s);
                 const authorHref = cardAuthorProfileHref(s);
+                const authorHex = authorPubkeyHexNormalized(s.authorPubkeyHex);
+                const authorMeta = authorHex
+                  ? metadataMap[authorHex]
+                  : undefined;
+                const authorLabel =
+                  pickProfileDisplayName(authorMeta) || authorPrimary;
+                const host = siteHostname(s.siteUrl);
+                const kindLbl = siteKindLabel(s.siteKind);
                 return (
                   <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
                     <article
                       className={cn(
-                        "group relative flex h-full min-h-[14rem] flex-col overflow-hidden rounded-xl border border-[#383B42] bg-[#0E1116]/95 shadow-md transition",
+                        "group relative flex h-full min-h-[10rem] gap-4 overflow-hidden rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-5 shadow-md transition",
                         "hover:-translate-y-0.5 hover:border-[var(--color-accent-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5"
                       )}
                     >
-                      <div className="relative z-10 flex h-full flex-col p-5">
+                      <div className="shrink-0">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21]">
+                          <Globe className="h-8 w-8 text-gray-600" />
+                        </div>
+                      </div>
+                      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
                         <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
                           {s.title}
                         </h2>
-                        {authorPrimary ? (
-                          authorHref ? (
-                            <a
-                              className="mt-2 block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline"
-                              href={authorHref}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                              title={authorTip || undefined}
-                            >
-                              {authorPrimary}
-                            </a>
-                          ) : (
-                            <p
-                              className="mt-2 truncate text-sm text-[var(--color-accent-primary)]"
-                              title={authorTip || undefined}
-                            >
-                              {authorPrimary}
-                            </p>
-                          )
+                        {host ? (
+                          <p className="mt-0.5 truncate font-mono text-xs text-gray-500">
+                            {host}
+                          </p>
+                        ) : null}
+                        {authorLabel ? (
+                          <div className="mt-1 flex min-w-0 items-start gap-2">
+                            {authorHref ? (
+                              <a
+                                className="flex min-w-0 flex-1 items-start gap-2 rounded-md outline-offset-2 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent-primary)]"
+                                href={authorHref}
+                                rel="noopener noreferrer"
+                                target="_blank"
+                                title={authorTip || undefined}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  alt=""
+                                  className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 bg-[#22262C] object-cover"
+                                  height={28}
+                                  src={
+                                    authorMeta?.picture &&
+                                    authorMeta.picture.startsWith("http")
+                                      ? authorMeta.picture
+                                      : "/logo.svg"
+                                  }
+                                  width={28}
+                                  onError={(e) => {
+                                    const el = e.currentTarget;
+                                    if (!el.src.endsWith("/logo.svg")) {
+                                      el.src = "/logo.svg";
+                                    }
+                                  }}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline">
+                                    {authorLabel}
+                                  </span>
+                                  {authorMeta?.nip05?.trim() ? (
+                                    <p
+                                      className="truncate text-[11px] text-gray-500"
+                                      title={authorMeta.nip05}
+                                    >
+                                      {authorMeta.nip05}
+                                    </p>
+                                  ) : null}
+                                  {authorHex ? (
+                                    <div className="mt-1">
+                                      <TrustBadge targetPubkey={authorHex} />
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </a>
+                            ) : (
+                              <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  alt=""
+                                  className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 bg-[#22262C] object-cover"
+                                  height={28}
+                                  src="/logo.svg"
+                                  width={28}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium text-gray-400">
+                                    {authorLabel}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : null}
+                        {kindLbl ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-[#383B42] bg-[#171B21]/90 px-2 py-0.5 text-[11px] font-medium text-gray-400">
+                              {kindLbl}
+                            </span>
+                          </div>
                         ) : null}
                         {s.description ? (
-                          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--color-accent-primary)]">
+                          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-gray-400">
                             {s.description}
                           </p>
                         ) : null}
-                        <p className="mt-3 text-xs text-gray-400">
-                          {s.pathCount} path{s.pathCount === 1 ? "" : "s"} ·{" "}
-                          {s.hits} hit{s.hits === 1 ? "" : "s"}
-                          {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
+                        <p
+                          className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-500"
+                          title={s.updatedIso || undefined}
+                        >
+                          <span>
+                            {formatPagesStatCount(s.pathCount)} path
+                            {s.pathCount === 1 ? "" : "s"}
+                          </span>
+                          {s.snapshots > 0 ? (
+                            <span>
+                              {formatPagesStatCount(s.snapshots)} snapshot
+                              {s.snapshots === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                          <span>
+                            {formatPagesStatCount(s.hits)} hit
+                            {s.hits === 1 ? "" : "s"}
+                          </span>
+                          {s.updatedLabel ? (
+                            <span>{s.updatedLabel}</span>
+                          ) : null}
                         </p>
                         <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-4">
                           <a
