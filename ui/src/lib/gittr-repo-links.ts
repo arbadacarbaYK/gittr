@@ -82,6 +82,21 @@ export const GITTR_PAGES_ALIAS_D_TAGS: Readonly<
   "gittr-helper-tools": ["gittr-helper", "helper-tools"],
 };
 
+/** Invert canonical + alias Pages names → repo slug (platform map only). */
+export function gittrRepoSlugForPagesDTag(dTag: string): string | null {
+  const d = dTag.trim().toLowerCase();
+  if (!d) return null;
+  for (const [repo, canonical] of Object.entries(
+    GITTR_PAGES_CANONICAL_D_TAGS
+  )) {
+    if (canonical.toLowerCase() === d) return repo;
+  }
+  for (const [repo, aliases] of Object.entries(GITTR_PAGES_ALIAS_D_TAGS)) {
+    if (aliases.some((alias) => alias.toLowerCase() === d)) return repo;
+  }
+  return null;
+}
+
 export function gittrOwnerPagesNamedUrl(dTag: string): string {
   const b36 = pubkeyHexToPubkeyB36(GITTR_OWNER_PUBKEY_HEX);
   return `https://${b36}${dTag}.pages.gittr.space/`;

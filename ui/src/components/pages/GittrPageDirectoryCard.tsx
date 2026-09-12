@@ -15,6 +15,7 @@ import {
   siteHostname,
   siteKindLabel,
 } from "@/lib/gittr-pages/author-card-label";
+import { gittrRepoPathForPagesSite } from "@/lib/gittr-pages/pages-repo-path";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
 import type { Metadata } from "@/lib/nostr/useContributorMetadata";
@@ -37,6 +38,7 @@ export function GittrPageDirectoryCard({
   const authorLabel = pickProfileDisplayName(authorMeta) || authorPrimary;
   const host = siteHostname(site.siteUrl);
   const kindLbl = siteKindLabel(site.siteKind);
+  const repoPath = gittrRepoPathForPagesSite(site);
 
   return (
     <article className={DIRECTORY_TILE_ARTICLE_CLASS}>
@@ -169,10 +171,18 @@ export function GittrPageDirectoryCard({
             Open site
             <ExternalLink className="ml-1.5 h-3 w-3" />
           </a>
+          {repoPath ? (
+            <a
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+              href={repoPath}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Repo
+            </a>
+          ) : null}
           <a
-            className={cn(
-              buttonVariants({ size: "sm", variant: "outline" })
-            )}
+            className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
             href={site.pathsStatusUrl}
             rel="noopener noreferrer"
             target="_blank"

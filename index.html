@@ -24,6 +24,7 @@
         </a>
         <nav class="topnav" aria-label="On this page">
           <a href="#jobs">What you can do</a>
+          <a href="#fit">How gittr fits</a>
           <a href="#map">Platform map</a>
           <a href="#docs">Docs by job</a>
           <a href="#picture">Diagrams</a>
@@ -43,11 +44,13 @@
             gittr is a forge: issues, pull requests, static Pages, apps, and
             Lightning on the same signed events as other NIP-34 clients. This page
             is the public map of that platform — each box below is a door.
+            Same events as ngit and gitworkshop; different software — 
+            <a href="#fit">how gittr fits</a>.
             Jobs match the
             <a href="https://gittr.space/help" target="_blank" rel="noopener noreferrer">Help center</a>. Client recipes
             live on
             <a href="https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/"
-              target="_blank" rel="noopener noreferrer">gittr-snips</a
+              >gittr-snips</a
             >.
           </p>
           <div class="cta-row">
@@ -140,6 +143,90 @@
             Getting started:
             <a href="https://gittr.space/help#getting-started" target="_blank" rel="noopener noreferrer">log in</a>
             → create or import a repo → payments are optional (NWC / LNURL).
+          </p>
+        </div>
+      </section>
+
+      <section id="fit">
+        <div class="wrap">
+          <div class="section-title">
+            <h2>How gittr fits in Nostr git</h2>
+          </div>
+          <p class="hint">
+            Protocol is shared. Codebases are not. Think
+            <strong>events on relays → git bytes on a server → a website or a CLI</strong>,
+            not one app per bullet on awesome-nostr.
+          </p>
+          <div class="tiles">
+            <div class="tile">
+              <div class="name">Protocol</div>
+              <div class="host">NIP-34 + GRASP</div>
+              <div class="job">Signed repo / issue / PR events. Clone URLs can list several git hosts.</div>
+            </div>
+            <div class="tile here">
+              <div class="name">Git server · gitnostr</div>
+              <div class="host">git.gittr.space</div>
+              <div class="job">Bare repos over SSH/HTTPS. Kind 52 keys. This is the disk gittr talks to.</div>
+            </div>
+            <div class="tile here">
+              <div class="name">Web · gittr</div>
+              <div class="host">gittr.space · YOU ARE HERE</div>
+              <div class="job">The forge UI: Code, issues, PRs, Pages, apps, import, bounties. Built on gitnostr.</div>
+            </div>
+            <div class="tile">
+              <div class="name">CLI · ngit</div>
+              <div class="host">nostr:// + gitworkshop</div>
+              <div class="job">Laptop helper + git-remote-nostr. Same events. Different stack. We don’t ship it.</div>
+            </div>
+          </div>
+          <div class="compare">
+            <article class="col here">
+              <h3>gittr ≠ ngit</h3>
+              <ul>
+                <li>gittr ships and runs <strong>gitnostr</strong>.</li>
+                <li>Day-to-day push/pull on gittr.space is <strong>SSH/HTTPS to the bridge</strong>, not the ngit binary.</li>
+                <li>They interoperate on the same kinds (30617, 30618, issues, PRs).</li>
+              </ul>
+            </article>
+            <article class="col">
+              <h3>Where the bits live</h3>
+              <ul>
+                <li>Repo identity: npub + name on relays.</li>
+                <li>Git blobs: <code>git.gittr.space</code>.</li>
+                <li>Sites: <code>pages.gittr.space</code>. Blobs: <code>blossom.gittr.space</code>.</li>
+                <li>Laptop git: SSH/HTTPS to the bridge. <code>nostr://</code> is interop (install ngit’s helper). Agents: gittr-mcp over HTTPS + nsec, not SSH.</li>
+              </ul>
+            </article>
+          </div>
+          <div class="compare cols-3">
+            <article class="col here">
+              <h3>gittr</h3>
+              <ul>
+                <li>Hosted web forge: issues, PRs, import, Pages, /apps, bounties.</li>
+                <li>Runs its own git bridge (<strong>gitnostr</strong>).</li>
+                <li>Optional Lightning paywall on <code>git push</code>.</li>
+              </ul>
+            </article>
+            <article class="col">
+              <h3>gitworkshop</h3>
+              <ul>
+                <li>Hosted web client on the <strong>ngit</strong> stack.</li>
+                <li>Git via public GRASP hosts — no gittr-style import, Pages, or /apps.</li>
+                <li>Pairs with the ngit CLI, not this bridge.</li>
+              </ul>
+            </article>
+            <article class="col">
+              <h3>gitplaza</h3>
+              <ul>
+                <li>Linux desktop app — not a hosted forge.</li>
+                <li>Issues and patches on the same NIP-34 events.</li>
+                <li>Clone tags + GitWorkshop / ngit. No gittr bridge.</li>
+              </ul>
+            </article>
+          </div>
+          <p class="hint" style="margin-top: 1.1rem">
+            Full tables (nak, gitstr, access methods):
+            <a href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=README.md&amp;branch=main" target="_blank" rel="noopener noreferrer">README · how gittr fits</a>.
           </p>
         </div>
       </section>
