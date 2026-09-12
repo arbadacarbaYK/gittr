@@ -260,7 +260,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `t[]`: Labels (optional)
   - `p[]`: Assignees (optional, custom extension)
 - **Content**: Markdown description text (not JSON)
-- **Shareable URL**: `/issues/<64-char event id>`. The `#2` you see in the UI is **this browser’s** counter (localStorage). It is not on the Nostr event, so `/issues/2` often 404s for logged-out visitors. GitHub-imported issues still use the forge number.
+- **Shareable URL**: `/issues/<64-char event id>`. The `#2` you see in the UI is **this browser’s** counter (localStorage). It is not on the Nostr event, so `/issues/2` often 404s for logged-out visitors. GitHub-imported issues still use the forge number (`/issues/12` is GitHub issue #12, not list position).
 - **Interop requirement**: If local cache is missing `r`, derive it from git root commit history (earliest unique commit) before publishing.
 
 ### Kind 1618: Pull Requests (NIP-34)
@@ -277,7 +277,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `branch-name`: Branch name (optional)
   - `merge-base`: Most recent common ancestor (optional)
   - `t[]`: Labels (optional)
-- **Content**: Markdown description (title lives in `subject`). The change set is git, not JSON in the event — same as ngit / gitworkshop: `clone` + `c` (+ `merge-base` / `refs/nostr/<id>`). gittr’s PR page fetches that range (`GET /api/git/diff`). GitHub `pr-N` rows use `/repos/.../pulls/{n}/files`.
+- **Content**: Markdown description (title lives in `subject`). The change set is git, not JSON in the event — same as ngit / gitworkshop: `clone` + `c` (+ `merge-base` / `refs/nostr/<id>`). gittr’s PR page fetches that range (`GET /api/git/diff`). GitHub `pr-N` rows use `/repos/.../pulls/{n}/files`. Shareable URL is `/pulls/<64-char event id>` on Nostr, or `/pulls/<forge-number>` for GitHub imports (that number is the GitHub PR, not a recency-sorted list index).
 - **Interop requirement**: If local cache is missing `r`, derive it from git root commit history (earliest unique commit) before publishing.
 
 ### Kind 1619: Pull Request Updates (NIP-34)

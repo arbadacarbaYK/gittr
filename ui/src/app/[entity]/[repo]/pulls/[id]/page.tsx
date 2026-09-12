@@ -55,6 +55,7 @@ import {
   isOwner as checkIsOwner,
   hasWriteAccess,
 } from "@/lib/repo-permissions";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   type RepoFileEntry,
   type StoredContributor,
@@ -77,6 +78,7 @@ import { formatDateTime24h } from "@/lib/utils/date-format";
 import {
   getRepoStorageKey,
   normalizeEntityForStorage,
+  readRepoPullsFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
@@ -177,6 +179,7 @@ export default function PRDetailPage({
   params: Promise<{ entity: string; repo: string; id: string }>;
 }) {
   const resolvedParams = use(params);
+  const { entity, repo, id } = resolvedParams; // primitives — avoid stale closures
   const router = useRouter();
   const {
     pubkey: currentUserPubkey,
@@ -451,18 +454,13 @@ export default function PRDetailPage({
   // Load PR data
   useEffect(() => {
     try {
-      const key = getRepoStorageKey(
-        "gittr_prs",
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
-      const prs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-      const prIdx = findPullRequestRowIndexByRouteParam(prs, resolvedParams.id);
+      const prs = readRepoPullsFromLocalStorage(entity, repo) as any[];
+      const prIdx = findPullRequestRowIndexByRouteParam(prs, id);
       const prData = prIdx >= 0 ? prs[prIdx] : undefined;
 
       if (prData) {
         setPR({
-          id: prData.id || resolvedParams.id,
+          id: prData.id || id,
           title: prData.title || "",
           body: prData.body || "",
           path: prData.path,
@@ -490,51 +488,44 @@ export default function PRDetailPage({
           number: prData.number != null ? String(prData.number) : undefined,
           sourcePrStillOpen: Boolean(prData.sourcePrStillOpen),
         });
-        // Store PR event ID if available
         const resolvedPrEventId =
           prData.nostrEventId ||
           prData.lastNostrEventId ||
           (isHexEventId(prData.id) ? prData.id : null) ||
-          (isHexEventId(resolvedParams.id) ? resolvedParams.id : null);
-        if (resolvedPrEventId) {
-          setPrEventId(resolvedPrEventId);
-        }
+          (isHexEventId(id) ? id : null) ||
+          null;
+        setPrEventId(resolvedPrEventId);
 
         // Check if current user can merge (owner or maintainer - write access)
         const repos = loadStoredRepos();
         // Try multiple lookup strategies - repo might be stored with different field names
-        const repo = repos.find((r: StoredRepo) => {
-          const entityMatch = r.entity === resolvedParams.entity;
+        const storedRepo = repos.find((r: StoredRepo) => {
+          const entityMatch = r.entity === entity;
           const repoMatch =
-            r.repo === resolvedParams.repo ||
-            r.slug === resolvedParams.repo ||
-            r.name === resolvedParams.repo;
+            r.repo === repo || r.slug === repo || r.name === repo;
           return entityMatch && repoMatch;
         });
 
-        if (repo && currentUserPubkey) {
+        if (storedRepo && currentUserPubkey) {
           // CRITICAL: Use proper role-based permission checks
-          const repoOwnerPubkey = getRepoOwnerPubkey(
-            repo,
-            resolvedParams.entity
-          );
+          const repoOwnerPubkey = getRepoOwnerPubkey(storedRepo, entity);
           const userIsOwnerValue = checkIsOwner(
             currentUserPubkey,
-            repo.contributors,
+            storedRepo.contributors,
             repoOwnerPubkey
           );
           const userCanMerge = hasWriteAccess(
             currentUserPubkey,
-            repo.contributors,
+            storedRepo.contributors,
             repoOwnerPubkey
           );
 
           setIsOwner(userIsOwnerValue);
           setCanMerge(userCanMerge);
         } else if (currentUserPubkey) {
-          // FALLBACK: If repo not found, check if resolvedParams.entity (npub) matches current user
+          // FALLBACK: If repo not found, check if entity (npub) matches current user
           // Decode npub to compare with full pubkey
-          const entityPubkey = resolveEntityToPubkey(resolvedParams.entity);
+          const entityPubkey = resolveEntityToPubkey(entity);
           const entityMatches =
             entityPubkey &&
             entityPubkey.toLowerCase() === currentUserPubkey.toLowerCase();
@@ -557,11 +548,7 @@ export default function PRDetailPage({
 
         // Load linked issue if present
         if (prData.linkedIssue || prData.issueId) {
-          const issueKey = getRepoStorageKey(
-            "gittr_issues",
-            resolvedParams.entity,
-            resolvedParams.repo
-          );
+          const issueKey = getRepoStorageKey("gittr_issues", entity, repo);
           const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
           const issue = issues.find(
             (i: any) =>
@@ -569,38 +556,56 @@ export default function PRDetailPage({
               i.number === (prData.linkedIssue || prData.issueId)
           );
           if (issue) setLinkedIssue(issue);
+        } else {
+          setLinkedIssue(null);
         }
-      } else if (isHexEventId(resolvedParams.id)) {
-        setPrEventId(resolvedParams.id);
+      } else {
+        setPR(null);
+        setLinkedIssue(null);
+        setPrEventId(isHexEventId(id) ? id : null);
       }
       setLoading(false);
     } catch (error) {
       console.error("Failed to load PR:", error);
+      setPR(null);
       setLoading(false);
     }
-  }, [
-    resolvedParams.id,
-    resolvedParams.entity,
-    resolvedParams.repo,
-    currentUserPubkey,
-    prStorageRev,
-  ]);
+  }, [id, entity, repo, currentUserPubkey, prStorageRev]);
 
   useEffect(() => {
     if (!pr?.id || !isNostrHexIssueId(pr.id) || isGithubStylePrId(pr.id))
       return;
-    if (resolvedParams.id.toLowerCase() === pr.id.toLowerCase()) return;
-    router.replace(
-      `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/${pr.id}`,
-      { scroll: false }
-    );
-  }, [
-    pr?.id,
-    resolvedParams.id,
-    resolvedParams.entity,
-    resolvedParams.repo,
-    router,
-  ]);
+    if (id.toLowerCase() === pr.id.toLowerCase()) return;
+    // Only put the event id in the bar when this row is the one the URL asked for.
+    if (
+      findPullRequestRowIndexByRouteParam(
+        [{ id: pr.id, number: pr.number }],
+        id
+      ) < 0
+    )
+      return;
+    router.replace(`/${entity}/${repo}/pulls/${pr.id}`, { scroll: false });
+  }, [pr?.id, pr?.number, id, entity, repo, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    void (async () => {
+      const repos = loadStoredRepos();
+      const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const { synced } = await hydrateRepoFromGithub(entity, repo, {
+        repoRecord: repoData ?? null,
+        subscribe,
+        defaultRelays,
+      });
+      if (!cancelled && synced) {
+        setPrStorageRev((n) => n + 1);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, repo, subscribe, defaultRelays]);
 
   // Fill clone / commit tags if the list row was a thin warm upsert.
   useEffect(() => {
@@ -1280,7 +1285,10 @@ export default function PRDetailPage({
         resolvedParams.entity,
         resolvedParams.repo
       );
-      const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+      const prs = readRepoPullsFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
       const prRowIdx = findPullRequestRowIndexByRouteParam(
         prs,
         resolvedParams.id
@@ -2058,12 +2066,8 @@ export default function PRDetailPage({
 
         // Update PR with resolved conflicts in localStorage + React state
         if (pr) {
-          const prsKey = getRepoStorageKey(
-            "gittr_prs",
-            resolvedParams.entity,
-            resolvedParams.repo
-          );
-          const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+          const prsKey = getRepoStorageKey("gittr_prs", entity, repo);
+          const prs = readRepoPullsFromLocalStorage(entity, repo) as any[];
           const updatedPRs = prs.map((p: any) =>
             p.id === pr.id ? { ...p, changedFiles: updatedChangedFiles } : p
           );
@@ -2089,7 +2093,7 @@ export default function PRDetailPage({
         alert("Failed to resolve conflicts: " + (error as Error).message);
       }
     },
-    [pr, handleMerge, resolvedParams.entity, resolvedParams.repo]
+    [pr, handleMerge, entity, repo]
   );
 
   const canCloseOrReopenPr = Boolean(
@@ -2120,16 +2124,9 @@ export default function PRDetailPage({
     }
 
     try {
-      const prsKey = getRepoStorageKey(
-        "gittr_prs",
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
-      const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-      const rowIdx = findPullRequestRowIndexByRouteParam(
-        prs,
-        resolvedParams.id
-      );
+      const prsKey = getRepoStorageKey("gittr_prs", entity, repo);
+      const prs = readRepoPullsFromLocalStorage(entity, repo) as any[];
+      const rowIdx = findPullRequestRowIndexByRouteParam(prs, id);
       const statusMeta =
         newStatus === "closed"
           ? {

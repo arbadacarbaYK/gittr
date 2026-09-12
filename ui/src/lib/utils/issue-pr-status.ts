@@ -1,49 +1,64 @@
 /**
- * Find an issue row index in the stored array for the current URL segment
- * (`/issues/[id]` may be hex id, display number, or 1-based index).
+ * Find an issue/PR row for `/issues/[id]` or `/pulls/[id]`.
+ * Matches hex event id, GitHub `issue-N`/`pr-N`, or display/forge `number`.
+ * Does not treat the URL as a 1-based storage index — lists are sorted by
+ * recency, so index N is not issue/PR #N.
  */
 export function findIssueRowIndexByRouteParam(
   issues: Array<{ id?: string; number?: string | number }>,
   routeIssueId: string
 ): number {
-  const idParam = decodeURIComponent(routeIssueId);
+  const idParam = decodeURIComponent(String(routeIssueId || "")).trim();
+  if (!idParam) return -1;
   const idLower = idParam.toLowerCase();
 
   for (let j = 0; j < issues.length; j++) {
     const row = issues[j];
-    if (!row) continue;
-    const rid = row.id ? String(row.id).toLowerCase() : "";
-    if (rid && idLower === rid) return j;
-    if (row.id && idLower === String(row.id).toLowerCase()) return j;
+    if (!row?.id) continue;
+    if (String(row.id).toLowerCase() === idLower) return j;
   }
 
-  const numberMatches: number[] = [];
-  for (let j = 0; j < issues.length; j++) {
-    const row = issues[j];
-    if (!row) continue;
-    if (row.number != null && String(row.number) === idParam) {
-      numberMatches.push(j);
+  if (/^\d+$/.test(idParam)) {
+    for (let j = 0; j < issues.length; j++) {
+      const row = issues[j];
+      if (!row?.id) continue;
+      const rid = String(row.id);
+      if (isGithubStylePrId(rid) && rid.replace(/^pr-/i, "") === idParam) {
+        return j;
+      }
+      if (
+        isGithubStyleIssueId(rid) &&
+        rid.replace(/^issue-/i, "") === idParam
+      ) {
+        return j;
+      }
     }
-    if (String(j + 1) === idParam) {
-      numberMatches.push(j);
-    }
-  }
 
-  if (numberMatches.length === 1) {
-    return numberMatches[0] ?? -1;
-  }
-  if (numberMatches.length > 1) {
-    const nostrIdx = numberMatches.find((j) =>
-      isNostrHexIssueId(issues[j]?.id)
-    );
-    if (nostrIdx !== undefined) return nostrIdx;
-    return numberMatches[0] ?? -1;
+    const numberMatches: number[] = [];
+    for (let j = 0; j < issues.length; j++) {
+      const row = issues[j];
+      if (!row) continue;
+      if (row.number != null && String(row.number) === idParam) {
+        numberMatches.push(j);
+      }
+    }
+    if (numberMatches.length === 1) {
+      return numberMatches[0] ?? -1;
+    }
+    if (numberMatches.length > 1) {
+      const forgeIdx = numberMatches.find((j) => {
+        const rid = issues[j]?.id;
+        return isGithubStylePrId(rid) || isGithubStyleIssueId(rid);
+      });
+      if (forgeIdx !== undefined) return forgeIdx;
+      return numberMatches[0] ?? -1;
+    }
   }
 
   return -1;
 }
 
-/** PR list rows use the same id routing rules as issues (hex id, `number`, or 1-based index). */
+/** PR list rows use the same id routing rules as issues (hex id or `number`). */
 export const findPullRequestRowIndexByRouteParam =
   findIssueRowIndexByRouteParam;
 
@@ -424,6 +439,33 @@ export function countMergedIssueComments(
  *   `sourcePrStillOpen` so the UI can explain drift (until GitHub reflects the merge).
  * - Keeps hydrated `changedFiles` / git hints so the PR page does not go blank on refetch.
  */
+function leftoverGithubStyleRows(
+  existing: unknown[],
+  fetched: unknown[],
+  isGithubId: (id: unknown) => boolean
+): unknown[] {
+  const fetchedIds = new Set<string>();
+  const fetchedNums = new Set<string>();
+  for (const row of fetched) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const id = String(r.id ?? "").toLowerCase();
+    if (id) fetchedIds.add(id);
+    const num = String(r.number ?? "").trim();
+    if (num) fetchedNums.add(num);
+  }
+  return existing.filter((row) => {
+    if (!row || typeof row !== "object") return false;
+    const r = row as Record<string, unknown>;
+    if (!isGithubId(r.id)) return false;
+    const id = String(r.id ?? "").toLowerCase();
+    if (id && fetchedIds.has(id)) return false;
+    const num = String(r.number ?? "").trim();
+    if (num && fetchedNums.has(num)) return false;
+    return true;
+  });
+}
+
 export function mergeGithubPrsAfterRefetch(
   existing: unknown[],
   githubRows: unknown[]
@@ -468,7 +510,9 @@ export function mergeGithubPrsAfterRefetch(
     return { ...ghRow, ...preserveLocalPrDiffFields(prev) };
   });
 
-  return [...merged, ...nostrOnly];
+  // Open-only / truncated GitHub pages must not delete closed `pr-N` rows.
+  const leftoverGithub = leftoverGithubStyleRows(ex, gh, isGithubStylePrId);
+  return [...merged, ...leftoverGithub, ...nostrOnly];
 }
 
 /**
@@ -513,7 +557,12 @@ export function mergeGithubIssuesAfterRefetch(
     };
   });
 
-  return dedupeIssueRowsByNumber([...mergedGh, ...nostrOnly]);
+  const leftoverGithub = leftoverGithubStyleRows(ex, gh, isGithubStyleIssueId);
+  return dedupeIssueRowsByNumber([
+    ...mergedGh,
+    ...leftoverGithub,
+    ...nostrOnly,
+  ]);
 }
 
 /**
