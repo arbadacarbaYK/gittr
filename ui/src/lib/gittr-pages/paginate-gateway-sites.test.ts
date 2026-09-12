@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseStatusSitesAuthor,
   parseStatusSitesLimitOffset,
   sliceStatusSites,
 } from "./paginate-gateway-sites";
+
+describe("parseStatusSitesAuthor", () => {
+  it("accepts a 64-char hex pubkey", () => {
+    const hex = "a".repeat(64);
+    expect(
+      parseStatusSitesAuthor(new URLSearchParams(`author=${hex.toUpperCase()}`))
+    ).toBe(hex);
+  });
+
+  it("rejects junk", () => {
+    expect(parseStatusSitesAuthor(new URLSearchParams("author=npub1x"))).toBe(
+      null
+    );
+  });
+});
 
 describe("parseStatusSitesLimitOffset", () => {
   it("omits limit when the query has none (full list)", () => {

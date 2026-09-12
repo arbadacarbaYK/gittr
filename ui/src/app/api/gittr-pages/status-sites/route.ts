@@ -1,5 +1,7 @@
 import { loadGatewayStatusSites } from "@/lib/gittr-pages/load-gateway-status-sites";
+import { pageBelongsToOwner } from "@/lib/gittr-pages/pages-owner-match";
 import {
+  parseStatusSitesAuthor,
   parseStatusSitesLimitOffset,
   sliceStatusSites,
   sortGatewaySitesByUpdated,
@@ -7,12 +9,13 @@ import {
 
 import { NextResponse } from "next/server";
 
-/** Processed directory is also memory-cached ~2 minutes in loadGatewayStatusSites. */
-export const revalidate = 120;
+/** In-memory TTL lives in loadGatewayStatusSites — do not use Next Data Cache. */
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { limit, offset } = parseStatusSitesLimitOffset(searchParams);
+  const authorHex = parseStatusSitesAuthor(searchParams);
   const fresh = searchParams.get("fresh") === "1";
   const loaded = await loadGatewayStatusSites({ fresh });
 
@@ -27,10 +30,14 @@ export async function GET(req: Request) {
     );
   }
 
+  const owned = authorHex
+    ? loaded.sites.filter((s) => pageBelongsToOwner(s, authorHex))
+    : loaded.sites;
+
   const sorted =
     searchParams.get("sort") === "updated"
-      ? sortGatewaySitesByUpdated(loaded.sites)
-      : loaded.sites;
+      ? sortGatewaySitesByUpdated(owned)
+      : owned;
 
   const { page, total, hasMore } = sliceStatusSites(sorted, offset, limit);
 
@@ -52,7 +59,9 @@ export async function GET(req: Request) {
     },
     {
       headers: {
-        "Cache-Control": "public, s-maxage=120, stale-while-revalidate=60",
+        "Cache-Control": authorHex
+          ? "private, no-store"
+          : "public, max-age=0, s-maxage=60, stale-while-revalidate=30",
       },
     }
   );

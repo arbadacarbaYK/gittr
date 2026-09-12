@@ -110,7 +110,11 @@ export function ProfilePagesAppsSections({
 
       void (async () => {
         try {
-          const pagesRes = await fetch("/api/gittr-pages/status-sites");
+          const pagesRes = await fetch(
+            `/api/gittr-pages/status-sites?author=${encodeURIComponent(
+              ownerHex
+            )}`
+          );
           const pagesData = (await pagesRes.json()) as {
             sites?: GatewayStatusSiteRow[];
             error?: string;

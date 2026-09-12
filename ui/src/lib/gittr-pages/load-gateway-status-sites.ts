@@ -56,12 +56,19 @@ export async function loadGatewayStatusSites(opts?: {
   const manifestsUrl = `${base}/status/manifests.json`;
   const jsonHeaders = { Accept: "application/json" } as const;
   const htmlHeaders = { Accept: "text/html" } as const;
-  const jsonFetch = fresh
-    ? { headers: jsonHeaders, cache: "no-store" as const }
-    : { headers: jsonHeaders, next: { revalidate: 120 } };
-  const htmlFetch = fresh
-    ? { headers: htmlHeaders, cache: "no-store" as const }
-    : { headers: htmlHeaders, next: { revalidate: 120 } };
+  /**
+   * Always `no-store`. Next’s Data Cache cannot store this JSON once it
+   * exceeds 2MB, so `next: { revalidate: 120 }` kept serving a Sep-9 dump
+   * forever while pages.gittr.space already had new sites.
+   */
+  const jsonFetch = {
+    headers: jsonHeaders,
+    cache: "no-store" as const,
+  };
+  const htmlFetch = {
+    headers: htmlHeaders,
+    cache: "no-store" as const,
+  };
 
   try {
     const jsonRes = await fetch(manifestsUrl, jsonFetch);

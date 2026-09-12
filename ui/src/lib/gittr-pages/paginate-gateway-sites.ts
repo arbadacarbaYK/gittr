@@ -3,6 +3,16 @@
  * `limit === null` means the full list (profile sidebar, search hydrate).
  */
 
+export function parseStatusSitesAuthor(searchParams: {
+  get(name: string): string | null;
+}): string | null {
+  const raw = (searchParams.get("author") || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^0x/, "");
+  return /^[0-9a-f]{64}$/.test(raw) ? raw : null;
+}
+
 export function parseStatusSitesLimitOffset(searchParams: {
   get(name: string): string | null;
 }): { limit: number | null; offset: number } {

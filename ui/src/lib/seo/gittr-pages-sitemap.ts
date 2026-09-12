@@ -59,7 +59,7 @@ export async function fetchGittrPagesSitemapEntries(
     const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(manifestUrl, {
       signal: ac.signal,
-      next: { revalidate: 3600 },
+      cache: "no-store",
       headers: { Accept: "application/json" },
     });
     clearTimeout(timer);
