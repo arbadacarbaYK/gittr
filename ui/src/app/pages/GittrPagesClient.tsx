@@ -318,9 +318,9 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
           </p>
         )}
 
-        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {loading
-            ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
+            ? Array.from({ length: 9 }).map((_, i) => <CardSkeleton key={i} />)
             : visible.map((s) => {
                 const authorPrimary = cardAuthorPrimary(s);
                 const authorTip = cardAuthorTooltip(s);

@@ -990,9 +990,9 @@ export function AppsDirectoryClient() {
           </div>
         )}
 
-        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {loading && apps.length === 0
-            ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
+            ? Array.from({ length: 9 }).map((_, i) => <CardSkeleton key={i} />)
             : visibleApps.map((app) => {
                 const key = appDedupKey(app.pubkey, app.appId);
                 const relList = releasesForApp(app);
