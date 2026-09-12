@@ -7,6 +7,7 @@ import { LoadMoreButton } from "@/components/ui/load-more-button";
 import {
   authorSearchTokens,
   cardAuthorPrimary,
+  cardAuthorProfileHref,
   cardAuthorTooltip,
 } from "@/lib/gittr-pages/author-card-label";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
@@ -296,6 +297,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             : visible.map((s) => {
                 const authorPrimary = cardAuthorPrimary(s);
                 const authorTip = cardAuthorTooltip(s);
+                const authorHref = cardAuthorProfileHref(s);
                 return (
                   <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
                     <article
@@ -309,12 +311,24 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                           {s.title}
                         </h2>
                         {authorPrimary ? (
-                          <p
-                            className="mt-2 truncate text-sm text-[var(--color-accent-primary)]"
-                            title={authorTip || undefined}
-                          >
-                            {authorPrimary}
-                          </p>
+                          authorHref ? (
+                            <a
+                              className="mt-2 block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline"
+                              href={authorHref}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                              title={authorTip || undefined}
+                            >
+                              {authorPrimary}
+                            </a>
+                          ) : (
+                            <p
+                              className="mt-2 truncate text-sm text-[var(--color-accent-primary)]"
+                              title={authorTip || undefined}
+                            >
+                              {authorPrimary}
+                            </p>
+                          )
                         ) : null}
                         {s.description ? (
                           <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--color-accent-primary)]">

@@ -347,33 +347,6 @@ export function AppsDirectoryClient() {
     };
   }, [pauseCatalogForLeave, pathname]);
 
-  const goOwnerProfile = useCallback(
-    (
-      href: string,
-      e: {
-        preventDefault: () => void;
-        metaKey?: boolean;
-        ctrlKey?: boolean;
-        shiftKey?: boolean;
-        altKey?: boolean;
-        button?: number;
-      }
-    ) => {
-      if (
-        e.metaKey ||
-        e.ctrlKey ||
-        e.shiftKey ||
-        e.altKey ||
-        (e.button != null && e.button !== 0)
-      ) {
-        return;
-      }
-      pauseCatalogForLeave();
-      appNavigate(href, router, pathname, e);
-    },
-    [pauseCatalogForLeave, router, pathname]
-  );
-
   const mergeReleaseEvent = useCallback(
     (event: NostrEventLike) => {
       if (isPublisherBlocklisted(event.pubkey)) return;
@@ -1088,22 +1061,11 @@ export function AppsDirectoryClient() {
                             <a
                               className="flex min-w-0 flex-1 items-start gap-2 rounded-md outline-offset-2 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent-primary)]"
                               href={profileHref}
+                              rel="noopener noreferrer"
+                              target="_blank"
                               title={`${authorLabel} · ${npubForTitle(
                                 app.pubkey
                               )}`}
-                              onPointerDown={(e) => {
-                                if (
-                                  e.metaKey ||
-                                  e.ctrlKey ||
-                                  e.shiftKey ||
-                                  e.altKey ||
-                                  e.button !== 0
-                                ) {
-                                  return;
-                                }
-                                pauseCatalogForLeave();
-                              }}
-                              onClick={(e) => goOwnerProfile(profileHref, e)}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img

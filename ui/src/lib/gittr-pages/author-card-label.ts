@@ -1,5 +1,7 @@
 import { nip19 } from "nostr-tools";
 
+import { ownerProfileHref } from "../utils/entity-resolver";
+
 import type { GatewayStatusSiteRow } from "./parse-gateway-status-html";
 
 function fullNpubForTooltip(row: {
@@ -77,4 +79,23 @@ export function authorSearchTokens(row: GatewayStatusSiteRow): string {
     }
   }
   return parts.filter(Boolean).join(" ");
+}
+
+/**
+ * Profile path for a Pages card author. Only when we have hex or npub —
+ * a display name alone must not become `/{name}`.
+ */
+export function cardAuthorProfileHref(row: {
+  authorDisplay?: string;
+  authorPubkeyHex?: string;
+}): string | null {
+  const hex = (row.authorPubkeyHex || "").trim();
+  if (hex) {
+    return ownerProfileHref(hex);
+  }
+  const d = (row.authorDisplay || "").trim();
+  if (/^npub1[a-z0-9]+$/i.test(d) || /^[0-9a-f]{64}$/i.test(d)) {
+    return ownerProfileHref(d);
+  }
+  return null;
 }
