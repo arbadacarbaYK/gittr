@@ -1661,26 +1661,20 @@ export default function RepoLayoutClient({
 
   return (
     <>
-      {/* Identity hero — all repo tabs (Code, Issues, Settings, …) */}
-      <div
-        className="w-full h-[132px] bg-[var(--color-bg-secondary)] bg-cover bg-center relative"
-        style={
-          ownerBanner
-            ? {
-                backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${ownerBanner})`,
-              }
-            : {
-                backgroundImage:
-                  "linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg-primary))",
-              }
-        }
-        role="img"
-        aria-label={
-          ownerBanner
-            ? "Owner Nostr profile banner"
-            : "Default banner (no kind-0 banner)"
-        }
-      />
+      {/* Identity hero — skip the empty gradient on phones so Code isn’t
+          a banner stacked on a blank strip. */}
+      {ownerBanner ? (
+        <div
+          className="relative h-[88px] w-full bg-[var(--color-bg-secondary)] bg-cover bg-center md:h-[132px]"
+          style={{
+            backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${ownerBanner})`,
+          }}
+          role="img"
+          aria-label="Owner Nostr profile banner"
+        />
+      ) : (
+        <div className="hidden h-[88px] w-full bg-[var(--color-bg-secondary)] md:block md:h-[132px]" />
+      )}
 
       <section
         data-repo-chrome
@@ -1692,7 +1686,13 @@ export default function RepoLayoutClient({
       >
         <div className="justify-between flex flex-col lg:flex-row overflow-visible gap-3">
           <div className="mb-2 flex items-start gap-3 min-w-0">
-            <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
+            <div
+              className={
+                ownerBanner
+                  ? "relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 overflow-hidden rounded-full border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md"
+                  : "relative z-[2] h-[76px] w-[76px] flex-shrink-0 overflow-hidden rounded-full border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md md:-mt-10"
+              }
+            >
               <img
                 src="/logo.svg"
                 alt=""

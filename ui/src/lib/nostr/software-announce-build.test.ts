@@ -277,6 +277,8 @@ describe("buildSoftwareAnnounceEvents", () => {
       "https://gittr.space/zapstore/home.png",
       "https://gittr.space/zapstore/apps.png",
       "https://gittr.space/zapstore/repo.png",
+      "https://gittr.space/zapstore/explore.png",
+      "https://gittr.space/zapstore/appearance.png",
     ]);
     expect(built.app.tags.find((t) => t[0] === "url")?.[1]).toBe(
       "https://gittr.space"

@@ -986,8 +986,9 @@ export default function HelpPage() {
                 <code className="text-purple-200">icon</code> +{" "}
                 <code className="text-purple-200">images:</code> screenshots
                 under{" "}
-                <code className="text-purple-200">ui/public/zapstore/</code>
-                ). Other apps put the same{" "}
+                <code className="text-purple-200">ui/public/zapstore/</code>,
+                1080×1920, gallery order: repo Code, Apps, Pages, Repos list,
+                Appearance). Other apps put the same{" "}
                 <code className="text-purple-200">images:</code> field in{" "}
                 <em>their</em> source-repo{" "}
                 <code className="text-purple-200">zapstore.yaml</code> (repo

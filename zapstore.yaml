@@ -16,14 +16,17 @@ repository: https://github.com/arbadacarbaYK/gittr
 homepage: https://gittr.space
 license: AGPL-3.0
 icon: ui/public/android-chrome-512x512.png
-# Phone screenshots (kind 32267 `image` tags on Nostr). Paths are relative to
-# this repo root, or https URLs. Zapstore (`zsp publish`) and gittr’s
-# “Publish on Nostr” both read this `images:` list. Other apps: put the same
-# field in *your* source repo’s zapstore.yaml.
+# Phone screenshots (kind 32267 `image` tags). 1080×1920 (9:16).
+# First three filenames are the live NIP-82 URLs — do not rename them:
+#   home.png = repo Code tab, apps.png = Apps, repo.png = Pages.
+# Then Repos list + Appearance. Narrow-desktop captures, full width kept
+# (a 9:16 side-crop cut titles). Pad to phone height instead.
 images:
   - ui/public/zapstore/home.png
   - ui/public/zapstore/apps.png
   - ui/public/zapstore/repo.png
+  - ui/public/zapstore/explore.png
+  - ui/public/zapstore/appearance.png
 pubkey: npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc
 tags:
   - git

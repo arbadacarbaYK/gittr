@@ -79,6 +79,8 @@ describe("official gittr Android announce", () => {
       "https://gittr.space/zapstore/home.png",
       "https://gittr.space/zapstore/apps.png",
       "https://gittr.space/zapstore/repo.png",
+      "https://gittr.space/zapstore/explore.png",
+      "https://gittr.space/zapstore/appearance.png",
     ]);
     expect(GITTR_ANDROID_SCREENSHOT_URLS).not.toContain(GITTR_ANDROID_ICON_URL);
   });

@@ -1075,29 +1075,28 @@ export default function HomePage({
 
   return (
     <>
-      {/* Kind-0 banner strip — same identity chrome as repo pages */}
-      <div
-        className="w-full h-[132px] bg-[var(--color-bg-secondary)] bg-cover bg-center relative"
-        style={
-          showBanner
-            ? {
-                backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${showBanner})`,
-              }
-            : {
-                backgroundImage:
-                  "linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg-primary))",
-              }
-        }
-        role="img"
-        aria-label={
-          showBanner ? "Your Nostr profile banner" : "Default gittr banner"
-        }
-      />
+      {/* Kind-0 banner only when the signed-in profile has one — empty
+          132px strip made the mobile homepage look like a blank notice. */}
+      {showBanner ? (
+        <div
+          className="w-full h-[88px] bg-[var(--color-bg-secondary)] bg-cover bg-center relative md:h-[132px]"
+          style={{
+            backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${showBanner})`,
+          }}
+          role="img"
+          aria-label="Your Nostr profile banner"
+        />
+      ) : null}
 
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-6 pb-6 relative">
         <header className="mb-6">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
+            <div
+              className={cn(
+                "relative z-[2] h-[76px] w-[76px] flex-shrink-0 overflow-hidden rounded-full border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md",
+                showBanner && "-mt-10"
+              )}
+            >
               {profileHref ? (
                 <Link href={profileHref} className="block h-full w-full">
                   <img
@@ -1161,7 +1160,16 @@ export default function HomePage({
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
-                <div className="space-y-1">
+                <p className="md:hidden">
+                  Import git so it stays findable if GitHub goes down.{" "}
+                  <Link
+                    href="/help#when-source-goes-offline"
+                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                  >
+                    More
+                  </Link>
+                </p>
+                <div className="hidden space-y-1 md:block">
                   <p>
                     Import your git from GitHub / Gitea / Codeberg or Gitlab so
                     it can still be discovered even if the source goes down.
@@ -1189,7 +1197,7 @@ export default function HomePage({
                   </p>
                 </div>
                 {SECURITY_AUDIT_UI_ENABLED && (
-                  <div className="space-y-1">
+                  <div className="hidden space-y-1 md:block">
                     <p>
                       Every repo here also gets a free security audit — known
                       CVEs in its dependencies show on the repo&apos;s{" "}

@@ -44,11 +44,16 @@ export const GITTR_STRAY_APP_IDS = ["GITTR"] as const;
 export const GITTR_ANDROID_ICON_URL =
   "https://gittr.space/android-chrome-512x512.png";
 
-/** Phone screenshots for kind 32267 `image` tags / zapstore.yaml `images`. */
+/** Phone screenshots for kind 32267 `image` tags / zapstore.yaml `images`.
+ *  Order is Zapstore gallery order. First three URLs are the live listing
+ *  (`home` = repo Code, `apps` = Apps, `repo` = Pages) so overwriting those
+ *  files updates Zapstore without a re-announce. */
 export const GITTR_ANDROID_SCREENSHOT_URLS = [
   "https://gittr.space/zapstore/home.png",
   "https://gittr.space/zapstore/apps.png",
   "https://gittr.space/zapstore/repo.png",
+  "https://gittr.space/zapstore/explore.png",
+  "https://gittr.space/zapstore/appearance.png",
 ] as const;
 
 export const GITTR_ANDROID_HOMEPAGE_URL = "https://gittr.space";
