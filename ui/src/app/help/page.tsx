@@ -1349,9 +1349,17 @@ export default function HelpPage() {
                     </p>
                     <p className="mt-1 text-gray-400">
                       Paste a GitLab clone URL on Create repository. gittr uses
-                      GitLab&apos;s v4 API for fork parent lookup and tab
-                      refresh. Self-hosted GitLab instances with the same API
-                      shape work the same way.
+                      GitLab&apos;s v4 API for fork parent lookup, files, and
+                      Releases. Issues and merge requests are not live-synced
+                      yet (that is still the GitLab half of GitHub issue{" "}
+                      <a
+                        href="https://github.com/arbadacarbaYK/gittr/issues/27"
+                        className="text-purple-400 hover:text-purple-300"
+                      >
+                        #27
+                      </a>
+                      ). Self-hosted GitLab instances with the same API shape
+                      work the same way for files.
                     </p>
                   </div>
                   <div>
@@ -1389,8 +1397,10 @@ export default function HelpPage() {
                 </div>
                 <p className="mt-3 text-sm text-gray-400">
                   In short: GitHub, GitLab, and Gitea/Forgejo are three
-                  different &quot;languages&quot; gittr speaks. You still paste
-                  one clone URL — gittr picks the right API from the hostname.
+                  different &quot;languages&quot; gittr speaks for{" "}
+                  <strong className="text-gray-300">files</strong>. Issue and PR
+                  lists live-sync from GitHub and from Codeberg/Gitea. GitLab
+                  issues/MRs are not in that loop yet.
                 </p>
               </HelpSubTopic>
 
