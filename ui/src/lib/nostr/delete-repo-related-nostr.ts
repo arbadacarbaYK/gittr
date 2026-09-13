@@ -12,6 +12,7 @@ import { deleteSoftwareAnnounceEvents } from "@/lib/nostr/publish-software-annou
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import { suggestAppIdFromRepo } from "@/lib/repo/forge-releases";
+import { appIdsToMatchForRepoDelete } from "@/lib/repo/gittr-android-app";
 
 import type { Event as NostrEvent } from "nostr-tools";
 
@@ -104,7 +105,12 @@ export async function collectRepoRelatedAnnounceIds(args: {
   const pagesDTag = (args.pagesDTag || "").trim();
   const timeoutMs = args.timeoutMs ?? 10_000;
   const nip34Address = `30617:${owner}:${repo}`;
-  const suggestedAppId = suggestAppIdFromRepo(repo);
+  const suggestedAppId = suggestAppIdFromRepo(repo, owner);
+  const dTags = appIdsToMatchForRepoDelete({
+    repo,
+    ownerPubkeyHex: owner,
+    suggestedAppId,
+  });
   const catalogRelays = relaysForSoftwareCatalog(args.relays);
   const pagesRelays = args.relays.length ? args.relays : catalogRelays;
 
@@ -149,8 +155,8 @@ export async function collectRepoRelatedAnnounceIds(args: {
         {
           kinds: [KIND_SOFTWARE_APPLICATION],
           authors: [owner],
-          "#d": [suggestedAppId],
-          limit: 5,
+          "#d": dTags,
+          limit: 15,
         },
       ],
     }),

@@ -7,7 +7,7 @@ Use these **on gittr** when pointing readers at our repositories. GitHub mirrors
 | **gittr** (web UI) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr |
 | **gitnostr** (bridge) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr |
 | **nsite-gateway** (Pages, our fork) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway |
-| **Blossom** (Pages / nsite blobs) | `https://blossom.gittr.space` (host; not a gittr git repo). **Pages only** — app installers are not stored here. Optional Apps pin uses public Blossom hosts listed in [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) § NIP-82. |
+| **Blossom** (Pages / nsite blobs) | `https://blossom.gittr.space` (host; not a gittr git repo). **Pages** for everyone. The operator gittr Android APK (`space.gittr.app`) may also pin here. Third-party Apps/APKs use public Blossom hosts listed in [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) § NIP-82. |
 | **gittr-helper-tools** | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools |
 | **pyramid** (forge relay) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid |
 | **gittr-mcp** (agents) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp |

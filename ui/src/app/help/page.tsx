@@ -276,7 +276,8 @@ export default function HelpPage() {
             specific tag on the repo{" "}
             <strong className="text-white">Releases</strong> tab. An optional
             pin copies the installer onto public Blossom hosts (never gittr’s
-            Pages Blossom). Zapstore listing is optional and free — see{" "}
+            Pages Blossom, except gittr’s own Android APK). Zapstore listing is
+            optional and free — see{" "}
             <Link
               href="#publish-pages-apps"
               className="text-purple-400 hover:text-purple-300"
@@ -976,9 +977,12 @@ export default function HelpPage() {
                 announce that tag from this repo’s{" "}
                 <strong className="text-white">Releases</strong> tab or Code
                 sidebar <strong className="text-white">Nostr Apps</strong>{" "}
-                (NIP-82). <code className="text-purple-200">zapstore.yaml</code>{" "}
-                in the git repo is what Zapstore uses to whitelist the
-                publisher.
+                (NIP-82). Use app id{" "}
+                <code className="text-purple-200">space.gittr.app</code> (the
+                Android package — not{" "}
+                <code className="text-purple-200">space.gittr.gittr</code>
+                ). <code className="text-purple-200">zapstore.yaml</code> in the
+                git repo is what Zapstore uses to whitelist the publisher.
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">
@@ -3460,10 +3464,11 @@ export default function HelpPage() {
                 announces. An optional checkbox pins a copy onto public Blossom
                 hosts (Primal, Ditto, Haven) — never{" "}
                 <code className="text-purple-200">blossom.gittr.space</code>{" "}
-                (that host is for Pages). The repo{" "}
-                <strong className="text-white">Releases</strong> tab lists all
-                forge download assets (not only APKs). How Releases, forge
-                files, and announces fit together:{" "}
+                except gittr’s own Android APK (
+                <code className="text-purple-200">space.gittr.app</code>
+                ). The repo <strong className="text-white">Releases</strong> tab
+                lists all forge download assets (not only APKs). How Releases,
+                forge files, and announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"

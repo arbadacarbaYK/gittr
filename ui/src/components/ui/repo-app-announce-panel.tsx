@@ -26,6 +26,11 @@ import {
   announceableForgeAssets,
   suggestAppIdFromRepo,
 } from "@/lib/repo/forge-releases";
+import {
+  GITTR_ANDROID_APP_ID,
+  isOfficialGittrAndroidRepo,
+  topicsForNip82Announce,
+} from "@/lib/repo/gittr-android-app";
 import { cn } from "@/lib/utils";
 
 import {
@@ -49,6 +54,10 @@ type RepoAppAnnouncePanelProps = {
   nip34Address?: string | null;
   /** Persist app id onto the stored repo after a successful announce */
   onAnnounced?: (appId: string) => void;
+  /** NIP-34 repo topics copied onto kind 32267 `t` tags */
+  repoTopics?: string[] | null;
+  /** Already-published app id — keep it so a second listing is not created */
+  existingAppId?: string | null;
   /**
    * Forge release tag to announce. Omit for latest (Code sidebar).
    * When set, queries `/api/repo/forge-releases?tag=…`.
@@ -98,12 +107,18 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     ownerPubkeyHex,
     nip34Address,
     onAnnounced,
+    repoTopics,
+    existingAppId,
     preferredTag,
     variant = "sidebar",
     defaultOpen = false,
   } = props;
   const { publish, subscribe, defaultRelays, remoteSigner } = useNostrContext();
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const isOfficialGittr = isOfficialGittrAndroidRepo({
+    repo: repoName,
+    ownerPubkeyHex,
+  });
 
   const [loading, setLoading] = useState(false);
   const [hashing, setHashing] = useState(false);
@@ -119,7 +134,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     whitelistHint?: string;
   } | null>(null);
   const [panelOpen, setPanelOpen] = useState(defaultOpen);
-  const [pinToNgitBlossom, setPinToNgitBlossom] = useState(false);
+  const [pinToNgitBlossom, setPinToNgitBlossom] = useState(isOfficialGittr);
   const [pinWarning, setPinWarning] = useState<string | null>(null);
 
   const hasSource = Boolean(sourceUrl?.trim());
@@ -148,7 +163,12 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           return;
         }
         setForge(data);
-        setAppId((prev) => prev || suggestAppIdFromRepo(data.repo));
+        setAppId(
+          (prev) =>
+            prev ||
+            (existingAppId || "").trim() ||
+            suggestAppIdFromRepo(data.repo, ownerPubkeyHex)
+        );
         setAppName((prev) => prev || data.repo || repoName);
         const announceable = announceableForgeAssets(data.release.assets);
         const preferred = pickAnnouncePrimaryAsset(data);
@@ -176,7 +196,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         setHashing(false);
       }
     },
-    [sourceUrl, repoName, tagForQuery]
+    [sourceUrl, repoName, tagForQuery, existingAppId, ownerPubkeyHex]
   );
 
   // Sidebar: auto-preview latest on mount. Inline: only when opened.
@@ -195,6 +215,15 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   useEffect(() => {
     setAppName(repoName);
   }, [repoName]);
+
+  useEffect(() => {
+    const existing = (existingAppId || "").trim();
+    if (existing) setAppId((prev) => prev || existing);
+  }, [existingAppId]);
+
+  useEffect(() => {
+    if (isOfficialGittr) setPinToNgitBlossom(true);
+  }, [isOfficialGittr]);
 
   useEffect(() => {
     setForge(null);
@@ -296,6 +325,12 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           selectedApkUrl: selectedAssetUrl || undefined,
           nip34Address: nip34Address || undefined,
           assetUrlOverrides,
+          ownerPubkeyHex,
+          topics: topicsForNip82Announce({
+            repoTopics,
+            repo: repoName,
+            ownerPubkeyHex,
+          }),
         },
         ownerPubkeyHex,
         defaultRelays: defaultRelays || [],
@@ -394,6 +429,17 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               Files stay on the forge. Pick another tag on the Releases tab.
             </>
           )}
+          {isOfficialGittr ? (
+            <>
+              {" "}
+              This is gittr’s own Android app — pin the APK to gittr’s Blossom.
+              App id stays{" "}
+              <code className="rounded bg-zinc-900 px-0.5">
+                {GITTR_ANDROID_APP_ID}
+              </code>
+              .
+            </>
+          ) : null}
         </p>
 
         <div className="space-y-0.5 border-b border-zinc-800/80 pb-3">
@@ -512,6 +558,35 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 placeholder="com.example.app"
                 className="h-8 text-xs"
               />
+              {isOfficialGittr ? (
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  Keep{" "}
+                  <code className="rounded bg-zinc-900 px-1">
+                    {GITTR_ANDROID_APP_ID}
+                  </code>{" "}
+                  — that matches the Android package. Changing it publishes a
+                  second listing.
+                  {(existingAppId || "").trim() &&
+                  (existingAppId || "").trim() !== GITTR_ANDROID_APP_ID ? (
+                    <>
+                      {" "}
+                      Already live as{" "}
+                      <code className="rounded bg-zinc-900 px-1">
+                        {(existingAppId || "").trim()}
+                      </code>
+                      . Keep that id unless you delete the old announce first.
+                    </>
+                  ) : null}
+                </p>
+              ) : (existingAppId || "").trim() ? (
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  Already announced as{" "}
+                  <code className="rounded bg-zinc-900 px-1">
+                    {(existingAppId || "").trim()}
+                  </code>
+                  . Keep this id so you do not create a second listing.
+                </p>
+              ) : null}
             </label>
             <label className="block space-y-1">
               <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
@@ -531,10 +606,24 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 onChange={(e) => setPinToNgitBlossom(e.target.checked)}
               />
               <span>
-                Also pin a copy on public Blossom hosts (Primal, Ditto, Haven) —
-                not gittr’s Pages Blossom. Default stays the forge download.
-                Your signer will approve a Blossom upload, then the app events.
-                If pin fails, announce still uses the forge URL.
+                {isOfficialGittr ? (
+                  <>
+                    Host this APK on gittr’s Blossom (
+                    <code className="rounded bg-zinc-900 px-1">
+                      blossom.gittr.space
+                    </code>
+                    ). Other apps cannot do that. If pin fails, announce still
+                    uses the GitHub URL.
+                  </>
+                ) : (
+                  <>
+                    Also pin a copy on public Blossom hosts (Primal, Ditto,
+                    Haven) — not gittr’s Pages Blossom. Default stays the forge
+                    download. Your signer will approve a Blossom upload, then
+                    the app events. If pin fails, announce still uses the forge
+                    URL.
+                  </>
+                )}
               </span>
             </label>
           </div>

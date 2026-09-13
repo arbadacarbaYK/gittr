@@ -5,6 +5,11 @@
  */
 import { parseGiteaCompatibleRepo } from "../repos/gitea-forge";
 
+import {
+  GITTR_ANDROID_APP_ID,
+  isOfficialGittrAndroidRepo,
+} from "./gittr-android-app";
+
 export type ForgeHost = "github" | "codeberg" | "gitlab" | "gitea";
 
 export type ForgeReleaseAsset = {
@@ -66,8 +71,18 @@ export function isApkAssetName(name: string, contentType?: string): boolean {
   );
 }
 
-/** Suggest a reverse-DNS style app id from a repo slug (user can override). */
-export function suggestAppIdFromRepo(repo: string): string {
+/**
+ * Suggest a reverse-DNS style app id from a repo slug (user can override).
+ * Official gittr (operator npub + repo `gittr`) is `space.gittr.app` so it
+ * matches the Android package — not `space.gittr.gittr`.
+ */
+export function suggestAppIdFromRepo(
+  repo: string,
+  ownerPubkeyHex?: string | null
+): string {
+  if (isOfficialGittrAndroidRepo({ repo, ownerPubkeyHex })) {
+    return GITTR_ANDROID_APP_ID;
+  }
   const slug = (repo || "app")
     .replace(/\.git$/i, "")
     .toLowerCase()

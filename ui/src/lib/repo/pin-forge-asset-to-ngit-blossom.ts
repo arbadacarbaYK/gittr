@@ -1,13 +1,14 @@
 /**
- * Stream a public forge Release asset to allowlisted public Blossom hosts.
- * Bytes are never written to gittr disk or blossom.gittr.space.
+ * Stream a public forge Release asset to allowlisted Blossom hosts.
+ * Bytes are never written to gittr disk. gittr Pages Blossom is used only
+ * for the official gittr Android APK (operator npub + repo `gittr`).
  */
 import { createHash } from "crypto";
 
 import { inspectBlossomUploadAuth } from "../nostr/blossom-bud11-auth";
 import {
-  NGIT_BLOSSOM_ORIGINS,
   isGittrBlossomHostname,
+  nip82BlossomPinOrigins,
   resolvePinnedBlossomUrl,
 } from "../nostr/nip82-blossom-hosts";
 
@@ -17,6 +18,7 @@ import {
   fetchForgeReleasesForAnnounce,
   forgeAssetDownloadHeaders,
 } from "./forge-releases";
+import { isOfficialGittrAndroidRepo } from "./gittr-android-app";
 
 const ATTEMPT_TIMEOUT_MS = 90_000;
 
@@ -132,6 +134,7 @@ async function putOnce(args: {
   contentType: string;
   contentLength?: number;
   signal: AbortSignal;
+  allowGittrPagesBlossom?: boolean;
 }): Promise<{ ok: true; url: string } | { ok: false; status: number }> {
   const uploadUrl = `${args.origin.replace(/\/$/, "")}/upload`;
   const headers: Record<string, string> = {
@@ -160,6 +163,7 @@ async function putOnce(args: {
     putOrigin: args.origin,
     sha256Hex: args.sha256,
     descriptorUrl: parseDescriptorUrl(text),
+    allowGittrPagesBlossom: args.allowGittrPagesBlossom,
   });
   if (!url) return { ok: false, status: res.status };
   return { ok: true, url };
@@ -223,18 +227,23 @@ export async function pinForgeReleaseAssetToNgitBlossom(args: {
     };
   }
 
+  const allowGittrPagesBlossom = isOfficialGittrAndroidRepo({
+    repo: forge.repo,
+    ownerPubkeyHex: authShape.pubkey,
+  });
+
   const authHeaders = nostrBlossomAuthorizationHeaders(
     args.authEvent as object
   );
 
-  for (const origin of NGIT_BLOSSOM_ORIGINS) {
+  for (const origin of nip82BlossomPinOrigins({ allowGittrPagesBlossom })) {
     let host = "";
     try {
       host = new URL(origin).hostname.toLowerCase();
     } catch {
       continue;
     }
-    if (isGittrBlossomHostname(host)) continue;
+    if (isGittrBlossomHostname(host) && !allowGittrPagesBlossom) continue;
 
     const headCtrl = new AbortController();
     const headTimer = setTimeout(() => headCtrl.abort(), 15_000);
@@ -244,6 +253,7 @@ export async function pinForgeReleaseAssetToNgitBlossom(args: {
         const url = resolvePinnedBlossomUrl({
           putOrigin: origin,
           sha256Hex: sha256,
+          allowGittrPagesBlossom,
         });
         if (url) return { ok: true, url, host, reused: true };
       }
@@ -271,6 +281,7 @@ export async function pinForgeReleaseAssetToNgitBlossom(args: {
           contentType: mime || "application/octet-stream",
           contentLength: asset.size > 0 ? asset.size : undefined,
           signal: ctrl.signal,
+          allowGittrPagesBlossom,
         });
         if (put.ok) {
           return { ok: true, url: put.url, host, reused: false };
@@ -290,7 +301,8 @@ export async function pinForgeReleaseAssetToNgitBlossom(args: {
   return {
     ok: false,
     code: "blossom_error",
-    error:
-      "Could not pin this file on public Blossom hosts. The forge download URL will still work.",
+    error: allowGittrPagesBlossom
+      ? "Could not pin this file on gittr Blossom or public hosts. The forge download URL will still work."
+      : "Could not pin this file on public Blossom hosts. The forge download URL will still work.",
   };
 }

@@ -31,7 +31,10 @@ export const GITTR_REPO_NSITE_GATEWAY = gittrRepoBrowse("nsite-gateway");
 export const GITTR_REPO_PYRAMID = gittrRepoBrowse("pyramid");
 export const GITTR_REPO_MCP = gittrRepoBrowse("gittr-mcp");
 
-/** Pages nsite blob host — never pin Apps / APKs here. */
+/**
+ * Pages nsite blob host. Third-party Apps/APKs never pin here.
+ * Official gittr Android (`space.gittr.app`) may pin its APK here.
+ */
 export const GITTR_BLOSSOM_ORIGIN = "https://blossom.gittr.space";
 
 /** Upstream nsite-gateway we forked/adapted (hzrd146). */

@@ -1,14 +1,17 @@
 /**
- * Optional pin of hashed NIP-82 assets onto public Blossom hosts.
+ * Optional pin of hashed NIP-82 assets onto Blossom hosts.
+ * Public hosts for everyone; gittr Pages Blossom only for official gittr APK.
  * Failures are warnings — announce still uses forge download URLs.
  */
 import type { Event as NostrEvent, UnsignedEvent } from "nostr-tools";
 
 import type { ForgeReleasesOk } from "../repo/forge-releases";
+import { isOfficialGittrAndroidRepo } from "../repo/gittr-android-app";
 
 import { unsignedNgitBlossomUploadAuth } from "./blossom-bud11-auth";
 import {
   allowedNip82BlossomAssetUrl,
+  gittrPagesBlossomHostname,
   ngitBlossomHostnames,
 } from "./nip82-blossom-hosts";
 import {
@@ -60,10 +63,19 @@ export async function pinReleaseAssetsToNgitBlossom(args: {
     };
   }
 
+  const allowGittrPagesBlossom = isOfficialGittrAndroidRepo({
+    repo: args.forge.repo,
+    ownerPubkeyHex: args.ownerPubkeyHex,
+  });
+  const gittrHost = gittrPagesBlossomHostname();
+  const serverHostnames = [
+    ...(allowGittrPagesBlossom && gittrHost ? [gittrHost] : []),
+    ...ngitBlossomHostnames(),
+  ];
   const unsigned = unsignedNgitBlossomUploadAuth({
     pubkeyHex: args.ownerPubkeyHex,
     sha256Hex: assets.map((a) => a.sha256),
-    serverHostnames: ngitBlossomHostnames(),
+    serverHostnames,
   });
   const authEvent = await args.signEvent(unsigned as UnsignedEvent);
 
@@ -93,7 +105,9 @@ export async function pinReleaseAssetsToNgitBlossom(args: {
         );
         continue;
       }
-      const allowed = allowedNip82BlossomAssetUrl(data.url);
+      const allowed = allowedNip82BlossomAssetUrl(data.url, {
+        allowGittrPagesBlossom,
+      });
       if (!allowed) {
         warnings.push(
           `${asset.name}: Blossom returned a URL we will not use — keeping the forge URL.`

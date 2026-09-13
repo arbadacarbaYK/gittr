@@ -7,6 +7,7 @@ import {
   allowedNip82BlossomAssetUrl,
   blossomBlobUrl,
   isGittrBlossomHostname,
+  nip82BlossomPinOrigins,
   resolvePinnedBlossomUrl,
 } from "./nip82-blossom-hosts";
 
@@ -25,7 +26,7 @@ describe("nip82 blossom pin hosts", () => {
     }
   });
 
-  it("rejects gittr Pages Blossom", () => {
+  it("rejects gittr Pages Blossom unless the official APK exception is set", () => {
     expect(isGittrBlossomHostname("blossom.gittr.space")).toBe(true);
     expect(isGittrBlossomHostname(new URL(GITTR_BLOSSOM_ORIGIN).hostname)).toBe(
       true
@@ -34,6 +35,16 @@ describe("nip82 blossom pin hosts", () => {
       allowedNip82BlossomAssetUrl(`${GITTR_BLOSSOM_ORIGIN}/${SHA}`)
     ).toBeNull();
     expect(blossomBlobUrl(GITTR_BLOSSOM_ORIGIN, SHA)).toBeNull();
+    expect(
+      allowedNip82BlossomAssetUrl(`${GITTR_BLOSSOM_ORIGIN}/${SHA}`, {
+        allowGittrPagesBlossom: true,
+      })
+    ).toBe(`${GITTR_BLOSSOM_ORIGIN}/${SHA}`);
+    expect(
+      blossomBlobUrl(GITTR_BLOSSOM_ORIGIN, SHA, {
+        allowGittrPagesBlossom: true,
+      })
+    ).toBe(`${GITTR_BLOSSOM_ORIGIN}/${SHA}`);
   });
 
   it("accepts a primal blob URL and ignores query strings", () => {
@@ -59,5 +70,12 @@ describe("nip82 blossom pin hosts", () => {
         descriptorUrl: "https://cdn.someone-else.example/blob",
       })
     ).toBe(`https://blossom.primal.net/${SHA}`);
+  });
+
+  it("puts gittr Pages Blossom first only when the official exception is on", () => {
+    expect(nip82BlossomPinOrigins()).toEqual([...NGIT_BLOSSOM_ORIGINS]);
+    expect(nip82BlossomPinOrigins({ allowGittrPagesBlossom: true })[0]).toBe(
+      GITTR_BLOSSOM_ORIGIN
+    );
   });
 });

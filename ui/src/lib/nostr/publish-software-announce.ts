@@ -86,7 +86,10 @@ export async function publishSoftwareAnnounce(
     );
   }
 
-  const built = buildSoftwareAnnounceEvents(args.input);
+  const built = buildSoftwareAnnounceEvents({
+    ...args.input,
+    ownerPubkeyHex: args.input.ownerPubkeyHex || args.ownerPubkeyHex,
+  });
   const relays = relaysForSoftwareCatalog(args.defaultRelays);
 
   const sign = async (unsigned: UnsignedAnnounceEvent): Promise<NostrEvent> => {

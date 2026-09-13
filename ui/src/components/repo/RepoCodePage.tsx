@@ -47,16 +47,16 @@ import {
   mapGithubContributors,
 } from "@/lib/github-mapping";
 import { rewriteRelativeHtmlAssets } from "@/lib/gittr-pages/html-preview-base";
+import {
+  formatPagesManifestErrorAlert,
+  formatPagesManifestSuccessAlert,
+} from "@/lib/gittr-pages/pages-manifest-alert";
 import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
   extraPagesDTagsForRepo,
   resolveRepoPagesDTag,
 } from "@/lib/gittr-pages/pages-public-slug";
-import {
-  formatPagesManifestErrorAlert,
-  formatPagesManifestSuccessAlert,
-} from "@/lib/gittr-pages/pages-manifest-alert";
 import {
   notifyGittrPagesPublished,
   pokeGittrPagesIngest,
@@ -23597,6 +23597,18 @@ export function RepoCodePage() {
                               if (!/^[0-9a-f]{64}$/.test(owner)) return null;
                               return `30617:${owner}:${decodedRepo}`;
                             })()}
+                            repoTopics={
+                              repoData?.topics ||
+                              (repo as { topics?: string[] } | null)?.topics ||
+                              []
+                            }
+                            existingAppId={
+                              (repoData as { announcedAppId?: string } | null)
+                                ?.announcedAppId ||
+                              (repo as { announcedAppId?: string } | null)
+                                ?.announcedAppId ||
+                              null
+                            }
                             onAnnounced={(announcedAppId) => {
                               try {
                                 const repos = loadStoredRepos();

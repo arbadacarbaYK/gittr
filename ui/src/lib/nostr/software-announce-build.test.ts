@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 import type {
   ForgeReleaseAsset,
   ForgeReleasesOk,
@@ -219,6 +220,17 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(built.asset.tags.find((t) => t[0] === "url")?.[1]).toBe(blossom);
   });
 
+  it("copies repo topics onto the app event and still adds android for APKs", () => {
+    const built = buildSoftwareAnnounceEvents({
+      forge: sampleForge(),
+      appId: "space.gittr.demo",
+      appName: "Demo",
+      topics: ["git", "nostr", "android"],
+    });
+    const appTs = built.app.tags.filter((t) => t[0] === "t").map((t) => t[1]);
+    expect(appTs).toEqual(["android", "git", "nostr"]);
+  });
+
   it("ignores gittr Pages Blossom overrides so APKs are not announced there", () => {
     const forge = sampleForge({
       apk: false,
@@ -237,5 +249,24 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(built.asset.tags.find((t) => t[0] === "url")?.[1]).toBe(
       tgz.downloadUrl
     );
+  });
+
+  it("allows gittr Pages Blossom for the official operator gittr APK", () => {
+    const forge: ForgeReleasesOk = {
+      ...sampleForge({ includeMsi: false }),
+      owner: "example",
+      repo: "gittr",
+      repositoryUrl: "https://github.com/example/gittr",
+    };
+    const apk = forge.release.apkAssets[0]!;
+    const blossom = `https://blossom.gittr.space/${SHA_APK}`;
+    const built = buildSoftwareAnnounceEvents({
+      forge,
+      appId: "space.gittr.app",
+      appName: "gittr",
+      ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+      assetUrlOverrides: { [apk.downloadUrl]: blossom },
+    });
+    expect(built.asset.tags.find((t) => t[0] === "url")?.[1]).toBe(blossom);
   });
 });

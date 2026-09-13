@@ -1,6 +1,7 @@
 /**
  * NIP-82 / Zapstore installers may be pinned to public Blossom hosts.
- * gittr’s own Blossom (Pages / nsite) is never an Apps pin target.
+ * gittr’s Pages Blossom is not an Apps pin target except the official
+ * gittr Android APK (`space.gittr.app`).
  */
 import { GITTR_BLOSSOM_ORIGIN } from "../gittr-repo-links";
 
@@ -12,6 +13,11 @@ export const NGIT_BLOSSOM_ORIGINS = [
 ] as const;
 
 export type NgitBlossomOrigin = (typeof NGIT_BLOSSOM_ORIGINS)[number];
+
+export type Nip82BlossomUrlOpts = {
+  /** Official gittr Android APK only. Third-party apps stay blocked. */
+  allowGittrPagesBlossom?: boolean;
+};
 
 const SHA256_PATH = /^\/[0-9a-f]{64}(?:\.[a-z0-9]{1,12})?$/i;
 
@@ -30,7 +36,7 @@ function gittrBlossomHostnames(): Set<string> {
   return out;
 }
 
-/** True when this host is gittr’s Pages blob CDN, not an Apps pin target. */
+/** True when this host is gittr’s Pages blob CDN, not a public Apps pin target. */
 export function isGittrBlossomHostname(hostname: string): boolean {
   const h = (hostname || "").toLowerCase();
   if (!h) return false;
@@ -45,17 +51,39 @@ export function ngitBlossomHostnames(): string[] {
   );
 }
 
-export function isAllowedNgitBlossomOrigin(origin: string): boolean {
+export function gittrPagesBlossomHostname(): string | null {
+  return hostnameOf(GITTR_BLOSSOM_ORIGIN);
+}
+
+/** Origins to try when pinning a NIP-82 installer. gittr Pages first when allowed. */
+export function nip82BlossomPinOrigins(opts?: Nip82BlossomUrlOpts): string[] {
+  if (opts?.allowGittrPagesBlossom) {
+    return [GITTR_BLOSSOM_ORIGIN, ...NGIT_BLOSSOM_ORIGINS];
+  }
+  return [...NGIT_BLOSSOM_ORIGINS];
+}
+
+export function isAllowedNgitBlossomOrigin(
+  origin: string,
+  opts?: Nip82BlossomUrlOpts
+): boolean {
   const host = hostnameOf(origin);
-  if (!host || isGittrBlossomHostname(host)) return false;
+  if (!host) return false;
+  if (isGittrBlossomHostname(host)) {
+    return Boolean(opts?.allowGittrPagesBlossom);
+  }
   return ngitBlossomHostnames().includes(host);
 }
 
 /**
- * Kind 3063 `url` may only be rewritten to an allowlisted public Blossom HTTPS blob.
- * Forge URLs and gittr Blossom URLs are rejected (caller keeps the forge URL).
+ * Kind 3063 `url` may only be rewritten to an allowlisted Blossom HTTPS blob.
+ * Forge URLs are rejected (caller keeps the forge URL). gittr Pages Blossom
+ * is rejected unless `allowGittrPagesBlossom` (official gittr APK).
  */
-export function allowedNip82BlossomAssetUrl(url: string): string | null {
+export function allowedNip82BlossomAssetUrl(
+  url: string,
+  opts?: Nip82BlossomUrlOpts
+): string | null {
   const raw = (url || "").trim();
   if (!raw) return null;
   let parsed: URL;
@@ -67,19 +95,23 @@ export function allowedNip82BlossomAssetUrl(url: string): string | null {
   if (parsed.protocol !== "https:") return null;
   if (parsed.search || parsed.hash) return null;
   const host = parsed.hostname.toLowerCase();
-  if (isGittrBlossomHostname(host)) return null;
-  if (!ngitBlossomHostnames().includes(host)) return null;
+  if (isGittrBlossomHostname(host)) {
+    if (!opts?.allowGittrPagesBlossom) return null;
+  } else if (!ngitBlossomHostnames().includes(host)) {
+    return null;
+  }
   if (!SHA256_PATH.test(parsed.pathname)) return null;
   return `https://${host}${parsed.pathname.toLowerCase()}`;
 }
 
 export function blossomBlobUrl(
   origin: string,
-  sha256Hex: string
+  sha256Hex: string,
+  opts?: Nip82BlossomUrlOpts
 ): string | null {
   const sha = (sha256Hex || "").trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(sha)) return null;
-  if (!isAllowedNgitBlossomOrigin(origin)) return null;
+  if (!isAllowedNgitBlossomOrigin(origin, opts)) return null;
   const base = origin.replace(/\/$/, "");
   return `${base}/${sha}`;
 }
@@ -89,10 +121,14 @@ export function resolvePinnedBlossomUrl(args: {
   putOrigin: string;
   sha256Hex: string;
   descriptorUrl?: string;
+  allowGittrPagesBlossom?: boolean;
 }): string | null {
+  const opts: Nip82BlossomUrlOpts = {
+    allowGittrPagesBlossom: args.allowGittrPagesBlossom,
+  };
   const fromDescriptor = args.descriptorUrl
-    ? allowedNip82BlossomAssetUrl(args.descriptorUrl)
+    ? allowedNip82BlossomAssetUrl(args.descriptorUrl, opts)
     : null;
   if (fromDescriptor) return fromDescriptor;
-  return blossomBlobUrl(args.putOrigin, args.sha256Hex);
+  return blossomBlobUrl(args.putOrigin, args.sha256Hex, opts);
 }

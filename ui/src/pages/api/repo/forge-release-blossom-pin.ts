@@ -15,7 +15,8 @@ export const config = {
  * POST /api/repo/forge-release-blossom-pin
  *
  * Streams a forge Release asset to public Blossom hosts (primal / ditto / haven).
- * Does not persist bytes on gittr and never uploads to blossom.gittr.space.
+ * Does not persist bytes on gittr. blossom.gittr.space is used only when the
+ * signer is the gittr operator announcing the gittr Android APK.
  * Kind 3063 still defaults to the forge URL unless the client uses the returned URL.
  */
 export default async function handler(
