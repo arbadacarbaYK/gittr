@@ -14,13 +14,20 @@ import {
   suggestAppIdFromRepo,
   versionFromTag,
 } from "../repo/forge-releases";
-import { isOfficialGittrAndroidRepo } from "../repo/gittr-android-app";
+import {
+  GITTR_ANDROID_HOMEPAGE_URL,
+  GITTR_ANDROID_ICON_URL,
+  GITTR_ANDROID_LICENSE,
+  isOfficialGittrAndroidRepo,
+} from "../repo/gittr-android-app";
 
 import { allowedNip82BlossomAssetUrl } from "./nip82-blossom-hosts";
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
   KIND_SOFTWARE_RELEASE,
+  normalizeSoftwareIconUrl,
+  safeHttpUrlTag,
 } from "./nip82-software";
 
 /** Same host as software-catalog-relays — kept here so unit tests stay alias-free. */
@@ -51,6 +58,10 @@ export type SoftwareAnnounceInput = {
   topics?: string[];
   /** Repo owner hex — used to allow Pages Blossom only for official gittr. */
   ownerPubkeyHex?: string;
+  /** HTTPS icon for kind 32267 `icon` / `image` (Zapstore + /apps cards). */
+  iconUrl?: string;
+  /** HTTPS homepage for kind 32267 `url`. */
+  homepageUrl?: string;
   /**
    * When true (default), also publish other NIP-82 MIME binaries from the same
    * forge release (msi/dmg/appimage/tar.gz/…) that already have sha256.
@@ -220,6 +231,18 @@ export function buildSoftwareAnnounceEvents(
   const name = (input.appName || input.forge.repo).trim() || input.forge.repo;
   const summary = (input.summary || "").trim().slice(0, 280);
   const now = Math.floor(Date.now() / 1000);
+  const officialGittr = isOfficialGittrAndroidRepo({
+    repo: input.forge.repo,
+    ownerPubkeyHex: input.ownerPubkeyHex,
+  });
+  const icon =
+    normalizeSoftwareIconUrl(input.iconUrl) ||
+    (officialGittr ? GITTR_ANDROID_ICON_URL : undefined);
+  const homepage =
+    safeHttpUrlTag(input.homepageUrl) ||
+    (officialGittr ? GITTR_ANDROID_HOMEPAGE_URL : undefined);
+  const license =
+    input.license?.trim() || (officialGittr ? GITTR_ANDROID_LICENSE : "");
 
   const published = [primary, ...extraAssetFiles];
   const hasApk = published.some((f) => isApkFile(f));
@@ -238,6 +261,11 @@ export function buildSoftwareAnnounceEvents(
     ["name", name],
     ["repository", input.forge.repositoryUrl],
   ];
+  if (icon) {
+    appTags.push(["icon", icon]);
+    appTags.push(["image", icon]);
+  }
+  if (homepage) appTags.push(["url", homepage]);
   const seenT = new Set<string>();
   const pushTopic = (raw: string) => {
     const v = raw.trim();
@@ -250,7 +278,7 @@ export function buildSoftwareAnnounceEvents(
   if (hasApk) pushTopic("android");
   for (const f of platformFs) appTags.push(["f", f]);
   if (summary) appTags.push(["summary", summary]);
-  if (input.license?.trim()) appTags.push(["license", input.license.trim()]);
+  if (license) appTags.push(["license", license]);
   for (const t of input.topics || []) {
     pushTopic(t);
   }
@@ -266,10 +294,7 @@ export function buildSoftwareAnnounceEvents(
     pubkey: "",
   };
 
-  const allowGittrPagesBlossom = isOfficialGittrAndroidRepo({
-    repo: input.forge.repo,
-    ownerPubkeyHex: input.ownerPubkeyHex,
-  });
+  const allowGittrPagesBlossom = officialGittr;
   const urlFor = (file: ForgeReleaseAsset) => {
     const raw = input.assetUrlOverrides?.[file.downloadUrl];
     if (!raw) return undefined;

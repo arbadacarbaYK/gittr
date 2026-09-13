@@ -23609,6 +23609,12 @@ export function RepoCodePage() {
                                 ?.announcedAppId ||
                               null
                             }
+                            repoLogoUrl={
+                              (repoData as { logoUrl?: string } | null)
+                                ?.logoUrl ||
+                              (repo as { logoUrl?: string } | null)?.logoUrl ||
+                              null
+                            }
                             onAnnounced={(announcedAppId) => {
                               try {
                                 const repos = loadStoredRepos();

@@ -5,9 +5,11 @@ import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 import { resolveAnnounceAppId, suggestAppIdFromRepo } from "./forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
+  GITTR_ANDROID_ICON_URL,
   GITTR_LEGACY_SUGGESTED_APP_ID,
   GITTR_OFFICIAL_APP_TOPICS,
   appIdsToMatchForRepoDelete,
+  iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
   topicsForNip82Announce,
 } from "./gittr-android-app";
@@ -66,6 +68,30 @@ describe("official gittr Android announce", () => {
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
     ).toBe(GITTR_LEGACY_SUGGESTED_APP_ID);
+  });
+
+  it("uses the bird logo for official gittr and the repo logo for others", () => {
+    expect(
+      iconUrlForNip82Announce({
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+        repoLogoUrl: "https://cdn.example.com/other.png",
+      })
+    ).toBe(GITTR_ANDROID_ICON_URL);
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoLogoUrl: "https://cdn.example.com/other.png",
+      })
+    ).toBe("https://cdn.example.com/other.png");
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoLogoUrl: "/logo.svg",
+      })
+    ).toBeUndefined();
   });
 
   it("copies repo topics and fills official zapstore.yaml tags", () => {

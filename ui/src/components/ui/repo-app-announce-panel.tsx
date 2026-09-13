@@ -28,6 +28,8 @@ import {
 } from "@/lib/repo/forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
+  GITTR_ANDROID_LICENSE,
+  iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
   topicsForNip82Announce,
 } from "@/lib/repo/gittr-android-app";
@@ -58,6 +60,8 @@ type RepoAppAnnouncePanelProps = {
   repoTopics?: string[] | null;
   /** Already-published app id — keep it so a second listing is not created */
   existingAppId?: string | null;
+  /** HTTPS repo logo from Settings — used as NIP-82 icon for third-party apps */
+  repoLogoUrl?: string | null;
   /**
    * Forge release tag to announce. Omit for latest (Code sidebar).
    * When set, queries `/api/repo/forge-releases?tag=…`.
@@ -109,6 +113,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     onAnnounced,
     repoTopics,
     existingAppId,
+    repoLogoUrl,
     preferredTag,
     variant = "sidebar",
     defaultOpen = false,
@@ -339,6 +344,12 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             repo: repoName,
             ownerPubkeyHex,
           }),
+          iconUrl: iconUrlForNip82Announce({
+            repo: repoName,
+            ownerPubkeyHex,
+            repoLogoUrl,
+          }),
+          license: isOfficialGittr ? GITTR_ANDROID_LICENSE : undefined,
         },
         ownerPubkeyHex,
         defaultRelays: defaultRelays || [],

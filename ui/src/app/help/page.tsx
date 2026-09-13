@@ -3466,9 +3466,10 @@ export default function HelpPage() {
                 <code className="text-purple-200">blossom.gittr.space</code>{" "}
                 except gittr’s own Android APK (
                 <code className="text-purple-200">space.gittr.app</code>
-                ). The repo <strong className="text-white">Releases</strong> tab
-                lists all forge download assets (not only APKs). How Releases,
-                forge files, and announces fit together:{" "}
+                ), which also publishes the bird logo as the app icon. The repo{" "}
+                <strong className="text-white">Releases</strong> tab lists all
+                forge download assets (not only APKs). How Releases, forge
+                files, and announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"

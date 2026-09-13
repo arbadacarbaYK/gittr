@@ -24,6 +24,14 @@ export const GITTR_OFFICIAL_APP_TOPICS = [
 /** Older auto-suggest before the Android package id was special-cased. */
 export const GITTR_LEGACY_SUGGESTED_APP_ID = "space.gittr.gittr";
 
+/** Public bird logo (same file as zapstore.yaml `icon`). */
+export const GITTR_ANDROID_ICON_URL =
+  "https://gittr.space/android-chrome-512x512.png";
+
+export const GITTR_ANDROID_HOMEPAGE_URL = "https://gittr.space";
+
+export const GITTR_ANDROID_LICENSE = "AGPL-3.0";
+
 export function normalizeRepoSlug(repo?: string | null): string {
   return (repo || "")
     .replace(/\.git$/i, "")
@@ -80,4 +88,30 @@ export function appIdsToMatchForRepoDelete(args: {
     ids.push(GITTR_ANDROID_APP_ID, GITTR_LEGACY_SUGGESTED_APP_ID);
   }
   return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+}
+
+function httpsUrlOrUndefined(raw?: string | null): string | undefined {
+  const t = (raw || "").trim();
+  if (!t) return undefined;
+  try {
+    const u = new URL(t);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
+    if (u.username || u.password) return undefined;
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Kind 32267 `icon` / `image`. Official gittr always uses the bird PNG.
+ * Other apps keep their Settings logo URL when it is already public http(s).
+ */
+export function iconUrlForNip82Announce(args: {
+  repo?: string | null;
+  ownerPubkeyHex?: string | null;
+  repoLogoUrl?: string | null;
+}): string | undefined {
+  if (isOfficialGittrAndroidRepo(args)) return GITTR_ANDROID_ICON_URL;
+  return httpsUrlOrUndefined(args.repoLogoUrl);
 }

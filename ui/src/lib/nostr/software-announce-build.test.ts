@@ -268,5 +268,36 @@ describe("buildSoftwareAnnounceEvents", () => {
       assetUrlOverrides: { [apk.downloadUrl]: blossom },
     });
     expect(built.asset.tags.find((t) => t[0] === "url")?.[1]).toBe(blossom);
+    expect(built.app.tags.find((t) => t[0] === "icon")?.[1]).toBe(
+      "https://gittr.space/android-chrome-512x512.png"
+    );
+    expect(built.app.tags.find((t) => t[0] === "image")?.[1]).toBe(
+      "https://gittr.space/android-chrome-512x512.png"
+    );
+    expect(built.app.tags.find((t) => t[0] === "url")?.[1]).toBe(
+      "https://gittr.space"
+    );
+    expect(built.app.tags.find((t) => t[0] === "license")?.[1]).toBe(
+      "AGPL-3.0"
+    );
+  });
+
+  it("puts a provided HTTPS icon on third-party announces and ignores javascript", () => {
+    const withIcon = buildSoftwareAnnounceEvents({
+      forge: sampleForge({ includeMsi: false }),
+      appId: "space.gittr.demo",
+      appName: "Demo",
+      iconUrl: "https://cdn.example.com/app.png",
+    });
+    expect(withIcon.app.tags.find((t) => t[0] === "icon")?.[1]).toBe(
+      "https://cdn.example.com/app.png"
+    );
+    const noIcon = buildSoftwareAnnounceEvents({
+      forge: sampleForge({ includeMsi: false }),
+      appId: "space.gittr.demo",
+      appName: "Demo",
+      iconUrl: "javascript:alert(1)",
+    });
+    expect(noIcon.app.tags.find((t) => t[0] === "icon")).toBeUndefined();
   });
 });

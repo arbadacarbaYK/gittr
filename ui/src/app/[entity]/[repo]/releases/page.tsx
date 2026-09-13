@@ -105,6 +105,7 @@ export default function RepoReleasesPage({
   const [announcedAppId, setAnnouncedAppId] = useState<string | undefined>();
   const [repoSummary, setRepoSummary] = useState("");
   const [repoTopics, setRepoTopics] = useState<string[]>([]);
+  const [repoLogoUrl, setRepoLogoUrl] = useState<string | undefined>();
   const [announceTag, setAnnounceTag] = useState<string | null>(null);
 
   const forgeSourceLinked = Boolean(
@@ -138,6 +139,10 @@ export default function RepoReleasesPage({
             ? rec.topics.filter((t): t is string => typeof t === "string")
             : []
         );
+        const logo = (rec as StoredRepo & { logoUrl?: string }).logoUrl;
+        setRepoLogoUrl(
+          typeof logo === "string" && logo.trim() ? logo.trim() : undefined
+        );
         const announced = (rec as StoredRepo & { announcedAppId?: string })
           .announcedAppId;
         setAnnouncedAppId(
@@ -148,6 +153,7 @@ export default function RepoReleasesPage({
       } else {
         setRepoSummary("");
         setRepoTopics([]);
+        setRepoLogoUrl(undefined);
         setAnnouncedAppId(undefined);
       }
       if (!ownerHex && resolvedParams.entity?.startsWith("npub")) {
@@ -856,6 +862,7 @@ export default function RepoReleasesPage({
             repoSummary={repoSummary}
             repoTopics={repoTopics}
             existingAppId={announcedAppId}
+            repoLogoUrl={repoLogoUrl}
             ownerPubkeyHex={ownerPubkeyHex}
             nip34Address={nip34Address}
             onAnnounced={(announcedAppId) => {
