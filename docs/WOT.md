@@ -58,6 +58,7 @@ Future: self-hosted oracle on gittr infra, NIP-85 kind `10040`, optional third-p
 - Repo page owner name
 - Issue detail author
 - `/apps` publisher row
+- `/pages` author row
 - `/bounty-hunt` issue author
 
 Not on explore/home repo cards (too noisy).

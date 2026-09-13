@@ -32,6 +32,7 @@ Start here:
 | [NIP46_REMOTE_SIGNER_INTEGRATION.md](NIP46_REMOTE_SIGNER_INTEGRATION.md) | Remote signer |
 | [NIP25_STARS_NIP51_FOLLOWING.md](NIP25_STARS_NIP51_FOLLOWING.md) | Stars / follow lists |
 | [GITHUB_IMPORT_IDENTITY_MATCHING.md](GITHUB_IMPORT_IDENTITY_MATCHING.md) | GitHub contributors ↔ Nostr (incl. noreply lookalikes) |
+| [WOT.md](WOT.md) | Web of Trust badges on profiles, repos, apps, Pages |
 | [SEO.md](SEO.md) | Sitemap, metadata |
 | [NGINX_NIP05_RESOLUTION.md](NGINX_NIP05_RESOLUTION.md) | NIP-05 hosting |
 

@@ -20,6 +20,7 @@ Install gittr (Next.js UI + API) and **git-nostr-bridge** on a Linux server. Pat
 | Markdown XSS / rehype-sanitize | [MARKDOWN_XSS.md](MARKDOWN_XSS.md) |
 | Event kinds / paywall product rules | [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) |
 | Web of Trust badges | [WOT.md](WOT.md) |
+| Security lab page (`/lab`) | Snapshot HTML; `./scripts/push-lab-snapshot.sh` → `/opt/ngit/data/lab-snapshot/` |
 | Local dev | [LOCAL_SETUP.md](LOCAL_SETUP.md) |
 | Doc links to our repos on gittr (not GitHub) | [gittr-repo-links.md](gittr-repo-links.md) |
 

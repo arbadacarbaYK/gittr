@@ -437,6 +437,46 @@ export default function HelpPage() {
             </Link>
             .
           </li>
+          <li>
+            <strong className="text-white">Web of Trust badges</strong> — When
+            you are logged in, repo, app, and Pages authors show how close they
+            are in your follow graph.{" "}
+            <Link
+              href="#wot-badges"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Web of Trust
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">External identities</strong> —
+            Settings → Profile: claim GitHub, X, and more (NIP-39) so others can
+            see you are the same person — useful when they judge Web of Trust.{" "}
+            <Link
+              href="#verified-identities"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              External identities
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Security lab</strong> — Header →{" "}
+            <Link href="/lab" className="text-purple-400 hover:text-purple-300">
+              Lab
+            </Link>
+            : a snapshot map of ecosystem dependencies around gittr, and which
+            repos that use them look affected. Per-repo CVEs stay on each
+            repo&apos;s Dependencies tab.{" "}
+            <Link
+              href="#security-lab"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              Security lab
+            </Link>
+            .
+          </li>
         </ul>
       </HelpSection>
 
@@ -3007,6 +3047,129 @@ export default function HelpPage() {
                 </ul>
               </HelpTopic>
             )}
+
+            <HelpTopic id="wot-badges" title={<>Web of Trust badges</>}>
+              <p>
+                When you are logged in, gittr shows a small hop badge next to
+                other people&apos;s names on profiles, repo owners,{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>
+                , and{" "}
+                <Link
+                  href="/pages"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /pages
+                </Link>
+                . It is <strong>relative to you</strong> — how many follow-hops
+                away they are — not a global score. Labels:{" "}
+                <strong>In your network</strong>,{" "}
+                <strong>N hops from you</strong>,{" "}
+                <strong>Outside your network</strong>, or{" "}
+                <strong>Distance unknown</strong> if the lookup is down. Logged
+                out, the hop badge is hidden. Your own profile does not show
+                hops to yourself.
+              </p>
+              <p className="mt-2 text-sm text-gray-400">
+                Direct follows come from your kind-3 contact list. Multi-hop
+                distance can use a browser WoT extension or the public oracle.
+                Linked{" "}
+                <a
+                  href="#verified-identities"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  external identities
+                </a>{" "}
+                are a separate signal: they help you decide whether the npub is
+                the same person as a GitHub or X account.
+              </p>
+            </HelpTopic>
+
+            <HelpTopic
+              id="verified-identities"
+              title={<>External identities (NIP-39)</>}
+            >
+              <p>
+                Under{" "}
+                <Link
+                  href="/settings/profile"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Settings → Profile
+                </Link>
+                , claim GitHub, X, Telegram, Mastodon, and other accounts so
+                others can see you are the same person on Nostr. Claims publish
+                as NIP-39 kind{" "}
+                <code className="bg-gray-800 px-1 rounded text-xs">10011</code>.
+                Optional proof (GitHub Gist, tweet). The chips also help when
+                someone is judging{" "}
+                <a
+                  href="#wot-badges"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Web of Trust
+                </a>
+                , and imports can match GitHub contributors to Nostr profiles.
+                NIP-05 (
+                <code className="bg-gray-800 px-1 rounded text-xs">
+                  name@domain
+                </code>
+                ) is a separate checkmark on kind 0 — name, bio, and avatar stay
+                on that event.
+              </p>
+              <p className="mt-2 text-sm text-gray-400">
+                Tip: if you connected GitHub on{" "}
+                <Link
+                  href="/settings/ssh-keys"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Settings → SSH Keys
+                </Link>
+                , it can appear under Verified Identities automatically — then
+                save Profile to publish the claim.
+              </p>
+            </HelpTopic>
+
+            <HelpTopic id="security-lab" title={<>Security lab</>}>
+              <p>
+                Open{" "}
+                <Link
+                  href="/lab"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Lab
+                </Link>{" "}
+                in the header for a snapshot map of ecosystem dependencies
+                around gittr (gittr is the seed repo), and which repos that use
+                those dependencies look affected. Display-only — not a live
+                hunt. Run{" "}
+                <a
+                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/local-agent"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  local-agent
+                </a>{" "}
+                yourself if you want to hunt on your own machine.
+              </p>
+              <p className="mt-2 text-sm text-gray-400">
+                Per-repo lockfile CVEs stay on each repo&apos;s{" "}
+                <strong>Dependencies</strong> tab, with optional private DMs —
+                that is a different surface from Lab. See{" "}
+                <a
+                  href="#security-alerts"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Dependency notices (CVE)
+                </a>
+                .
+              </p>
+            </HelpTopic>
 
             <HelpTopic title={<>Bounty Notifications</>}>
               <p>Bounty notifications are sent to:</p>
