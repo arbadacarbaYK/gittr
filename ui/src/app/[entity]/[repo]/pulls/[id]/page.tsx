@@ -98,6 +98,7 @@ import {
   canCloseOrMergeOnGittr,
   findLinkedIssueRow,
   findPullRequestRowIndexByRouteParam,
+  forgeLifecycleBlockedMessage,
   isGithubStylePrId,
   isNostrHexIssueId,
   issueOrPrListRef,
@@ -919,9 +920,7 @@ export default function PRDetailPage({
     // Only owners and maintainers can merge (write access)
     if (!pr || !canMerge || merging) return;
     if (!canCloseOrMergeOnGittr(pr)) {
-      alert(
-        "This pull request was imported from GitHub/Gitea/GitLab. Merge or close it on that forge. gittr will not merge a mirror copy — that would leave the origin open."
-      );
+      alert(forgeLifecycleBlockedMessage("pr", pr));
       return;
     }
 
@@ -2132,9 +2131,8 @@ export default function PRDetailPage({
     [pr, handleMerge, entity, repo]
   );
 
-  const canCloseOrReopenPr = Boolean(
+  const canAttemptCloseOrReopenPr = Boolean(
     pr &&
-      canCloseOrMergeOnGittr(pr) &&
       currentUserPubkey &&
       (canMerge ||
         (pr.author &&
@@ -2143,7 +2141,11 @@ export default function PRDetailPage({
 
   /** Close without merging (or reopen). Does not apply file changes. */
   const handleCloseOrReopenPr = useCallback(async () => {
-    if (!pr || !currentUserPubkey || !canCloseOrReopenPr) return;
+    if (!pr || !currentUserPubkey || !canAttemptCloseOrReopenPr) return;
+    if (!canCloseOrMergeOnGittr(pr)) {
+      alert(forgeLifecycleBlockedMessage("pr", pr));
+      return;
+    }
     if (pr.status === "merged") {
       alert("Merged pull requests cannot be reopened here.");
       return;
@@ -2273,7 +2275,7 @@ export default function PRDetailPage({
   }, [
     pr,
     currentUserPubkey,
-    canCloseOrReopenPr,
+    canAttemptCloseOrReopenPr,
     prEventId,
     publish,
     defaultRelays,
@@ -2473,10 +2475,14 @@ export default function PRDetailPage({
         </div>
         <div className="ml-4 flex flex-col gap-2 shrink-0 max-w-xs sm:max-w-sm">
           <div className="flex flex-col sm:flex-row gap-2">
-            {canMerge && canCloseOrMergeOnGittr(pr) && pr.status === "open" && (
+            {canMerge && pr.status === "open" && (
               <Button
                 variant="default"
                 onClick={async () => {
+                  if (!canCloseOrMergeOnGittr(pr)) {
+                    alert(forgeLifecycleBlockedMessage("pr", pr));
+                    return;
+                  }
                   setShowMergeModal(true);
                   await checkMergePublishPreflight();
                   // Check wallet balance if there's a bounty
@@ -2494,7 +2500,7 @@ export default function PRDetailPage({
                 Merge pull request
               </Button>
             )}
-            {canCloseOrReopenPr && pr.status === "open" && (
+            {canAttemptCloseOrReopenPr && pr.status === "open" && (
               <Button
                 variant="outline"
                 onClick={() => void handleCloseOrReopenPr()}
@@ -2503,7 +2509,7 @@ export default function PRDetailPage({
                 Close pull request
               </Button>
             )}
-            {canCloseOrReopenPr && pr.status === "closed" && (
+            {canAttemptCloseOrReopenPr && pr.status === "closed" && (
               <Button
                 variant="outline"
                 onClick={() => void handleCloseOrReopenPr()}
@@ -2512,44 +2518,48 @@ export default function PRDetailPage({
               </Button>
             )}
           </div>
-          {pr.status === "open" && (canMerge || canCloseOrReopenPr) && (
-            <div className="text-xs text-gray-400 space-y-1.5 leading-relaxed">
-              {canMerge && (
-                <p>
-                  <span className="text-gray-300 font-medium">Merge</span>{" "}
-                  applies the PR files and pushes the updated tip to Nostr / the
-                  bridge. Other clients see it after that — you do{" "}
-                  <strong className="text-gray-300 font-medium">not</strong>{" "}
-                  need a separate Code-tab{" "}
-                  <strong className="text-gray-300 font-medium">
-                    Push to Nostr
-                  </strong>
-                  .
-                </p>
-              )}
-              {canCloseOrReopenPr && (
-                <p>
-                  <span className="text-gray-300 font-medium">Close</span>{" "}
-                  publishes a closed status event to Nostr (so other git clients
-                  stop showing it as open). It does{" "}
-                  <strong className="text-gray-300 font-medium">not</strong>{" "}
-                  change files and does{" "}
-                  <strong className="text-gray-300 font-medium">not</strong>{" "}
-                  need a Code-tab{" "}
-                  <strong className="text-gray-300 font-medium">
-                    Push to Nostr
-                  </strong>{" "}
-                  (that button is for repo files / tip, not PR status).
-                </p>
-              )}
-            </div>
-          )}
-          {pr.status === "closed" && canCloseOrReopenPr && (
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Reopen publishes open status to Nostr. Still no file changes and
-              no Code-tab Push to Nostr.
-            </p>
-          )}
+          {pr.status === "open" &&
+            canCloseOrMergeOnGittr(pr) &&
+            (canMerge || canAttemptCloseOrReopenPr) && (
+              <div className="text-xs text-gray-400 space-y-1.5 leading-relaxed">
+                {canMerge && (
+                  <p>
+                    <span className="text-gray-300 font-medium">Merge</span>{" "}
+                    applies the PR files and pushes the updated tip to Nostr /
+                    the bridge. Other clients see it after that — you do{" "}
+                    <strong className="text-gray-300 font-medium">not</strong>{" "}
+                    need a separate Code-tab{" "}
+                    <strong className="text-gray-300 font-medium">
+                      Push to Nostr
+                    </strong>
+                    .
+                  </p>
+                )}
+                {canAttemptCloseOrReopenPr && (
+                  <p>
+                    <span className="text-gray-300 font-medium">Close</span>{" "}
+                    publishes a closed status event to Nostr (so other git
+                    clients stop showing it as open). It does{" "}
+                    <strong className="text-gray-300 font-medium">not</strong>{" "}
+                    change files and does{" "}
+                    <strong className="text-gray-300 font-medium">not</strong>{" "}
+                    need a Code-tab{" "}
+                    <strong className="text-gray-300 font-medium">
+                      Push to Nostr
+                    </strong>{" "}
+                    (that button is for repo files / tip, not PR status).
+                  </p>
+                )}
+              </div>
+            )}
+          {pr.status === "closed" &&
+            canCloseOrMergeOnGittr(pr) &&
+            canAttemptCloseOrReopenPr && (
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Reopen publishes open status to Nostr. Still no file changes and
+                no Code-tab Push to Nostr.
+              </p>
+            )}
         </div>
       </div>
 

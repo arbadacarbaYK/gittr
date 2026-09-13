@@ -80,6 +80,7 @@ import {
 import {
   canCloseOrMergeOnGittr,
   findIssueRowIndexByRouteParam,
+  forgeLifecycleBlockedMessage,
   isForgeImportedIssueOrPr,
   isGithubStyleIssueId,
   isNostrHexIssueId,
@@ -628,7 +629,10 @@ export default function IssueDetailPage({
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
-    if (!canCloseOrMergeOnGittr(issue)) return;
+    if (!canCloseOrMergeOnGittr(issue)) {
+      alert(forgeLifecycleBlockedMessage("issue", issue));
+      return;
+    }
 
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
@@ -1912,7 +1916,7 @@ export default function IssueDetailPage({
             <TrustBadge targetPubkey={issue.author} />
           </div>
         </div>
-        {isOwner && canCloseOrMergeOnGittr(issue) && (
+        {isOwner && (
           <Button
             variant="outline"
             onClick={handleToggleStatus}

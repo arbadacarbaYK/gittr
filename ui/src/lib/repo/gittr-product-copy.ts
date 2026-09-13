@@ -2,7 +2,7 @@
 export const GITTR_ANDROID_SUMMARY =
   "Decentralized and discoverable Nostr gits, apps and pages";
 
-/** Old GitHub / 30617 blurb still on relays and github.com/arbadacarbaYK/gittr. */
+/** Retired GitHub / 30617 blurb. GitHub hub description is the product line; this matcher is a cache/relay safety net. */
 const STALE_GITTR_ABOUT = /^host your git repositories on nostr/i;
 
 export function isStaleGittrAbout(description?: string | null): boolean {

@@ -50,6 +50,18 @@ describe("sidebarAboutText", () => {
       descriptionAfterForgeRefetch(stale, "My custom about", "gittr")
     ).toBe("My custom about");
   });
+
+  it("lets a real GitHub about through after refetch", () => {
+    const next = "Decentralized and discoverable Nostr gits, apps and pages";
+    expect(descriptionAfterForgeRefetch(next, next, "gittr")).toBe(next);
+    expect(
+      descriptionAfterForgeRefetch(
+        next,
+        "Host your Git repositories on Nostr for enhanced discoverability.",
+        "gittr"
+      )
+    ).toBe(next);
+  });
 });
 
 describe("preferOwnedDescription", () => {

@@ -6,6 +6,7 @@ import {
   findIssueRowIndexByRouteParam,
   findLinkedIssueRow,
   findPullRequestRowIndexByRouteParam,
+  forgeLifecycleBlockedMessage,
   issueOrPrDisplayNumber,
   issueOrPrListRef,
   mergeGithubIssuesAfterRefetch,
@@ -136,6 +137,23 @@ describe("mergeGithubPrsAfterRefetch", () => {
 });
 
 describe("mergeGithubIssuesAfterRefetch", () => {
+  it("restores a locally closed forge issue when GitHub still has it open", () => {
+    const existing = [
+      { id: "issue-27", number: "27", status: "closed", title: "fake close" },
+    ];
+    const githubRows = [
+      { id: "issue-27", number: "27", status: "open", title: "fake close" },
+    ];
+    const merged = mergeGithubIssuesAfterRefetch(
+      existing,
+      githubRows
+    ) as Array<{
+      id?: string;
+      status?: string;
+    }>;
+    expect(merged.find((r) => r.id === "issue-27")?.status).toBe("open");
+  });
+
   it("keeps closed GitHub issues when the refetch is open-only", () => {
     const existing = [
       { id: "issue-3", number: "3", status: "closed", title: "done" },
@@ -197,6 +215,18 @@ describe("canCloseOrMergeOnGittr", () => {
     expect(canCloseOrMergeOnGittr({ id: NOSTR_HEX_A })).toBe(true);
     expect(canCloseOrMergeOnGittr({ id: "issue-12" })).toBe(false);
     expect(canCloseOrMergeOnGittr({ id: "pr-9" })).toBe(false);
+  });
+});
+
+describe("forgeLifecycleBlockedMessage", () => {
+  it("names GitHub and tells the user not to fake-close a forge copy", () => {
+    const msg = forgeLifecycleBlockedMessage("issue", {
+      id: "issue-27",
+      html_url: "https://github.com/o/r/issues/27",
+    });
+    expect(msg).toMatch(/GitHub/);
+    expect(msg).toMatch(/cannot close/);
+    expect(msg).toMatch(/refetch/);
   });
 });
 

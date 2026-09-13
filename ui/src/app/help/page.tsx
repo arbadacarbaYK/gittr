@@ -2700,9 +2700,10 @@ export default function HelpPage() {
                   </li>
                   <li>
                     Closed without a linked gittr PR cancels the bounty; creator
-                    is notified. On a GitHub-imported issue you cannot close
-                    from gittr — use <strong>Cancel bounty</strong> so the
-                    reserved sats are not stuck.
+                    is notified. On a GitHub-imported issue Close pops a message
+                    and does not hide the row — use{" "}
+                    <strong>Cancel bounty</strong> so the reserved sats are not
+                    stuck.
                   </li>
                 </ul>
               </HelpSubTopic>
@@ -3622,7 +3623,9 @@ export default function HelpPage() {
                     <strong>GitHub / Gitea / GitLab copies:</strong> listed with
                     their origin number (<code>#12</code>, URL{" "}
                     <code>/pulls/12</code>). Comment here if you want; gittr
-                    will not merge or close the origin. Do that on the forge so
+                    will not merge or close the origin. Close / Merge still
+                    show; they pop a message instead of hiding the row (a local
+                    hide would come back on refetch). Do that on the forge so
                     the two sides stay in sync. A Nostr PR on the same repo
                     (long id in the URL) can still be merged here.
                   </li>
@@ -3691,9 +3694,10 @@ export default function HelpPage() {
                     local #9 that can look like GitHub #9.
                   </li>
                   <li>
-                    <strong>Close / reopen:</strong> Only Nostr issues. A forge
-                    copy must be closed on GitHub (or Gitea/GitLab). gittr will
-                    not pretend it closed the origin.
+                    <strong>Close / reopen:</strong> Only Nostr issues. Close on
+                    a GitHub copy pops a message and leaves the row open —
+                    hiding it here would last only until the next refetch. Close
+                    it on GitHub (or Gitea/GitLab).
                   </li>
                   <li>
                     <strong>Comments:</strong> Allowed here. They publish on

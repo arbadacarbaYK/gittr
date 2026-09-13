@@ -197,6 +197,20 @@ export function issuePrOriginLabel(row: {
 }
 
 /**
+ * Shown when someone tries to close/merge/reopen a forge-imported row on gittr.
+ * Do not write localStorage `closed` for those rows — GitHub refetch restores
+ * origin status and the ticket pops back onto the Open list.
+ */
+export function forgeLifecycleBlockedMessage(
+  kind: "issue" | "pr",
+  row: { id?: string; html_url?: string }
+): string {
+  const origin = issuePrOriginLabel(row);
+  const noun = kind === "pr" ? "pull request" : "issue";
+  return `This ${noun} lives on ${origin}. gittr cannot close, merge, or reopen a forge copy — that would only hide it here until the next refetch, then it would come back. Close or merge it on ${origin}.`;
+}
+
+/**
  * Friendly list/header id. Forge rows keep `#12` (the origin number).
  * Nostr rows use the first 8 chars of the event id — never a localStorage
  * counter that collides with GitHub #9.
