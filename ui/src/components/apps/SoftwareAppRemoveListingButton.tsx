@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { deleteSoftwareAnnounceForAppId } from "@/lib/nostr/delete-repo-related-nostr";
 import { resolveNostrSigner } from "@/lib/nostr/signer";
+import { stripAppListingFromStoredRepos } from "@/lib/repos/strip-app-listing-from-stored-repos";
 
 type SoftwareAppRemoveListingButtonProps = {
   appId: string;
@@ -46,6 +47,7 @@ export function SoftwareAppRemoveListingButton({
         resolveSigner: () =>
           resolveNostrSigner({ remoteSigner, waitForRemote: true }),
       });
+      stripAppListingFromStoredRepos(appId);
       onRemoved?.(appId);
     } catch (e) {
       await appAlert(

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   enrichRepoLinks,
   mergeAnnouncementLinksWithLocal,
+  stripAppListingFromRepoFields,
 } from "./enrich-repo-links";
 
 describe("mergeAnnouncementLinksWithLocal", () => {
@@ -38,6 +39,26 @@ describe("mergeAnnouncementLinksWithLocal", () => {
     expect(merged).toHaveLength(2);
     expect(merged.map((l) => l.label).sort()).toEqual(["Guide", "Website"]);
   });
+
+  it("drops a leftover App (GITTR) tag from a 30617 announcement", () => {
+    const merged = mergeAnnouncementLinksWithLocal(
+      [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.app",
+          label: "App (space.gittr.app)",
+        },
+      ],
+      [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=GITTR",
+          label: "App (GITTR)",
+        },
+      ]
+    );
+    expect(merged.map((l) => l.label)).toEqual(["App (space.gittr.app)"]);
+  });
 });
 
 describe("enrichRepoLinks", () => {
@@ -71,5 +92,68 @@ describe("enrichRepoLinks", () => {
       nostrPagesLabel: "Nostr Pages · gittr-docu",
     });
     expect(links[0]?.label).toBe("Nostr Pages · gittr-docu");
+  });
+
+  it("drops leftover App (GITTR) and keeps the live package id", () => {
+    const links = enrichRepoLinks({
+      existing: [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=GITTR",
+          label: "App (GITTR)",
+        },
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.app",
+          label: "App (space.gittr.app)",
+        },
+      ],
+      announcedAppId: "space.gittr.app",
+      siteOrigin: "https://gittr.space",
+    });
+    const labels = links.map((l) => l.label);
+    expect(labels).toContain("App (space.gittr.app)");
+    expect(labels.some((l) => l?.includes("GITTR"))).toBe(false);
+  });
+
+  it("never re-adds GITTR from announcedAppId", () => {
+    const links = enrichRepoLinks({
+      existing: [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=GITTR",
+          label: "App (GITTR)",
+        },
+      ],
+      announcedAppId: "GITTR",
+      siteOrigin: "https://gittr.space",
+    });
+    expect(links.map((l) => l.label)).not.toContain("App (GITTR)");
+  });
+});
+
+describe("stripAppListingFromRepoFields", () => {
+  it("removes App (GITTR) without clearing space.gittr.app", () => {
+    const out = stripAppListingFromRepoFields(
+      {
+        announcedAppId: "space.gittr.app",
+        links: [
+          {
+            type: "other" as const,
+            url: "https://gittr.space/apps?q=GITTR",
+            label: "App (GITTR)",
+          },
+          {
+            type: "other" as const,
+            url: "https://gittr.space/apps?q=space.gittr.app",
+            label: "App (space.gittr.app)",
+          },
+        ],
+      },
+      "GITTR"
+    );
+    expect(out.changed).toBe(true);
+    expect(out.announcedAppId).toBe("space.gittr.app");
+    expect(out.links?.map((l) => l.label)).toEqual(["App (space.gittr.app)"]);
   });
 });

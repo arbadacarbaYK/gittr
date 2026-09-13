@@ -3543,7 +3543,10 @@ export default function HelpPage() {
                   Your Apps
                 </Link>{" "}
                 to remove a leftover listing (one app id) without deleting the
-                git repo or the APK file.
+                git repo or the APK file. That also drops the Code-tab{" "}
+                <strong className="text-white">App (id)</strong> link — leftover{" "}
+                <code className="text-purple-200">GITTR</code> is not kept next
+                to <code className="text-purple-200">space.gittr.app</code>.
               </p>
               <p className="mt-3 text-sm text-gray-300">
                 Optional Zapstore catalog: add{" "}

@@ -15,6 +15,7 @@
  * invented "GitHub Pages" / "Nostr Pages" rows — not part of the happy path.
  */
 import { stripNonDocumentationWebLinks } from "../nostr/parse-nip34-repo-links";
+import { GITTR_STRAY_APP_IDS } from "../repo/gittr-android-app";
 
 export type EnrichableRepoLink = {
   type:
@@ -138,6 +139,78 @@ export function removeStaleAutoLinks(
   });
 }
 
+export function isStraySoftwareAppId(appId?: string | null): boolean {
+  const id = (appId || "").trim().toLowerCase();
+  if (!id) return false;
+  return GITTR_STRAY_APP_IDS.some((s) => s.toLowerCase() === id);
+}
+
+/** Auto Code-tab row from a NIP-82 announce (`App (id)` → `/apps?q=id`). */
+export function parseAutoAppLinkId(
+  link: EnrichableRepoLink | undefined | null
+): string | null {
+  if (!link?.url) return null;
+  const label = (link.label || "").trim();
+  const fromLabel = /^App \((.+)\)$/i.exec(label);
+  if (fromLabel?.[1]?.trim()) return fromLabel[1].trim();
+  try {
+    const u = new URL(link.url.trim());
+    if (!/\/apps\/?$/i.test(u.pathname)) return null;
+    const q = u.searchParams.get("q");
+    return q?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drop leftover App sidebar rows: the retired `GITTR` id always, plus any
+ * other auto App link that is not the current announced package id.
+ * Does not remove hand-typed Settings links that are not App (`/apps?q=`).
+ */
+export function removeDroppedAutoAppLinks(
+  links: EnrichableRepoLink[] | undefined | null,
+  opts?: { keepAppId?: string | null }
+): EnrichableRepoLink[] {
+  const list = Array.isArray(links) ? links : [];
+  const keepRaw = (opts?.keepAppId || "").trim();
+  const keep =
+    keepRaw && !isStraySoftwareAppId(keepRaw) ? keepRaw.toLowerCase() : "";
+  return list.filter((link) => {
+    if (!link?.url) return false;
+    const id = parseAutoAppLinkId(link);
+    if (!id) return true;
+    if (isStraySoftwareAppId(id)) return false;
+    if (keep && id.toLowerCase() !== keep) return false;
+    return true;
+  });
+}
+
+export function stripAppListingFromRepoFields<
+  T extends { links?: EnrichableRepoLink[]; announcedAppId?: string }
+>(repo: T, appId: string): T & { changed: boolean } {
+  const drop = appId.trim();
+  if (!drop) return { ...repo, changed: false };
+  const dropLc = drop.toLowerCase();
+  const linksIn = Array.isArray(repo.links) ? repo.links : [];
+  const links = linksIn.filter((link) => {
+    const id = parseAutoAppLinkId(link);
+    return !id || id.toLowerCase() !== dropLc;
+  });
+  const announced = (repo.announcedAppId || "").trim();
+  const clearAnnounced = announced.toLowerCase() === dropLc;
+  const changed =
+    links.length !== linksIn.length ||
+    clearAnnounced ||
+    linksIn.some((l, i) => l !== links[i]);
+  return {
+    ...repo,
+    links,
+    ...(clearAnnounced ? { announcedAppId: undefined } : {}),
+    changed,
+  };
+}
+
 /** Drop auto "Nostr Pages" rows (pages.gittr.space) — used when gateway says not listed. */
 export function removeAutoNostrPagesLinks(
   links: EnrichableRepoLink[] | undefined | null
@@ -228,9 +301,11 @@ export function mergeAnnouncementLinksWithLocal(
   parsedFromNostr: EnrichableRepoLink[] | undefined | null
 ): EnrichableRepoLink[] {
   const cleanedExisting = stripNonDocumentationWebLinks(
-    removeStaleAutoLinks(existing)
+    removeDroppedAutoAppLinks(removeStaleAutoLinks(existing))
   );
-  const cleanedParsed = stripNonDocumentationWebLinks(parsedFromNostr);
+  const cleanedParsed = stripNonDocumentationWebLinks(
+    removeDroppedAutoAppLinks(parsedFromNostr)
+  );
   if (cleanedParsed.length === 0) return cleanedExisting;
   return mergeRepoLinks(cleanedExisting, cleanedParsed);
 }
@@ -244,7 +319,12 @@ export function enrichRepoLinks(
     : (Array.isArray(input.existing) ? input.existing : []).filter(
         (l) => l?.url
       );
-  const base = stripNonDocumentationWebLinks(afterStale);
+  const keepAppId = isStraySoftwareAppId(input.announcedAppId)
+    ? null
+    : input.announcedAppId?.trim() || null;
+  const base = stripNonDocumentationWebLinks(
+    removeDroppedAutoAppLinks(afterStale, { keepAppId })
+  );
 
   const additions: EnrichableRepoLink[] = [];
 
@@ -275,7 +355,7 @@ export function enrichRepoLinks(
     });
   }
 
-  const appId = input.announcedAppId?.trim();
+  const appId = keepAppId;
   if (appId) {
     const origin = siteOriginFallback(input.siteOrigin);
     additions.push({

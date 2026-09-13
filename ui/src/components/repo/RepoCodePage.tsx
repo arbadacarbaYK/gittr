@@ -113,9 +113,11 @@ import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
 import {
   enrichRepoLinks,
+  isStraySoftwareAppId,
   mergeAnnouncementLinksWithLocal,
   nostrPagesLinkLabel,
   removeAutoNostrPagesLinks,
+  removeDroppedAutoAppLinks,
   removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
 import {
@@ -1290,10 +1292,61 @@ export function RepoCodePage() {
     pagesSiteListedByGateway,
     pagesSiteMatchedUrl,
     pagesSiteMatchedDTag,
-    candidateGittrPagesUrls?.namedUrl,
     candidateGittrPagesUrls?.dTag,
-    resolvedParams.entity,
     decodedRepo,
+    resolvedParams.entity,
+  ]);
+
+  // Drop leftover App (GITTR) (and other auto App rows that are not the live
+  // announced id) from localStorage so Push / Settings do not republish them.
+  useEffect(() => {
+    if (!resolvedParams.entity || !decodedRepo) return;
+    try {
+      const repos = loadStoredRepos();
+      const idx = repos.findIndex(
+        (r) =>
+          (r.repo === decodedRepo || r.slug === decodedRepo) &&
+          r.entity === resolvedParams.entity
+      );
+      if (idx < 0 || !repos[idx]) return;
+      const current = repos[idx].links || [];
+      const announced = (repos[idx] as { announcedAppId?: string })
+        .announcedAppId;
+      const next = removeDroppedAutoAppLinks(current, {
+        keepAppId: announced,
+      });
+      const clearAnnounced = Boolean(
+        announced && isStraySoftwareAppId(announced)
+      );
+      if (JSON.stringify(current) === JSON.stringify(next) && !clearAnnounced) {
+        return;
+      }
+      if (next.length > 0) {
+        repos[idx]!.links = next as any;
+      } else {
+        delete repos[idx]!.links;
+      }
+      if (clearAnnounced) {
+        delete (repos[idx] as { announcedAppId?: string }).announcedAppId;
+      }
+      saveStoredRepos(repos);
+      setRepoData((prev) =>
+        prev
+          ? ({
+              ...prev,
+              links: next.length > 0 ? next : undefined,
+              ...(clearAnnounced ? { announcedAppId: undefined } : {}),
+            } as any)
+          : prev
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    decodedRepo,
+    resolvedParams.entity,
+    repoData?.links,
+    repoData?.announcedAppId,
   ]);
 
   const repoIsOwner = useMemo(() => {
@@ -19050,7 +19103,9 @@ export function RepoCodePage() {
                                 className="rounded p-2 text-gray-500 hover:text-red-400 sm:p-1"
                                 title={
                                   it.type === "dir"
-                                    ? `Delete folder ${it.path.split("/").pop()}`
+                                    ? `Delete folder ${it.path
+                                        .split("/")
+                                        .pop()}`
                                     : `Delete ${it.path.split("/").pop()}`
                                 }
                                 aria-label={
@@ -19075,8 +19130,8 @@ export function RepoCodePage() {
                                 ? it.size >= 1048576
                                   ? `${(it.size / 1048576).toFixed(1)} MB`
                                   : it.size >= 1024
-                                    ? `${(it.size / 1024).toFixed(1)} KB`
-                                    : `${it.size} B`
+                                  ? `${(it.size / 1024).toFixed(1)} KB`
+                                  : `${it.size} B`
                                 : "—"}
                             </span>
                           </div>
