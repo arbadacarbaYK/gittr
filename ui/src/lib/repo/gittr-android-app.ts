@@ -3,6 +3,7 @@
  * Third-party announce still uses `space.gittr.<repo-slug>`.
  */
 import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
+import { normalizeSoftwareIconUrl } from "../nostr/nip82-software";
 import { isPlaceholderRepositoryDescription } from "../repos/repo-about-text";
 import {
   extractKnownForgeRepo,
@@ -11,6 +12,7 @@ import {
 } from "../repos/resolve-repo-display-icon";
 
 import { GITTR_ANDROID_SUMMARY, isStaleGittrAbout } from "./gittr-product-copy";
+import { ZAPSTORE_SCREENSHOT_MAX } from "./zapstore-yaml-media";
 
 /** Android `applicationId` / Zapstore `d` tag. Not `space.gittr.gittr`. */
 export const GITTR_ANDROID_APP_ID = "space.gittr.app";
@@ -200,6 +202,8 @@ export function iconUrlForNip82Announce(args: {
   cloneUrls?: string[] | null;
   files?: Array<{ path?: string } | string> | null;
   defaultBranch?: string | null;
+  /** HTTPS icon from the forge `zapstore.yaml` `icon:` field. */
+  yamlIconUrl?: string | null;
 }): string | undefined {
   if (isOfficialGittrAndroidRepo(args)) return GITTR_ANDROID_ICON_URL;
   const direct = httpsUrlOrUndefined(args.repoLogoUrl);
@@ -219,6 +223,8 @@ export function iconUrlForNip82Announce(args: {
     });
     if (fromStored) return fromStored;
   }
+  const yamlIcon = httpsUrlOrUndefined(args.yamlIconUrl);
+  if (yamlIcon) return yamlIcon;
   const filePath = pickRepoLogoFilePath(args.files, args.repo);
   if (!filePath) return undefined;
   return forgeHttpsLogoFromRepoPath({
@@ -227,4 +233,40 @@ export function iconUrlForNip82Announce(args: {
     cloneUrls: args.cloneUrls,
     defaultBranch: args.defaultBranch,
   });
+}
+
+/**
+ * Kind 32267 `image` tags (Zapstore screenshots).
+ * Official gittr always uses the gittr.space PNGs. Other apps copy
+ * `images:` from their forge `zapstore.yaml`, then any extra HTTPS URLs
+ * typed in the announce panel.
+ */
+export function screenshotUrlsForNip82Announce(args: {
+  repo?: string | null;
+  ownerPubkeyHex?: string | null;
+  yamlScreenshots?: string[] | null;
+  extraScreenshotUrls?: string[] | null;
+}): string[] {
+  const extras: string[] = [];
+  for (const raw of args.extraScreenshotUrls || []) {
+    const u = normalizeSoftwareIconUrl(raw) || httpsUrlOrUndefined(raw);
+    if (u) extras.push(u);
+  }
+  const yaml: string[] = [];
+  for (const raw of args.yamlScreenshots || []) {
+    const u = normalizeSoftwareIconUrl(raw) || httpsUrlOrUndefined(raw);
+    if (u) yaml.push(u);
+  }
+  const base = isOfficialGittrAndroidRepo(args)
+    ? [...GITTR_ANDROID_SCREENSHOT_URLS]
+    : yaml;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const u of [...base, ...extras]) {
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+    if (out.length >= ZAPSTORE_SCREENSHOT_MAX) break;
+  }
+  return out;
 }

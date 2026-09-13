@@ -982,10 +982,17 @@ export default function HelpPage() {
                 Android package — not{" "}
                 <code className="text-purple-200">space.gittr.gittr</code>
                 ). <code className="text-purple-200">zapstore.yaml</code> in the
-                git repo is what Zapstore uses to whitelist the publisher (icon
-                + screenshots under{" "}
+                git repo is what Zapstore uses to whitelist the publisher (
+                <code className="text-purple-200">icon</code> +{" "}
+                <code className="text-purple-200">images:</code> screenshots
+                under{" "}
                 <code className="text-purple-200">ui/public/zapstore/</code>
-                ).
+                ). Other apps put the same{" "}
+                <code className="text-purple-200">images:</code> field in{" "}
+                <em>their</em> source-repo{" "}
+                <code className="text-purple-200">zapstore.yaml</code> (repo
+                paths or https links); gittr copies those onto the Nostr
+                listing when you Publish on Nostr.
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">
@@ -3471,7 +3478,12 @@ export default function HelpPage() {
                 <code className="text-purple-200">space.gittr.app</code>
                 ), which also publishes the dark-plate bird as the app icon,
                 phone screenshots, and the product about. Other apps copy their
-                public repo logo when one exists. The repo{" "}
+                public repo logo when one exists, and copy{" "}
+                <code className="text-purple-200">images:</code> from their
+                source-repo{" "}
+                <code className="text-purple-200">zapstore.yaml</code> as
+                listing screenshots (optional extra https URLs in the announce
+                panel). The repo{" "}
                 <strong className="text-white">Releases</strong> tab lists all
                 forge download assets (not only APKs). How Releases, forge
                 files, and announces fit together:{" "}
@@ -3501,7 +3513,11 @@ export default function HelpPage() {
               <p className="mt-3 text-sm text-gray-300">
                 Optional Zapstore catalog: add{" "}
                 <code className="text-purple-200">zapstore.yaml</code> at the
-                source repo root, then publish again. Details:
+                source repo root (
+                <code className="text-purple-200">pubkey</code>,{" "}
+                <code className="text-purple-200">repository</code>, plus{" "}
+                <code className="text-purple-200">images:</code> screenshot
+                paths or https links), then publish again. Details:
               </p>
               <ul className="mt-2 text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
                 <li>

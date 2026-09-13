@@ -13,6 +13,7 @@ import {
   appIdsToMatchForRepoDelete,
   iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
+  screenshotUrlsForNip82Announce,
   summaryForNip82Announce,
   topicsForNip82Announce,
 } from "./gittr-android-app";
@@ -129,6 +130,21 @@ describe("official gittr Android announce", () => {
           "https://gittr.space/api/og/repo-image?ownerPubkey=aa&repo=demo",
       })
     ).toBeUndefined();
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        yamlIconUrl: "https://cdn.example.com/zapstore-icon.png",
+      })
+    ).toBe("https://cdn.example.com/zapstore-icon.png");
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoLogoUrl: "https://cdn.example.com/settings-logo.png",
+        yamlIconUrl: "https://cdn.example.com/zapstore-icon.png",
+      })
+    ).toBe("https://cdn.example.com/settings-logo.png");
   });
 
   it("uses the product about for official gittr unless a custom description exists", () => {
@@ -181,5 +197,37 @@ describe("official gittr Android announce", () => {
         suggestedAppId: GITTR_ANDROID_APP_ID,
       })
     ).toEqual([GITTR_ANDROID_APP_ID, GITTR_LEGACY_SUGGESTED_APP_ID, "GITTR"]);
+  });
+
+  it("copies zapstore.yaml screenshots for other apps and keeps gittr.space shots for official gittr", () => {
+    expect(
+      screenshotUrlsForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        yamlScreenshots: [
+          "https://raw.githubusercontent.com/acme/demo/main/shots/home.png",
+          "javascript:alert(1)",
+        ],
+        extraScreenshotUrls: ["https://cdn.example.com/extra.png"],
+      })
+    ).toEqual([
+      "https://raw.githubusercontent.com/acme/demo/main/shots/home.png",
+      "https://cdn.example.com/extra.png",
+    ]);
+    expect(
+      screenshotUrlsForNip82Announce({
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+        yamlScreenshots: [
+          "https://raw.githubusercontent.com/arbadacarbaYK/gittr/main/ui/public/zapstore/home.png",
+        ],
+      })
+    ).toEqual([...GITTR_ANDROID_SCREENSHOT_URLS]);
+    expect(
+      screenshotUrlsForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+      })
+    ).toEqual([]);
   });
 });

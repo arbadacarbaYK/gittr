@@ -31,9 +31,11 @@ import {
   GITTR_ANDROID_LICENSE,
   iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
+  screenshotUrlsForNip82Announce,
   summaryForNip82Announce,
   topicsForNip82Announce,
 } from "@/lib/repo/gittr-android-app";
+import { parseHttpsUrlLines } from "@/lib/repo/zapstore-yaml-media";
 import { cn } from "@/lib/utils";
 
 import {
@@ -148,6 +150,10 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   const [panelOpen, setPanelOpen] = useState(defaultOpen);
   const [pinToNgitBlossom, setPinToNgitBlossom] = useState(isOfficialGittr);
   const [pinWarning, setPinWarning] = useState<string | null>(null);
+  const [yamlIconUrl, setYamlIconUrl] = useState<string | undefined>();
+  const [yamlScreenshots, setYamlScreenshots] = useState<string[]>([]);
+  const [yamlFound, setYamlFound] = useState(false);
+  const [extraScreenshotText, setExtraScreenshotText] = useState("");
 
   const hasSource = Boolean(sourceUrl?.trim());
   const tagForQuery = (preferredTag || "").trim();
@@ -213,18 +219,58 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     [sourceUrl, repoName, tagForQuery, existingAppId, ownerPubkeyHex]
   );
 
+  const loadZapstoreYaml = useCallback(async () => {
+    if (!sourceUrl?.trim()) {
+      setYamlFound(false);
+      setYamlIconUrl(undefined);
+      setYamlScreenshots([]);
+      return;
+    }
+    try {
+      const qs = new URLSearchParams({ sourceUrl: sourceUrl.trim() });
+      const branch = (defaultBranch || "").trim();
+      if (branch) qs.set("branch", branch);
+      const res = await fetch(`/api/repo/zapstore-yaml?${qs.toString()}`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        found?: boolean;
+        icon?: string;
+        screenshots?: string[];
+      };
+      if (!data.ok || !data.found) {
+        setYamlFound(false);
+        setYamlIconUrl(undefined);
+        setYamlScreenshots([]);
+        return;
+      }
+      setYamlFound(true);
+      setYamlIconUrl(typeof data.icon === "string" ? data.icon : undefined);
+      setYamlScreenshots(
+        Array.isArray(data.screenshots)
+          ? data.screenshots.filter((u): u is string => typeof u === "string")
+          : []
+      );
+    } catch {
+      setYamlFound(false);
+      setYamlIconUrl(undefined);
+      setYamlScreenshots([]);
+    }
+  }, [sourceUrl, defaultBranch]);
+
   // Sidebar: auto-preview latest on mount. Inline: only when opened.
   useEffect(() => {
     if (!isOwnerSession) return;
     if (isInline) return;
     void loadPreview(false);
-  }, [isOwnerSession, isInline, loadPreview]);
+    void loadZapstoreYaml();
+  }, [isOwnerSession, isInline, loadPreview, loadZapstoreYaml]);
 
   useEffect(() => {
     if (!isOwnerSession || !isInline) return;
     if (!panelOpen) return;
     void loadPreview(false);
-  }, [isOwnerSession, isInline, panelOpen, loadPreview]);
+    void loadZapstoreYaml();
+  }, [isOwnerSession, isInline, panelOpen, loadPreview, loadZapstoreYaml]);
 
   useEffect(() => {
     setAppName(repoName);
@@ -275,6 +321,22 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     if (!forge || !selectedAsset) return 0;
     return pickSiblingNip82Assets(forge, selectedAsset).length;
   }, [forge, selectedAsset]);
+
+  const extraScreenshotUrls = useMemo(
+    () => parseHttpsUrlLines(extraScreenshotText),
+    [extraScreenshotText]
+  );
+
+  const screenshotUrls = useMemo(
+    () =>
+      screenshotUrlsForNip82Announce({
+        repo: repoName,
+        ownerPubkeyHex,
+        yamlScreenshots,
+        extraScreenshotUrls,
+      }),
+    [repoName, ownerPubkeyHex, yamlScreenshots, extraScreenshotUrls]
+  );
 
   const readyToPublish = Boolean(
     forge &&
@@ -363,7 +425,9 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             cloneUrls,
             files: repoFiles,
             defaultBranch,
+            yamlIconUrl,
           }),
+          screenshotUrls,
           license: isOfficialGittr ? GITTR_ANDROID_LICENSE : undefined,
         },
         ownerPubkeyHex,
@@ -513,6 +577,17 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 : "Verify file (one download)"
             }
           />
+          <ChecklistRow
+            ok={screenshotUrls.length > 0}
+            warning={Boolean(hasSource && screenshotUrls.length === 0)}
+            title={
+              screenshotUrls.length > 0
+                ? `${screenshotUrls.length} screenshot${
+                    screenshotUrls.length === 1 ? "" : "s"
+                  }`
+                : "Screenshots: zapstore.yaml images:"
+            }
+          />
         </div>
 
         {error ? (
@@ -632,6 +707,38 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 className="h-8 text-xs"
               />
             </label>
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Screenshots
+              </span>
+              {screenshotUrls.length > 0 ? (
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                  {screenshotUrls.map((url) => (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      key={url}
+                      src={url}
+                      alt=""
+                      className="h-16 w-10 shrink-0 rounded-sm border border-zinc-800 object-cover bg-zinc-950"
+                    />
+                  ))}
+                </div>
+              ) : null}
+              <p className="text-[10px] leading-snug text-zinc-500">
+                {yamlFound && yamlScreenshots.length > 0
+                  ? "From images: in this source repo’s zapstore.yaml. Optional extra HTTPS URLs below."
+                  : yamlFound
+                  ? "Found zapstore.yaml but no images: yet. Add PNG/JPG paths or https links there, or paste URLs below."
+                  : "Put images: in zapstore.yaml at the source repo root (same file Zapstore already reads). Paths like ./screenshots/home.png or https links. Optional extra URLs below."}
+              </p>
+              <textarea
+                value={extraScreenshotText}
+                onChange={(e) => setExtraScreenshotText(e.target.value)}
+                rows={2}
+                placeholder="https://…/shot-home.png"
+                className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-200 placeholder:text-zinc-600"
+              />
+            </div>
             <label className="flex cursor-pointer items-start gap-2 pt-1 text-[11px] leading-snug text-zinc-300">
               <input
                 type="checkbox"
@@ -670,7 +777,10 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             size="sm"
             className="h-auto w-full justify-start gap-2 py-2 text-left text-xs font-normal"
             disabled={loading || !hasSource}
-            onClick={() => void loadPreview(false)}
+            onClick={() => {
+              void loadPreview(false);
+              void loadZapstoreYaml();
+            }}
           >
             <RefreshCw
               className={cn(
@@ -725,7 +835,8 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                     zapstore.yaml
                   </code>{" "}
                   at the GitHub / Codeberg / GitLab repo root (pubkey +
-                  repository), then publish again.{" "}
+                  repository, plus optional images: screenshots), then publish
+                  again.{" "}
                   <a
                     href={ZAPSTORE_PUBLISH_DOCS}
                     target="_blank"
@@ -743,7 +854,9 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           <p className="text-[10px] leading-snug text-zinc-500">
             Optional Zapstore: commit{" "}
             <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code> in
-            that source repo — see{" "}
+            that source repo — pubkey, repository, and{" "}
+            <code className="rounded bg-zinc-900 px-1">images:</code> screenshot
+            paths or https links. gittr copies those onto the Nostr listing. See{" "}
             <a
               href={ZAPSTORE_PUBLISH_DOCS}
               target="_blank"

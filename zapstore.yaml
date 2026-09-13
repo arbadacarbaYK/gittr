@@ -16,6 +16,10 @@ repository: https://github.com/arbadacarbaYK/gittr
 homepage: https://gittr.space
 license: AGPL-3.0
 icon: ui/public/android-chrome-512x512.png
+# Phone screenshots (kind 32267 `image` tags on Nostr). Paths are relative to
+# this repo root, or https URLs. Zapstore (`zsp publish`) and gittr’s
+# “Publish on Nostr” both read this `images:` list. Other apps: put the same
+# field in *your* source repo’s zapstore.yaml.
 images:
   - ui/public/zapstore/home.png
   - ui/public/zapstore/apps.png
