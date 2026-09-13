@@ -15,6 +15,8 @@ import {
 } from "@/lib/nostr/software-announce-build";
 import {
   announcePanelSummaryLabel,
+  announceScreenshotExtrasFieldVisible,
+  announceScreenshotHelpCopy,
   formatAppAnnounceErrorCopy,
   missingForgeSourceAnnounceMessage,
 } from "@/lib/repo/announce-panel-copy";
@@ -719,25 +721,29 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                       key={url}
                       src={url}
                       alt=""
-                      className="h-16 w-10 shrink-0 rounded-sm border border-zinc-800 object-cover bg-zinc-950"
+                      className="h-16 w-10 shrink-0 rounded-sm border border-[var(--color-border)] bg-[var(--color-bg-secondary)] object-cover"
                     />
                   ))}
                 </div>
               ) : null}
-              <p className="text-[10px] leading-snug text-zinc-500">
-                {yamlFound && yamlScreenshots.length > 0
-                  ? "From images: in this source repo’s zapstore.yaml. Optional extra HTTPS URLs below."
-                  : yamlFound
-                  ? "Found zapstore.yaml but no images: yet. Add PNG/JPG paths or https links there, or paste URLs below."
-                  : "Put images: in zapstore.yaml at the source repo root (same file Zapstore already reads). Paths like ./screenshots/home.png or https links. Optional extra URLs below."}
+              <p className="text-[10px] leading-snug text-[var(--color-text-secondary)]">
+                {announceScreenshotHelpCopy({
+                  isOfficialGittr,
+                  yamlFound,
+                  yamlScreenshotCount: yamlScreenshots.length,
+                })}
               </p>
-              <textarea
-                value={extraScreenshotText}
-                onChange={(e) => setExtraScreenshotText(e.target.value)}
-                rows={2}
-                placeholder="https://…/shot-home.png"
-                className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-200 placeholder:text-zinc-600"
-              />
+              {announceScreenshotExtrasFieldVisible(isOfficialGittr) ? (
+                <textarea
+                  value={extraScreenshotText}
+                  onChange={(e) => setExtraScreenshotText(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="Optional — one https URL per line"
+                  className="w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2 py-1.5 text-[11px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] outline-none focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-primary)]/40"
+                />
+              ) : null}
             </div>
             <label className="flex cursor-pointer items-start gap-2 pt-1 text-[11px] leading-snug text-zinc-300">
               <input

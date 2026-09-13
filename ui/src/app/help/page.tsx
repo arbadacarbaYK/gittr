@@ -3493,10 +3493,12 @@ export default function HelpPage() {
                 source-repo{" "}
                 <code className="text-purple-200">zapstore.yaml</code> as
                 listing screenshots (optional extra https URLs in the announce
-                panel). The repo{" "}
-                <strong className="text-white">Releases</strong> tab lists all
-                forge download assets (not only APKs). How Releases, forge
-                files, and announces fit together:{" "}
+                panel). gittr’s own listing has no extra-URL box — those shots
+                always come from{" "}
+                <code className="text-purple-200">ui/public/zapstore/</code>.
+                The repo <strong className="text-white">Releases</strong> tab
+                lists all forge download assets (not only APKs). How Releases,
+                forge files, and announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"

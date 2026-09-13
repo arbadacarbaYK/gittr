@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   announcePanelSummaryLabel,
+  announceScreenshotExtrasFieldVisible,
+  announceScreenshotHelpCopy,
   formatAppAnnounceErrorCopy,
   formatAppAnnounceSuccessCopy,
   missingForgeSourceAnnounceMessage,
@@ -51,6 +53,34 @@ describe("app announce popup copy", () => {
     expect(formatAppAnnounceErrorCopy("No signing method")).toBe(
       "❌ No signing method"
     );
+  });
+});
+
+describe("announce screenshot extras field", () => {
+  it("hides the paste box on gittr’s own listing", () => {
+    expect(announceScreenshotExtrasFieldVisible(true)).toBe(false);
+    expect(announceScreenshotExtrasFieldVisible(false)).toBe(true);
+  });
+
+  it("does not tell the operator to paste extra URLs", () => {
+    const copy = announceScreenshotHelpCopy({
+      isOfficialGittr: true,
+      yamlFound: true,
+      yamlScreenshotCount: 5,
+    });
+    expect(copy).toMatch(/store screenshots/i);
+    expect(copy).not.toMatch(/below/i);
+    expect(copy).not.toMatch(/shot-home/i);
+  });
+
+  it("offers extra https URLs only for other apps", () => {
+    expect(
+      announceScreenshotHelpCopy({
+        isOfficialGittr: false,
+        yamlFound: true,
+        yamlScreenshotCount: 2,
+      })
+    ).toMatch(/Other apps can add extra https/i);
   });
 });
 

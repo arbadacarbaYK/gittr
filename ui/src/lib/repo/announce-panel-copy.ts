@@ -33,3 +33,27 @@ export function formatAppAnnounceErrorCopy(message: string): string {
   const body = (message || "").trim() || "Publish failed";
   return `❌ ${body}`;
 }
+
+/** Extra screenshot URL paste is for third-party apps, not gittr’s own listing. */
+export function announceScreenshotExtrasFieldVisible(
+  isOfficialGittr: boolean
+): boolean {
+  return !isOfficialGittr;
+}
+
+export function announceScreenshotHelpCopy(args: {
+  isOfficialGittr: boolean;
+  yamlFound: boolean;
+  yamlScreenshotCount: number;
+}): string {
+  if (args.isOfficialGittr) {
+    return "gittr’s store screenshots (zapstore.yaml images:). Change the files under ui/public/zapstore/, then announce again.";
+  }
+  if (args.yamlFound && args.yamlScreenshotCount > 0) {
+    return "From images: in this source repo’s zapstore.yaml. Other apps can add extra https screenshot URLs below.";
+  }
+  if (args.yamlFound) {
+    return "Found zapstore.yaml but no images: yet. Add PNG/JPG paths or https links there, or paste extra URLs below.";
+  }
+  return "Put images: in zapstore.yaml at the source repo root (same file Zapstore already reads). Paths like ./screenshots/home.png or https links. Optional extra URLs below.";
+}
