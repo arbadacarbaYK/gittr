@@ -151,8 +151,18 @@ export function appAlert(message: string, title?: string): Promise<void> {
 }
 
 /** Blocking-style confirm that sizes to the full message. */
-export function appConfirm(message: string, title?: string): Promise<boolean> {
+export function appConfirm(
+  message: string,
+  title?: string,
+  options?: { okLabel?: string; cancelLabel?: string }
+): Promise<boolean> {
   return enqueue(() =>
-    showPanel({ message, mode: "confirm", title, okLabel: "OK" })
+    showPanel({
+      message,
+      mode: "confirm",
+      title,
+      okLabel: options?.okLabel || "OK",
+      cancelLabel: options?.cancelLabel,
+    })
   );
 }

@@ -15,6 +15,7 @@ import { nip19 } from "nostr-tools";
 import { type MainNavItem } from "./main-nav";
 import SearchBar from "./search-bar";
 import { Button } from "./ui/button";
+import { GittrAndroidUpdateMenuItem } from "./ui/gittr-android-update-menu";
 import { DropdownItems } from "./ui/header";
 
 interface MobileNavProps {
@@ -100,6 +101,8 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
               );
             }
           )}
+
+          <GittrAndroidUpdateMenuItem variant="row" onClick={onClick} />
 
           {items.map((item, index) =>
             item.openInNewTab ? (

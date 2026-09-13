@@ -991,8 +991,17 @@ export default function HelpPage() {
                 <code className="text-purple-200">images:</code> field in{" "}
                 <em>their</em> source-repo{" "}
                 <code className="text-purple-200">zapstore.yaml</code> (repo
-                paths or https links); gittr copies those onto the Nostr
-                listing when you Publish on Nostr.
+                paths or https links); gittr copies those onto the Nostr listing
+                when you Publish on Nostr.
+              </p>
+              <p className="mt-3">
+                Already on this APK? Open the user menu (your avatar, or the
+                phone hamburger if you are signed out) and tap{" "}
+                <strong className="text-white">Update app</strong>. gittr checks
+                GitHub for a newer installer and opens the download in your
+                system browser. Pages inside the app already match the live
+                website; you only need a new APK when the wrapper itself was
+                rebuilt.
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">

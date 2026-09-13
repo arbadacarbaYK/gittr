@@ -16,6 +16,7 @@ import { gittrLabNavEnabled } from "@/lib/lab/gittr-lab-config";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import useSession from "@/lib/nostr/useSession";
+import { rememberGittrAndroidShellFromLocation } from "@/lib/repo/gittr-android-shell";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { startWarmAllReposIssuePrFromNostr } from "@/lib/repos/warm-repo-issue-pr-counts";
@@ -39,6 +40,7 @@ import { nip19 } from "nostr-tools";
 import { MainNav } from "../main-nav";
 
 import { Button, buttonVariants } from "./button";
+import { GittrAndroidUpdateMenuItem } from "./gittr-android-update-menu";
 
 const HeaderConfig = {
   mainNav: [
@@ -115,7 +117,7 @@ export const DropdownItems = [
   },
 ];
 
-const PrimaryGitInfo = DropdownItems.slice(0, 9);
+const PrimaryGitInfo = DropdownItems.slice(0, 8);
 const restGitInfo = DropdownItems.slice(8);
 
 export function Header() {
@@ -131,6 +133,7 @@ export function Header() {
   // Only render client-side content after hydration
   useEffect(() => {
     setMounted(true);
+    rememberGittrAndroidShellFromLocation();
   }, []);
 
   const refreshGlobalIssuePrCounts = useCallback(() => {
@@ -393,6 +396,7 @@ export function Header() {
                     </a>
                   </DropdownMenuItem>
                 ))}
+                <GittrAndroidUpdateMenuItem variant="dropdown" />
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
@@ -409,6 +413,13 @@ export function Header() {
         ) : (
           // Same DOM on server and client until auth mounts — never nest <a> in <button>
           <div className="flex gap-1 items-center">
+            <GittrAndroidUpdateMenuItem
+              variant="button"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "mr-2 max-h-8 min-w-max"
+              )}
+            />
             <a
               href="/login"
               className={cn(

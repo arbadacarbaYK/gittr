@@ -34,3 +34,7 @@ After a GitHub Release has the APK:
 2. Or run `zsp publish -y zapstore.yaml` locally with `SIGN_WITH` (nsec or bunker). Do not put an nsec in GitHub Actions.
 
 Other publishers: put screenshot files in *your* git repo and list them under `images:` in *your* `zapstore.yaml` (repo-relative paths or https URLs). gittr’s **Publish on Nostr** copies those onto the listing. Optional extra https URLs can be pasted in the announce panel.
+
+## Updates
+
+The WebView loads live gittr.space, so website changes arrive without a new APK. When a newer `v*` GitHub Release exists, tap **Update app** in the user menu (avatar when signed in, or the phone hamburger when signed out). gittr checks GitHub and opens `gittr-*.apk` in the system browser so Android can install it. Do not point this flow at `blossom.gittr.space` — that host stays inside the WebView.
