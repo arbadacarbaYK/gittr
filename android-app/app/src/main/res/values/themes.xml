@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Gittr" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:statusBarColor">#181b20</item>
-        <item name="android:navigationBarColor">#181b20</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">#181b20</item>
         <item name="android:colorBackground">#181b20</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

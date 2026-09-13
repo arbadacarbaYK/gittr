@@ -139,6 +139,11 @@ export function buildRootSiteMetadata(): Metadata {
     creator: "gittr",
     publisher: "gittr",
     metadataBase: new URL(siteUrl),
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: "gittr",
+    },
     openGraph: {
       type: "website",
       locale: "en_US",

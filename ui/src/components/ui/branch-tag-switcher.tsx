@@ -74,7 +74,7 @@ export function BranchTagSwitcher({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+          className="h-11 !border-[#383B42] bg-[#22262C] text-xs md:h-8"
           variant="outline"
         >
           <GitBranch className="mr-2 h-4 w-4" />

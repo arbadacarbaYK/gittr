@@ -1771,7 +1771,7 @@ export default function RepoLayoutClient({
                 <DropdownMenuTrigger
                   className={clsx(
                     buttonVariants({ variant: "outline", size: "sm" }),
-                    "h-8 !border-[#383B42] bg-[#22262C] text-xs md:hidden"
+                    "h-11 !border-[#383B42] bg-[#22262C] text-xs md:hidden md:h-8"
                   )}
                   type="button"
                 >

@@ -16,6 +16,10 @@ repository: https://github.com/arbadacarbaYK/gittr
 homepage: https://gittr.space
 license: AGPL-3.0
 icon: ui/public/android-chrome-512x512.png
+images:
+  - ui/public/zapstore/home.png
+  - ui/public/zapstore/apps.png
+  - ui/public/zapstore/repo.png
 pubkey: npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc
 tags:
   - git

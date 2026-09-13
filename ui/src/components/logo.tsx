@@ -18,14 +18,17 @@ export default function Logo({ className }: { className?: string }) {
         e.stopPropagation(); // Prevent event from bubbling up to parent handlers
         appNavigate("/", router, pathname, e);
       }}
-      className={cn("items-center space-x-2 flex cursor-pointer", className)}
+      className={cn(
+        "flex min-h-11 min-w-11 cursor-pointer items-center justify-center space-x-2 md:min-h-0 md:min-w-0",
+        className
+      )}
     >
       <Image
         src="/logo.svg"
         alt="NostrGit"
-        width={32}
-        height={32}
-        className="h-8 w-8 hover:opacity-80"
+        width={40}
+        height={40}
+        className="h-10 w-10 hover:opacity-80 md:h-8 md:w-8"
         suppressHydrationWarning
       />
     </a>

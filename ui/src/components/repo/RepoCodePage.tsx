@@ -17854,7 +17854,7 @@ export function RepoCodePage() {
           id="gittr-repo-main"
           className="col-span-1 lg:col-span-4 xl:col-span-5"
         >
-          <div className="flex justify-between flex-row">
+          <div className="flex flex-row items-center justify-between gap-2">
             <div>
               <div className="flex items-center  gap-4 text-sm">
                 <BranchTagSwitcher
@@ -18227,7 +18227,7 @@ export function RepoCodePage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild className="md:hidden">
                 <Button
-                  className="h-8 !border-lightgray bg-dark"
+                  className="h-11 w-11 shrink-0 !border-lightgray bg-dark p-0 md:h-8 md:w-8"
                   variant="outline"
                 >
                   <MoreHorizontal className="text-gray-500" />
@@ -18279,7 +18279,7 @@ export function RepoCodePage() {
             {/* Sticky breadcrumbs, GitHub-like (hide on repo root) */}
             {pathParts.length > 0 && (
               <div className="sticky top-0 z-20 -mt-4 pt-4 bg-[#0F1217]">
-                <div className="mb-2 text-sm text-gray-300 flex items-center gap-2 border-b border-[#383B42] px-2 py-2">
+                <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 overflow-x-auto border-b border-[#383B42] px-2 py-2 text-sm text-gray-300">
                   {logoUrl ? (
                     <img
                       src={logoUrl}
@@ -18863,7 +18863,7 @@ export function RepoCodePage() {
                     return (
                       <li
                         key={it.path}
-                        className="text-gray-400 grid grid-cols-2 gap-x-2 p-2 text-sm sm:grid-cols-12 hover:bg-[#171B21]"
+                        className="text-gray-400 grid grid-cols-1 gap-1 p-2.5 text-sm sm:grid-cols-12 sm:gap-x-2 sm:p-2 hover:bg-[#171B21]"
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1 sm:col-span-4">
                           {it.type === "dir" ? (
@@ -19030,46 +19030,56 @@ export function RepoCodePage() {
                             <span className="text-gray-600 italic">—</span>
                           )}
                         </div>
-                        <div
-                          className="text-right whitespace-nowrap sm:col-span-2 text-xs sm:text-sm text-gray-500"
-                          title={
-                            last?.timestamp
-                              ? formatDateTime24h(last.timestamp * 1000)
-                              : undefined
-                          }
-                        >
-                          {last?.timestamp
-                            ? formatRelativeShort(last.timestamp * 1000)
-                            : "—"}
-                        </div>
-                        <div className="text-right whitespace-nowrap sm:col-span-2 flex items-center justify-end gap-2">
-                          {isOwner && (
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-red-400 p-1 rounded"
-                              title={
-                                it.type === "dir"
-                                  ? `Delete folder ${it.path.split("/").pop()}`
-                                  : `Delete ${it.path.split("/").pop()}`
-                              }
-                              aria-label={
-                                it.type === "dir"
-                                  ? `Delete folder ${it.path}`
-                                  : `Delete file ${it.path}`
-                              }
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                deleteRepoPath(
-                                  it.path,
-                                  it.type === "dir" ? "folder" : "file"
-                                );
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <span>{it.size ? `${it.size} B` : "—"}</span>
+                        <div className="flex items-center justify-between gap-2 pl-8 text-xs text-gray-500 sm:contents">
+                          <div
+                            className="min-w-0 truncate whitespace-nowrap sm:col-span-2 sm:text-right sm:text-sm"
+                            title={
+                              last?.timestamp
+                                ? formatDateTime24h(last.timestamp * 1000)
+                                : undefined
+                            }
+                          >
+                            {last?.timestamp
+                              ? formatRelativeShort(last.timestamp * 1000)
+                              : "—"}
+                          </div>
+                          <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap sm:col-span-2">
+                            {isOwner && (
+                              <button
+                                type="button"
+                                className="rounded p-2 text-gray-500 hover:text-red-400 sm:p-1"
+                                title={
+                                  it.type === "dir"
+                                    ? `Delete folder ${it.path.split("/").pop()}`
+                                    : `Delete ${it.path.split("/").pop()}`
+                                }
+                                aria-label={
+                                  it.type === "dir"
+                                    ? `Delete folder ${it.path}`
+                                    : `Delete file ${it.path}`
+                                }
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  deleteRepoPath(
+                                    it.path,
+                                    it.type === "dir" ? "folder" : "file"
+                                  );
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                              </button>
+                            )}
+                            <span>
+                              {it.size
+                                ? it.size >= 1048576
+                                  ? `${(it.size / 1048576).toFixed(1)} MB`
+                                  : it.size >= 1024
+                                    ? `${(it.size / 1024).toFixed(1)} KB`
+                                    : `${it.size} B`
+                                : "—"}
+                            </span>
+                          </div>
                         </div>
                       </li>
                     );
@@ -19213,7 +19223,7 @@ export function RepoCodePage() {
                 ref={fileViewerRef}
                 className="mt-4 rounded-md border dark:border-[#383B42]"
               >
-                <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42] flex-wrap">
+                <div className="flex flex-wrap items-center gap-2 border-b p-2 dark:border-[#383B42]">
                   <File className="text-gray-400 ml-2 h-4 w-4 flex-shrink-0" />{" "}
                   <span className="text-gray-400 truncate min-w-0 flex-1">
                     {selectedFile}
@@ -19224,7 +19234,7 @@ export function RepoCodePage() {
                     {(fileType === "html" || fileType === "markdown") &&
                       !proposeEdit && (
                         <button
-                          className="text-sm text-purple-400 hover:text-purple-300 border border-purple-500/50 rounded px-2 py-1"
+                          className="inline-flex min-h-9 items-center rounded border border-purple-500/50 px-2 py-1 text-sm text-purple-400 hover:text-purple-300"
                           onClick={() => {
                             if (fileType === "html") {
                               setHtmlViewMode(
@@ -19252,7 +19262,7 @@ export function RepoCodePage() {
                       (pagesSiteMatchedUrl ||
                         candidateGittrPagesUrls?.namedUrl) && (
                         <a
-                          className="text-sm text-teal-400 hover:text-teal-300 border border-teal-500/50 rounded px-2 py-1"
+                          className="inline-flex min-h-9 items-center rounded border border-teal-500/50 px-2 py-1 text-sm text-teal-400 hover:text-teal-300"
                           href={
                             pagesSiteMatchedUrl ||
                             candidateGittrPagesUrls?.namedUrl ||
@@ -19318,7 +19328,7 @@ export function RepoCodePage() {
                           fileType !== "binary" &&
                           !isOpaqueBinaryContent && (
                             <button
-                              className="text-sm text-purple-500 hover:underline whitespace-nowrap"
+                              className="inline-flex min-h-9 items-center whitespace-nowrap px-1 text-sm text-purple-500 hover:underline"
                               onClick={() => editCurrentFile()}
                             >
                               Edit
@@ -19342,7 +19352,7 @@ export function RepoCodePage() {
                           fileType !== "binary" &&
                           !isOpaqueBinaryContent && (
                             <button
-                              className="text-sm text-purple-500 hover:underline whitespace-nowrap"
+                              className="inline-flex min-h-9 items-center whitespace-nowrap px-1 text-sm text-purple-500 hover:underline"
                               onClick={() => {
                                 if (!selectedFile) return;
                                 if (loadingFile || !fileContent) {

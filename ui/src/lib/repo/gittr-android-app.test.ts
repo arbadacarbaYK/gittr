@@ -6,6 +6,7 @@ import { resolveAnnounceAppId, suggestAppIdFromRepo } from "./forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
   GITTR_ANDROID_ICON_URL,
+  GITTR_ANDROID_SCREENSHOT_URLS,
   GITTR_ANDROID_SUMMARY,
   GITTR_LEGACY_SUGGESTED_APP_ID,
   GITTR_OFFICIAL_APP_TOPICS,
@@ -70,6 +71,15 @@ describe("official gittr Android announce", () => {
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
     ).toBe(GITTR_LEGACY_SUGGESTED_APP_ID);
+  });
+
+  it("lists official Zapstore screenshots separately from the icon", () => {
+    expect([...GITTR_ANDROID_SCREENSHOT_URLS]).toEqual([
+      "https://gittr.space/zapstore/home.png",
+      "https://gittr.space/zapstore/apps.png",
+      "https://gittr.space/zapstore/repo.png",
+    ]);
+    expect(GITTR_ANDROID_SCREENSHOT_URLS).not.toContain(GITTR_ANDROID_ICON_URL);
   });
 
   it("uses the bird logo for official gittr and a public repo logo for others", () => {

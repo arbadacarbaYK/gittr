@@ -2,11 +2,21 @@
 // and imports the client layout component
 import { buildRootSiteMetadata } from "@/lib/seo/site-metadata";
 
+import { type Viewport } from "next";
+
 import ClientLayout from "./layout-client";
 
 const DEV_CACHE_BUST = "dev-2026-01-15-01";
 
 export const metadata = buildRootSiteMetadata();
+
+/** `cover` so `env(safe-area-inset-*)` is non-zero under the phone status bar. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#171B21",
+};
 
 export default function RootLayout({
   children,

@@ -18,6 +18,7 @@ import {
   GITTR_ANDROID_HOMEPAGE_URL,
   GITTR_ANDROID_ICON_URL,
   GITTR_ANDROID_LICENSE,
+  GITTR_ANDROID_SCREENSHOT_URLS,
   isOfficialGittrAndroidRepo,
   summaryForNip82Announce,
 } from "../repo/gittr-android-app";
@@ -59,8 +60,10 @@ export type SoftwareAnnounceInput = {
   topics?: string[];
   /** Repo owner hex — used to allow Pages Blossom only for official gittr. */
   ownerPubkeyHex?: string;
-  /** HTTPS icon for kind 32267 `icon` / `image` (Zapstore + /apps cards). */
+  /** HTTPS icon for kind 32267 `icon` (Zapstore + /apps cards). */
   iconUrl?: string;
+  /** Extra kind 32267 `image` tags (Zapstore screenshots). */
+  screenshotUrls?: string[];
   /** HTTPS homepage for kind 32267 `url`. */
   homepageUrl?: string;
   /**
@@ -268,6 +271,25 @@ export function buildSoftwareAnnounceEvents(
   ];
   if (icon) {
     appTags.push(["icon", icon]);
+  }
+  const screenshotRaw =
+    input.screenshotUrls && input.screenshotUrls.length > 0
+      ? input.screenshotUrls
+      : officialGittr
+      ? [...GITTR_ANDROID_SCREENSHOT_URLS]
+      : [];
+  const screenshotUrls: string[] = [];
+  const seenShot = new Set<string>();
+  for (const raw of screenshotRaw) {
+    const u = normalizeSoftwareIconUrl(raw);
+    if (!u || seenShot.has(u)) continue;
+    seenShot.add(u);
+    screenshotUrls.push(u);
+  }
+  for (const u of screenshotUrls) {
+    appTags.push(["image", u]);
+  }
+  if (screenshotUrls.length === 0 && icon) {
     appTags.push(["image", icon]);
   }
   if (homepage) appTags.push(["url", homepage]);

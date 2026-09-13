@@ -982,7 +982,10 @@ export default function HelpPage() {
                 Android package — not{" "}
                 <code className="text-purple-200">space.gittr.gittr</code>
                 ). <code className="text-purple-200">zapstore.yaml</code> in the
-                git repo is what Zapstore uses to whitelist the publisher.
+                git repo is what Zapstore uses to whitelist the publisher (icon
+                + screenshots under{" "}
+                <code className="text-purple-200">ui/public/zapstore/</code>
+                ).
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">
@@ -3466,9 +3469,9 @@ export default function HelpPage() {
                 <code className="text-purple-200">blossom.gittr.space</code>{" "}
                 except gittr’s own Android APK (
                 <code className="text-purple-200">space.gittr.app</code>
-                ), which also publishes the bird logo as the app icon and the
-                product about. Other apps copy their public repo logo when one
-                exists. The repo{" "}
+                ), which also publishes the dark-plate bird as the app icon,
+                phone screenshots, and the product about. Other apps copy their
+                public repo logo when one exists. The repo{" "}
                 <strong className="text-white">Releases</strong> tab lists all
                 forge download assets (not only APKs). How Releases, forge
                 files, and announces fit together:{" "}

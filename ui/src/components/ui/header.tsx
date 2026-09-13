@@ -317,16 +317,18 @@ export function Header() {
   return (
     <header
       data-repo-chrome
-      className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8"
+      className="flex min-h-14 w-full items-center justify-between gap-2 bg-[#171B21] px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] md:px-8"
     >
-      <div className="flex items-center gap-4">
-        <MainNav items={navItems} />
+      <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-4">
+        <div className="min-w-0 flex-1">
+          <MainNav items={navItems} />
+        </div>
         {mounted && isLoggedIn && (
           <a
             href="/new"
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "max-h-8 min-w-max"
+              "h-11 shrink-0 px-3 md:h-8 md:max-h-8"
             )}
             onClick={(e) => {
               go("/new", e);
@@ -336,7 +338,7 @@ export function Header() {
           </a>
         )}
       </div>
-      <div className="hidden items-center md:inline">
+      <div className="hidden shrink-0 items-center md:inline">
         {mounted && isLoggedIn ? (
           <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <DropdownMenuTrigger asChild>

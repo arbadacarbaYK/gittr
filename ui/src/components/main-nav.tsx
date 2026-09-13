@@ -77,7 +77,7 @@ export function MainNav({ items, children }: MainNavProps) {
   };
 
   return (
-    <div className="w-full md:w-auto flex items-center justify-center gap-6 md:gap-10">
+    <div className="flex w-full min-w-0 items-center justify-center gap-6 md:w-auto md:gap-10">
       <Logo className="hidden md:flex" />
 
       <div className="hidden max-h-12 md:inline">
@@ -119,11 +119,12 @@ export function MainNav({ items, children }: MainNavProps) {
         </nav>
       ) : null}
 
-      <div className="flex w-full md:w-auto items-center justify-between gap-3">
+      <div className="flex w-full min-w-0 items-center justify-between gap-2 md:w-auto md:gap-3">
         <Logo className="flex md:hidden" />
         <button
+          type="button"
           aria-label="Toggle navigation menu"
-          className="flex items-center justify-center rounded-md p-1 text-white md:hidden"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white md:hidden"
           onClick={handleToggleMobileMenu}
         >
           {showMobileMenu ? <X /> : <Menu />}

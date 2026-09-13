@@ -271,9 +271,13 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(built.app.tags.find((t) => t[0] === "icon")?.[1]).toBe(
       "https://gittr.space/android-chrome-512x512.png"
     );
-    expect(built.app.tags.find((t) => t[0] === "image")?.[1]).toBe(
-      "https://gittr.space/android-chrome-512x512.png"
-    );
+    expect(
+      built.app.tags.filter((t) => t[0] === "image").map((t) => t[1])
+    ).toEqual([
+      "https://gittr.space/zapstore/home.png",
+      "https://gittr.space/zapstore/apps.png",
+      "https://gittr.space/zapstore/repo.png",
+    ]);
     expect(built.app.tags.find((t) => t[0] === "url")?.[1]).toBe(
       "https://gittr.space"
     );
@@ -295,6 +299,25 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(withIcon.app.tags.find((t) => t[0] === "icon")?.[1]).toBe(
       "https://cdn.example.com/app.png"
     );
+    expect(withIcon.app.tags.find((t) => t[0] === "image")?.[1]).toBe(
+      "https://cdn.example.com/app.png"
+    );
+    const withShots = buildSoftwareAnnounceEvents({
+      forge: sampleForge({ includeMsi: false }),
+      appId: "space.gittr.demo",
+      appName: "Demo",
+      iconUrl: "https://cdn.example.com/app.png",
+      screenshotUrls: [
+        "https://cdn.example.com/shot-home.png",
+        "https://cdn.example.com/shot-repo.png",
+      ],
+    });
+    expect(
+      withShots.app.tags.filter((t) => t[0] === "image").map((t) => t[1])
+    ).toEqual([
+      "https://cdn.example.com/shot-home.png",
+      "https://cdn.example.com/shot-repo.png",
+    ]);
     const noIcon = buildSoftwareAnnounceEvents({
       forge: sampleForge({ includeMsi: false }),
       appId: "space.gittr.demo",

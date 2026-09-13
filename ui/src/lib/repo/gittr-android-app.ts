@@ -38,9 +38,16 @@ export const GITTR_LEGACY_SUGGESTED_APP_ID = "space.gittr.gittr";
  */
 export const GITTR_STRAY_APP_IDS = ["GITTR"] as const;
 
-/** Public bird logo (same file as zapstore.yaml `icon`). */
+/** Public bird on a dark plate (same file as zapstore.yaml `icon`). */
 export const GITTR_ANDROID_ICON_URL =
   "https://gittr.space/android-chrome-512x512.png";
+
+/** Phone screenshots for kind 32267 `image` tags / zapstore.yaml `images`. */
+export const GITTR_ANDROID_SCREENSHOT_URLS = [
+  "https://gittr.space/zapstore/home.png",
+  "https://gittr.space/zapstore/apps.png",
+  "https://gittr.space/zapstore/repo.png",
+] as const;
 
 export const GITTR_ANDROID_HOMEPAGE_URL = "https://gittr.space";
 
@@ -180,7 +187,7 @@ export function summaryForNip82Announce(args: {
 }
 
 /**
- * Kind 32267 `icon` / `image`. Official gittr always uses the bird PNG.
+ * Kind 32267 `icon`. Official gittr always uses the dark-plate bird PNG.
  * Other apps use a public http(s) Settings logo, or the same forge `logo.*`
  * file the repo header already shows (relative `/logo.svg` is rewritten).
  * Owner avatars and gittr’s `/api/og/repo-image` are not app icons.
