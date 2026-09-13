@@ -24,7 +24,7 @@ import type {
 } from "@/lib/repo/forge-releases";
 import {
   announceableForgeAssets,
-  suggestAppIdFromRepo,
+  resolveAnnounceAppId,
 } from "@/lib/repo/forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
@@ -163,12 +163,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           return;
         }
         setForge(data);
-        setAppId(
-          (prev) =>
-            prev ||
-            (existingAppId || "").trim() ||
-            suggestAppIdFromRepo(data.repo, ownerPubkeyHex)
-        );
+        setAppId((prev) => {
+          if (prev) return prev;
+          return resolveAnnounceAppId({
+            existingAppId,
+            repo: data.repo,
+            ownerPubkeyHex,
+          });
+        });
         setAppName((prev) => prev || data.repo || repoName);
         const announceable = announceableForgeAssets(data.release.assets);
         const preferred = pickAnnouncePrimaryAsset(data);
@@ -217,9 +219,15 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   }, [repoName]);
 
   useEffect(() => {
-    const existing = (existingAppId || "").trim();
-    if (existing) setAppId((prev) => prev || existing);
-  }, [existingAppId]);
+    setAppId((prev) => {
+      if (prev && !(isOfficialGittr && !prev.includes("."))) return prev;
+      return resolveAnnounceAppId({
+        existingAppId,
+        repo: repoName,
+        ownerPubkeyHex,
+      });
+    });
+  }, [existingAppId, repoName, ownerPubkeyHex, isOfficialGittr]);
 
   useEffect(() => {
     if (isOfficialGittr) setPinToNgitBlossom(true);

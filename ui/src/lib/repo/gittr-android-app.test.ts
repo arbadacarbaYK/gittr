@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 
-import { suggestAppIdFromRepo } from "./forge-releases";
+import { resolveAnnounceAppId, suggestAppIdFromRepo } from "./forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
   GITTR_LEGACY_SUGGESTED_APP_ID,
@@ -49,6 +49,23 @@ describe("official gittr Android announce", () => {
     expect(suggestAppIdFromRepo("gittr", "aa".repeat(32))).toBe(
       GITTR_LEGACY_SUGGESTED_APP_ID
     );
+  });
+
+  it("ignores stored display names like GITTR for the official package id", () => {
+    expect(
+      resolveAnnounceAppId({
+        existingAppId: "GITTR",
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe(GITTR_ANDROID_APP_ID);
+    expect(
+      resolveAnnounceAppId({
+        existingAppId: GITTR_LEGACY_SUGGESTED_APP_ID,
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe(GITTR_LEGACY_SUGGESTED_APP_ID);
   });
 
   it("copies repo topics and fills official zapstore.yaml tags", () => {

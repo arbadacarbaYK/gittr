@@ -91,6 +91,24 @@ export function suggestAppIdFromRepo(
   return `space.gittr.${slug || "app"}`;
 }
 
+/**
+ * Prefer a previously published package id so republish does not create a
+ * second listing. Display names like `GITTR` / `gittr` are not package ids.
+ */
+export function resolveAnnounceAppId(args: {
+  existingAppId?: string | null;
+  repo: string;
+  ownerPubkeyHex?: string | null;
+}): string {
+  const suggested = suggestAppIdFromRepo(args.repo, args.ownerPubkeyHex);
+  const existing = (args.existingAppId || "").trim();
+  if (!existing) return suggested;
+  if (isOfficialGittrAndroidRepo(args) && !existing.includes(".")) {
+    return suggested;
+  }
+  return existing;
+}
+
 /** Normalize release tag to a version string for NIP-82 `version` / `d`. */
 export function versionFromTag(tag: string): string {
   const t = (tag || "").trim();
