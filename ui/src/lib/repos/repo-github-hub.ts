@@ -2,6 +2,10 @@
 
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import {
+  GITTR_ANDROID_SUMMARY,
+  isStaleGittrAbout,
+} from "@/lib/repo/gittr-product-copy";
 import { extractGithubUrlFromEventTags } from "@/lib/repos/extract-forge-url-from-event-tags";
 import { fetchForgeRepoForkMeta } from "@/lib/repos/forge-fork-meta";
 import {
@@ -12,7 +16,10 @@ import {
 } from "@/lib/repos/fork-attribution";
 import { parseGiteaCompatibleRepo } from "@/lib/repos/gitea-forge";
 import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
-import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
+import {
+  descriptionAfterForgeRefetch,
+  isUnusableRepositoryDescription,
+} from "@/lib/repos/repo-about-text";
 import { storedGithubSourceUnchanged } from "@/lib/repos/repo-page-chrome";
 import {
   type StoredRepo,
@@ -514,9 +521,15 @@ export async function hydrateRepoFromGithub(
     if (idx >= 0 && repos[idx]) {
       const existing = repos[idx]!;
       const existingDesc = existing.description || "";
+      const nextAbout = descriptionAfterForgeRefetch(
+        meta?.description,
+        existingDesc,
+        repoSlug
+      );
       const mayFillAbout =
-        !!meta?.description &&
-        isPlaceholderRepositoryDescription(existingDesc, repoSlug);
+        !!nextAbout &&
+        isUnusableRepositoryDescription(existingDesc, repoSlug) &&
+        nextAbout !== existingDesc;
       const existingCreatedAt = (
         existing as StoredRepo & { lastNostrEventCreatedAt?: number }
       ).lastNostrEventCreatedAt;
@@ -536,7 +549,7 @@ export async function hydrateRepoFromGithub(
         (meta &&
           (existing.stars !== meta.stars ||
             existing.forks !== meta.forks ||
-            (mayFillAbout && existingDesc !== meta.description) ||
+            (mayFillAbout && existingDesc !== nextAbout) ||
             existingCreatedAt !== nextCreatedAt)) ||
         forkChanged;
       if (changed) {
@@ -546,7 +559,7 @@ export async function hydrateRepoFromGithub(
             ? {
                 stars: meta.stars,
                 forks: meta.forks,
-                ...(mayFillAbout ? { description: meta.description } : {}),
+                ...(mayFillAbout ? { description: nextAbout } : {}),
                 ...(nextCreatedAt !== undefined
                   ? { lastNostrEventCreatedAt: nextCreatedAt }
                   : {}),
@@ -587,7 +600,8 @@ export function persistRepoDescription(
   description: string,
   opts?: { force?: boolean }
 ): void {
-  const trimmed = description.trim();
+  let trimmed = description.trim();
+  if (isStaleGittrAbout(trimmed)) trimmed = GITTR_ANDROID_SUMMARY;
   if (!trimmed) return;
   const repos = loadStoredRepos();
   const idx = repos.findIndex((r) => {
@@ -601,7 +615,7 @@ export function persistRepoDescription(
   if (
     !opts?.force &&
     existing &&
-    !isPlaceholderRepositoryDescription(existing, repoSlug) &&
+    !isUnusableRepositoryDescription(existing, repoSlug) &&
     trimmed !== existing
   ) {
     return;
@@ -646,8 +660,11 @@ export function persistRepoAnnouncementMeta(opts: {
   const clone = Array.isArray(opts.clone)
     ? opts.clone.filter((u) => typeof u === "string" && u.trim())
     : [];
-  const description =
-    typeof opts.description === "string" ? opts.description.trim() : "";
+  const description = descriptionAfterForgeRefetch(
+    typeof opts.description === "string" ? opts.description : "",
+    idx >= 0 ? repos[idx]?.description : "",
+    opts.repo
+  );
   const owner =
     typeof opts.ownerPubkey === "string" &&
     /^[0-9a-f]{64}$/i.test(opts.ownerPubkey)

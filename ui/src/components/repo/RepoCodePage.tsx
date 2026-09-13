@@ -145,7 +145,9 @@ import {
   idbDeleteOverride,
 } from "@/lib/repos/overrides-idb";
 import {
+  descriptionAfterForgeRefetch,
   isPlaceholderRepositoryDescription,
+  isUnusableRepositoryDescription,
   preferOwnedDescription,
   sidebarAboutText,
 } from "@/lib/repos/repo-about-text";
@@ -5419,28 +5421,35 @@ export function RepoCodePage() {
     (async () => {
       // Re-check current description at apply time (may have been set by Settings / Nostr).
       const currentDesc = repoDataRef.current?.description || "";
-      if (
-        !isPlaceholderRepositoryDescription(currentDesc, resolvedParams.repo)
-      ) {
+      if (!isUnusableRepositoryDescription(currentDesc, resolvedParams.repo)) {
         return;
       }
       const desc = await fetchGithubRepoDescription(sourceUrl);
       if (cancelled || !desc) return;
+      const nextDesc = descriptionAfterForgeRefetch(
+        desc,
+        repoDataRef.current?.description,
+        resolvedParams.repo
+      );
+      if (!nextDesc) return;
       setRepoData((prev) => {
         if (!prev) return prev;
         if (
-          !isPlaceholderRepositoryDescription(
+          !isUnusableRepositoryDescription(
             prev.description,
             resolvedParams.repo
           )
         ) {
           return prev;
         }
-        if (prev.description === desc) return prev;
-        return { ...prev, description: desc };
+        if (prev.description === nextDesc) return prev;
+        return { ...prev, description: nextDesc };
       });
-      // persistRepoDescription also refuses to clobber non-placeholders
-      persistRepoDescription(resolvedParams.entity, resolvedParams.repo, desc);
+      persistRepoDescription(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        nextDesc
+      );
     })();
 
     return () => {
@@ -20994,8 +21003,14 @@ export function RepoCodePage() {
                                       const readmeChanged =
                                         (importData.readme || "") !==
                                         (existingRepo.readme || "");
+                                      const nextDescription =
+                                        descriptionAfterForgeRefetch(
+                                          importData.description,
+                                          existingRepo.description,
+                                          resolvedParams.repo
+                                        );
                                       const descriptionChanged =
-                                        (importData.description || "") !==
+                                        nextDescription !==
                                         (existingRepo.description || "");
                                       const metadataChanged =
                                         readmeChanged || descriptionChanged;
@@ -21038,9 +21053,7 @@ export function RepoCodePage() {
                                         readme:
                                           importData.readme ||
                                           existingRepo.readme,
-                                        description:
-                                          importData.description ||
-                                          existingRepo.description,
+                                        description: nextDescription,
                                         stars:
                                           importData.stars !== undefined
                                             ? importData.stars
@@ -21138,9 +21151,7 @@ export function RepoCodePage() {
                                         hasUnpushedEdits: false,
                                         readme:
                                           importData.readme || prev?.readme,
-                                        description:
-                                          importData.description ||
-                                          prev?.description,
+                                        description: nextDescription,
                                         stars:
                                           importData.stars !== undefined
                                             ? importData.stars
@@ -21758,7 +21769,11 @@ export function RepoCodePage() {
                                         readme: importData.readme || "",
                                         files: newFiles,
                                         description:
-                                          importData.description || "",
+                                          descriptionAfterForgeRefetch(
+                                            importData.description,
+                                            "",
+                                            resolvedParams.repo
+                                          ),
                                         stars: importData.stars || 0,
                                         forks: importData.forks || 0,
                                         languages: importData.languages || [],

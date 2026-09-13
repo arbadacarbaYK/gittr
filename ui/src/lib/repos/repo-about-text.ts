@@ -1,4 +1,9 @@
 /** NIP-34 default placeholder when no real description was set. */
+import {
+  GITTR_ANDROID_SUMMARY,
+  isStaleGittrAbout,
+} from "../repo/gittr-product-copy";
+
 export function isPlaceholderRepositoryDescription(
   description: string | undefined | null,
   repoName: string
@@ -12,6 +17,40 @@ export function isPlaceholderRepositoryDescription(
     d.toLowerCase() === `repository:${slug}` ||
     d.toLowerCase().startsWith("imported from ")
   );
+}
+
+/** Empty, NIP-34 placeholder, or the retired gittr GitHub hub blurb. */
+export function isUnusableRepositoryDescription(
+  description: string | undefined | null,
+  repoName: string
+): boolean {
+  return (
+    isPlaceholderRepositoryDescription(description, repoName) ||
+    isStaleGittrAbout(description)
+  );
+}
+
+/**
+ * GitHub refetch must not restore the old “Host your Git repositories…” About.
+ * Keep a real local/Settings line; map the stale hub blurb to the product about.
+ */
+export function descriptionAfterForgeRefetch(
+  incoming: string | undefined | null,
+  existing: string | undefined | null,
+  repoName: string
+): string {
+  const next = (incoming || "").trim();
+  const prev = (existing || "").trim();
+  const prevOk = !isUnusableRepositoryDescription(prev, repoName);
+  if (isStaleGittrAbout(next)) {
+    return prevOk ? prev : GITTR_ANDROID_SUMMARY;
+  }
+  if (next) {
+    if (prevOk && isUnusableRepositoryDescription(next, repoName)) return prev;
+    return next;
+  }
+  if (isStaleGittrAbout(prev)) return GITTR_ANDROID_SUMMARY;
+  return prev;
 }
 
 /**
@@ -61,14 +100,15 @@ export function sidebarAboutText(
   repoName: string
 ): string {
   const d = (description || "").trim();
-  if (!d || isPlaceholderRepositoryDescription(d, repoName)) return "";
-  return sanitizeDescriptionForMarkdown(d);
+  const shown = isStaleGittrAbout(d) ? GITTR_ANDROID_SUMMARY : d;
+  if (!shown || isPlaceholderRepositoryDescription(shown, repoName)) return "";
+  return sanitizeDescriptionForMarkdown(shown);
 }
 
 /**
  * Prefer an owner-authored (non-placeholder) Nostr description over an empty
  * or placeholder local value. Never replace a real local description with a
- * placeholder event description.
+ * placeholder event description. The retired gittr hub blurb is not “real”.
  */
 export function preferOwnedDescription(
   current: string | undefined | null,
@@ -77,11 +117,13 @@ export function preferOwnedDescription(
 ): string {
   const eventDesc = (fromEvent || "").trim();
   const cur = (current || "").trim();
-  const eventOk =
-    !!eventDesc && !isPlaceholderRepositoryDescription(eventDesc, repoName);
-  const curOk = !!cur && !isPlaceholderRepositoryDescription(cur, repoName);
+  const eventOk = !isUnusableRepositoryDescription(eventDesc, repoName);
+  const curOk = !isUnusableRepositoryDescription(cur, repoName);
   if (eventOk) return eventDesc;
   if (curOk) return cur;
+  if (isStaleGittrAbout(eventDesc) || isStaleGittrAbout(cur)) {
+    return GITTR_ANDROID_SUMMARY;
+  }
   return eventDesc || cur || "";
 }
 

@@ -10,6 +10,8 @@ import {
   pickRepoLogoFilePath,
 } from "../repos/resolve-repo-display-icon";
 
+import { GITTR_ANDROID_SUMMARY, isStaleGittrAbout } from "./gittr-product-copy";
+
 /** Android `applicationId` / Zapstore `d` tag. Not `space.gittr.gittr`. */
 export const GITTR_ANDROID_APP_ID = "space.gittr.app";
 
@@ -36,13 +38,9 @@ export const GITTR_ANDROID_ICON_URL =
 
 export const GITTR_ANDROID_HOMEPAGE_URL = "https://gittr.space";
 
+export { GITTR_ANDROID_SUMMARY } from "./gittr-product-copy";
+
 export const GITTR_ANDROID_LICENSE = "AGPL-3.0";
-
-/** Kind 32267 `summary` / repo About for the official listing. */
-export const GITTR_ANDROID_SUMMARY =
-  "Decentralized and discoverable Nostr gits, apps and pages";
-
-const STALE_GITTR_ABOUT = /^host your git repositories on nostr/i;
 
 export function normalizeRepoSlug(repo?: string | null): string {
   return (repo || "")
@@ -164,7 +162,7 @@ export function summaryForNip82Announce(args: {
       raw,
       args.repo || GITTR_ANDROID_REPO_SLUG
     ) ||
-    STALE_GITTR_ABOUT.test(raw)
+    isStaleGittrAbout(raw)
   ) {
     return GITTR_ANDROID_SUMMARY;
   }
