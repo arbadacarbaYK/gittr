@@ -10,10 +10,13 @@ import { Menu, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
 import Logo from "./logo";
+import { navItemShortTitle } from "./main-nav-labels";
 import SearchBar from "./search-bar";
 
 export type NavItem = {
   title: string;
+  /** Phone/tablet one-line header; falls back to `title`. */
+  shortTitle?: string;
   href: string;
   disabled?: boolean;
   /** Open in a new tab (e.g. gittr Pages directory while keeping the current tab). */
@@ -77,15 +80,15 @@ export function MainNav({ items, children }: MainNavProps) {
   };
 
   return (
-    <div className="flex w-full min-w-0 items-center justify-center gap-6 md:w-auto md:gap-10">
-      <Logo className="hidden md:flex" />
+    <div className="flex w-full min-w-0 items-center justify-start gap-2 md:gap-3">
+      <Logo className="shrink-0" />
 
-      <div className="hidden max-h-12 md:inline">
-        <SearchBar className="w-[162px] lg:w-[272px] focus:w-[600px]" />
+      <div className="min-w-0 max-w-[7.5rem] shrink sm:max-w-[10rem] md:max-w-[12.5rem] lg:max-w-[17rem]">
+        <SearchBar className="h-8 w-full max-h-8 text-xs md:text-sm" />
       </div>
 
       {items?.length ? (
-        <nav className="hidden gap-6 md:flex">
+        <nav className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
           {items?.map((item, index) => (
             <a
               key={index}
@@ -103,12 +106,12 @@ export function MainNav({ items, children }: MainNavProps) {
                 handleNavClick(e, item.href, item.disabled);
               }}
               className={cn(
-                "flex items-center gap-1.5 text-lg font-semibold text-white hover:text-white/80 sm:text-sm",
-
+                "inline-flex h-11 shrink-0 items-center gap-1 text-xs font-semibold text-white hover:text-white/80 sm:h-auto sm:text-sm",
                 item.disabled && "cursor-not-allowed opacity-80"
               )}
             >
-              {item.title}
+              <span className="lg:hidden">{navItemShortTitle(item)}</span>
+              <span className="hidden lg:inline">{item.title}</span>
               {typeof item.badgeCount === "number" && item.badgeCount > 0 ? (
                 <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-300">
                   {item.badgeCount}
@@ -119,23 +122,20 @@ export function MainNav({ items, children }: MainNavProps) {
         </nav>
       ) : null}
 
-      <div className="flex w-full min-w-0 items-center justify-between gap-2 md:w-auto md:gap-3">
-        <Logo className="flex md:hidden" />
-        <button
-          type="button"
-          aria-label="Toggle navigation menu"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white md:hidden"
-          onClick={handleToggleMobileMenu}
-        >
-          {showMobileMenu ? <X /> : <Menu />}
-        </button>
+      <button
+        type="button"
+        aria-label="Toggle navigation menu"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white md:hidden"
+        onClick={handleToggleMobileMenu}
+      >
+        {showMobileMenu ? <X /> : <Menu />}
+      </button>
 
-        {showMobileMenu && items && (
-          <MobileNav onClick={handleToggleMobileMenu} items={items}>
-            {children}
-          </MobileNav>
-        )}
-      </div>
+      {showMobileMenu && items && (
+        <MobileNav onClick={handleToggleMobileMenu} items={items}>
+          {children}
+        </MobileNav>
+      )}
     </div>
   );
 }

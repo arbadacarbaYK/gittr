@@ -46,6 +46,7 @@ const HeaderConfig = {
   mainNav: [
     {
       title: "Pull Requests",
+      shortTitle: "PRs",
       href: "/pulls",
     },
     {
@@ -71,6 +72,7 @@ const HeaderConfig = {
     },
     {
       title: "Bounty Hunt",
+      shortTitle: "Bounties",
       href: "/bounty-hunt",
     },
   ],
@@ -320,7 +322,7 @@ export function Header() {
   return (
     <header
       data-repo-chrome
-      className="flex min-h-14 w-full items-center justify-between gap-2 bg-[#171B21] px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] md:px-8"
+      className="flex min-h-14 w-full items-center justify-between gap-2 bg-[#171B21] px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))] sm:px-3 md:px-8"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-4">
         <div className="min-w-0 flex-1">
