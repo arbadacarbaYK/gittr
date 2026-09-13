@@ -3,6 +3,12 @@
  * Third-party announce still uses `space.gittr.<repo-slug>`.
  */
 import { GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
+import { isPlaceholderRepositoryDescription } from "../repos/repo-about-text";
+import {
+  extractKnownForgeRepo,
+  forgeRawLogoUrl,
+  pickRepoLogoFilePath,
+} from "../repos/resolve-repo-display-icon";
 
 /** Android `applicationId` / Zapstore `d` tag. Not `space.gittr.gittr`. */
 export const GITTR_ANDROID_APP_ID = "space.gittr.app";
@@ -31,6 +37,12 @@ export const GITTR_ANDROID_ICON_URL =
 export const GITTR_ANDROID_HOMEPAGE_URL = "https://gittr.space";
 
 export const GITTR_ANDROID_LICENSE = "AGPL-3.0";
+
+/** Kind 32267 `summary` / repo About for the official listing. */
+export const GITTR_ANDROID_SUMMARY =
+  "Decentralized and discoverable Nostr gits, apps and pages";
+
+const STALE_GITTR_ABOUT = /^host your git repositories on nostr/i;
 
 export function normalizeRepoSlug(repo?: string | null): string {
   return (repo || "")
@@ -97,21 +109,107 @@ function httpsUrlOrUndefined(raw?: string | null): string | undefined {
     const u = new URL(t);
     if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
     if (u.username || u.password) return undefined;
+    if (u.pathname.startsWith("/api/og/repo-image")) return undefined;
     return u.toString();
   } catch {
     return undefined;
   }
 }
 
+function firstKnownForge(args: {
+  sourceUrl?: string | null;
+  cloneUrls?: string[] | null;
+}) {
+  const urls: string[] = [];
+  if (args.sourceUrl?.trim()) urls.push(args.sourceUrl.trim());
+  for (const c of args.cloneUrls || []) {
+    if (typeof c === "string" && c.trim()) urls.push(c.trim());
+  }
+  for (const u of urls) {
+    const forge = extractKnownForgeRepo(u);
+    if (forge) return forge;
+  }
+  return null;
+}
+
+function forgeHttpsLogoFromRepoPath(args: {
+  logoPath: string;
+  sourceUrl?: string | null;
+  cloneUrls?: string[] | null;
+  defaultBranch?: string | null;
+}): string | undefined {
+  const path = args.logoPath.replace(/^\/+/, "").trim();
+  if (!path || path.includes("..") || path.includes("://")) return undefined;
+  const forge = firstKnownForge(args);
+  if (!forge) return undefined;
+  return httpsUrlOrUndefined(
+    forgeRawLogoUrl(forge, path, args.defaultBranch || "main")
+  );
+}
+
+/**
+ * Kind 32267 `summary`. Official gittr uses the product about unless the
+ * owner already wrote a different non-placeholder description.
+ */
+export function summaryForNip82Announce(args: {
+  repo?: string | null;
+  ownerPubkeyHex?: string | null;
+  repoSummary?: string | null;
+}): string {
+  const raw = (args.repoSummary || "").trim().slice(0, 280);
+  if (!isOfficialGittrAndroidRepo(args)) return raw;
+  if (
+    !raw ||
+    isPlaceholderRepositoryDescription(
+      raw,
+      args.repo || GITTR_ANDROID_REPO_SLUG
+    ) ||
+    STALE_GITTR_ABOUT.test(raw)
+  ) {
+    return GITTR_ANDROID_SUMMARY;
+  }
+  return raw;
+}
+
 /**
  * Kind 32267 `icon` / `image`. Official gittr always uses the bird PNG.
- * Other apps keep their Settings logo URL when it is already public http(s).
+ * Other apps use a public http(s) Settings logo, or the same forge `logo.*`
+ * file the repo header already shows (relative `/logo.svg` is rewritten).
+ * Owner avatars and gittr’s `/api/og/repo-image` are not app icons.
  */
 export function iconUrlForNip82Announce(args: {
   repo?: string | null;
   ownerPubkeyHex?: string | null;
   repoLogoUrl?: string | null;
+  sourceUrl?: string | null;
+  cloneUrls?: string[] | null;
+  files?: Array<{ path?: string } | string> | null;
+  defaultBranch?: string | null;
 }): string | undefined {
   if (isOfficialGittrAndroidRepo(args)) return GITTR_ANDROID_ICON_URL;
-  return httpsUrlOrUndefined(args.repoLogoUrl);
+  const direct = httpsUrlOrUndefined(args.repoLogoUrl);
+  if (direct) return direct;
+  const stored = (args.repoLogoUrl || "").trim();
+  if (
+    stored &&
+    !/^https?:\/\//i.test(stored) &&
+    !stored.startsWith("data:") &&
+    !stored.startsWith("/api/")
+  ) {
+    const fromStored = forgeHttpsLogoFromRepoPath({
+      logoPath: stored,
+      sourceUrl: args.sourceUrl,
+      cloneUrls: args.cloneUrls,
+      defaultBranch: args.defaultBranch,
+    });
+    if (fromStored) return fromStored;
+  }
+  const filePath = pickRepoLogoFilePath(args.files, args.repo);
+  if (!filePath) return undefined;
+  return forgeHttpsLogoFromRepoPath({
+    logoPath: filePath,
+    sourceUrl: args.sourceUrl,
+    cloneUrls: args.cloneUrls,
+    defaultBranch: args.defaultBranch,
+  });
 }

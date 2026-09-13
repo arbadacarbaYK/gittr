@@ -19,6 +19,7 @@ import {
   GITTR_ANDROID_ICON_URL,
   GITTR_ANDROID_LICENSE,
   isOfficialGittrAndroidRepo,
+  summaryForNip82Announce,
 } from "../repo/gittr-android-app";
 
 import { allowedNip82BlossomAssetUrl } from "./nip82-blossom-hosts";
@@ -229,7 +230,11 @@ export function buildSoftwareAnnounceEvents(
     : [];
 
   const name = (input.appName || input.forge.repo).trim() || input.forge.repo;
-  const summary = (input.summary || "").trim().slice(0, 280);
+  const summary = summaryForNip82Announce({
+    repo: input.forge.repo,
+    ownerPubkeyHex: input.ownerPubkeyHex,
+    repoSummary: input.summary,
+  });
   const now = Math.floor(Date.now() / 1000);
   const officialGittr = isOfficialGittrAndroidRepo({
     repo: input.forge.repo,

@@ -31,6 +31,7 @@ import {
   GITTR_ANDROID_LICENSE,
   iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
+  summaryForNip82Announce,
   topicsForNip82Announce,
 } from "@/lib/repo/gittr-android-app";
 import { cn } from "@/lib/utils";
@@ -60,8 +61,11 @@ type RepoAppAnnouncePanelProps = {
   repoTopics?: string[] | null;
   /** Already-published app id — keep it so a second listing is not created */
   existingAppId?: string | null;
-  /** HTTPS repo logo from Settings — used as NIP-82 icon for third-party apps */
+  /** Repo logo from Settings — HTTPS, or a path like `/logo.svg` rewritten via the forge */
   repoLogoUrl?: string | null;
+  cloneUrls?: string[] | null;
+  repoFiles?: Array<{ path?: string } | string> | null;
+  defaultBranch?: string | null;
   /**
    * Forge release tag to announce. Omit for latest (Code sidebar).
    * When set, queries `/api/repo/forge-releases?tag=…`.
@@ -114,6 +118,9 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     repoTopics,
     existingAppId,
     repoLogoUrl,
+    cloneUrls,
+    repoFiles,
+    defaultBranch,
     preferredTag,
     variant = "sidebar",
     defaultOpen = false,
@@ -333,7 +340,11 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           forge: forgeForPublish,
           appId: appId.trim(),
           appName: appName.trim(),
-          summary: (repoSummary || "").slice(0, 280),
+          summary: summaryForNip82Announce({
+            repo: repoName,
+            ownerPubkeyHex,
+            repoSummary,
+          }),
           selectedAssetUrl: selectedAssetUrl || undefined,
           selectedApkUrl: selectedAssetUrl || undefined,
           nip34Address: nip34Address || undefined,
@@ -348,6 +359,10 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             repo: repoName,
             ownerPubkeyHex,
             repoLogoUrl,
+            sourceUrl,
+            cloneUrls,
+            files: repoFiles,
+            defaultBranch,
           }),
           license: isOfficialGittr ? GITTR_ANDROID_LICENSE : undefined,
         },

@@ -6,11 +6,13 @@ import { resolveAnnounceAppId, suggestAppIdFromRepo } from "./forge-releases";
 import {
   GITTR_ANDROID_APP_ID,
   GITTR_ANDROID_ICON_URL,
+  GITTR_ANDROID_SUMMARY,
   GITTR_LEGACY_SUGGESTED_APP_ID,
   GITTR_OFFICIAL_APP_TOPICS,
   appIdsToMatchForRepoDelete,
   iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
+  summaryForNip82Announce,
   topicsForNip82Announce,
 } from "./gittr-android-app";
 
@@ -70,7 +72,7 @@ describe("official gittr Android announce", () => {
     ).toBe(GITTR_LEGACY_SUGGESTED_APP_ID);
   });
 
-  it("uses the bird logo for official gittr and the repo logo for others", () => {
+  it("uses the bird logo for official gittr and a public repo logo for others", () => {
     expect(
       iconUrlForNip82Announce({
         repo: "gittr",
@@ -90,8 +92,58 @@ describe("official gittr Android announce", () => {
         repo: "demo",
         ownerPubkeyHex: "aa".repeat(32),
         repoLogoUrl: "/logo.svg",
+        sourceUrl: "https://github.com/acme/demo",
+        defaultBranch: "main",
+      })
+    ).toBe("https://raw.githubusercontent.com/acme/demo/main/logo.svg");
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        files: [{ path: "logo.png" }],
+        sourceUrl: "https://github.com/acme/demo",
+      })
+    ).toBe("https://raw.githubusercontent.com/acme/demo/main/logo.png");
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoLogoUrl: "/logo.svg",
       })
     ).toBeUndefined();
+    expect(
+      iconUrlForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoLogoUrl:
+          "https://gittr.space/api/og/repo-image?ownerPubkey=aa&repo=demo",
+      })
+    ).toBeUndefined();
+  });
+
+  it("uses the product about for official gittr unless a custom description exists", () => {
+    expect(
+      summaryForNip82Announce({
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+        repoSummary:
+          "Host your Git repositories on Nostr for enhanced discoverability. Make your code discoverable across the Nostr network and decentralize your code",
+      })
+    ).toBe(GITTR_ANDROID_SUMMARY);
+    expect(
+      summaryForNip82Announce({
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+        repoSummary: "",
+      })
+    ).toBe(GITTR_ANDROID_SUMMARY);
+    expect(
+      summaryForNip82Announce({
+        repo: "demo",
+        ownerPubkeyHex: "aa".repeat(32),
+        repoSummary: "My app",
+      })
+    ).toBe("My app");
   });
 
   it("copies repo topics and fills official zapstore.yaml tags", () => {

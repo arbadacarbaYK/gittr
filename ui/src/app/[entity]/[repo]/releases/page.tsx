@@ -106,6 +106,13 @@ export default function RepoReleasesPage({
   const [repoSummary, setRepoSummary] = useState("");
   const [repoTopics, setRepoTopics] = useState<string[]>([]);
   const [repoLogoUrl, setRepoLogoUrl] = useState<string | undefined>();
+  const [repoFiles, setRepoFiles] = useState<
+    Array<{ path?: string }> | undefined
+  >();
+  const [repoClone, setRepoClone] = useState<string[] | undefined>();
+  const [repoDefaultBranch, setRepoDefaultBranch] = useState<
+    string | undefined
+  >();
   const [announceTag, setAnnounceTag] = useState<string | null>(null);
 
   const forgeSourceLinked = Boolean(
@@ -143,6 +150,13 @@ export default function RepoReleasesPage({
         setRepoLogoUrl(
           typeof logo === "string" && logo.trim() ? logo.trim() : undefined
         );
+        setRepoFiles(Array.isArray(rec.files) ? rec.files : undefined);
+        setRepoClone(Array.isArray(rec.clone) ? rec.clone : undefined);
+        setRepoDefaultBranch(
+          typeof rec.defaultBranch === "string" && rec.defaultBranch.trim()
+            ? rec.defaultBranch
+            : undefined
+        );
         const announced = (rec as StoredRepo & { announcedAppId?: string })
           .announcedAppId;
         setAnnouncedAppId(
@@ -154,6 +168,9 @@ export default function RepoReleasesPage({
         setRepoSummary("");
         setRepoTopics([]);
         setRepoLogoUrl(undefined);
+        setRepoFiles(undefined);
+        setRepoClone(undefined);
+        setRepoDefaultBranch(undefined);
         setAnnouncedAppId(undefined);
       }
       if (!ownerHex && resolvedParams.entity?.startsWith("npub")) {
@@ -862,7 +879,10 @@ export default function RepoReleasesPage({
             repoSummary={repoSummary}
             repoTopics={repoTopics}
             existingAppId={announcedAppId}
-            repoLogoUrl={repoLogoUrl}
+            repoLogoUrl={repoLogoUrl || repoLogo}
+            cloneUrls={repoClone}
+            repoFiles={repoFiles}
+            defaultBranch={repoDefaultBranch}
             ownerPubkeyHex={ownerPubkeyHex}
             nip34Address={nip34Address}
             onAnnounced={(announcedAppId) => {

@@ -280,6 +280,9 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(built.app.tags.find((t) => t[0] === "license")?.[1]).toBe(
       "AGPL-3.0"
     );
+    expect(built.app.tags.find((t) => t[0] === "summary")?.[1]).toBe(
+      "Decentralized and discoverable Nostr gits, apps and pages"
+    );
   });
 
   it("puts a provided HTTPS icon on third-party announces and ignores javascript", () => {

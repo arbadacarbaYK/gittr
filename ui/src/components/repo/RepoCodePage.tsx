@@ -23615,6 +23615,27 @@ export function RepoCodePage() {
                               (repo as { logoUrl?: string } | null)?.logoUrl ||
                               null
                             }
+                            cloneUrls={
+                              repoData?.clone ||
+                              (repo as { clone?: string[] } | null)?.clone ||
+                              null
+                            }
+                            repoFiles={
+                              repoData?.files ||
+                              (
+                                repo as {
+                                  files?: Array<{ path?: string }>;
+                                } | null
+                              )?.files ||
+                              null
+                            }
+                            defaultBranch={
+                              repoData?.defaultBranch ||
+                              selectedBranch ||
+                              (repo as { defaultBranch?: string } | null)
+                                ?.defaultBranch ||
+                              null
+                            }
                             onAnnounced={(announcedAppId) => {
                               try {
                                 const repos = loadStoredRepos();
