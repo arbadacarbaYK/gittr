@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canCloseOrMergeOnGittr,
+  dedupeIssueRowsByNumber,
   findIssueRowIndexByRouteParam,
+  findLinkedIssueRow,
   findPullRequestRowIndexByRouteParam,
   issueOrPrDisplayNumber,
+  issueOrPrListRef,
   mergeGithubIssuesAfterRefetch,
   mergeGithubPrsAfterRefetch,
   shareableIssueOrPrPathId,
@@ -51,9 +55,9 @@ describe("findPullRequestRowIndexByRouteParam", () => {
     expect(findPullRequestRowIndexByRouteParam(rows, "12")).toBe(1);
   });
 
-  it("still finds a Nostr-only PR by its local display number", () => {
+  it("does not open a Nostr-only row via a local counter in the URL", () => {
     const rows = [{ id: NOSTR_HEX_A, number: "2", title: "nostr only" }];
-    expect(findPullRequestRowIndexByRouteParam(rows, "2")).toBe(0);
+    expect(findPullRequestRowIndexByRouteParam(rows, "2")).toBe(-1);
     expect(findPullRequestRowIndexByRouteParam(rows, NOSTR_HEX_A)).toBe(0);
   });
 });
@@ -104,6 +108,31 @@ describe("mergeGithubPrsAfterRefetch", () => {
     expect(ids).toEqual(["pr-40", "pr-41"]);
     expect(merged.find((r) => r.id === "pr-40")?.status).toBe("closed");
   });
+
+  it("does not copy a Nostr PR merge onto GitHub PR #N with the same local number", () => {
+    const existing = [
+      {
+        id: NOSTR_HEX_A,
+        number: "12",
+        status: "merged",
+        mergedBy: "alice",
+      },
+      { id: "pr-12", number: "12", status: "open", title: "github" },
+    ];
+    const githubRows = [
+      { id: "pr-12", number: "12", status: "open", title: "github" },
+    ];
+    const merged = mergeGithubPrsAfterRefetch(existing, githubRows) as Array<{
+      id?: string;
+      status?: string;
+      sourcePrStillOpen?: boolean;
+    }>;
+    const gh = merged.find((r) => r.id === "pr-12");
+    const nostr = merged.find((r) => r.id === NOSTR_HEX_A);
+    expect(gh?.status).toBe("open");
+    expect(gh?.sourcePrStillOpen).toBeFalsy();
+    expect(nostr?.status).toBe("merged");
+  });
 });
 
 describe("mergeGithubIssuesAfterRefetch", () => {
@@ -145,12 +174,62 @@ describe("shareableIssueOrPrPathId", () => {
 });
 
 describe("issueOrPrDisplayNumber", () => {
-  it("shows the local number in the UI", () => {
+  it("shows the forge number for GitHub/Gitea rows", () => {
+    expect(issueOrPrDisplayNumber({ id: "issue-12", number: "12" })).toBe("12");
+  });
+
+  it("shows an event-id prefix for Nostr rows, not a localStorage counter", () => {
     expect(
       issueOrPrDisplayNumber({
         id: NOSTR_HEX_A,
-        number: "2",
+        number: "9",
       })
-    ).toBe("2");
+    ).toBe(NOSTR_HEX_A.slice(0, 8));
+    expect(issueOrPrListRef({ id: NOSTR_HEX_A, number: "9" })).toBe(
+      NOSTR_HEX_A.slice(0, 8)
+    );
+    expect(issueOrPrListRef({ id: "pr-12", number: "12" })).toBe("#12");
+  });
+});
+
+describe("canCloseOrMergeOnGittr", () => {
+  it("allows close/merge only for Nostr event ids", () => {
+    expect(canCloseOrMergeOnGittr({ id: NOSTR_HEX_A })).toBe(true);
+    expect(canCloseOrMergeOnGittr({ id: "issue-12" })).toBe(false);
+    expect(canCloseOrMergeOnGittr({ id: "pr-9" })).toBe(false);
+  });
+});
+
+describe("findLinkedIssueRow", () => {
+  it("links a numeric pointer to the forge issue, not a Nostr row with local #N", () => {
+    const rows = [
+      { id: NOSTR_HEX_A, number: "12", title: "nostr" },
+      { id: "issue-12", number: "12", title: "github" },
+    ];
+    expect(findLinkedIssueRow(rows, "12")?.title).toBe("github");
+    expect(findLinkedIssueRow(rows, NOSTR_HEX_A)?.title).toBe("nostr");
+    expect(findLinkedIssueRow(rows, "issue-12")?.title).toBe("github");
+  });
+});
+
+describe("dedupeIssueRowsByNumber", () => {
+  it("does not glue a GitHub issue to a Nostr issue that reused local #12", () => {
+    const rows = dedupeIssueRowsByNumber([
+      {
+        id: NOSTR_HEX_A,
+        number: "12",
+        title: "nostr only",
+        status: "open",
+      },
+      {
+        id: "issue-12",
+        number: "12",
+        title: "github",
+        html_url: "https://github.com/o/r/issues/12",
+        status: "open",
+      },
+    ]) as Array<{ id?: string }>;
+    const ids = rows.map((r) => r.id).sort();
+    expect(ids).toEqual([NOSTR_HEX_A.toLowerCase(), "issue-12"].sort());
   });
 });

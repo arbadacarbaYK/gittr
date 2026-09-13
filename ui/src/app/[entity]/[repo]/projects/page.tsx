@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -21,7 +22,10 @@ import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
-import { shareableIssueOrPrPathId } from "@/lib/utils/issue-pr-status";
+import {
+  issueOrPrListRef,
+  shareableIssueOrPrPathId,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { syncGithubProjectsForRepo } from "@/lib/utils/sync-github-repo-projects";
 
@@ -1326,8 +1330,9 @@ export default function ProjectsPage() {
                         {issue.title}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-400">
-                          #{issue.number || issue.id?.slice(0, 8) || "issue"}
+                        <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                          {issueOrPrListRef(issue)}
+                          <IssuePrListOrigin row={issue} />
                           {issue.author ? ` · ${issue.author}` : ""}
                         </span>
                         {issue.bountyAmount && (

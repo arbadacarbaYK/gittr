@@ -7,6 +7,7 @@ import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_ISSUE,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/utils/issue-pr-list-search";
 import {
   countMergedIssueComments,
+  issueOrPrListRef,
   normalizeIssueListStatus,
   shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
@@ -74,6 +76,7 @@ interface IIssueData {
   comments: number;
   createdAt?: number;
   updatedAt?: number;
+  html_url?: string;
   /** Nostr-originated row while repo has local edits not yet pushed to relays. */
   needsNostrRepublish?: boolean;
 }
@@ -148,7 +151,8 @@ export default function RepoIssuesPage({
           entity: it.entity || resolvedParams.entity,
           repo: it.repo || resolvedParams.repo,
           title: it.title || `Issue ${idx + 1}`,
-          number: it.number || String(idx + 1), // Use actual number from saved issue
+          number: it.number || "",
+          html_url: it.html_url,
           date: formatDateTime24h(updatedAt || createdAt),
           author: it.author || "you",
           tags: it.labels || [],
@@ -453,7 +457,7 @@ export default function RepoIssuesPage({
                 labels: labels,
                 assignees: assignees,
                 createdAt: event.created_at * 1000,
-                number: String(existingIssues.length + 1), // Auto-number
+                // Nostr issues are identified by event id, not a local #N.
                 ...bountyData,
               };
 
@@ -807,7 +811,8 @@ export default function RepoIssuesPage({
                       </Link>
                     </div>
                     <div className="ml-7 text-zinc-400 flex items-center gap-2">
-                      #{item.number} opened {item.date} by{" "}
+                      {issueOrPrListRef(item)} <IssuePrListOrigin row={item} />{" "}
+                      opened {item.date} by{" "}
                       <Link
                         className="hover:text-purple-500 flex items-center gap-1 group"
                         href={`/${item.author}`}

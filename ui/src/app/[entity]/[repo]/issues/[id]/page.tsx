@@ -15,6 +15,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ForgeOriginNotice,
+  NostrCommentHint,
+} from "@/components/ui/forge-origin-notice";
 import { Input } from "@/components/ui/input";
 import { NostrUserSearch } from "@/components/ui/nostr-user-search";
 import { Reactions } from "@/components/ui/reactions";
@@ -74,10 +78,12 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
+  canCloseOrMergeOnGittr,
   findIssueRowIndexByRouteParam,
+  isForgeImportedIssueOrPr,
   isGithubStyleIssueId,
   isNostrHexIssueId,
-  issueOrPrDisplayNumber,
+  issueOrPrListRef,
   loadMergedIssueComments,
   normalizeAssigneePubkeys,
 } from "@/lib/utils/issue-pr-status";
@@ -106,8 +112,9 @@ import remarkGfm from "remark-gfm";
 
 interface Issue {
   id: string;
-  /** Local display #N only — shareable URLs use the Nostr event id. */
+  /** Forge number for GitHub/Gitea rows; unused for Nostr display. */
   number?: string;
+  html_url?: string;
   title: string;
   description: string;
   author: string;
@@ -167,6 +174,7 @@ export default function IssueDetailPage({
   const [labelSearch, setLabelSearch] = useState("");
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [isOwner, setIsOwner] = useState(false);
+  const [cancellingBounty, setCancellingBounty] = useState(false);
   const [repoContributors, setRepoContributors] = useState<
     Array<{
       pubkey: string;
@@ -264,6 +272,7 @@ export default function IssueDetailPage({
         bountyLnurl: issueData.bountyLnurl,
         bountyWithdrawUrl: issueData.bountyWithdrawUrl,
         bountyStatus: issueData.bountyStatus,
+        html_url: (issueData as { html_url?: string }).html_url,
       });
 
       const repos = loadStoredRepos();
@@ -619,6 +628,7 @@ export default function IssueDetailPage({
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
+    if (!canCloseOrMergeOnGittr(issue)) return;
 
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
@@ -804,6 +814,70 @@ export default function IssueDetailPage({
         }
       }
 
+      const rootEventId = isNostrHexIssueId(issue.id) ? issue.id : issueEventId;
+      if (rootEventId && publish && defaultRelays?.length) {
+        try {
+          const repos = loadStoredRepos();
+          const storedRepo = findRepoByEntityAndName<StoredRepo>(
+            repos,
+            entity,
+            repo
+          );
+          const ownerPubkeyHex =
+            (storedRepo ? getRepoOwnerPubkey(storedRepo, entity) : null) ||
+            resolveEntityToPubkey(entity) ||
+            "";
+          const signingCreds = await resolveSigningCredentials({
+            remoteSigner,
+          });
+          if (ownerPubkeyHex && signingCreds) {
+            const statusKind =
+              newStatus === "closed" ? KIND_STATUS_CLOSED : KIND_STATUS_OPEN;
+            let statusEvent: any;
+            if (signingCreds.hasNip07 && window.nostr) {
+              const authorPubkey = await window.nostr.getPublicKey();
+              statusEvent = {
+                kind: statusKind,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [
+                  ["e", rootEventId, "", "root"],
+                  ["p", ownerPubkeyHex],
+                  ["p", issue.author],
+                  ["a", `30617:${ownerPubkeyHex}:${repo}`],
+                  ["k", "1621"],
+                ],
+                content:
+                  newStatus === "closed" ? "Closed issue" : "Reopened issue",
+                pubkey: authorPubkey,
+                id: "",
+                sig: "",
+              };
+              statusEvent.id = getEventHash(statusEvent);
+              statusEvent = await window.nostr.signEvent(statusEvent);
+            } else if (signingCreds.privateKey) {
+              statusEvent = createStatusEvent(
+                {
+                  statusKind,
+                  rootEventId,
+                  ownerPubkey: ownerPubkeyHex,
+                  rootEventAuthor: issue.author,
+                  repoName: repo,
+                  rootKind: 1621,
+                  content:
+                    newStatus === "closed" ? "Closed issue" : "Reopened issue",
+                },
+                signingCreds.privateKey
+              );
+            }
+            if (statusEvent) {
+              publish(statusEvent, defaultRelays);
+            }
+          }
+        } catch (statusErr) {
+          console.error("Failed to publish issue status to Nostr:", statusErr);
+        }
+      }
+
       setIssue({ ...issue, status: newStatus });
 
       // Dispatch event to update counts
@@ -830,7 +904,90 @@ export default function IssueDetailPage({
     currentUserPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
+    issueEventId,
   ]);
+
+  const handleCancelBounty = useCallback(async () => {
+    if (!issue?.bountyWithdrawId) return;
+    const canCancel =
+      isOwner ||
+      (currentUserPubkey &&
+        issue.bountyCreator &&
+        issue.bountyCreator.toLowerCase() === currentUserPubkey.toLowerCase());
+    if (!canCancel) {
+      alert(
+        "Only the bounty creator or the repo owner can cancel this bounty."
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        "Cancel this bounty? The reserved withdraw link will be deleted. The issue stays as it is."
+      )
+    ) {
+      return;
+    }
+
+    setCancellingBounty(true);
+    try {
+      const { getSecureItem } = await import("@/lib/security/encryptedStorage");
+      let lnbitsUrl: string | null = null;
+      let lnbitsAdminKey: string | null = null;
+      try {
+        lnbitsUrl = await getSecureItem("gittr_lnbits_url");
+        lnbitsAdminKey = await getSecureItem("gittr_lnbits_admin_key");
+      } catch {
+        lnbitsUrl = localStorage.getItem("gittr_lnbits_url");
+        lnbitsAdminKey = localStorage.getItem("gittr_lnbits_admin_key");
+      }
+
+      if (lnbitsUrl && lnbitsAdminKey) {
+        await fetch("/api/bounty/delete-withdraw", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            withdrawId: issue.bountyWithdrawId,
+            lnbitsUrl,
+            lnbitsAdminKey,
+          }),
+        });
+      }
+
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
+      const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
+      const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+      const stripped = issues.map((i, j) =>
+        j === rowIdx || i.id === issue.id
+          ? {
+              ...i,
+              bountyAmount: undefined,
+              bountyWithdrawId: undefined,
+              bountyLnurl: undefined,
+              bountyWithdrawUrl: undefined,
+              bountyStatus: undefined,
+              bountyCreator: undefined,
+            }
+          : i
+      );
+      localStorage.setItem(key, JSON.stringify(stripped));
+      setIssue({
+        ...issue,
+        bountyAmount: undefined,
+        bountyWithdrawId: undefined,
+        bountyLnurl: undefined,
+        bountyWithdrawUrl: undefined,
+        bountyStatus: undefined,
+        bountyCreator: undefined,
+      });
+      window.dispatchEvent(new Event("gittr:issue-updated"));
+    } catch (error) {
+      console.error("Failed to cancel bounty:", error);
+      alert("Could not cancel the bounty. Try again from Settings / LNbits.");
+    } finally {
+      setCancellingBounty(false);
+    }
+  }, [issue, isOwner, currentUserPubkey, entity, repo, id]);
 
   const handleAddAssignee = useCallback(
     (input: string) => {
@@ -1288,13 +1445,20 @@ export default function IssueDetailPage({
       setReplyingTo(null);
       setReplyParentId(null);
 
+      const nostrRoot = isNostrHexIssueId(issueEventId || issue.id)
+        ? issueEventId || issue.id
+        : null;
+      if (!nostrRoot) {
+        return;
+      }
+
       // Publish to Nostr
       let commentEvent: any;
       if (hasNip07 && window.nostr) {
         const authorPubkey = await window.nostr.getPublicKey();
 
         const tags: string[][] = [["repo", entity, repo]]; // Custom extension, not in NIP-22
-        const rootEventId = issueEventId || issue.id;
+        const rootEventId = nostrRoot;
         const rootPubkey =
           issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
             ? issue.author
@@ -1348,7 +1512,7 @@ export default function IssueDetailPage({
             replyTo: replyParentId || issueEventId || undefined,
             repoEntity: entity,
             repoName: repo,
-            issueId: issueEventId || issue.id,
+            issueId: nostrRoot,
             rootKind: KIND_ISSUE,
             rootPubkey:
               issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
@@ -1677,9 +1841,9 @@ export default function IssueDetailPage({
         <p className="text-gray-400">Issue not found</p>
         {/^\d+$/.test(id) && !isNostrHexIssueId(id) ? (
           <p className="mt-2 max-w-xl text-sm text-gray-500">
-            Numbers like #{id} are only unique in the browser that created them.
-            Open the issue from the list (the address bar will show a long id
-            you can share), or paste that long id in the URL.
+            If this is a GitHub/Gitea/GitLab issue, #{id} is the forge number —
+            open Issues and refetch if it is missing. A Nostr-only ticket uses a
+            long event id in the address bar, not this number.
           </p>
         ) : null}
         <Link
@@ -1691,8 +1855,6 @@ export default function IssueDetailPage({
       </div>
     );
   }
-
-  const displayNumber = issueOrPrDisplayNumber(issue);
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
@@ -1713,8 +1875,8 @@ export default function IssueDetailPage({
         >
           Issues
         </Link>
-        {" / #"}
-        {displayNumber}
+        {" / "}
+        {issueOrPrListRef(issue)}
       </nav>
 
       {/* Issue Header */}
@@ -1727,7 +1889,7 @@ export default function IssueDetailPage({
               <CheckCircle2 className="h-5 w-5 text-purple-600" />
             )}
             <h1 className="text-2xl font-bold">{issue.title}</h1>
-            <Badge className="bg-gray-700">#{displayNumber}</Badge>
+            <Badge className="bg-gray-700">{issueOrPrListRef(issue)}</Badge>
           </div>
           <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2">
             <span>
@@ -1750,7 +1912,7 @@ export default function IssueDetailPage({
             <TrustBadge targetPubkey={issue.author} />
           </div>
         </div>
-        {isOwner && (
+        {isOwner && canCloseOrMergeOnGittr(issue) && (
           <Button
             variant="outline"
             onClick={handleToggleStatus}
@@ -1760,6 +1922,8 @@ export default function IssueDetailPage({
           </Button>
         )}
       </div>
+
+      <ForgeOriginNotice kind="issue" row={issue} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -2033,6 +2197,10 @@ export default function IssueDetailPage({
                 <p className="text-xs text-gray-500 mt-2">
                   Press Ctrl+Enter or Cmd+Enter to submit
                 </p>
+                <NostrCommentHint
+                  forgeImported={isForgeImportedIssueOrPr(issue.id)}
+                  hasNostrRoot={isNostrHexIssueId(issueEventId || issue.id)}
+                />
               </div>
             ) : (
               <div className="border border-gray-700 rounded p-4 text-center text-gray-400">
@@ -2374,10 +2542,28 @@ export default function IssueDetailPage({
                   {issue.bountyAmount} sats available
                 </div>
                 <p className="text-xs text-gray-500">
-                  Bounty withdraw link created. When a PR fixing this issue is
-                  merged, the PR author can claim the bounty using the withdraw
-                  link.
+                  Bounty withdraw link created. It pays when a{" "}
+                  <strong>gittr (Nostr) PR</strong> linked to this issue is
+                  merged here. Closing or merging on GitHub does not pay it.
+                  {isForgeImportedIssueOrPr(issue.id)
+                    ? " This GitHub/Gitea issue stays open until you close it at the origin."
+                    : ""}
                 </p>
+                {(isOwner ||
+                  (currentUserPubkey &&
+                    issue.bountyCreator &&
+                    issue.bountyCreator.toLowerCase() ===
+                      currentUserPubkey.toLowerCase())) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    disabled={cancellingBounty}
+                    onClick={() => void handleCancelBounty()}
+                  >
+                    {cancellingBounty ? "Cancelling…" : "Cancel bounty"}
+                  </Button>
+                )}
               </div>
             ) : issue.bountyStatus === "released" && issue.bountyAmount ? (
               <div className="text-sm text-green-400">
@@ -2396,10 +2582,10 @@ export default function IssueDetailPage({
               <div className="space-y-2">
                 <p className="text-sm text-gray-400 mb-2">No bounty yet</p>
                 <p className="text-xs text-gray-500 mb-2">
-                  Add a bounty to incentivize contributors. The bounty amount
-                  will be deducted from your LNbits wallet and a withdraw link
-                  will be created. Make sure you have sufficient balance. When a
-                  PR fixing this issue is merged, the PR author can claim the
+                  Add a bounty to incentivize contributors. Funds are reserved
+                  in your LNbits wallet until a{" "}
+                  <strong>gittr (Nostr) PR</strong> linked to this issue is
+                  merged here. Closing or merging on GitHub does not pay the
                   bounty.
                 </p>
                 {/* Any logged-in user can add a bounty to any issue */}

@@ -33,26 +33,8 @@ export function findIssueRowIndexByRouteParam(
         return j;
       }
     }
-
-    const numberMatches: number[] = [];
-    for (let j = 0; j < issues.length; j++) {
-      const row = issues[j];
-      if (!row) continue;
-      if (row.number != null && String(row.number) === idParam) {
-        numberMatches.push(j);
-      }
-    }
-    if (numberMatches.length === 1) {
-      return numberMatches[0] ?? -1;
-    }
-    if (numberMatches.length > 1) {
-      const forgeIdx = numberMatches.find((j) => {
-        const rid = issues[j]?.id;
-        return isGithubStylePrId(rid) || isGithubStyleIssueId(rid);
-      });
-      if (forgeIdx !== undefined) return forgeIdx;
-      return numberMatches[0] ?? -1;
-    }
+    // Numeric URLs are origin forge numbers only. A Nostr row's localStorage
+    // counter must never open as /issues/9 — that collision is GitHub #9.
   }
 
   return -1;
@@ -163,16 +145,111 @@ export function shareableIssueOrPrPathId(row: {
   return id || number;
 }
 
-/** Friendly #N in the UI. Prefer local display number; never require it in the URL. */
+/**
+ * GitHub / Gitea / GitLab import rows (`issue-12`, `pr-12`).
+ * These are a read-only mirror: comment on gittr if you want, close/merge at origin.
+ */
+export function isForgeImportedIssueOrPr(id: unknown): boolean {
+  return isGithubStyleIssueId(id) || isGithubStylePrId(id);
+}
+
+/** Close / merge / reopen on gittr only for Nostr-native event ids. */
+export function canCloseOrMergeOnGittr(row: { id?: string }): boolean {
+  const id = String(row?.id ?? "").trim();
+  return isNostrHexIssueId(id) && !isForgeImportedIssueOrPr(id);
+}
+
+export type IssuePrOriginHost = "github" | "gitlab" | "gitea" | "nostr";
+
+/** Where this row came from — forge import vs a Nostr event. */
+export function issuePrOriginHost(row: {
+  id?: string;
+  html_url?: string;
+}): IssuePrOriginHost {
+  if (canCloseOrMergeOnGittr(row)) return "nostr";
+  const url = String(row.html_url ?? "").toLowerCase();
+  if (url.includes("gitlab")) return "gitlab";
+  if (
+    url.includes("codeberg") ||
+    url.includes("gitea") ||
+    url.includes("forgejo")
+  )
+    return "gitea";
+  if (url.includes("github") || isForgeImportedIssueOrPr(row.id))
+    return "github";
+  return isNostrHexIssueId(row.id) ? "nostr" : "github";
+}
+
+export function issuePrOriginLabel(row: {
+  id?: string;
+  html_url?: string;
+}): string {
+  switch (issuePrOriginHost(row)) {
+    case "gitlab":
+      return "GitLab";
+    case "gitea":
+      return "Codeberg / Gitea";
+    case "nostr":
+      return "Nostr";
+    default:
+      return "GitHub";
+  }
+}
+
+/**
+ * Friendly list/header id. Forge rows keep `#12` (the origin number).
+ * Nostr rows use the first 8 chars of the event id — never a localStorage
+ * counter that collides with GitHub #9.
+ */
 export function issueOrPrDisplayNumber(row: {
   id?: string;
   number?: string | number;
 }): string {
-  const number = String(row.number ?? "").trim();
-  if (number) return number;
   const id = String(row.id ?? "").trim();
+  if (isForgeImportedIssueOrPr(id)) {
+    const number = String(row.number ?? "").trim();
+    return number || id.replace(/^(issue|pr)-/i, "");
+  }
   if (isNostrHexIssueId(id)) return id.slice(0, 8);
-  return id;
+  const number = String(row.number ?? "").trim();
+  return number || id;
+}
+
+/** `#12` for forge imports, bare `0734b216` for Nostr events. */
+export function issueOrPrListRef(row: {
+  id?: string;
+  number?: string | number;
+}): string {
+  const display = issueOrPrDisplayNumber(row);
+  if (isForgeImportedIssueOrPr(row.id)) return `#${display}`;
+  return display;
+}
+
+/**
+ * Resolve a PR's linked-issue pointer to a row.
+ * Matches event id or `issue-N`. A bare number only matches a forge import
+ * with that origin number — never a Nostr ticket that reused local #N.
+ */
+export function findLinkedIssueRow<
+  T extends { id?: string; number?: string | number }
+>(issues: T[], linkedId: unknown): T | undefined {
+  const raw = String(linkedId ?? "").trim();
+  if (!raw) return undefined;
+  const lower = raw.toLowerCase();
+
+  const byId = issues.find((i) => String(i?.id ?? "").toLowerCase() === lower);
+  if (byId) return byId;
+
+  if (!/^\d+$/.test(raw)) return undefined;
+
+  return issues.find((i) => {
+    const id = String(i?.id ?? "");
+    if (!isForgeImportedIssueOrPr(id)) return false;
+    if (isGithubStyleIssueId(id) && id.replace(/^issue-/i, "") === raw) {
+      return true;
+    }
+    return String(i.number ?? "") === raw;
+  });
 }
 
 /** Dedupe assignee pubkeys (lowercase 64-char hex only). */
@@ -190,13 +267,6 @@ export function normalizeAssigneePubkeys(raw: unknown): string[] {
     out.push(pubkey);
   }
   return out;
-}
-
-function issueRowNumberKey(row: unknown): string | null {
-  if (!row || typeof row !== "object") return null;
-  const num = String((row as Record<string, unknown>).number ?? "").trim();
-  if (!num || !/^\d+$/.test(num)) return null;
-  return num;
 }
 
 function rowTimestamp(row: Record<string, unknown>): number {
@@ -287,29 +357,32 @@ function mergeIssueRowFields(
 }
 
 /**
- * One row per issue number: merge GitHub (`issue-N`) + Nostr (hex id) duplicates.
- * Keeps the Nostr event id when present; merges assignees, labels, status, and timestamps.
+ * Collapse duplicate *forge* rows that share an `issue-N` id (refetch noise).
+ * Do **not** glue a GitHub issue to a Nostr issue just because this browser
+ * assigned them the same local #N — they are different tickets with different
+ * origins and must stay separately linkable.
  */
 export function dedupeIssueRowsByNumber(rows: unknown[]): unknown[] {
   const list = Array.isArray(rows) ? rows : [];
-  const byNumber = new Map<string, Record<string, unknown>[]>();
+  const byForgeId = new Map<string, Record<string, unknown>[]>();
   const standalone: Record<string, unknown>[] = [];
 
   for (const row of list) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
-    const numKey = issueRowNumberKey(r);
-    if (!numKey) {
-      standalone.push(r);
+    const id = String(r.id ?? "").trim();
+    if (isGithubStyleIssueId(id)) {
+      const key = id.toLowerCase();
+      const bucket = byForgeId.get(key) || [];
+      bucket.push(r);
+      byForgeId.set(key, bucket);
       continue;
     }
-    const bucket = byNumber.get(numKey) || [];
-    bucket.push(r);
-    byNumber.set(numKey, bucket);
+    standalone.push(r);
   }
 
   const merged: Record<string, unknown>[] = [...standalone];
-  for (const group of byNumber.values()) {
+  for (const group of byForgeId.values()) {
     if (group.length === 1) {
       const only = group[0];
       if (only) merged.push(only);
@@ -486,9 +559,10 @@ export function mergeGithubPrsAfterRefetch(
     const prev = ex.find((e) => {
       if (!e || typeof e !== "object") return false;
       const p = e as Record<string, unknown>;
+      if (!isGithubStylePrId(p.id)) return false;
       return (
-        (ghNum && String(p.number ?? "") === ghNum) ||
-        (ghId && String(p.id ?? "") === ghId)
+        (ghId && String(p.id ?? "") === ghId) ||
+        (ghNum && String(p.number ?? "") === ghNum)
       );
     }) as Record<string, unknown> | undefined;
 
@@ -537,7 +611,14 @@ export function mergeGithubIssuesAfterRefetch(
     const prev = ex.find((e) => {
       if (!e || typeof e !== "object") return false;
       const p = e as Record<string, unknown>;
-      return ghNum && String(p.number ?? "") === ghNum;
+      if (!isGithubStyleIssueId(p.id)) return false;
+      const prevId = String(p.id ?? "");
+      const prevNum = String(p.number ?? "").trim();
+      return (
+        (ghRow.id && prevId === String(ghRow.id)) ||
+        (ghNum &&
+          (prevId.replace(/^issue-/i, "") === ghNum || prevNum === ghNum))
+      );
     }) as Record<string, unknown> | undefined;
 
     if (!prev) return ghRow;

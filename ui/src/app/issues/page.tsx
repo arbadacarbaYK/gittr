@@ -11,6 +11,7 @@ import {
 
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_ISSUE, KIND_LABEL_OVERLAY } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -51,6 +52,7 @@ import {
 import { sortListItems } from "@/lib/utils/issue-pr-list-search";
 import {
   countMergedIssueComments,
+  issueOrPrListRef,
   mergeGithubIssuesAfterRefetch,
   normalizeIssueListStatus,
   shareableIssueOrPrPathId,
@@ -143,7 +145,7 @@ function collectIssueRowsForAggregatedPage(userRepos: any[]): IIssueData[] {
         entity: entity,
         repo: repoName,
         title: issue.title || `Issue ${idx + 1}`,
-        number: issue.number || String(idx + 1),
+        number: issue.number || "",
         date: formatDateTime24h(updatedAt || createdAt),
         author: issue.author || "unknown",
         tags: issue.labels || [],
@@ -263,7 +265,8 @@ function AggregateIssueRow({
           )}
         </div>
         <div className="ml-7 text-zinc-400 flex items-center gap-2">
-          #{item.number} opened {item.date} by{" "}
+          {issueOrPrListRef(item)} <IssuePrListOrigin row={item} /> opened{" "}
+          {item.date} by{" "}
           <Link
             className="hover:text-purple-500 flex items-center gap-1 group"
             href={`/${item.author}`}
@@ -609,14 +612,7 @@ export default function IssuesPage({}) {
             (i: any) => i.id === event.id
           );
 
-          // Don't overwrite GitHub issues
-          const githubIssueWithSameNumber = existingIssues.find(
-            (i: any) =>
-              i.number &&
-              i.id?.startsWith("issue-") &&
-              i.number === String(existingIssues.length + 1)
-          );
-          if (githubIssueWithSameNumber) return;
+          // Don't skip a Nostr issue just because GitHub already has #N.
 
           // NIP-34: Title from "subject" tag, description from markdown content
           // Old format: Both from JSON
@@ -657,12 +653,6 @@ export default function IssuesPage({}) {
           // NIP-34: Status comes from separate status events, not tags
           const status = "open"; // Default, will be updated by status event subscription
 
-          const maxNumber = existingIssues.reduce((max: number, i: any) => {
-            const num = parseInt(i.number || "0", 10);
-            return num > max ? num : max;
-          }, 0);
-          const nextNumber = maxNumber + 1;
-
           const issue = {
             id: event.id,
             entity: entity,
@@ -674,7 +664,6 @@ export default function IssuesPage({}) {
             labels: labels,
             assignees: assignees,
             createdAt: event.created_at * 1000,
-            number: String(nextNumber),
             ...bountyData,
           };
 

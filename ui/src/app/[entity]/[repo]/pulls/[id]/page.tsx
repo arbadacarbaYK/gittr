@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { ConflictDetector } from "@/components/ui/conflict-detector";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
+import {
+  ForgeOriginNotice,
+  NostrCommentHint,
+} from "@/components/ui/forge-origin-notice";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PRReviewSection } from "@/components/ui/pr-review-section";
 import { Reactions } from "@/components/ui/reactions";
@@ -20,7 +24,6 @@ import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
   KIND_COMMENT,
-  KIND_PR_UPDATE,
   KIND_PULL_REQUEST,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
@@ -28,7 +31,6 @@ import {
   buildUnsignedCommentEvent,
   createBountyEvent,
   createCommentEvent,
-  createPullRequestUpdateEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
 import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
@@ -93,10 +95,12 @@ import {
   prDiffLooksLikeUnifiedPatch,
 } from "@/lib/utils/fetch-pr-file-diffs";
 import {
+  canCloseOrMergeOnGittr,
+  findLinkedIssueRow,
   findPullRequestRowIndexByRouteParam,
   isGithubStylePrId,
   isNostrHexIssueId,
-  issueOrPrDisplayNumber,
+  issueOrPrListRef,
   shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
@@ -554,10 +558,9 @@ export default function PRDetailPage({
         if (prData.linkedIssue || prData.issueId) {
           const issueKey = getRepoStorageKey("gittr_issues", entity, repo);
           const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
-          const issue = issues.find(
-            (i: any) =>
-              i.id === (prData.linkedIssue || prData.issueId) ||
-              i.number === (prData.linkedIssue || prData.issueId)
+          const issue = findLinkedIssueRow(
+            issues,
+            prData.linkedIssue || prData.issueId
           );
           if (issue) setLinkedIssue(issue);
         } else {
@@ -915,6 +918,12 @@ export default function PRDetailPage({
   const handleMerge = useCallback(async () => {
     // Only owners and maintainers can merge (write access)
     if (!pr || !canMerge || merging) return;
+    if (!canCloseOrMergeOnGittr(pr)) {
+      alert(
+        "This pull request was imported from GitHub/Gitea/GitLab. Merge or close it on that forge. gittr will not merge a mirror copy — that would leave the origin open."
+      );
+      return;
+    }
 
     // CRITICAL: Require signature for merge (owner or maintainer must sign)
     if (!currentUserPubkey) {
@@ -1246,7 +1255,9 @@ export default function PRDetailPage({
         id: commitId,
         message:
           mergeMessage.trim() ||
-          `Merge pull request #${resolvedParams.id} from ${authorName}\n\n${pr.title}`,
+          `Merge pull request ${issueOrPrListRef(pr)} from ${authorName}\n\n${
+            pr.title
+          }`,
         author: currentUserPubkey,
         timestamp: Date.now(),
         branch: pr.baseBranch || "main",
@@ -1521,8 +1532,9 @@ export default function PRDetailPage({
         }
       }
 
-      // 4. Close linked issue if present
-      if (linkedIssue) {
+      // 4. Close linked Nostr issue. Forge-imported issues stay open until
+      //    closed at origin — matching id only (never local #N collisions).
+      if (linkedIssue && canCloseOrMergeOnGittr(linkedIssue)) {
         const issueKey = getRepoStorageKey(
           "gittr_issues",
           resolvedParams.entity,
@@ -1530,7 +1542,7 @@ export default function PRDetailPage({
         );
         const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
         const updatedIssues = issues.map((i: any) =>
-          i.id === linkedIssue.id || i.number === linkedIssue.number
+          i.id === linkedIssue.id
             ? {
                 ...i,
                 status: "closed",
@@ -1540,139 +1552,148 @@ export default function PRDetailPage({
             : i
         );
         localStorage.setItem(issueKey, JSON.stringify(updatedIssues));
+      }
 
-        // 5. Release bounty if present - give PR author the withdraw link URL
-        // The withdraw link was already created and funded when the bounty was created
-        // We just need to give the PR author access to claim it
-        //
-        // SECURITY NOTE: We trust the repo owner/maintainer to verify that the PR actually fixes the issue.
-        // When a repo owner merges a PR linked to a bounty, they are attesting that the PR resolves the issue.
-        // This is a reasonable trust model - the repo owner has the most context about whether a fix is valid.
-        // If you don't trust a repo owner, don't create bounties on their repos.
-        if (
-          linkedIssue.bountyAmount &&
-          (linkedIssue.bountyWithdrawId || linkedIssue.bountyWithdrawUrl)
-        ) {
+      // 5. Release bounty if present - give PR author the withdraw link URL
+      // The withdraw link was already created and funded when the bounty was created
+      // We just need to give the PR author access to claim it
+      //
+      // SECURITY NOTE: We trust the repo owner/maintainer to verify that the PR actually fixes the issue.
+      // When a repo owner merges a PR linked to a bounty, they are attesting that the PR resolves the issue.
+      // This is a reasonable trust model - the repo owner has the most context about whether a fix is valid.
+      // If you don't trust a repo owner, don't create bounties on their repos.
+      // Forge-imported issues are not closed here; bounty still pays on this Nostr merge.
+      if (
+        linkedIssue &&
+        linkedIssue.bountyAmount &&
+        (linkedIssue.bountyWithdrawId || linkedIssue.bountyWithdrawUrl)
+      ) {
+        try {
+          // CRITICAL: Ensure we use full pubkey (64 chars), not prefix
+          const recipientPubkey =
+            pr.author && pr.author.length === 64 ? pr.author : null;
+          if (!recipientPubkey) {
+            console.error(
+              "Bounty release failed: PR author is not a valid full pubkey:",
+              pr.author
+            );
+            alert(
+              `Bounty release failed: Invalid recipient pubkey. Expected 64-char pubkey, got: ${
+                pr.author?.length || 0
+              } chars`
+            );
+            return;
+          }
+
+          // Store the withdraw link for the PR author (they earned the bounty)
+          // This allows them to claim it via the shareable URL
+          if (typeof window !== "undefined") {
+            const earnedBountiesKey = "gittr_earned_bounties";
+            const earnedBounties = JSON.parse(
+              localStorage.getItem(earnedBountiesKey) || "[]"
+            );
+
+            const bountyEntry = {
+              withdrawUrl: linkedIssue.bountyWithdrawUrl,
+              withdrawId: linkedIssue.bountyWithdrawId,
+              amount: linkedIssue.bountyAmount,
+              issueId: String(linkedIssue.id || linkedIssue.number),
+              issueTitle: linkedIssue.title,
+              repoId: `${resolvedParams.entity}/${resolvedParams.repo}`,
+              repoName: resolvedParams.repo,
+              from: linkedIssue.bountyCreator || currentUserPubkey, // Bounty creator
+              earnedAt: Date.now(),
+              status: "released" as const, // Withdraw link released to PR author
+            };
+
+            // Check if already exists (don't duplicate) - compare both withdrawId and issueId
+            const exists = earnedBounties.some(
+              (b: any) =>
+                (b.withdrawId === linkedIssue.bountyWithdrawId &&
+                  String(b.issueId) === String(bountyEntry.issueId)) ||
+                (b.issueId === bountyEntry.issueId &&
+                  b.repoId === bountyEntry.repoId)
+            );
+
+            if (!exists) {
+              earnedBounties.push(bountyEntry);
+              localStorage.setItem(
+                earnedBountiesKey,
+                JSON.stringify(earnedBounties)
+              );
+              console.log(
+                "✅ Bounty withdraw link released successfully:",
+                bountyEntry
+              );
+            } else {
+              console.log("⚠️ Bounty already exists, skipping duplicate");
+            }
+          }
+
+          // Update issue bounty status to "released"
+          const issueKey = getRepoStorageKey(
+            "gittr_issues",
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+          const updatedIssues = issues.map((i: any) =>
+            i.id === linkedIssue.id
+              ? { ...i, bountyStatus: "released" as const }
+              : i
+          );
+          localStorage.setItem(issueKey, JSON.stringify(updatedIssues));
+
+          console.log(
+            "Bounty withdraw link released - PR author can claim via:",
+            linkedIssue.bountyWithdrawUrl
+          );
+
+          // Send notification to PR author about bounty being released
           try {
-            // CRITICAL: Ensure we use full pubkey (64 chars), not prefix
-            const recipientPubkey =
-              pr.author && pr.author.length === 64 ? pr.author : null;
-            if (!recipientPubkey) {
-              console.error(
-                "Bounty release failed: PR author is not a valid full pubkey:",
-                pr.author
-              );
-              alert(
-                `Bounty release failed: Invalid recipient pubkey. Expected 64-char pubkey, got: ${
-                  pr.author?.length || 0
-                } chars`
-              );
-              return;
-            }
-
-            // Store the withdraw link for the PR author (they earned the bounty)
-            // This allows them to claim it via the shareable URL
-            if (typeof window !== "undefined") {
-              const earnedBountiesKey = "gittr_earned_bounties";
-              const earnedBounties = JSON.parse(
-                localStorage.getItem(earnedBountiesKey) || "[]"
-              );
-
-              const bountyEntry = {
-                withdrawUrl: linkedIssue.bountyWithdrawUrl,
-                withdrawId: linkedIssue.bountyWithdrawId,
-                amount: linkedIssue.bountyAmount,
-                issueId: String(linkedIssue.id || linkedIssue.number),
-                issueTitle: linkedIssue.title,
-                repoId: `${resolvedParams.entity}/${resolvedParams.repo}`,
-                repoName: resolvedParams.repo,
-                from: linkedIssue.bountyCreator || currentUserPubkey, // Bounty creator
-                earnedAt: Date.now(),
-                status: "released" as const, // Withdraw link released to PR author
-              };
-
-              // Check if already exists (don't duplicate) - compare both withdrawId and issueId
-              const exists = earnedBounties.some(
-                (b: any) =>
-                  (b.withdrawId === linkedIssue.bountyWithdrawId &&
-                    String(b.issueId) === String(bountyEntry.issueId)) ||
-                  (b.issueId === bountyEntry.issueId &&
-                    b.repoId === bountyEntry.repoId)
-              );
-
-              if (!exists) {
-                earnedBounties.push(bountyEntry);
-                localStorage.setItem(
-                  earnedBountiesKey,
-                  JSON.stringify(earnedBounties)
-                );
-                console.log(
-                  "✅ Bounty withdraw link released successfully:",
-                  bountyEntry
-                );
-              } else {
-                console.log("⚠️ Bounty already exists, skipping duplicate");
-              }
-            }
-
-            // Update issue bounty status to "released"
-            const issueKey = getRepoStorageKey(
-              "gittr_issues",
-              resolvedParams.entity,
-              resolvedParams.repo
-            );
-            const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
-            const updatedIssues = issues.map((i: any) =>
-              i.id === linkedIssue.id || i.number === linkedIssue.number
-                ? { ...i, bountyStatus: "released" as const }
-                : i
-            );
-            localStorage.setItem(issueKey, JSON.stringify(updatedIssues));
-
-            console.log(
-              "Bounty withdraw link released - PR author can claim via:",
-              linkedIssue.bountyWithdrawUrl
-            );
-
-            // Send notification to PR author about bounty being released
-            try {
-              if (recipientPubkey) {
-                const notification = formatNotificationMessage(
-                  "bounty_released",
-                  {
-                    repoEntity: resolvedParams.entity,
-                    repoName: resolvedParams.repo,
-                    issueId: String(linkedIssue.id || linkedIssue.number),
-                    issueTitle: linkedIssue.title,
-                    url:
-                      typeof window !== "undefined"
-                        ? `${window.location.origin}/${resolvedParams.entity}/${
-                            resolvedParams.repo
-                          }/issues/${shareableIssueOrPrPathId(linkedIssue)}`
-                        : undefined,
-                  }
-                );
-
-                await sendNotification({
-                  eventType: "bounty_released",
-                  title: notification.title,
-                  message: `${notification.message}\n\nAmount: ${linkedIssue.bountyAmount} sats\n\nYou can claim the bounty using the withdraw link.`,
-                  url: notification.url,
+            if (recipientPubkey) {
+              const notification = formatNotificationMessage(
+                "bounty_released",
+                {
                   repoEntity: resolvedParams.entity,
                   repoName: resolvedParams.repo,
-                  recipientPubkey: recipientPubkey,
-                });
-              }
-            } catch (error) {
-              console.error(
-                "Failed to send bounty_released notification:",
-                error
+                  issueId: String(linkedIssue.id || linkedIssue.number),
+                  issueTitle: linkedIssue.title,
+                  url:
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}/${resolvedParams.entity}/${
+                          resolvedParams.repo
+                        }/issues/${shareableIssueOrPrPathId(linkedIssue)}`
+                      : undefined,
+                }
               );
-              // Don't block merge if notification fails
-            }
 
-            // Publish bounty status update to Nostr (released)
-            try {
+              await sendNotification({
+                eventType: "bounty_released",
+                title: notification.title,
+                message: `${notification.message}\n\nAmount: ${linkedIssue.bountyAmount} sats\n\nYou can claim the bounty using the withdraw link.`,
+                url: notification.url,
+                repoEntity: resolvedParams.entity,
+                repoName: resolvedParams.repo,
+                recipientPubkey: recipientPubkey,
+              });
+            }
+          } catch (error) {
+            console.error(
+              "Failed to send bounty_released notification:",
+              error
+            );
+            // Don't block merge if notification fails
+          }
+
+          // Publish bounty status update to Nostr (released) — only when the
+          // linked issue is a real Nostr event (not GitHub issue-N).
+          try {
+            if (!isNostrHexIssueId(linkedIssue.id)) {
+              console.log(
+                "Skipping Nostr bounty release event: linked issue is a forge import"
+              );
+            } else {
               const signingCreds = await resolveSigningCredentials({
                 remoteSigner,
               });
@@ -1759,16 +1780,16 @@ export default function PRDetailPage({
                   }
                 }
               }
-            } catch (error) {
-              console.error("Failed to publish bounty release event:", error);
-              // Don't block merge if publishing fails
             }
-          } catch (error: any) {
-            console.error("Failed to release bounty:", error);
-            alert(
-              `Failed to release bounty: ${error.message || "Unknown error"}`
-            );
+          } catch (error) {
+            console.error("Failed to publish bounty release event:", error);
+            // Don't block merge if publishing fails
           }
+        } catch (error: any) {
+          console.error("Failed to release bounty:", error);
+          alert(
+            `Failed to release bounty: ${error.message || "Unknown error"}`
+          );
         }
       }
 
@@ -2113,6 +2134,7 @@ export default function PRDetailPage({
 
   const canCloseOrReopenPr = Boolean(
     pr &&
+      canCloseOrMergeOnGittr(pr) &&
       currentUserPubkey &&
       (canMerge ||
         (pr.author &&
@@ -2262,17 +2284,11 @@ export default function PRDetailPage({
   ]);
 
   const handleAddPrComment = useCallback(async () => {
-    if (!commentContent.trim() || !pr || !currentUserPubkey || !prEventId) {
+    if (!commentContent.trim() || !pr || !currentUserPubkey) {
       return;
     }
     setPostingComment(true);
     try {
-      const signingCreds = await resolveSigningCredentials({ remoteSigner });
-      if (!signingCreds) {
-        alert(NO_SIGNING_METHOD_MESSAGE);
-        return;
-      }
-      const { hasNip07, privateKey } = signingCreds;
       const draft: Nip22Comment = {
         id: `local-${Date.now()}`,
         author: currentUserPubkey,
@@ -2280,6 +2296,31 @@ export default function PRDetailPage({
         createdAt: Date.now(),
         nostrEventId: "",
       };
+
+      // Forge-imported PRs have no kind 1618 root — keep the note in this browser.
+      if (!prEventId) {
+        setComments((prev) => {
+          const next = [...prev, draft].sort(
+            (a, b) => a.createdAt - b.createdAt
+          );
+          persistPrComments(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            String(pr.id),
+            next
+          );
+          return next;
+        });
+        setCommentContent("");
+        return;
+      }
+
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       const unsigned = buildUnsignedCommentEvent(
         {
           content: draft.content,
@@ -2369,6 +2410,7 @@ export default function PRDetailPage({
           to match.
         </div>
       ) : null}
+      <ForgeOriginNotice kind="pr" row={pr} />
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -2380,7 +2422,7 @@ export default function PRDetailPage({
               <X className="h-6 w-6 text-gray-600" />
             )}
             <h1 className="text-2xl font-bold">{pr.title}</h1>
-            <Badge className="bg-gray-700">#{resolvedParams.id}</Badge>
+            <Badge className="bg-gray-700">{issueOrPrListRef(pr)}</Badge>
             {pr.status === "merged" && (
               <Badge className="bg-purple-600">Merged</Badge>
             )}
@@ -2431,7 +2473,7 @@ export default function PRDetailPage({
         </div>
         <div className="ml-4 flex flex-col gap-2 shrink-0 max-w-xs sm:max-w-sm">
           <div className="flex flex-col sm:flex-row gap-2">
-            {canMerge && pr.status === "open" && (
+            {canMerge && canCloseOrMergeOnGittr(pr) && pr.status === "open" && (
               <Button
                 variant="default"
                 onClick={async () => {
@@ -2632,9 +2674,8 @@ export default function PRDetailPage({
                               </Link>
                             </p>
                             <p className="text-yellow-400 text-xs mt-2">
-                              ⚠️ Make sure this PR actually fixes issue #
-                              {issueOrPrDisplayNumber(linkedIssue)} before
-                              merging.
+                              ⚠️ Make sure this PR actually fixes issue{" "}
+                              {issueOrPrListRef(linkedIssue)} before merging.
                             </p>
                           </div>
                         </div>
@@ -2651,9 +2692,9 @@ export default function PRDetailPage({
                   className="w-full border border-gray-600 bg-gray-800 text-white rounded p-2 h-24"
                   value={mergeMessage}
                   onChange={(e) => setMergeMessage(e.target.value)}
-                  placeholder={`Merge pull request #${
-                    resolvedParams.id
-                  } from ${(() => {
+                  placeholder={`Merge pull request ${issueOrPrListRef(
+                    pr
+                  )} from ${(() => {
                     const authorMeta = pr?.author
                       ? recipientMetadata[pr.author]
                       : null;
@@ -2867,12 +2908,14 @@ export default function PRDetailPage({
                 />
                 <Button
                   onClick={() => void handleAddPrComment()}
-                  disabled={
-                    !commentContent.trim() || postingComment || !prEventId
-                  }
+                  disabled={!commentContent.trim() || postingComment}
                 >
                   {postingComment ? "Posting…" : "Post Comment"}
                 </Button>
+                <NostrCommentHint
+                  forgeImported={isGithubStylePrId(pr.id)}
+                  hasNostrRoot={Boolean(prEventId)}
+                />
               </div>
             ) : (
               <p className="text-sm text-gray-500">
@@ -3115,7 +3158,7 @@ export default function PRDetailPage({
                           💰 Bounty on linked issue
                         </p>
                         <p className="text-xs text-yellow-200">
-                          Issue #{issueOrPrDisplayNumber(linkedIssue)} has a{" "}
+                          Issue {issueOrPrListRef(linkedIssue)} has a{" "}
                           <strong>{linkedIssue.bountyAmount} sats</strong>{" "}
                           bounty withdraw link created.
                         </p>
@@ -3165,7 +3208,7 @@ export default function PRDetailPage({
                       ⚠️ Bounty withdraw link cannot be released
                     </p>
                     <p className="text-xs text-yellow-200">
-                      Issue #{issueOrPrDisplayNumber(linkedIssue)} has a{" "}
+                      Issue {issueOrPrListRef(linkedIssue)} has a{" "}
                       <strong>{linkedIssue.bountyAmount} sats</strong> bounty
                       withdraw link, but the PR author ({pr.author || "unknown"}
                       ) is not a valid Nostr user.

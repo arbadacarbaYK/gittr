@@ -261,7 +261,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `t[]`: Labels (optional)
   - `p[]`: Assignees (optional, custom extension)
 - **Content**: Markdown description text (not JSON)
-- **Shareable URL**: `/issues/<64-char event id>`. The `#2` you see in the UI is **this browser’s** counter (localStorage). It is not on the Nostr event, so `/issues/2` often 404s for logged-out visitors. GitHub-imported issues still use the forge number (`/issues/12` is GitHub issue #12, not list position).
+- **Shareable URL**: `/issues/<64-char event id>` for Nostr issues. GitHub/Gitea/GitLab imports use the **forge number** (`/issues/12` is origin issue #12). The two kinds stay **separate rows** — a local `#12` on a Nostr ticket is not GitHub #12. Close/merge a forge import **on the origin**; gittr will not close GitHub for you. Nostr-only issues close here and publish kind **1632**.
 - **Interop requirement**: If local cache is missing `r`, derive it from git root commit history (earliest unique commit) before publishing.
 
 ### Kind 1618: Pull Requests (NIP-34)
@@ -320,7 +320,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - **1631**: Applied/Merged (for PRs/patches) or Resolved (for issues)
   - **1632**: Closed
   - **1633**: Draft
-- **Client rehydrate**: Status subscriptions for a known PR/issue list filter by `#e` (root ids) only. On kind **1631**, set `status: merged` and `mergedBy` from the status event pubkey.
+- **Client rehydrate**: Status subscriptions for a known PR/issue list filter by `#e` (root ids) only. On kind **1631**, set `status: merged` and `mergedBy` from the status event pubkey. gittr’s web Close on a **Nostr** issue now publishes kind **1632** the same way. Forge-imported `issue-N` / `pr-N` rows are not closed from gittr.
 
 ### Kind 10317: User GRASP List (NIP-34)
 

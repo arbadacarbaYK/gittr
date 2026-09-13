@@ -11,6 +11,7 @@ import {
 
 import GlobalIssuesPrListControls from "@/components/global-issues-pr-list-controls";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { parseKind1618PrGitHints } from "@/lib/nostr/kind1618-pr-git-hints";
@@ -53,6 +54,8 @@ import {
 } from "@/lib/utils/global-issues-pr-list";
 import { sortListItems } from "@/lib/utils/issue-pr-list-search";
 import {
+  findLinkedIssueRow,
+  issueOrPrListRef,
   mergeGithubPrsAfterRefetch,
   mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
@@ -143,10 +146,9 @@ function collectPullRequestRowsForAggregatedPage(
             entity,
             repoName
           ) as any[];
-          const linkedIssue = repoIssues.find(
-            (i: any) =>
-              i.id === (pr.linkedIssueId || pr.issueId || pr.linkedIssue) ||
-              i.number === (pr.linkedIssueId || pr.issueId || pr.linkedIssue)
+          const linkedIssue = findLinkedIssueRow(
+            repoIssues,
+            pr.linkedIssueId || pr.issueId || pr.linkedIssue
           );
 
           if (
@@ -190,7 +192,7 @@ function collectPullRequestRowsForAggregatedPage(
         entity: entity,
         repo: repoName,
         title: pr.title || `PR ${idx + 1}`,
-        number: pr.number || String(idx + 1),
+        number: pr.number || "",
         date: formatDateTime24h(updatedAt || createdAt),
         author: pr.author || "unknown",
         tags: pr.labels || [],
@@ -1087,7 +1089,9 @@ export default function PullsPage({}) {
                             )}
                           </div>
                           <div className="ml-7 text-zinc-400 flex items-center gap-2">
-                            #{item.number} opened {item.date} by{" "}
+                            {issueOrPrListRef(item)}{" "}
+                            <IssuePrListOrigin row={item} /> opened {item.date}{" "}
+                            by{" "}
                             <Link
                               className="hover:text-purple-500 flex items-center gap-1 group"
                               href={`/${item.author}`}
@@ -1268,7 +1272,8 @@ export default function PullsPage({}) {
                         )}
                       </div>
                       <div className="ml-7 text-zinc-400 flex items-center gap-2">
-                        #{item.number} opened {item.date} by{" "}
+                        {issueOrPrListRef(item)}{" "}
+                        <IssuePrListOrigin row={item} /> opened {item.date} by{" "}
                         <Link
                           className="hover:text-purple-500 flex items-center gap-1 group"
                           href={`/${item.author}`}

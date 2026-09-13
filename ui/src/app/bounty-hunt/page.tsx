@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { Input } from "@/components/ui/input";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -14,7 +15,7 @@ import {
 } from "@/lib/utils/date-format";
 import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 import {
-  issueOrPrDisplayNumber,
+  issueOrPrListRef,
   shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 
@@ -436,8 +437,9 @@ export default function BountyHuntPage() {
                       >
                         {issue.entity}/{issue.repo}
                       </Link>
-                      <span className="text-gray-500 text-sm">
-                        #{issue.number}
+                      <span className="text-gray-500 text-sm flex items-center gap-1.5">
+                        {issueOrPrListRef(issue)}
+                        <IssuePrListOrigin row={issue} />
                       </span>
                     </div>
                   </div>
@@ -505,7 +507,7 @@ export default function BountyHuntPage() {
                         className="hover:underline font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        PR #{issueOrPrDisplayNumber({ id: issue.linkedPR })}
+                        PR {issueOrPrListRef({ id: issue.linkedPR })}
                       </Link>
                       {issue.linkedPRTitle && (
                         <span className="text-gray-400">

@@ -2658,9 +2658,14 @@ export default function HelpPage() {
                   <li>
                     LNURL-withdraw link reserves funds in the creator wallet
                   </li>
-                  <li>Developer opens a PR linked to the issue</li>
                   <li>
-                    Repo owner merges → withdraw link released to PR author
+                    Developer opens a <strong>gittr (Nostr) PR</strong> linked
+                    to the issue
+                  </li>
+                  <li>
+                    Repo owner merges that Nostr PR here → withdraw link
+                    released to the PR author. Merging on GitHub does not pay
+                    the bounty.
                   </li>
                   <li>
                     PR author claims → sats leave creator wallet to their
@@ -2679,11 +2684,15 @@ export default function HelpPage() {
                     Linked PR blocks bounty deletion even if the issue closes
                   </li>
                   <li>
-                    Merging attests the fix — only create bounties on repos you
-                    trust
+                    Merging a Nostr PR attests the fix. Forge-imported PRs
+                    cannot be merged here — close or merge them on GitHub /
+                    Gitea / GitLab.
                   </li>
                   <li>
-                    Closed without PR cancels the bounty; creator is notified
+                    Closed without a linked gittr PR cancels the bounty; creator
+                    is notified. On a GitHub-imported issue you cannot close
+                    from gittr — use <strong>Cancel bounty</strong> so the
+                    reserved sats are not stuck.
                   </li>
                 </ul>
               </HelpSubTopic>
@@ -3599,6 +3608,14 @@ export default function HelpPage() {
                     <strong>Reopen:</strong> publishes open status to Nostr —
                     still no file / tip push.
                   </li>
+                  <li>
+                    <strong>GitHub / Gitea / GitLab copies:</strong> listed with
+                    their origin number (<code>#12</code>, URL{" "}
+                    <code>/pulls/12</code>). Comment here if you want; gittr
+                    will not merge or close the origin. Do that on the forge so
+                    the two sides stay in sync. A Nostr PR on the same repo
+                    (long id in the URL) can still be merged here.
+                  </li>
                 </ul>
               </div>
 
@@ -3653,26 +3670,30 @@ export default function HelpPage() {
 
               <div className="mt-3 p-3 bg-green-900/20 border border-green-600/30 rounded">
                 <p className="text-sm font-semibold text-green-200 mb-2">
-                  📋 How Issues Are Organized
+                  How Issues Are Organized
                 </p>
                 <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
                   <li>
-                    <strong>Sorted by creation time:</strong> Issues are
-                    displayed with the newest first, regardless of status
-                    changes
+                    <strong>Two origins, two rows:</strong> GitHub/Gitea/GitLab
+                    imports keep their forge number (<code>#12</code> and URL{" "}
+                    <code>/issues/12</code>). Nostr issues use a long event id
+                    in the address bar and a short hex label in the list — not a
+                    local #9 that can look like GitHub #9.
                   </li>
                   <li>
-                    <strong>Aggregated from Nostr:</strong> Issues created by
-                    anyone (locally or on other clients) appear in the list
-                    automatically
+                    <strong>Close / reopen:</strong> Only Nostr issues. A forge
+                    copy must be closed on GitHub (or Gitea/GitLab). gittr will
+                    not pretend it closed the origin.
                   </li>
                   <li>
-                    <strong>Status tracking:</strong> Status changes (open →
-                    closed) don't affect the chronological order
+                    <strong>Comments:</strong> Allowed here. They publish on
+                    Nostr when the ticket has an event id. They are never posted
+                    back to GitHub. Other Nostr git clients see them only if
+                    they merge that thread.
                   </li>
                   <li>
-                    <strong>Real-time updates:</strong> New issues and status
-                    changes from Nostr relays appear automatically
+                    <strong>Sorted by creation time:</strong> Newest first;
+                    status changes do not reshuffle the list
                   </li>
                 </ul>
               </div>

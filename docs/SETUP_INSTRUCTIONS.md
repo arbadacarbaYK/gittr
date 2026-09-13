@@ -125,7 +125,7 @@ The aggregate Issues and Pulls pages use real menus (not decorative GitHub place
 
 Prefs and collapsed repo keys persist in `localStorage` (`gittr_issues_list_*` / `gittr_pulls_list_*`). Default group is **By repo**; on first visit every repo section starts **collapsed** (expand/collapse choices are remembered afterward).
 
-Nostr issue/PR links use the **event id** (`/issues/<64-hex>` or `/pulls/<64-hex>`). The `#2` in the UI is this browser’s local counter and is not on the Nostr event — do not share `/issues/2` expecting it to work logged out. GitHub-imported issues and PRs use the forge number (`/pulls/12` is GitHub PR #12, not “the 12th row in the list”). Notification DMs use the issue/PR **title** (the clickable URL is still the event id). gittr-mcp already uses event ids — no MCP tool change.
+Nostr issue/PR links use the **event id** (`/issues/<64-hex>` or `/pulls/<64-hex>`). Lists show the first 8 hex chars for those rows — not a local `#2` that can collide with GitHub #2. GitHub-imported issues and PRs use the forge number (`/pulls/12` is GitHub PR #12). Close or merge forge copies **on GitHub/Gitea/GitLab**; gittr comments on a forge row stay on gittr/Nostr and are not written back. Bounties pay when a **gittr Nostr PR** is merged here — a GitHub merge does not pay. gittr-mcp `closeIssue` / `mergePullRequest` / `markPullRequestMerged` refuse forge `issue-N` / `pr-N` ids.
 
 ### Profile repo list (same for everyone)
 

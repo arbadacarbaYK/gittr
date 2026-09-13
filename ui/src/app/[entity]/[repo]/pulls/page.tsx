@@ -7,6 +7,7 @@ import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_PULL_REQUEST,
@@ -41,6 +42,7 @@ import {
   setListSearchOpenClosed,
 } from "@/lib/utils/issue-pr-list-search";
 import {
+  issueOrPrListRef,
   mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
   prStatusForNostrKind1618Merge,
@@ -84,6 +86,7 @@ interface IPullsData {
   needsNostrRepublish?: boolean;
   /** Set after refetch when merged locally in gittr but GitHub still lists the PR open. */
   sourcePrStillOpen?: boolean;
+  html_url?: string;
 }
 
 export default function RepoPullsPage({
@@ -164,7 +167,8 @@ export default function RepoPullsPage({
           entity: resolvedParams.entity,
           repo: resolvedParams.repo,
           title: pr.title || `PR ${idx + 1}`,
-          number: pr.number || String(idx + 1),
+          number: pr.number || "",
+          html_url: pr.html_url,
           date: formatDateTime24h(updatedAt || createdAt),
           author: pr.author || "you",
           tags: [],
@@ -196,7 +200,8 @@ export default function RepoPullsPage({
           entity: resolvedParams.entity,
           repo: resolvedParams.repo,
           title: pr.title || `PR ${idx + 1}`,
-          number: pr.number || String(idx + 1),
+          number: pr.number || "",
+          html_url: pr.html_url,
           date: formatDateTime24h(updatedAt || createdAt),
           author: pr.author || "you",
           tags: [],
@@ -491,7 +496,6 @@ export default function RepoPullsPage({
                   ? (fileSnap.changedFiles as any[])
                   : [],
                 createdAt: event.created_at * 1000,
-                number: prior?.number || String(existingPRs.length + 1),
                 linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
                 ...(fileSnap.path !== undefined ? { path: fileSnap.path } : {}),
                 ...(fileSnap.before !== undefined
@@ -546,7 +550,8 @@ export default function RepoPullsPage({
                   entity: resolvedParams.entity,
                   repo: resolvedParams.repo,
                   title: pr.title || `PR ${idx + 1}`,
-                  number: pr.number || String(idx + 1),
+                  number: pr.number || "",
+                  html_url: pr.html_url,
                   date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
                   author: pr.author || "you",
                   tags: [],
@@ -567,7 +572,8 @@ export default function RepoPullsPage({
                   entity: resolvedParams.entity,
                   repo: resolvedParams.repo,
                   title: pr.title || `PR ${idx + 1}`,
-                  number: pr.number || String(idx + 1),
+                  number: pr.number || "",
+                  html_url: pr.html_url,
                   date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
                   author: pr.author || "you",
                   tags: [],
@@ -684,7 +690,8 @@ export default function RepoPullsPage({
                     entity: resolvedParams.entity,
                     repo: resolvedParams.repo,
                     title: pr.title || `PR ${idx + 1}`,
-                    number: pr.number || String(idx + 1),
+                    number: pr.number || "",
+                    html_url: pr.html_url,
                     date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
                     author: pr.author || "you",
                     tags: [],
@@ -706,7 +713,8 @@ export default function RepoPullsPage({
                     entity: resolvedParams.entity,
                     repo: resolvedParams.repo,
                     title: pr.title || `PR ${idx + 1}`,
-                    number: pr.number || String(idx + 1),
+                    number: pr.number || "",
+                    html_url: pr.html_url,
                     date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
                     author: pr.author || "you",
                     tags: [],
@@ -970,7 +978,7 @@ export default function RepoPullsPage({
                       </Link>
                     </div>
                     <div className="ml-7 text-zinc-400 flex items-center gap-2 flex-wrap">
-                      #{item.number}{" "}
+                      {issueOrPrListRef(item)} <IssuePrListOrigin row={item} />{" "}
                       {item.status === "merged"
                         ? `merged`
                         : item.status === "closed"
