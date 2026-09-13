@@ -3485,7 +3485,15 @@ export default function HelpPage() {
                 >
                   /apps
                 </Link>
-                .
+                . Signed-in owners: user menu{" "}
+                <Link
+                  href="/apps/mine"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Your Apps
+                </Link>{" "}
+                to remove a leftover listing (one app id) without deleting the
+                git repo or the APK file.
               </p>
               <p className="mt-3 text-sm text-gray-300">
                 Optional Zapstore catalog: add{" "}

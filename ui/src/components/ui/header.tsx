@@ -89,6 +89,10 @@ export const DropdownItems = [
     href: "/repositories",
   },
   {
+    title: "Your Apps",
+    href: "/apps/mine",
+  },
+  {
     title: "Your projects",
     href: "/projects",
   },
@@ -111,7 +115,7 @@ export const DropdownItems = [
   },
 ];
 
-const PrimaryGitInfo = DropdownItems.slice(0, 8);
+const PrimaryGitInfo = DropdownItems.slice(0, 9);
 const restGitInfo = DropdownItems.slice(8);
 
 export function Header() {

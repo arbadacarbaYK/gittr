@@ -32,6 +32,12 @@ export const GITTR_OFFICIAL_APP_TOPICS = [
 /** Older auto-suggest before the Android package id was special-cased. */
 export const GITTR_LEGACY_SUGGESTED_APP_ID = "space.gittr.gittr";
 
+/**
+ * First gittr announce used the display name as `d` (a second listing).
+ * Your Apps can NIP-09-delete this without touching `space.gittr.app`.
+ */
+export const GITTR_STRAY_APP_IDS = ["GITTR"] as const;
+
 /** Public bird logo (same file as zapstore.yaml `icon`). */
 export const GITTR_ANDROID_ICON_URL =
   "https://gittr.space/android-chrome-512x512.png";
@@ -95,7 +101,11 @@ export function appIdsToMatchForRepoDelete(args: {
 }): string[] {
   const ids = [args.suggestedAppId];
   if (isOfficialGittrAndroidRepo(args)) {
-    ids.push(GITTR_ANDROID_APP_ID, GITTR_LEGACY_SUGGESTED_APP_ID);
+    ids.push(
+      GITTR_ANDROID_APP_ID,
+      GITTR_LEGACY_SUGGESTED_APP_ID,
+      ...GITTR_STRAY_APP_IDS
+    );
   }
   return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
 }

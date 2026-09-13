@@ -178,7 +178,7 @@ function cardLabelsForApp(
 }
 
 export function AppsDirectoryClient() {
-  const { subscribe, defaultRelays } = useNostrContext();
+  const { subscribe, defaultRelays, pubkey } = useNostrContext();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -788,6 +788,19 @@ export function AppsDirectoryClient() {
               login or browser extension required — listings load from public
               relays (including{" "}
               <code className="text-gray-500">relay.zapstore.dev</code>).
+              {pubkey ? (
+                <>
+                  {" "}
+                  Manage yours in{" "}
+                  <Link
+                    href="/apps/mine"
+                    className="text-[var(--color-accent-primary)] hover:underline"
+                  >
+                    Your Apps
+                  </Link>
+                  .
+                </>
+              ) : null}
             </p>
           </div>
           {!loading ? (

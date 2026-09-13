@@ -206,6 +206,113 @@ export async function collectRepoRelatedAnnounceIds(args: {
   return { appEventIds, pagesEventIds, pagesAddress, appIds };
 }
 
+/**
+ * Find kind 32267 / 30063 / 3063 ids for one or more app ids (`d` / `#i`).
+ * Used by Your Apps “Remove listing” so a stray `GITTR` card can go without
+ * deleting `space.gittr.app` or the git repo.
+ */
+export async function collectSoftwareAnnounceIdsForAppIds(args: {
+  ownerPubkeyHex: string;
+  appIds: string[];
+  subscribe: SubscribeFn;
+  relays: string[];
+  timeoutMs?: number;
+}): Promise<{ eventIds: string[]; appIdsFound: string[] }> {
+  const owner = args.ownerPubkeyHex.toLowerCase();
+  const want = [
+    ...new Set(args.appIds.map((id) => (id || "").trim()).filter(Boolean)),
+  ];
+  if (want.length === 0) return { eventIds: [], appIdsFound: [] };
+  const timeoutMs = args.timeoutMs ?? 10_000;
+  const catalogRelays = relaysForSoftwareCatalog(args.relays);
+
+  const apps = await queryNostrEvents({
+    subscribe: args.subscribe,
+    relays: catalogRelays,
+    timeoutMs,
+    filters: [
+      {
+        kinds: [KIND_SOFTWARE_APPLICATION],
+        authors: [owner],
+        "#d": want,
+        limit: 40,
+      },
+    ],
+  });
+
+  const foundD = [
+    ...new Set(
+      apps.map((ev) => readTag(ev, "d")).filter((d): d is string => Boolean(d))
+    ),
+  ];
+  const iTags = [...new Set([...want, ...foundD])];
+
+  const releaseAndAsset =
+    iTags.length > 0
+      ? await queryNostrEvents({
+          subscribe: args.subscribe,
+          relays: catalogRelays,
+          timeoutMs,
+          filters: [
+            {
+              kinds: [KIND_SOFTWARE_RELEASE, KIND_SOFTWARE_ASSET],
+              authors: [owner],
+              "#i": iTags,
+              limit: 100,
+            },
+          ],
+        })
+      : [];
+
+  const eventIds = [
+    ...new Set([
+      ...apps.map((e) => e.id).filter(Boolean),
+      ...releaseAndAsset.map((e) => e.id).filter(Boolean),
+    ]),
+  ];
+  return { eventIds, appIdsFound: foundD };
+}
+
+export async function deleteSoftwareAnnounceForAppId(args: {
+  ownerPubkeyHex: string;
+  appId: string;
+  defaultRelays: string[];
+  subscribe: SubscribeFn;
+  publish: PublishFn;
+  resolveSigner: ResolveSigner;
+}): Promise<{
+  deletionEventId: string;
+  confirmedRelays: string[];
+  eventCount: number;
+}> {
+  const appId = (args.appId || "").trim();
+  if (!appId) throw new Error("Missing app id.");
+  const found = await collectSoftwareAnnounceIdsForAppIds({
+    ownerPubkeyHex: args.ownerPubkeyHex,
+    appIds: [appId],
+    subscribe: args.subscribe,
+    relays: args.defaultRelays,
+  });
+  if (found.eventIds.length === 0) {
+    throw new Error(
+      `No announce events found on relays for app id ${appId}. Other clients may still show a cached card.`
+    );
+  }
+  const result = await deleteSoftwareAnnounceEvents({
+    eventIds: found.eventIds,
+    ownerPubkeyHex: args.ownerPubkeyHex,
+    defaultRelays: args.defaultRelays,
+    resolveSigner: args.resolveSigner,
+    publish: args.publish,
+    subscribe: args.subscribe,
+  });
+  return {
+    deletionEventId: result.deletionEventId,
+    confirmedRelays: result.confirmedRelays,
+    eventCount: found.eventIds.length,
+  };
+}
+
 /** NIP-09 kind 5 for NIP-5A named-site manifests (Nostr Pages). */
 export async function deleteNamedSiteManifestEvents(args: {
   eventIds: string[];

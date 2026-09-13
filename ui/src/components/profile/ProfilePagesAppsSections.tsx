@@ -6,12 +6,14 @@ import {
   SoftwareAppDirectoryCard,
   SoftwareAppProfileFooter,
 } from "@/components/apps/SoftwareAppDirectoryCard";
+import { SoftwareAppRemoveListingButton } from "@/components/apps/SoftwareAppRemoveListingButton";
 import { GittrPageDirectoryCard } from "@/components/pages/GittrPageDirectoryCard";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { authorPubkeyHexNormalized } from "@/lib/gittr-pages/author-card-label";
 import { pageBelongsToOwner } from "@/lib/gittr-pages/pages-owner-match";
 import { GITTR_PAGES_PUBLISHED_EVENT } from "@/lib/gittr-pages/pages-published";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   type ParsedSoftwareApp,
   appDedupKey,
@@ -61,6 +63,14 @@ export function ProfilePagesAppsSections({
     ownerPubkeyHex && /^[0-9a-f]{64}$/i.test(ownerPubkeyHex)
       ? ownerPubkeyHex.toLowerCase()
       : null;
+  const { pubkey: sessionPubkey } = useNostrContext();
+  const sessionHex =
+    sessionPubkey && /^[0-9a-f]{64}$/i.test(sessionPubkey)
+      ? sessionPubkey.toLowerCase()
+      : "";
+  const isOwnProfile = Boolean(
+    ownerHex && sessionHex && ownerHex === sessionHex
+  );
 
   const onCountsRef = useRef(onCountsChange);
   onCountsRef.current = onCountsChange;
@@ -255,10 +265,10 @@ export function ProfilePagesAppsSections({
               Apps ({apps.length})
             </h2>
             <Link
-              href="/apps"
+              href={isOwnProfile ? "/apps/mine" : "/apps"}
               className="text-sm text-[var(--color-accent-primary)] hover:underline"
             >
-              Browse all apps
+              {isOwnProfile ? "Manage your apps" : "Browse all apps"}
             </Link>
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -268,7 +278,26 @@ export function ProfilePagesAppsSections({
                   app={app}
                   authorMeta={metadataMap[app.pubkey.toLowerCase()]}
                   metadataMap={metadataMap}
-                  footer={<SoftwareAppProfileFooter app={app} />}
+                  footer={
+                    <>
+                      <SoftwareAppProfileFooter app={app} />
+                      {isOwnProfile && ownerHex ? (
+                        <SoftwareAppRemoveListingButton
+                          appId={app.appId}
+                          appName={app.name}
+                          ownerPubkeyHex={ownerHex}
+                          onRemoved={(id) =>
+                            setApps((prev) =>
+                              prev.filter(
+                                (a) =>
+                                  a.appId.toLowerCase() !== id.toLowerCase()
+                              )
+                            )
+                          }
+                        />
+                      ) : null}
+                    </>
+                  }
                 />
               </li>
             ))}

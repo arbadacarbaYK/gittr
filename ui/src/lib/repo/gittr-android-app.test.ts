@@ -170,6 +170,6 @@ describe("official gittr Android announce", () => {
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
         suggestedAppId: GITTR_ANDROID_APP_ID,
       })
-    ).toEqual([GITTR_ANDROID_APP_ID, GITTR_LEGACY_SUGGESTED_APP_ID]);
+    ).toEqual([GITTR_ANDROID_APP_ID, GITTR_LEGACY_SUGGESTED_APP_ID, "GITTR"]);
   });
 });
