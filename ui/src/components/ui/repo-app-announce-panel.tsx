@@ -14,6 +14,7 @@ import {
   pickSiblingNip82Assets,
 } from "@/lib/nostr/software-announce-build";
 import {
+  announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
@@ -486,13 +487,11 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
 
       <div className="space-y-3 border-t border-[var(--color-border)] px-3 pb-3.5 pt-3">
         <p className="text-[11px] leading-snug text-zinc-400">
-          {tagForQuery ? (
+          {isInline ? (
             <>
-              Same as this repo’s{" "}
-              <strong className="font-medium text-zinc-300">Releases</strong>{" "}
-              tab: announce forge tag{" "}
+              Announce forge tag{" "}
               <strong className="font-medium text-zinc-300">
-                {tagForQuery}
+                {forge?.release.tag || tagForQuery}
               </strong>{" "}
               on{" "}
               <Link
@@ -501,11 +500,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               >
                 Apps
               </Link>
-              . Pick a hashed installer (APK, AppImage, DMG, tar.gz, …). An{" "}
-              <strong className="font-medium text-zinc-300">.apk</strong> is
-              preferred for Zapstore Android. Files stay on the forge — gittr
-              only publishes Nostr events. Optional: pin a copy onto public
-              Blossom hosts (not gittr’s Pages Blossom).
+              . Never a listing without a version.{" "}
             </>
           ) : (
             <>
@@ -522,24 +517,26 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               ) : null}{" "}
               — never a listing without a version. Same Nostr events as{" "}
               <strong className="font-medium text-zinc-300">Releases</strong> →
-              Announce on Nostr on that tag. An{" "}
-              <strong className="font-medium text-zinc-300">.apk</strong> is
-              preferred for Zapstore Android; other NIP-82 binaries work as the
-              main file. Extra files on the same tag are linked when verified.
-              Files stay on the forge. Pick another tag on the Releases tab.
+              Announce on Nostr on that tag.{" "}
             </>
           )}
+          An <strong className="font-medium text-zinc-300">.apk</strong> is
+          preferred for Zapstore Android; other NIP-82 binaries work as the main
+          file. Extra files on the same tag are linked when verified. Files stay
+          on the forge.
           {isOfficialGittr ? (
             <>
               {" "}
-              This is gittr’s own Android app — pin the APK to gittr’s Blossom.
-              App id stays{" "}
+              {announcePanelBlossomCopy(true)} App id stays{" "}
               <code className="rounded bg-zinc-900 px-0.5">
                 {GITTR_ANDROID_APP_ID}
               </code>
               .
             </>
-          ) : null}
+          ) : (
+            <> {announcePanelBlossomCopy(false)}</>
+          )}
+          {!isInline ? <> Pick another tag on the Releases tab.</> : null}
         </p>
 
         <div className="space-y-0.5 border-b border-zinc-800/80 pb-3">

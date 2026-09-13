@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  KIND_SOFTWARE_ASSET,
-  KIND_SOFTWARE_RELEASE,
-  type NostrEventLike,
-  parseSoftwareRelease,
-} from "./nip82-software";
-import {
   assetIdsAndRelayHintsFromRelease,
   mapSoftwareReleaseToRepoRelease,
   mergeForgeAndNostrReleases,
@@ -14,6 +8,12 @@ import {
   parseAssetsById,
   softwareReleaseMatchesRepo,
 } from "./nip82-repo-releases";
+import {
+  KIND_SOFTWARE_ASSET,
+  KIND_SOFTWARE_RELEASE,
+  type NostrEventLike,
+  parseSoftwareRelease,
+} from "./nip82-software";
 
 const OWNER =
   "5e759c2ca4a4e222ba7af89e6ff315e1d27843fe8bd0a3e7e61e4ba5b1c07326";
@@ -130,6 +130,32 @@ describe("mergeForgeAndNostrReleases", () => {
     expect(forge?.source).toBe("forge");
     expect(forge?.assets?.[0]?.url).toBe("https://ex/a");
     expect(merged.find((r) => r.tag_name === "0.1.3")?.source).toBe("nostr");
+  });
+
+  it("treats v1.0.0 and 1.0.0 as one row and keeps the forge tag", () => {
+    const merged = mergeForgeAndNostrReleases(
+      [
+        {
+          name: "v1.0.0",
+          tag_name: "v1.0.0",
+          source: "forge",
+          assets: [
+            { name: "a.apk", platform: "android", url: "https://gh/a.apk" },
+          ],
+        },
+      ],
+      [
+        {
+          name: "1.0.0",
+          tag_name: "1.0.0",
+          source: "nostr",
+          assets: [],
+        },
+      ]
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.tag_name).toBe("v1.0.0");
+    expect(merged[0]?.source).toBe("forge");
   });
 
   it("enriches forge row missing assets from nostr", () => {

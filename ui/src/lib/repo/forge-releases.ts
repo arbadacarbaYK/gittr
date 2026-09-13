@@ -116,6 +116,21 @@ export function versionFromTag(tag: string): string {
   return t.startsWith("v") || t.startsWith("V") ? t.slice(1) : t;
 }
 
+/** Compare forge vs Nostr tags (`v0.3.1` and `0.3.1` are the same Release). */
+export function forgeReleaseTagsMatch(
+  a?: string | null,
+  b?: string | null
+): boolean {
+  const left = (a || "").trim();
+  const right = (b || "").trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.toLowerCase() === right.toLowerCase()) return true;
+  return (
+    versionFromTag(left).toLowerCase() === versionFromTag(right).toLowerCase()
+  );
+}
+
 export function normalizeRepositoryHttpsUrl(raw: string): string {
   let u = raw.trim();
   const ssh = u.match(/^git@([^:]+):(.+)$/);
@@ -312,7 +327,8 @@ async function maybeHashApks(
 
 /**
  * Pick a release for Zapstore/NIP-82 announce.
- * With `tag`: exact match, then case-insensitive. Without: first non-draft, else first.
+ * With `tag`: exact, then case-insensitive, then `v` prefix optional.
+ * Without: first non-draft, else first.
  */
 export function pickForgeReleaseForAnnounce(
   list: ForgeRelease[],
@@ -323,8 +339,7 @@ export function pickForgeReleaseForAnnounce(
   if (wanted) {
     const exact = list.find((r) => r.tag === wanted);
     if (exact) return exact;
-    const lower = wanted.toLowerCase();
-    return list.find((r) => r.tag.toLowerCase() === lower) || null;
+    return list.find((r) => forgeReleaseTagsMatch(r.tag, wanted)) || null;
   }
   return list.find((r) => !r.draft) || list[0] || null;
 }

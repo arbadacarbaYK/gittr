@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
@@ -18,6 +19,16 @@ describe("announcePanelSummaryLabel", () => {
         variant: "inline",
       })
     ).toBe("Announce v2.0.0");
+  });
+
+  it("uses the forge tag when the Releases row omitted the v", () => {
+    expect(
+      announcePanelSummaryLabel({
+        preferredTag: "0.3.1",
+        loadedReleaseTag: "v0.3.1",
+        variant: "inline",
+      })
+    ).toBe("Announce v0.3.1");
   });
 
   it("keeps the sidebar summary as Nostr Apps even when a tag is loaded", () => {
@@ -81,6 +92,18 @@ describe("announce screenshot extras field", () => {
         yamlScreenshotCount: 2,
       })
     ).toMatch(/Other apps can add extra https/i);
+  });
+});
+
+describe("announcePanelBlossomCopy", () => {
+  it("does not mix gittr Pages Blossom with the official pin sentence", () => {
+    expect(announcePanelBlossomCopy(true)).toMatch(/gittr’s Blossom/);
+    expect(announcePanelBlossomCopy(true)).not.toMatch(
+      /not gittr’s Pages Blossom/
+    );
+    expect(announcePanelBlossomCopy(false)).toMatch(
+      /not gittr’s Pages Blossom/
+    );
   });
 });
 

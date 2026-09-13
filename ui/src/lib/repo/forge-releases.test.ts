@@ -40,6 +40,11 @@ describe("pickForgeReleaseForAnnounce", () => {
     expect(pickForgeReleaseForAnnounce(list, "V1.0.0")?.tag).toBe("v1.0.0");
   });
 
+  it("matches a Nostr version to a forge tag with a leading v", () => {
+    expect(pickForgeReleaseForAnnounce(list, "1.2.3")?.tag).toBe("v1.2.3");
+    expect(pickForgeReleaseForAnnounce(list, "1.0.0")?.tag).toBe("v1.0.0");
+  });
+
   it("returns null for missing tag or empty list", () => {
     expect(pickForgeReleaseForAnnounce(list, "v9.9.9")).toBeNull();
     expect(pickForgeReleaseForAnnounce([], "v1.0.0")).toBeNull();
@@ -93,9 +98,7 @@ describe("nip82MimeForAssetName", () => {
 
   it("maps linux tarballs and debs (Dan-style musl tar.gz)", () => {
     expect(
-      nip82MimeForAssetName(
-        "ngit-grasp-3.0.1-x86_64-unknown-linux-musl.tar.gz"
-      )
+      nip82MimeForAssetName("ngit-grasp-3.0.1-x86_64-unknown-linux-musl.tar.gz")
     ).toEqual({
       mime: "application/gzip",
       f: "linux-amd64",

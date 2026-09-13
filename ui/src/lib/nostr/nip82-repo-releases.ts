@@ -2,6 +2,7 @@
  * Match / merge NIP-82 software releases onto a NIP-34 repo Releases tab.
  * Forge API rows and Nostr (Blossom) rows share the same UI Release shape.
  */
+import { versionFromTag } from "../repo/forge-releases";
 
 import {
   type NostrEventLike,
@@ -65,7 +66,9 @@ export function softwareReleaseMatchesRepo(
   const candidates = [release.appId, release.d, readTag(release.raw, "name")]
     .filter(Boolean)
     .map((x) => normalizeRepoAppToken(String(x)));
-  return candidates.some((c) => c === repoTok || c.includes(repoTok) || repoTok.includes(c));
+  return candidates.some(
+    (c) => c === repoTok || c.includes(repoTok) || repoTok.includes(c)
+  );
 }
 
 export type RepoReleaseListItem = {
@@ -150,23 +153,25 @@ export function mergeForgeAndNostrReleases(
   nostrRows: RepoReleaseListItem[]
 ): RepoReleaseListItem[] {
   const byTag = new Map<string, RepoReleaseListItem>();
+  const mergeKey = (tag: string) => versionFromTag(tag).toLowerCase();
   for (const r of existing) {
-    const tag = (r.tag_name || "").trim().toLowerCase();
+    const tag = (r.tag_name || "").trim();
     if (!tag) continue;
-    byTag.set(tag, { ...r, source: r.source || "forge" });
+    byTag.set(mergeKey(tag), { ...r, source: r.source || "forge" });
   }
   for (const r of nostrRows) {
-    const tag = (r.tag_name || "").trim().toLowerCase();
+    const tag = (r.tag_name || "").trim();
     if (!tag) continue;
-    if (byTag.has(tag)) {
-      const prev = byTag.get(tag)!;
+    const key = mergeKey(tag);
+    if (byTag.has(key)) {
+      const prev = byTag.get(key)!;
       // Enrich forge row with Blossom URLs when forge listed the tag without assets.
       if (
         (!prev.assets || prev.assets.length === 0) &&
         r.assets &&
         r.assets.length > 0
       ) {
-        byTag.set(tag, {
+        byTag.set(key, {
           ...prev,
           assets: r.assets,
           nostrReleaseId: r.nostrReleaseId || prev.nostrReleaseId,
@@ -174,7 +179,7 @@ export function mergeForgeAndNostrReleases(
       }
       continue;
     }
-    byTag.set(tag, r);
+    byTag.set(key, r);
   }
   return Array.from(byTag.values()).sort((a, b) => {
     const ta = a.published_at ? Date.parse(a.published_at) : 0;

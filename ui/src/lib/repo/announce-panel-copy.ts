@@ -1,3 +1,5 @@
+import { forgeReleaseTagsMatch } from "./forge-releases";
+
 /**
  * Labels for the shared NIP-82 announce panel (Code sidebar + Releases tab).
  * Announce is always a concrete forge Release tag — never a tagless app.
@@ -12,8 +14,11 @@ export function announcePanelSummaryLabel(args: {
   // Tag / "latest" copy lives inside the open panel, not on the summary.
   if (args.variant === "sidebar") return "Nostr Apps";
   const preferred = (args.preferredTag || "").trim();
-  if (preferred) return `Announce ${preferred}`;
   const loaded = (args.loadedReleaseTag || "").trim();
+  if (loaded && preferred && forgeReleaseTagsMatch(loaded, preferred)) {
+    return `Announce ${loaded}`;
+  }
+  if (preferred) return `Announce ${preferred}`;
   if (loaded) return `Announce ${loaded}`;
   return "Announce on Nostr";
 }
@@ -56,4 +61,11 @@ export function announceScreenshotHelpCopy(args: {
     return "Found zapstore.yaml but no images: yet. Add PNG/JPG paths or https links there, or paste extra URLs below.";
   }
   return "Put images: in zapstore.yaml at the source repo root (same file Zapstore already reads). Paths like ./screenshots/home.png or https links. Optional extra URLs below.";
+}
+
+export function announcePanelBlossomCopy(isOfficialGittr: boolean): string {
+  if (isOfficialGittr) {
+    return "This is gittr’s own Android app — pin the APK to gittr’s Blossom.";
+  }
+  return "Optional: pin a copy onto public Blossom hosts (not gittr’s Pages Blossom).";
 }

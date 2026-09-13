@@ -3473,8 +3473,11 @@ export default function HelpPage() {
                 <strong className="text-white">Nostr Apps</strong> (latest forge
                 Release tag) or from the{" "}
                 <strong className="text-white">Releases</strong> tab on a chosen
-                tag. Link a GitHub / Codeberg / GitLab source URL. The chosen
-                Release must include an announceable binary (an{" "}
+                tag. Both use the same form (screenshots, pin, publish). A Nostr
+                version like <code className="text-purple-200">0.3.1</code>{" "}
+                matches GitHub <code className="text-purple-200">v0.3.1</code>.
+                Link a GitHub / Codeberg / GitLab source URL. The chosen Release
+                must include an announceable binary (an{" "}
                 <code className="text-purple-200">.apk</code> is preferred for
                 Zapstore Android). Verify the file, then{" "}
                 <strong>Publish on Nostr</strong> (NIP-82). Zapstore needs the
