@@ -15,7 +15,9 @@ import { migrateLegacyLocalStorage } from "@/lib/migrations/migrate-storage";
 import NostrProvider from "@/lib/nostr/NostrContext";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
+import { rememberGittrAndroidShellFromLocation } from "@/lib/repo/gittr-android-shell";
 import { clearNonLocalReposFromStorage } from "@/lib/repos/storage";
+import { applyGittrStatusBarGapClass } from "@/lib/ui/status-bar-inset";
 import "@/styles/globals.css";
 
 function MigrationRunner() {
@@ -68,6 +70,8 @@ export default function ClientLayout({
 
   // Rename legacy ngit_* storage keys to gittr_* on first load
   useEffect(() => {
+    rememberGittrAndroidShellFromLocation();
+    applyGittrStatusBarGapClass(document.documentElement);
     migrateLegacyLocalStorage();
 
     // Migrate classic/empty theme to midnight (default)

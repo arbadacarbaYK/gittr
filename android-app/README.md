@@ -7,6 +7,7 @@ Why this exists: Zapstore and other Nostr app stores index **GitHub Release asse
 ## What it is / is not
 
 - Same live gittr.space UI as the browser PWA (`?source=apk`).
+- Android 15 draws that WebView under the signal / battery row. The live site pads the header (Home, Search, New) even when `env(safe-area-inset-top)` is 0; the wrapper also forwards the real inset as CSS pixels. Website deploys pick this up without a new APK.
 - Sign in with **Amber / NIP-46** (no browser extension inside the WebView).
 - External sites open in the system browser; `*.gittr.space` stays in the app.
 - Self-hosters still install from the **git repo** ([SETUP_INSTRUCTIONS.md](../docs/SETUP_INSTRUCTIONS.md)). This APK always points at production gittr.space.

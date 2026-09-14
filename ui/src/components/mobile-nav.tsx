@@ -55,7 +55,7 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
   return (
     <div
       className={cn(
-        "animate-in slide-in-from-bottom-80 fixed inset-x-0 bottom-0 z-50 grid h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))] grid-flow-row auto-rows-max overflow-auto py-6 pb-[max(8rem,env(safe-area-inset-bottom,0px))] shadow-md top-[calc(3.5rem+env(safe-area-inset-top,0px))] md:hidden"
+        "animate-in slide-in-from-bottom-80 fixed inset-x-0 bottom-0 z-50 grid h-[calc(100dvh-3.5rem-var(--gittr-safe-top))] grid-flow-row auto-rows-max overflow-auto py-6 pb-[max(8rem,var(--gittr-safe-bottom))] shadow-md top-[calc(3.5rem+var(--gittr-safe-top))] md:hidden"
       )}
     >
       <div className="relative pb-4 z-20 grid gap-2 rounded-md bg-[#0E1116] px-3 shadow-md">

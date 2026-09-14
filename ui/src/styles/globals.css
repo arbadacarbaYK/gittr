@@ -34,6 +34,62 @@
   }
 }
 
+/*
+ * Phone status bar / home indicator.
+ * `viewport-fit=cover` lets the page paint under system UI, but Android
+ * WebView and many PWAs report env(safe-area-inset-*) as 0, so a 0.5rem
+ * header pad still sits on the signal icons and those taps never reach gittr.
+ * Floor the inset for the APK / installed PWA (html class + display-mode).
+ */
+:root {
+  --gittr-safe-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--gittr-native-safe-top, 0px)
+  );
+  --gittr-safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--gittr-native-safe-bottom, 0px)
+  );
+  --gittr-safe-left: max(
+    env(safe-area-inset-left, 0px),
+    var(--gittr-native-safe-left, 0px)
+  );
+  --gittr-safe-right: max(
+    env(safe-area-inset-right, 0px),
+    var(--gittr-native-safe-right, 0px)
+  );
+}
+
+html.gittr-needs-status-bar-gap {
+  --gittr-safe-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--gittr-native-safe-top, 0px),
+    3rem
+  );
+  --gittr-safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--gittr-native-safe-bottom, 0px),
+    1.25rem
+  );
+}
+
+@media (display-mode: standalone),
+  (display-mode: fullscreen),
+  (display-mode: minimal-ui) {
+  :root {
+    --gittr-safe-top: max(
+      env(safe-area-inset-top, 0px),
+      var(--gittr-native-safe-top, 0px),
+      3rem
+    );
+    --gittr-safe-bottom: max(
+      env(safe-area-inset-bottom, 0px),
+      var(--gittr-native-safe-bottom, 0px),
+      1.25rem
+    );
+  }
+}
+
 /* Dark mode scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

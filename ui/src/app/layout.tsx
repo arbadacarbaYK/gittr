@@ -10,7 +10,7 @@ const DEV_CACHE_BUST = "dev-2026-01-15-01";
 
 export const metadata = buildRootSiteMetadata();
 
-/** `cover` so `env(safe-area-inset-*)` is non-zero under the phone status bar. */
+/** `cover` so notched phones can read `env(safe-area-inset-*)`. Android APK/PWA often still report 0 — see status-bar-inset.ts. */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -27,6 +27,34 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning data-theme="midnight">
       <head>
         <meta name="gittr-build" content={DEV_CACHE_BUST} />
+        {/* Keep in sync with ui/src/lib/ui/status-bar-inset.ts — must run before first paint. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var ua = navigator.userAgent || '';
+                  var q = location.search || '';
+                  var standalone = false;
+                  try {
+                    standalone = !!(window.matchMedia && (
+                      window.matchMedia('(display-mode: standalone)').matches ||
+                      window.matchMedia('(display-mode: fullscreen)').matches ||
+                      window.matchMedia('(display-mode: minimal-ui)').matches
+                    )) || !!navigator.standalone;
+                  } catch (e1) {}
+                  var apk = /GittrApp\\/\\d/i.test(ua) || /(?:^|[?&])source=apk(?:&|$)/.test(q);
+                  if (!apk) {
+                    try { apk = sessionStorage.getItem('gittr_android_shell') === '1'; } catch (e2) {}
+                  }
+                  if (apk || standalone) {
+                    document.documentElement.classList.add('gittr-needs-status-bar-gap');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
         {/* Apply theme before React hydrates to prevent flash */}
         <script
           dangerouslySetInnerHTML={{

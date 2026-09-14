@@ -24,6 +24,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var lastSafeAreaJs: String = ""
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -46,14 +47,12 @@ class MainActivity : AppCompatActivity() {
         webView.setBackgroundColor(Color.parseColor("#181b20"))
         WindowInsetsControllerCompat(window, webView).isAppearanceLightStatusBars = false
         WindowInsetsControllerCompat(window, webView).isAppearanceLightNavigationBars = false
-        ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
-            val bars =
-                insets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-                )
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { _, insets ->
+            lastSafeAreaJs = safeAreaJs(insets)
+            pushSafeAreaInsets()
             insets
         }
+        ViewCompat.requestApplyInsets(webView)
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
@@ -75,6 +74,13 @@ class MainActivity : AppCompatActivity() {
                     view: WebView,
                     request: WebResourceRequest,
                 ): Boolean = handleUri(request.url)
+
+                override fun onPageFinished(
+                    view: WebView?,
+                    url: String?,
+                ) {
+                    pushSafeAreaInsets()
+                }
             }
 
         webView.webChromeClient =
@@ -111,6 +117,35 @@ class MainActivity : AppCompatActivity() {
 
         val deepLink = intent?.data?.toString()?.takeIf { it.startsWith("https://") }
         webView.loadUrl(deepLink ?: START_URL)
+    }
+
+    private fun cssPx(px: Int): String {
+        val density = resources.displayMetrics.density
+        if (density <= 0f) return "0px"
+        return (px / density).toString() + "px"
+    }
+
+    private fun safeAreaJs(insets: WindowInsetsCompat): String {
+        val bars =
+            insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+        return """
+            (function(){
+              var r=document.documentElement;
+              if(!r||!r.style) return;
+              r.style.setProperty('--gittr-native-safe-top','${cssPx(bars.top)}');
+              r.style.setProperty('--gittr-native-safe-bottom','${cssPx(bars.bottom)}');
+              r.style.setProperty('--gittr-native-safe-left','${cssPx(bars.left)}');
+              r.style.setProperty('--gittr-native-safe-right','${cssPx(bars.right)}');
+              r.classList.add('gittr-needs-status-bar-gap');
+            })();
+            """.trimIndent()
+    }
+
+    private fun pushSafeAreaInsets() {
+        if (lastSafeAreaJs.isEmpty() || !this::webView.isInitialized) return
+        webView.evaluateJavascript(lastSafeAreaJs, null)
     }
 
     private fun handleUri(uri: Uri): Boolean {
