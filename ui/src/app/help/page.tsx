@@ -3494,8 +3494,8 @@ export default function HelpPage() {
                 Release tag) or from the{" "}
                 <strong className="text-white">Releases</strong> tab on a chosen
                 tag. Both use the same form (screenshots, pin, publish). A Nostr
-                version like <code className="text-purple-200">0.3.1</code>{" "}
-                matches GitHub <code className="text-purple-200">v0.3.1</code>.
+                version like <code className="text-purple-200">1.0.0</code>{" "}
+                matches GitHub <code className="text-purple-200">v1.0.0</code>.
                 Link a GitHub / Codeberg / GitLab source URL. The chosen Release
                 must include an announceable binary (an{" "}
                 <code className="text-purple-200">.apk</code> is preferred for

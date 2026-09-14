@@ -116,7 +116,7 @@ export function versionFromTag(tag: string): string {
   return t.startsWith("v") || t.startsWith("V") ? t.slice(1) : t;
 }
 
-/** Compare forge vs Nostr tags (`v0.3.1` and `0.3.1` are the same Release). */
+/** Compare forge vs Nostr tags (`v1.0.0` and `1.0.0` are the same Release). */
 export function forgeReleaseTagsMatch(
   a?: string | null,
   b?: string | null

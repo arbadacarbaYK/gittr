@@ -113,7 +113,7 @@ export function parseGitHubLatestReleaseForGittrApk(
     return {
       ok: false,
       code: "invalid_tag",
-      message: "Latest Release tag is not a version like v0.3.1.",
+      message: "Latest Release tag is not a version like v1.0.0.",
     };
   }
   const asset = pickGittrAndroidApkAsset(r.assets);

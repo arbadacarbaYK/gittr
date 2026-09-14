@@ -53,7 +53,7 @@ export function isGittrAndroidShell(opts?: {
   }
 }
 
-/** `GittrApp/0.3.1` from the WebView user-agent, or null in a normal browser. */
+/** `GittrApp/1.0.0` from the WebView user-agent, or null in a normal browser. */
 export function installedGittrAppVersion(userAgent?: string): string | null {
   const ua =
     userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");

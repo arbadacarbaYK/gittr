@@ -21,7 +21,7 @@ describe("status bar inset gap", () => {
   it("pads the gittr Android WebView shell", () => {
     expect(
       needsStatusBarGap({
-        userAgent: "Mozilla/5.0 Linux Android GittrApp/0.3.1",
+        userAgent: "Mozilla/5.0 Linux Android GittrApp/1.0.0",
         search: "",
         storage: { getItem: () => null },
       })
@@ -76,7 +76,7 @@ describe("status bar inset gap", () => {
     };
     expect(
       applyGittrStatusBarGapClass(root, {
-        userAgent: "GittrApp/0.3.1",
+        userAgent: "GittrApp/1.0.0",
         search: "",
         storage: { getItem: () => null },
         displayStandalone: false,

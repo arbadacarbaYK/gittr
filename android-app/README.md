@@ -20,7 +20,7 @@ Locally (JDK 17+, Android SDK):
 
 ```bash
 cd android-app
-gradle assembleRelease -PversionName=0.3.1 -PversionCode=301
+gradle assembleRelease -PversionName=1.0.0 -PversionCode=10000
 ```
 
 APK: `app/build/outputs/apk/release/app-release.apk`.

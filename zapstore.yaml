@@ -1,5 +1,6 @@
 # Zapstore / other Nostr app stores: index GitHub Releases that attach an APK.
 # Tag v* → .github/workflows/build-apk.yml uploads gittr-<version>.apk
+# Official listing is 1.0.0+ (tag v1.0.0). Do not cut 0.x tags now that gittr is on Zapstore.
 #
 # First publish (whitelist): commit this file, then from a machine with your
 # signer run:  SIGN_WITH=nsec1…  zsp publish -y zapstore.yaml
