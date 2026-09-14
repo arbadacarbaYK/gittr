@@ -3868,50 +3868,55 @@ export default function RepositoriesPage() {
                           )}
                           {/* Repo name and info - flex column to avoid wrapping issues */}
                           <div className="flex flex-col gap-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
+                            {/* Name on its own line on phones so Live/Public badges cannot squeeze it to gi… */}
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 sm:flex-wrap">
+                              <div className="font-semibold text-cyan-400 min-w-0 w-full sm:w-auto sm:flex-1 flex items-center gap-2">
                                 {isNavigating && (
                                   <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
                                 )}
-                                <span className="truncate">{displayName}</span>
+                                <span className="break-all sm:truncate">
+                                  {displayName}
+                                </span>
                                 <span className="opacity-70 hidden sm:inline">
                                   / {entityDisplay}
                                 </span>
                               </div>
-                              {/* Status badge — hide fake Local until Nostr hydrate finishes */}
-                              {waitingForNostr
-                                ? null
-                                : (() => {
-                                    const style = getStatusBadgeStyle(status);
-                                    return (
-                                      <span
-                                        className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                                      >
-                                        {style.label}
-                                      </span>
-                                    );
-                                  })()}
-                              {needsRepublish && (
-                                <span
-                                  className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
-                                  title={CLONE_REPUBLISH_BADGE_TITLE}
-                                >
-                                  {CLONE_REPUBLISH_BADGE_LABEL}
-                                </span>
-                              )}
-                              <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
-                                {r.publicRead !== false ? (
-                                  <>
-                                    <Globe className="h-3 w-3" />
-                                    Public
-                                  </>
-                                ) : (
-                                  <>
-                                    <Lock className="h-3 w-3" />
-                                    Private
-                                  </>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Status badge — hide fake Local until Nostr hydrate finishes */}
+                                {waitingForNostr
+                                  ? null
+                                  : (() => {
+                                      const style = getStatusBadgeStyle(status);
+                                      return (
+                                        <span
+                                          className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                                        >
+                                          {style.label}
+                                        </span>
+                                      );
+                                    })()}
+                                {needsRepublish && (
+                                  <span
+                                    className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
+                                    title={CLONE_REPUBLISH_BADGE_TITLE}
+                                  >
+                                    {CLONE_REPUBLISH_BADGE_LABEL}
+                                  </span>
                                 )}
-                              </Badge>
+                                <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
+                                  {r.publicRead !== false ? (
+                                    <>
+                                      <Globe className="h-3 w-3" />
+                                      Public
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Lock className="h-3 w-3" />
+                                      Private
+                                    </>
+                                  )}
+                                </Badge>
+                              </div>
                             </div>
                             <div className="sm:hidden text-xs opacity-70 truncate">
                               {entityDisplay}
