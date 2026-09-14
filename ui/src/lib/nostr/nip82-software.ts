@@ -4,6 +4,8 @@
  */
 import { nip19 } from "nostr-tools";
 
+import { compareSemver } from "../repo/gittr-android-shell";
+
 export const KIND_SOFTWARE_APPLICATION = 32267;
 export const KIND_SOFTWARE_RELEASE = 30063;
 export const KIND_SOFTWARE_ASSET = 3063;
@@ -274,14 +276,18 @@ export function parseSoftwareAsset(
   };
 }
 
-/** Prefer `main` channel; then newest by created_at. */
+/** Prefer `main` channel; then highest semver, then newest `created_at`. */
 export function pickLatestMainRelease(
   releases: ParsedSoftwareRelease[]
 ): ParsedSoftwareRelease | undefined {
   const main = releases.filter((r) => (r.channel || "main") === "main");
   const pool = main.length > 0 ? main : releases;
   if (pool.length === 0) return undefined;
-  return [...pool].sort((a, b) => b.createdAt - a.createdAt)[0];
+  return [...pool].sort((a, b) => {
+    const sv = compareSemver(b.version, a.version);
+    if (sv !== 0) return sv;
+    return b.createdAt - a.createdAt;
+  })[0];
 }
 
 /** Map NIP-82 `f` platform id to a short UI label. */

@@ -12,6 +12,7 @@ import {
   GITTR_OFFICIAL_APP_TOPICS,
   appIdsToMatchForRepoDelete,
   iconUrlForNip82Announce,
+  isOfficialGittrAndroidListing,
   isOfficialGittrAndroidRepo,
   screenshotUrlsForNip82Announce,
   summaryForNip82Announce,
@@ -42,6 +43,27 @@ describe("official gittr Android announce", () => {
       isOfficialGittrAndroidRepo({
         repo: "other",
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe(false);
+  });
+
+  it("matches the official /apps listing by package id and operator pubkey", () => {
+    expect(
+      isOfficialGittrAndroidListing({
+        appId: GITTR_ANDROID_APP_ID,
+        pubkey: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe(true);
+    expect(
+      isOfficialGittrAndroidListing({
+        appId: "GITTR",
+        pubkey: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe(false);
+    expect(
+      isOfficialGittrAndroidListing({
+        appId: GITTR_ANDROID_APP_ID,
+        pubkey: "aa".repeat(32),
       })
     ).toBe(false);
   });

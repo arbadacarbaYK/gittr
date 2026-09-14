@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
+  KIND_SOFTWARE_RELEASE,
   type NostrEventLike,
+  type ParsedSoftwareRelease,
   gittrRepoPathFromNip34A,
   gittrRepoPathFromRepositoryUrl,
   normalizeSoftwareIconUrl,
   parseSoftwareApp,
   parseSoftwareAsset,
+  pickLatestMainRelease,
   preferOwnerSoftwareApps,
   safeHttpUrlTag,
   sortSoftwareAppsByCreatedAt,
@@ -221,5 +224,57 @@ describe("parseSoftwareAsset URL sanitizing", () => {
     });
     expect(parsed).not.toBeNull();
     expect(parsed?.url).toBeUndefined();
+  });
+});
+
+function release(
+  version: string,
+  createdAt: number,
+  channel = "main"
+): ParsedSoftwareRelease {
+  const pubkey = "a".repeat(64);
+  return {
+    pubkey,
+    appId: "space.gittr.app",
+    version,
+    d: `space.gittr.app@${version}`,
+    channel,
+    assetEventIds: [],
+    content: "",
+    createdAt,
+    raw: {
+      id: "e".repeat(64),
+      pubkey,
+      kind: KIND_SOFTWARE_RELEASE,
+      created_at: createdAt,
+      content: "",
+      tags: [],
+    },
+  };
+}
+
+describe("pickLatestMainRelease", () => {
+  it("prefers higher semver over a newer timestamp on an older version", () => {
+    const picked = pickLatestMainRelease([
+      release("0.3.1", 200),
+      release("1.0.0", 100),
+    ]);
+    expect(picked?.version).toBe("1.0.0");
+  });
+
+  it("uses created_at when versions match", () => {
+    const picked = pickLatestMainRelease([
+      release("1.0.0", 100),
+      release("1.0.0", 300),
+    ]);
+    expect(picked?.createdAt).toBe(300);
+  });
+
+  it("stays on main channel when any main releases exist", () => {
+    const picked = pickLatestMainRelease([
+      release("9.9.9", 500, "beta"),
+      release("1.0.0", 1, "main"),
+    ]);
+    expect(picked?.version).toBe("1.0.0");
   });
 });

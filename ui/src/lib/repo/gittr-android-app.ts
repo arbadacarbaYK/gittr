@@ -79,6 +79,16 @@ export function isOfficialGittrAndroidRepo(args: {
   return repo === GITTR_ANDROID_REPO_SLUG && pk === GITTR_OWNER_PUBKEY_HEX;
 }
 
+/** Official `/apps` card — operator pubkey + `space.gittr.app`, not a fork listing. */
+export function isOfficialGittrAndroidListing(args: {
+  appId?: string | null;
+  pubkey?: string | null;
+}): boolean {
+  const id = (args.appId || "").trim().toLowerCase();
+  const pk = (args.pubkey || "").trim().toLowerCase();
+  return id === GITTR_ANDROID_APP_ID && pk === GITTR_OWNER_PUBKEY_HEX;
+}
+
 /**
  * Topics copied onto kind 32267 `t` tags: repo NIP-34 topics first, then
  * official zapstore.yaml tags when this is gittr itself.

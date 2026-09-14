@@ -32,6 +32,11 @@ import {
 } from "@/lib/nostr/nip82-software";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { isOfficialGittrAndroidListing } from "@/lib/repo/gittr-android-app";
+import {
+  type GittrAndroidLatestOk,
+  resolveOfficialGittrAppsApk,
+} from "@/lib/repo/gittr-android-latest";
 import {
   REPO_LIST_PAGE_SIZE,
   clampVisibleCount,
@@ -196,6 +201,8 @@ export function AppsDirectoryClient() {
   >(() => new Map());
   /** After asset-id subscribe window, stop spinning on unresolved e-tags. */
   const [assetFetchSettled, setAssetFetchSettled] = useState(false);
+  const [gittrGithubLatest, setGittrGithubLatest] =
+    useState<GittrAndroidLatestOk | null>(null);
 
   const rawAppEventsRef = useRef<NostrEventLike[]>([]);
   /** NIP-09 kind 5 — hide app/release/asset events by id (repo NIP-34 unchanged). */
@@ -215,6 +222,22 @@ export function AppsDirectoryClient() {
     [defaultRelays]
   );
   const relaysKey = useMemo(() => relays.join("|"), [relays]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/repo/gittr-android-latest", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: GittrAndroidLatestOk | { ok?: false } | null) => {
+        if (cancelled || !data || data.ok !== true) return;
+        setGittrGithubLatest(data);
+      })
+      .catch(() => {
+        /* keep NIP-82 catalog button */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshAppsFromRef = useCallback(() => {
     if (leavingRef.current) return;
@@ -989,6 +1012,16 @@ export function AppsDirectoryClient() {
                 );
                 const labels = cardLabelsForApp(app, assetEvents);
                 const apk = pickAndroidApkAsset(assetEvents);
+                const officialApk = isOfficialGittrAndroidListing(app)
+                  ? resolveOfficialGittrAppsApk({
+                      nip82Version: latest?.version,
+                      nip82Url: apk?.url,
+                      githubVersion: gittrGithubLatest?.version,
+                      githubUrl: gittrGithubLatest?.apkUrl,
+                    })
+                  : null;
+                const apkVersion = officialApk?.version ?? latest?.version;
+                const apkHref = officialApk?.url ?? apk?.url;
                 const authorMeta = metadataMap[app.pubkey.toLowerCase()];
                 const ghSpec = app.repository
                   ? parseGitHubRepoSpec(app.repository)
@@ -1006,7 +1039,7 @@ export function AppsDirectoryClient() {
                       gh={gh}
                       footer={
                         <>
-                          {apk?.url ? (
+                          {apkHref ? (
                             <a
                               className={cn(
                                 buttonVariants({
@@ -1015,13 +1048,13 @@ export function AppsDirectoryClient() {
                                 }),
                                 "shadow-sm"
                               )}
-                              href={apk.url}
+                              href={apkHref}
                               rel="noopener noreferrer"
                               target="_blank"
                             >
                               <Download className="mr-1.5 h-3.5 w-3.5" />
-                              {latest
-                                ? `APK v${latest.version}`
+                              {apkVersion
+                                ? `APK v${apkVersion}`
                                 : "Download APK"}
                             </a>
                           ) : apk && !apk.url ? (

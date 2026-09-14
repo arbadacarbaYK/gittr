@@ -85,6 +85,28 @@ export type GittrAndroidLatestResult =
   | GittrAndroidLatestOk
   | GittrAndroidLatestErr;
 
+/**
+ * `/apps` should match Zapstore/GitHub for official gittr: NIP-82 catalog can
+ * still show 0.3.1 for minutes after a v1.0.0 Release exists.
+ */
+export function resolveOfficialGittrAppsApk(args: {
+  nip82Version?: string | null;
+  nip82Url?: string | null;
+  githubVersion?: string | null;
+  githubUrl?: string | null;
+}): { version: string; url: string } | null {
+  const nV = args.nip82Version?.trim() || null;
+  const nU = args.nip82Url?.trim() || null;
+  const gV = args.githubVersion?.trim() || null;
+  const gU = args.githubUrl?.trim() || null;
+  if (nV && nU && compareSemver(nV, gV) > 0) {
+    return { version: nV, url: nU };
+  }
+  if (gV && gU) return { version: gV, url: gU };
+  if (nV && nU) return { version: nV, url: nU };
+  return null;
+}
+
 export function parseGitHubLatestReleaseForGittrApk(
   payload: unknown
 ): GittrAndroidLatestResult {

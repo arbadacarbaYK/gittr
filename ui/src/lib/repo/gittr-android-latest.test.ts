@@ -5,6 +5,7 @@ import {
   isTrustedGittrApkDownloadUrl,
   parseGitHubLatestReleaseForGittrApk,
   pickGittrAndroidApkAsset,
+  resolveOfficialGittrAppsApk,
   versionFromReleaseTag,
 } from "./gittr-android-latest";
 
@@ -106,5 +107,35 @@ describe("gittr Android latest GitHub APK", () => {
         latest: { ok: false, message: "down" },
       })
     ).toEqual({ kind: "unavailable", message: "down" });
+  });
+});
+
+describe("resolveOfficialGittrAppsApk", () => {
+  it("uses GitHub when it is newer than the NIP-82 catalog release", () => {
+    expect(
+      resolveOfficialGittrAppsApk({
+        nip82Version: "0.3.1",
+        nip82Url: "https://blossom.example/old.apk",
+        githubVersion: "1.0.0",
+        githubUrl: GITHUB_APK.replace("0.3.2", "1.0.0"),
+      })
+    ).toEqual({
+      version: "1.0.0",
+      url: GITHUB_APK.replace("0.3.2", "1.0.0"),
+    });
+  });
+
+  it("keeps a strictly newer NIP-82 release when it has a URL", () => {
+    expect(
+      resolveOfficialGittrAppsApk({
+        nip82Version: "1.0.1",
+        nip82Url: "https://blossom.example/new.apk",
+        githubVersion: "1.0.0",
+        githubUrl: GITHUB_APK.replace("0.3.2", "1.0.0"),
+      })
+    ).toEqual({
+      version: "1.0.1",
+      url: "https://blossom.example/new.apk",
+    });
   });
 });
