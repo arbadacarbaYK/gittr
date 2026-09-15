@@ -32,6 +32,10 @@
 
 Code browser rows show **last commit message + relative time** for the currently selected tip/branch. Data comes from `GET /api/nostr/repo/tree-last-commits` (one capped `git log --name-only` on the bare mirror — not per-path N+1). Dates track the bridge tip for that branch, which should match GitHub after a clean Refetch → Push.
 
+## Clone URL sidebar (Sep 2026)
+
+"Clone URL" is the Push remotes, not "who won the file race". Kind **30617** is replaceable latest-wins for About / deleted, but **clone tags are unioned** across snapshots so a later ngit-only note cannot hide `git.gittr.space` / shakespeare / gitnostr. GitHub `source` is one row (with or without `.git`). `git.gittr.space` sorts first on this deployment. **has files** still means this visit loaded a tree from that host.
+
 ## Clone URL sidebar (Aug 2026)
 
 "Clone URL" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. The **has files** badge is only for hosts this visit actually loaded a tree from (so `git clone` should work). Skipped extra GRASP stay unbadged. Do not special-case `git.gittr.space`.

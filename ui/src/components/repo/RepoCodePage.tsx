@@ -82,6 +82,7 @@ import {
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { extraNostrRelaysFromRepoRemotes } from "@/lib/nostr/nip34-discovery-relays";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
+import { cloneUrlsFromTags } from "@/lib/nostr/profile-repos-merge";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -256,7 +257,10 @@ import {
   cloneUrlLiveHintBadge,
   cloneUrlLiveHintShowsBadge,
   cloneUrlLiveHintTitle,
+  dedupeNormalizedCloneUrls,
   filterDisplayCloneUrlsForSidebar,
+  mergeCloneUrlLists,
+  orderCloneUrlsForSidebar,
 } from "@/lib/utils/filter-display-clone-urls";
 import {
   capRepoFileTreeForDisplay,
@@ -271,7 +275,10 @@ import {
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
 import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
-import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
+import {
+  KNOWN_GRASP_DOMAINS,
+  isGraspDomainForPushing,
+} from "@/lib/utils/grasp-servers";
 import {
   hasOnlyHashtreeCloneUrls,
   irisGitBrowseUrlFromHashtreeClone,
@@ -587,11 +594,13 @@ function mergeAnnouncementClonesPreferringEvent(
   const extras = prevArr.filter((u) => {
     const key = normalizeCloneUrlKey(u);
     if (announcedKeys.has(key)) return false;
-    // Drop timeout-inferred defaults once we have announcement clones
-    if (inferredKeys.has(key)) return false;
+    // Keep mirrors we actually Push to. Only drop other timeout-inferred GRASP.
+    if (inferredKeys.has(key) && !isGraspDomainForPushing(u)) {
+      return false;
+    }
     return true;
   });
-  return Array.from(new Set([...announced, ...extras]));
+  return mergeCloneUrlLists(announced, extras);
 }
 
 function upstreamRefetchableHttpsGitClone(raw: string): string | null {
@@ -5229,7 +5238,14 @@ export function RepoCodePage() {
         return {
           ...base,
           clone: mergedClone,
-          ...(announced ? { announcementClone: announced } : {}),
+          ...(announced
+            ? {
+                announcementClone: mergeCloneUrlLists(
+                  base.announcementClone,
+                  announced
+                ),
+              }
+            : {}),
           sourceUrl: hints.sourceUrl || base.sourceUrl,
           lastNostrEventId: nextId,
           syncedFromNostr: true,
@@ -6085,7 +6101,10 @@ export function RepoCodePage() {
               return {
                 ...base,
                 clone: mergedClone,
-                announcementClone: hints.clone,
+                announcementClone: mergeCloneUrlLists(
+                  base.announcementClone,
+                  hints.clone
+                ),
                 sourceUrl: hints.sourceUrl || base.sourceUrl,
                 lastNostrEventId:
                   hints.lastNostrEventId || base.lastNostrEventId,
@@ -7069,8 +7088,21 @@ export function RepoCodePage() {
             }
 
             if (foundFiles) {
-              if (event.kind !== KIND_REPOSITORY) return;
-              if (event.created_at <= lastKind51RepoSnapshotCreatedAt) return;
+              // Kind 51 snapshots only. Keep harvesting 30617 clone tags after
+              // GitHub/GRASP already painted a tree — otherwise a thin later
+              // note plus EOSE would shrink Clone URL to ngit + source.
+              if (
+                event.kind !== KIND_REPOSITORY &&
+                event.kind !== KIND_REPOSITORY_NIP34
+              ) {
+                return;
+              }
+              if (
+                event.kind === KIND_REPOSITORY &&
+                event.created_at <= lastKind51RepoSnapshotCreatedAt
+              ) {
+                return;
+              }
             }
 
             try {
@@ -7113,24 +7145,48 @@ export function RepoCodePage() {
                 }, forkedFromTagsCount=${forkedFromTagsInEvent.length}`
               );
 
-              // CRITICAL: For NIP-34 replaceable events, only use the LATEST event (highest created_at)
-              // If we already have eventRepoData from a newer event, skip this older event
+              // Newer 30617 wins for About / live-or-deleted. Clone URLs are a
+              // union across snapshots: ngit/git-remote-nostr often republish a
+              // one-host note after gittr Push listed every GRASP mirror.
               if (
                 event.kind === KIND_REPOSITORY_NIP34 &&
                 eventRepoData &&
-                eventRepoData.lastEventCreatedAt
+                eventRepoData.lastEventCreatedAt &&
+                event.created_at < eventRepoData.lastEventCreatedAt
               ) {
-                if (event.created_at < eventRepoData.lastEventCreatedAt) {
-                  console.log(
-                    `⏭️ [File Fetch] Skipping older NIP-34 event: id=${event.id.slice(
-                      0,
-                      8
-                    )}..., created_at=${event.created_at} < ${
-                      eventRepoData.lastEventCreatedAt
-                    }`
+                const extra = cloneUrlsFromTags(event.tags || []);
+                eventRepoData.clone = mergeCloneUrlLists(
+                  eventRepoData.clone,
+                  extra
+                );
+                const grew = extra.length > 0;
+                if (grew) {
+                  const eventClones = eventRepoData.clone.filter(
+                    (url: string) =>
+                      url &&
+                      !url.includes("localhost") &&
+                      !url.includes("127.0.0.1")
                   );
-                  return; // Skip older events
+                  setRepoData((prev: any) => {
+                    const base = prev || {};
+                    return {
+                      ...base,
+                      clone: mergeCloneUrlLists(base.clone, eventClones),
+                      announcementClone: mergeCloneUrlLists(
+                        base.announcementClone,
+                        eventClones
+                      ),
+                    };
+                  });
                 }
+                console.log(
+                  `⏭️ [File Fetch] Older NIP-34 (unioned ${
+                    extra.length
+                  } clone URL(s)): id=${event.id.slice(0, 8)}..., created_at=${
+                    event.created_at
+                  } < ${eventRepoData.lastEventCreatedAt}`
+                );
+                return;
               }
 
               // Store eventRepoData in closure for later use (don't reset if already exists)
@@ -7144,14 +7200,15 @@ export function RepoCodePage() {
                   !eventRepoData.lastEventCreatedAt ||
                   event.created_at > eventRepoData.lastEventCreatedAt
                 ) {
-                  // Newer replaceable snapshot: reset tag-derived lists so older events'
-                  // clone/SSH/GitHub URLs are not merged in (out-of-order relay delivery).
-                  // Also clear description so a thin/older About cannot stick when the
-                  // latest 30617 omits or replaces the description tag.
-                  eventRepoData.clone = [];
+                  // Newer replaceable snapshot: reset relays/description so a thin
+                  // About cannot stick. Keep clone URLs and union tags from every
+                  // 30617 — a later one-host snapshot must not hide gittr Push mirrors.
                   eventRepoData.relays = [];
                   eventRepoData.maintainers = [];
                   eventRepoData.description = "";
+                  if (!Array.isArray(eventRepoData.clone)) {
+                    eventRepoData.clone = [];
+                  }
                   delete eventRepoData.deleted;
                   delete eventRepoData.archived;
                   eventRepoData.lastEventCreatedAt = event.created_at;
@@ -7561,7 +7618,10 @@ export function RepoCodePage() {
                       return {
                         ...base,
                         clone: merged,
-                        announcementClone: eventClones,
+                        announcementClone: mergeCloneUrlLists(
+                          base.announcementClone,
+                          eventClones
+                        ),
                         lastNostrEventId:
                           eventRepoData.lastEventId || base.lastNostrEventId,
                         syncedFromNostr: true,
@@ -8597,7 +8657,8 @@ export function RepoCodePage() {
                     } as StoredRepo);
                   const newSourceUrl =
                     eventRepoData.sourceUrl || base.sourceUrl;
-                  const newClone =
+                  const newClone = mergeCloneUrlLists(
+                    base.clone,
                     eventRepoData.clone && Array.isArray(eventRepoData.clone)
                       ? eventRepoData.clone.filter(
                           (url: string) =>
@@ -8605,7 +8666,8 @@ export function RepoCodePage() {
                             !url.includes("localhost") &&
                             !url.includes("127.0.0.1")
                         )
-                      : base.clone;
+                      : []
+                  );
                   const newForkedFrom = resolveStoredForkedFrom({
                     existingForkedFrom:
                       base.forkedFrom ?? eventRepoData.forkedFrom,
@@ -8671,15 +8733,18 @@ export function RepoCodePage() {
                     sourceUrl: newSourceUrl,
                     forkedFrom: newForkedFrom,
                     clone: newClone,
-                    announcementClone: Array.isArray(eventRepoData.clone)
-                      ? eventRepoData.clone.filter(
-                          (url: string) =>
-                            url &&
-                            !url.includes("localhost") &&
-                            !url.includes("127.0.0.1")
-                        )
-                      : (base as { announcementClone?: string[] })
-                          .announcementClone,
+                    announcementClone: mergeCloneUrlLists(
+                      (base as { announcementClone?: string[] })
+                        .announcementClone,
+                      Array.isArray(eventRepoData.clone)
+                        ? eventRepoData.clone.filter(
+                            (url: string) =>
+                              url &&
+                              !url.includes("localhost") &&
+                              !url.includes("127.0.0.1")
+                          )
+                        : []
+                    ),
                     relays: newRelays,
                     ...(nextDesc ? { description: nextDesc } : {}),
                     ...(newLinks ? { links: newLinks } : {}),
@@ -8793,9 +8858,13 @@ export function RepoCodePage() {
                           resolvedParams.entity,
                           resolvedParams.repo
                         ),
-                        announcementClone: Array.isArray(eventRepoData.clone)
-                          ? eventRepoData.clone
-                          : [],
+                        announcementClone: mergeCloneUrlLists(
+                          (base as { announcementClone?: string[] })
+                            .announcementClone,
+                          Array.isArray(eventRepoData.clone)
+                            ? eventRepoData.clone
+                            : []
+                        ),
                         links: mergeAnnouncementLinksWithLocal(
                           base.links,
                           eventRepoData.links
@@ -9041,24 +9110,19 @@ export function RepoCodePage() {
                   return;
                 }
 
-                // Safety net: clone URLs must come from the latest event only
+                // Latest 30617 wins for relays / event id. Clone URLs stay a
+                // union of every collected snapshot plus what we already harvested.
                 if (eventRepoData) {
-                  eventRepoData.clone = [];
+                  eventRepoData.clone = mergeCloneUrlLists(
+                    eventRepoData.clone,
+                    collectedEvents.flatMap((row) =>
+                      cloneUrlsFromTags(row.event?.tags || [])
+                    )
+                  );
                   eventRepoData.relays = [];
                   for (const tag of latestEvent.event.tags || []) {
                     if (!Array.isArray(tag) || tag.length < 2) continue;
-                    if (tag[0] === "clone") {
-                      for (const v of nip34TagValuesFromRow(tag)) {
-                        if (
-                          v &&
-                          !v.includes("localhost") &&
-                          !v.includes("127.0.0.1") &&
-                          !eventRepoData.clone.includes(v)
-                        ) {
-                          eventRepoData.clone.push(v);
-                        }
-                      }
-                    } else if (tag[0] === "relay" || tag[0] === "relays") {
+                    if (tag[0] === "relay" || tag[0] === "relays") {
                       if (!eventRepoData.relays) eventRepoData.relays = [];
                       for (const raw of nip34TagValuesFromRow(tag)) {
                         const normalized = normalizeRelayWssUrl(raw);
@@ -9085,7 +9149,9 @@ export function RepoCodePage() {
                     ownerPubkey: ownerPubkey || undefined,
                   });
                   console.log(
-                    `📋 [File Fetch] NIP-34 EOSE: latest event has ${
+                    `📋 [File Fetch] NIP-34 EOSE: union of ${
+                      collectedEvents.length
+                    } event(s) has ${
                       eventRepoData.clone.length
                     } clone URL(s), ${
                       Array.isArray(eventRepoData.links)
@@ -9095,6 +9161,12 @@ export function RepoCodePage() {
                   );
                   // Merge announcement links with local Settings / import links.
                   // Never overwrite with forge-browse-only web tags.
+                  const eoseClones = eventRepoData.clone.filter(
+                    (url: string) =>
+                      url &&
+                      !url.includes("localhost") &&
+                      !url.includes("127.0.0.1")
+                  );
                   setRepoData((prev: any) => {
                     const base =
                       prev ||
@@ -9116,10 +9188,25 @@ export function RepoCodePage() {
                       parsedAnnouncementLinks
                     );
                     eventRepoData.links = mergedLinks;
+                    const mergedClone = mergeCloneUrlLists(
+                      base.clone,
+                      eoseClones
+                    );
+                    const mergedAnnounced = mergeCloneUrlLists(
+                      (base as { announcementClone?: string[] })
+                        .announcementClone,
+                      eoseClones
+                    );
                     if (
                       prev &&
                       JSON.stringify(prev.links || []) ===
                         JSON.stringify(mergedLinks) &&
+                      JSON.stringify(prev.clone || []) ===
+                        JSON.stringify(mergedClone) &&
+                      JSON.stringify(
+                        (prev as { announcementClone?: string[] })
+                          .announcementClone || []
+                      ) === JSON.stringify(mergedAnnounced) &&
                       (!eventRepoData.sourceUrl ||
                         prev.sourceUrl === eventRepoData.sourceUrl)
                     ) {
@@ -9128,6 +9215,8 @@ export function RepoCodePage() {
                     return {
                       ...base,
                       links: mergedLinks,
+                      clone: mergedClone,
+                      announcementClone: mergedAnnounced,
                       ...(eventRepoData.sourceUrl
                         ? { sourceUrl: eventRepoData.sourceUrl }
                         : {}),
@@ -17298,16 +17387,20 @@ export function RepoCodePage() {
         fromSuccessful
       ).filter((u) => !u.includes("git.gittr.space"));
     }
-    const uniqueCloneUrls = Array.from(
-      new Set(
+    const sourceForCloneFilter =
+      (effectiveSourceUrl && String(effectiveSourceUrl).trim()) || dsUrl;
+    const uniqueCloneUrls = orderCloneUrlsForSidebar(
+      dedupeNormalizedCloneUrls(
         rawCloneList.filter(
           (url): url is string =>
             typeof url === "string" && url.trim().length > 0
         )
-      )
+      ),
+      {
+        primaryGitServerEnv: process.env.NEXT_PUBLIC_GIT_SERVER_URL,
+        sourceUrl: sourceForCloneFilter,
+      }
     );
-    const sourceForCloneFilter =
-      (effectiveSourceUrl && String(effectiveSourceUrl).trim()) || dsUrl;
     const displayCloneUrls = filterDisplayCloneUrlsForSidebar(uniqueCloneUrls, {
       primaryGitServerEnv: process.env.NEXT_PUBLIC_GIT_SERVER_URL,
       sourceUrl: sourceForCloneFilter,

@@ -1,4 +1,7 @@
-import { gitUrlHostname } from "../utils/filter-display-clone-urls";
+import {
+  dedupeNormalizedCloneUrls,
+  gitUrlHostname,
+} from "../utils/filter-display-clone-urls";
 
 import { isForeignForgeUrl } from "./extract-forge-url-from-event-tags";
 
@@ -9,20 +12,7 @@ export function isGittrDeploymentCloneHost(hostname: string): boolean {
 }
 
 function uniqueHttps(urls: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of urls) {
-    const u = String(raw || "").trim();
-    if (!u) continue;
-    const key = u
-      .replace(/\/+$/, "")
-      .replace(/\.git$/i, "")
-      .toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(u);
-  }
-  return out;
+  return dedupeNormalizedCloneUrls(urls.filter((u) => String(u || "").trim()));
 }
 
 /**
@@ -49,11 +39,20 @@ export function sidebarClonesFromAnnouncement(opts: {
     opts.forgeSourceUrl && isForeignForgeUrl(opts.forgeSourceUrl)
       ? [opts.forgeSourceUrl]
       : [];
-  const forgeFromMerged = merged.filter((u) => isForeignForgeUrl(u));
   if (announced.length > 0) {
-    // Keep event clones (including gittr when listed). Union GitHub/GitLab/…
-    // from `source` or leftover local merge — do not drop the forge after a flush.
-    return uniqueHttps([...announced, ...forgeFromMerged, ...forge]);
+    // Event clones plus leftover mirrors/forge from local merge. Do not keep an
+    // inferred git.gittr.space unless the event actually listed it.
+    const announcedHosts = new Set(
+      announced.map((u) => gitUrlHostname(u)).filter(Boolean)
+    );
+    const extraMerged = merged.filter((u) => {
+      const h = gitUrlHostname(u);
+      if (isGittrDeploymentCloneHost(h) && !announcedHosts.has(h)) {
+        return false;
+      }
+      return true;
+    });
+    return uniqueHttps([...announced, ...extraMerged, ...forge]);
   }
   return uniqueHttps([
     ...merged.filter((u) => !isGittrDeploymentCloneHost(gitUrlHostname(u))),

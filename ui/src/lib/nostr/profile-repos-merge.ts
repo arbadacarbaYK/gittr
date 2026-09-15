@@ -13,6 +13,7 @@ import { nip19 } from "nostr-tools";
 import { extractForgeSourceFromEventTags } from "../repos/extract-forge-url-from-event-tags";
 import { sanitizeForkedFromField } from "../repos/fork-attribution";
 import { preferRepoDisplayName } from "../repos/merge-profile-repos";
+import { mergeCloneUrlLists } from "../utils/filter-display-clone-urls";
 import { nip34TagValuesFromRow } from "../utils/nip34-tag-values";
 
 import { isRepoAnnouncementDeleted } from "./repo-deleted";
@@ -157,6 +158,8 @@ function fillAnnounceGaps(row: ProfileRepoRow, event: ProfileRepoEvent): void {
   }
   if (!row.clone || row.clone.length === 0) {
     row.clone = cloneUrlsFromTags(event.tags);
+  } else {
+    row.clone = mergeCloneUrlLists(row.clone, cloneUrlsFromTags(event.tags));
   }
   if (!row.lastNostrEventId && event.id) {
     row.lastNostrEventId = event.id;
@@ -197,7 +200,7 @@ function buildAnnounceRow(
     stateEventId: existing?.stateEventId,
     sourceUrl,
     forkedFrom,
-    clone: clone.length > 0 ? clone : existing?.clone,
+    clone: mergeCloneUrlLists(existing?.clone, clone),
     publicRead,
   };
 }

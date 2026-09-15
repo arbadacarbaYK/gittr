@@ -35,6 +35,7 @@ import {
 import { markGithubBadgeWarm } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { mergeCloneUrlLists } from "@/lib/utils/filter-display-clone-urls";
 import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import {
@@ -689,7 +690,10 @@ export function persistRepoAnnouncementMeta(opts: {
     }
   );
   if (sanitizedFork) patch.forkedFrom = sanitizedFork;
-  if (clone.length > 0) patch.clone = clone;
+  if (clone.length > 0) {
+    patch.clone =
+      idx >= 0 ? mergeCloneUrlLists(repos[idx]?.clone, clone) : clone;
+  }
   if (description) patch.description = description;
   if (owner) patch.ownerPubkey = owner;
   if (typeof opts.publicRead === "boolean") {
@@ -710,7 +714,7 @@ export function persistRepoAnnouncementMeta(opts: {
     const next: StoredRepo = {
       ...prev,
       ...patch,
-      clone: clone.length > 0 ? clone : prev.clone,
+      clone: mergeCloneUrlLists(prev.clone, clone),
       sourceUrl: source || prev.sourceUrl,
       description: description || prev.description,
       lastNostrEventId: eventId || prev.lastNostrEventId,

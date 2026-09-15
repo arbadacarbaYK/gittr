@@ -105,4 +105,27 @@ describe("profile-repos merge (latest 30617 wins)", () => {
     );
     expect(repos.map((r) => r.repo)).toEqual(["reopened"]);
   });
+
+  it("unions clone URLs when a later thin 30617 follows a fuller Push", () => {
+    const repos = rowsOf(
+      announce("gittr", 1_700_000_000, {}, [
+        [
+          "clone",
+          "https://git.gittr.space/npub1abc/gittr.git",
+          "https://git.shakespeare.diy/npub1abc/gittr.git",
+          "https://relay.ngit.dev/npub1abc/gittr.git",
+        ],
+      ]),
+      announce("gittr", 1_700_000_100, {}, [
+        ["clone", "https://relay.ngit.dev/npub1abc/gittr.git"],
+      ])
+    );
+    expect(repos[0]?.clone).toEqual(
+      expect.arrayContaining([
+        "https://git.gittr.space/npub1abc/gittr.git",
+        "https://git.shakespeare.diy/npub1abc/gittr.git",
+        "https://relay.ngit.dev/npub1abc/gittr.git",
+      ])
+    );
+  });
 });

@@ -27,6 +27,7 @@ Two different “newest”s:
 | Layer | What wins |
 | --- | --- |
 | **Is this repo live?** | The latest kind **30617**. If that event is soft-deleted, file fetch stops and the repo is deleted. A newer live 30617 beats an older deleted one. Kind **30618** (state / SHAs) never brings a deleted repo back. |
+| **Which clone URLs in the sidebar?** | **Union** of `clone[]` tags across 30617 snapshots for this `d` tag. Latest-wins still applies to About, live-or-deleted, and relays. |
 | **Which file tree?** | If the live announcement has a forge **`source`** (GitHub, GitLab, Codeberg, …) and you have no unpushed drafts, that **forge tip** is the tree — including files removed upstream. Only when there is no forge, or the forge fetch fails, do remaining `clone[]` hosts race: **first non-empty listing**. gittr does not compare commit SHAs across `git.gittr.space` vs ngit vs GitHub. |
 
 **Bridge already has files, GitHub (or another `source`) is newer:** the old tree can show for a moment from this browser. Then the forge listing is fetched and **replaces** it. Push with no local edits runs `sync-from-source` so the bridge bare repo catches up, then 30618 announces those SHAs. Unpushed Upload/edits stay on top until you Push.
@@ -37,7 +38,7 @@ flowchart TD
   cache --> nostr[Ask relays for kind 30617]
   nostr --> live{Latest 30617 is live}
   live -->|soft-deleted| gone[Stop — repo is deleted]
-  live -->|yes| tags[clone and source from that event]
+  live -->|yes| tags[union clone tags from every 30617 plus latest source]
   tags --> drafts{Unpushed local edits}
   drafts -->|yes| keep[Keep drafts on top]
   drafts -->|no| forge{Announcement has a forge source}
@@ -183,7 +184,7 @@ The **nsite-gateway** (`pages.gittr.space`) is not a third-party cache in front 
 ## Sidebar: Git Server and Clone URL
 
 - **Git Server** is the forge URL from the announcement when one exists. For Nostr-only repos it is a GRASP clone from the same event (on this deployment, `git.gittr.space` when that host is listed).
-- **Clone URL** shows forge `source` plus **every** host on the push GRASP set. **has files** = this visit already loaded a tree from that host (`git clone` should work). No badge = listed on the note only (clone might not work). Same rule for every host; we do not extra-probe the rest after one already answered.
+- **Clone URL** shows every `clone[]` host from **all** kind **30617** snapshots for this repo (not only the latest note), plus forge `source`. ngit / git-remote-nostr often republish a one-host announcement after gittr Push listed every GRASP mirror — a thinner later note must not hide those remotes. One row per host (`.git` / no-`.git` collapse). Order: this deployment’s git host, then the other Push GRASP mirrors, forge last. **has files** = this visit already loaded a tree from that host (`git clone` should work). No badge = listed on the note only (clone might not work). Same rule for every host; we do not extra-probe the rest after one already answered.
 - After Clear local / flush, the live 30617 still fills description, clone tags, and event id.
 
 ## Push tip

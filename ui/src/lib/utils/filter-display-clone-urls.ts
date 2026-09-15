@@ -1,4 +1,8 @@
-import { isGraspDomainForPushing, isGraspServer } from "./grasp-servers";
+import {
+  GRASP_SERVERS_FOR_PUSHING,
+  isGraspDomainForPushing,
+  isGraspServer,
+} from "./grasp-servers";
 
 const UPSTREAM_HOSTS = ["github.com", "gitlab.com", "codeberg.org"] as const;
 
@@ -16,6 +20,69 @@ export function gitUrlHostname(url: string): string {
   } catch {
     return "";
   }
+}
+
+export function normalizeCloneUrlKey(url: string): string {
+  return String(url || "")
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+}
+
+/** One row per host/path. Prefer the `.git` form when both exist. */
+export function dedupeNormalizedCloneUrls(urls: string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const raw of urls) {
+    const u = String(raw || "").trim();
+    if (!u) continue;
+    const key = normalizeCloneUrlKey(u);
+    if (!key) continue;
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, u);
+      continue;
+    }
+    const nextHasGit = /\.git$/i.test(u);
+    const prevHasGit = /\.git$/i.test(prev);
+    if (nextHasGit && !prevHasGit) byKey.set(key, u);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * gittr Push order: this deployment’s git host, then the other advertised
+ * GRASP mirrors, then everything else, forge `source` last.
+ */
+export function orderCloneUrlsForSidebar(
+  urls: string[],
+  options: { primaryGitServerEnv?: string; sourceUrl?: string }
+): string[] {
+  const primary = primaryGitHostFromEnv(options.primaryGitServerEnv);
+  const ranked = GRASP_SERVERS_FOR_PUSHING.map((h) => h.toLowerCase());
+  const score = (u: string): number => {
+    if (u.startsWith("nostr://")) return 400;
+    if (u.startsWith("git@")) return 300;
+    const h = gitUrlHostname(u);
+    if (primary && h === primary) return 0;
+    const gi = ranked.indexOf(h);
+    if (gi >= 0) return 1 + gi;
+    if (sourceMatchesUpstreamClone(u, options.sourceUrl)) return 200;
+    return 100;
+  };
+  return [...urls].sort((a, b) => {
+    const d = score(a) - score(b);
+    if (d !== 0) return d;
+    return a.localeCompare(b);
+  });
+}
+
+/** Keep every clone we have already seen; a thinner later snapshot must not wipe mirrors. */
+export function mergeCloneUrlLists(
+  prev: readonly string[] | undefined | null,
+  next: readonly string[] | undefined | null
+): string[] {
+  return dedupeNormalizedCloneUrls([...(next || []), ...(prev || [])]);
 }
 
 export function primaryGitHostFromEnv(

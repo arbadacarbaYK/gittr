@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   cloneUrlLiveHint,
   cloneUrlLiveHintShowsBadge,
+  dedupeNormalizedCloneUrls,
   filterDisplayCloneUrlsForSidebar,
+  mergeCloneUrlLists,
+  orderCloneUrlsForSidebar,
 } from "./filter-display-clone-urls";
 import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
 
@@ -107,5 +110,34 @@ describe("cloneUrlLiveHint", () => {
         fetchStatuses: [{ source: "relay.ngit.dev", status: "success" }],
       })
     ).toBe("has-files");
+  });
+});
+
+describe("clone URL list helpers", () => {
+  const npub = "npub1abc";
+  const repo = "gittr";
+  const gittr = `https://git.gittr.space/${npub}/${repo}.git`;
+  const ngit = `https://relay.ngit.dev/${npub}/${repo}.git`;
+  const shakespeare = `https://git.shakespeare.diy/${npub}/${repo}.git`;
+  const github = "https://github.com/arbadacarbaYK/gittr";
+  const githubGit = "https://github.com/arbadacarbaYK/gittr.git";
+
+  it("does not let a thinner later snapshot drop Push mirrors", () => {
+    expect(mergeCloneUrlLists([gittr, shakespeare, ngit], [ngit])).toEqual(
+      expect.arrayContaining([gittr, shakespeare, ngit])
+    );
+  });
+
+  it("shows one GitHub row when source and .git both exist", () => {
+    expect(dedupeNormalizedCloneUrls([github, githubGit])).toEqual([githubGit]);
+  });
+
+  it("puts this deployment git host first and forge source last", () => {
+    const ordered = orderCloneUrlsForSidebar([ngit, githubGit, gittr], {
+      primaryGitServerEnv: "https://git.gittr.space",
+      sourceUrl: github,
+    });
+    expect(ordered[0]).toBe(gittr);
+    expect(ordered[ordered.length - 1]).toBe(githubGit);
   });
 });

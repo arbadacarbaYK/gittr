@@ -36,6 +36,25 @@ describe("sidebarClonesFromAnnouncement", () => {
     expect(out).toEqual([`https://relay.ngit.dev/${npub}/amber-up.git`]);
   });
 
+  it("unions leftover GRASP mirrors onto a thin later announcement", () => {
+    const announced = [`https://relay.ngit.dev/${npub}/gittr.git`];
+    const out = sidebarClonesFromAnnouncement({
+      announcementClones: announced,
+      mergedClones: [
+        `https://git.gittr.space/${npub}/gittr.git`,
+        `https://git.shakespeare.diy/${npub}/gittr.git`,
+        `https://gitnostr.com/${npub}/gittr.git`,
+        ...announced,
+      ],
+      forgeSourceUrl: "https://github.com/arbadacarbaYK/gittr",
+    });
+    expect(out.some((u) => u.includes("git.shakespeare.diy"))).toBe(true);
+    expect(out.some((u) => u.includes("gitnostr.com"))).toBe(true);
+    expect(out.some((u) => u.includes("github.com"))).toBe(true);
+    // Inferred gittr host stays hidden unless the event listed it
+    expect(out.some((u) => u.includes("git.gittr.space"))).toBe(false);
+  });
+
   it("unions a GitHub source onto announcement GRASP clones", () => {
     const announced = [
       `https://relay.ngit.dev/${npub}/andronixorigin.git`,
