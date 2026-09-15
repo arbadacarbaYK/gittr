@@ -23576,32 +23576,6 @@ export function RepoCodePage() {
                               )}
                             </>
                           )}
-                        {gittrPagesUrls && pagesSiteListedByGateway === true ? (
-                          <div className="mb-3 rounded-md border border-violet-900/25 bg-violet-950/10 px-2.5 py-2 text-[11px] text-zinc-400">
-                            <span className="font-medium text-zinc-300">
-                              Nostr Pages
-                            </span>
-                            <span className="mx-1.5 text-zinc-600">·</span>
-                            <a
-                              className="text-violet-400 underline-offset-2 hover:underline"
-                              href={
-                                pagesSiteMatchedUrl || gittrPagesUrls.namedUrl
-                              }
-                              rel="noopener noreferrer"
-                              target="_blank"
-                              title="Canonical site for this repo (NIP-5A named host)"
-                            >
-                              Live site ({gittrPagesUrls.dTag})
-                            </a>
-                            <span className="mx-1.5 text-zinc-600">·</span>
-                            <Link
-                              className="text-violet-400 underline-offset-2 hover:underline"
-                              href="/pages"
-                            >
-                              Directory
-                            </Link>
-                          </div>
-                        ) : null}
 
                         {gittrPagesUrls &&
                           canManageGittrPagesReadme &&
