@@ -55,6 +55,21 @@ export function mergeAnnouncementTagClones(
 }
 
 /**
+ * Clone URL rows from persisted + live 30617 `clone[]` tags.
+ * Working/fetch `clone` is not mixed in here — it can still hold inferred
+ * git.gittr.space from file fetch, which must not appear on foreign repos.
+ */
+export function sidebarEventCloneUrls(opts: {
+  announcementClones?: readonly string[] | null;
+  storedAnnounced?: readonly string[] | null;
+}): string[] {
+  return mergeAnnouncementTagClones(
+    opts.storedAnnounced,
+    opts.announcementClones
+  );
+}
+
+/**
  * Clone URL rows: every `clone[]` URL we already have from the announcement
  * (and persisted / merged copies of that event), plus forge `source`.
  * Do not hide git.gittr.space when it is on those lists. has-files is a badge

@@ -191,6 +191,7 @@ import {
   mergeAnnouncementTagClones,
   pickGitServerFromAnnouncementClones,
   sidebarClonesFromAnnouncement,
+  sidebarEventCloneUrls,
 } from "@/lib/repos/sidebar-announcement-clones";
 import {
   type RepoFileEntry,
@@ -5818,6 +5819,33 @@ export function RepoCodePage() {
           "⏭️ [File Fetch] Upstream tree already refreshed recently, skipping:",
           repoKeyWithBranch
         );
+        const pk = (ownerPubkeyForFetch || "").toLowerCase();
+        if (/^[0-9a-f]{64}$/.test(pk)) {
+          void resolveLiveRepoAnnouncement({
+            ownerPubkey: pk,
+            repoName: resolvedParams.repo,
+            entity: resolvedParams.entity,
+            persist: true,
+            broadcast: true,
+          }).then((hints) => {
+            if (!hints?.clone?.length && !hints?.sourceUrl) return;
+            setRepoData((prev: any) => {
+              const base = prev || {};
+              return {
+                ...base,
+                clone: mergeCloneUrlLists(base.clone, hints.clone),
+                announcementClone: mergeAnnouncementTagClones(
+                  (base as { announcementClone?: string[] }).announcementClone,
+                  hints.clone
+                ),
+                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                lastNostrEventId:
+                  hints.lastNostrEventId || base.lastNostrEventId,
+                syncedFromNostr: true,
+              };
+            });
+          });
+        }
         return;
       }
     }
@@ -7631,23 +7659,28 @@ export function RepoCodePage() {
                         resolvedParams.entity,
                         resolvedParams.repo
                       );
+                      const nextAnnounced = mergeAnnouncementTagClones(
+                        base.announcementClone,
+                        eventClones
+                      );
                       if (
                         prev &&
                         Array.isArray(prev.clone) &&
                         prev.clone.length === merged.length &&
                         prev.clone.every((u: string) => merged.includes(u)) &&
                         Array.isArray(prev.announcementClone) &&
-                        prev.announcementClone.length === eventClones.length
+                        prev.announcementClone.length ===
+                          nextAnnounced.length &&
+                        prev.announcementClone.every((u: string) =>
+                          nextAnnounced.includes(u)
+                        )
                       ) {
                         return prev;
                       }
                       return {
                         ...base,
                         clone: merged,
-                        announcementClone: mergeAnnouncementTagClones(
-                          base.announcementClone,
-                          eventClones
-                        ),
+                        announcementClone: nextAnnounced,
                         lastNostrEventId:
                           eventRepoData.lastEventId || base.lastNostrEventId,
                         syncedFromNostr: true,
@@ -17356,10 +17389,10 @@ export function RepoCodePage() {
     const liveClone = Array.isArray((repoData as any)?.clone)
       ? ((repoData as any).clone as string[])
       : [];
-    const fromEvent = mergeAnnouncementTagClones(
+    const fromEvent = sidebarEventCloneUrls({
+      announcementClones,
       storedAnnounced,
-      announcementClones
-    );
+    });
     const eventHasClones = fromEvent.length > 0;
     let rawCloneList = sidebarClonesFromAnnouncement({
       announcementClones: eventHasClones ? fromEvent : [],

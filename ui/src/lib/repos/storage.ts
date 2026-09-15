@@ -867,9 +867,6 @@ export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
   if (typeof slim.description === "string" && slim.description.length > 280) {
     slim.description = slim.description.slice(0, 280);
   }
-  if (Array.isArray(slim.clone) && slim.clone.length > 4) {
-    slim.clone = slim.clone.slice(0, 4);
-  }
   if (Array.isArray(slim.relays) && slim.relays.length > 6) {
     slim.relays = slim.relays.slice(0, 6);
   }
@@ -935,8 +932,11 @@ function ultraSlimRepoForCatalog(repo: StoredRepo): StoredRepo {
   if (Array.isArray(repo.topics) && repo.topics.length) {
     out.topics = repo.topics.slice(0, 8);
   }
+  if (Array.isArray(repo.announcementClone) && repo.announcementClone.length) {
+    out.announcementClone = repo.announcementClone;
+  }
   if (Array.isArray(repo.clone) && repo.clone.length) {
-    out.clone = repo.clone.slice(0, 2);
+    out.clone = repo.clone;
   }
   if (ownerOnly && ownerOnly.length) {
     out.contributors = ownerOnly.map((c) => ({

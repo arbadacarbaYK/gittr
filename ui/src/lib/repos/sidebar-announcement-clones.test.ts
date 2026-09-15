@@ -4,6 +4,7 @@ import {
   mergeAnnouncementTagClones,
   pickGitServerFromAnnouncementClones,
   sidebarClonesFromAnnouncement,
+  sidebarEventCloneUrls,
 } from "./sidebar-announcement-clones";
 
 const npub = "npub1k0y4eceal2zryes3azm6nsgt0r0jsa2v8zcsdf9uqxttn0jlfe9q04c9h8";
@@ -92,6 +93,16 @@ describe("mergeAnnouncementTagClones", () => {
     );
     expect(out).toEqual(expect.arrayContaining([gittr, ngit]));
     expect(out.some((u) => u.includes("uid.ovh"))).toBe(false);
+  });
+
+  it("keeps git.gittr.space from a persisted event when the live snapshot is thin", () => {
+    const gittr = `https://git.gittr.space/${npub}/gittr.git`;
+    const ngit = `https://relay.ngit.dev/${npub}/gittr.git`;
+    const out = sidebarEventCloneUrls({
+      announcementClones: [ngit],
+      storedAnnounced: [gittr, ngit],
+    });
+    expect(out).toEqual(expect.arrayContaining([gittr, ngit]));
   });
 
   it("keeps an excluded GRASP host when the event actually listed it", () => {
