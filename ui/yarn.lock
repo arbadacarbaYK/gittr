@@ -3409,6 +3409,11 @@ functions-have-names@^1.2.3:
   resolved "https://registry.npmjs.org/functions-have-names/-/functions-have-names-1.2.3.tgz"
   integrity sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==
 
+gemoji@^8.0.0:
+  version "8.1.0"
+  resolved "https://registry.yarnpkg.com/gemoji/-/gemoji-8.1.0.tgz#3d47a26e569c51efa95198822a6f483d7a7ae600"
+  integrity sha512-HA4Gx59dw2+tn+UAa7XEV4ufUKI4fH1KgcbenVA9YKSj1QJTT0xh5Mwv5HMFNN3l2OtUe3ZIfuRwSyZS5pLIWw==
+
 generator-function@^2.0.0:
   version "2.0.1"
   resolved "https://registry.npmjs.org/generator-function/-/generator-function-2.0.1.tgz"
@@ -5585,6 +5590,15 @@ rehype-stringify@^10.0.1:
     "@types/hast" "^3.0.0"
     hast-util-to-html "^9.0.0"
     unified "^11.0.0"
+
+remark-gemoji@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/remark-gemoji/-/remark-gemoji-8.0.0.tgz#525380bdf603f94856ee2b2cbd7e6947b07ca72a"
+  integrity sha512-/fL9rc72FYwFGtOKcT+QeQdx9Q9t5v4N6KLXSDOTEgaedzK85I9judBqB2eqz+g4b0ERMejlwSOuPK+wket6aA==
+  dependencies:
+    "@types/mdast" "^4.0.0"
+    gemoji "^8.0.0"
+    mdast-util-find-and-replace "^3.0.0"
 
 remark-gfm@^4.0.1:
   version "4.0.1"

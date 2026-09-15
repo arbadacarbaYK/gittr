@@ -108,7 +108,7 @@ Same winner as the tree. Branch comes from `?branch=`, then `filesBranch` / `res
 6. Remaining `clone[]` only if multifetch has no winners yet.
 7. Binary → base64 / data URL in the browser.
 
-Relative README images (`![…](file-fetch.gif)`) resolve against **that markdown file’s folder**. Status badges (`img.shields.io` / badgen) stay **inline in a row** like GitHub; only non-badge images get the scrollable block wrapper.
+Relative README images (`![…](file-fetch.gif)`) resolve against **that markdown file’s folder**. Status badges (`img.shields.io` / badgen) stay **inline in a row** like GitHub; only non-badge images get the scrollable block wrapper. GitHub gemoji shortcodes (`:no_entry:`) in README / file preview become Unicode emoji (`ui/src/lib/security/markdown-remark-plugins.ts`).
 
 Repo **avatars** (Explore cards vs the repo header): stored / NIP-34 `image` → GitHub/GitLab/Codeberg raw logo file → bridge `/api/og/repo-image?avatar=1` (raw bytes) → owner kind-0 picture (`https` or inline `data:image/…` SVG). GRASP-only clones and `ai:user@host/…` strings are not GitHub. Never use JSON `file-content` as `<img src>` — that used to wipe the header to `/logo.svg`. The header stacks the same layers as Explore so a missing repo logo still shows the owner picture.
 

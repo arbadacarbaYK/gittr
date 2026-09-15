@@ -30,6 +30,7 @@ import {
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
+import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 
@@ -38,7 +39,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getEventHash } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 type ThreadedComment = DiscussionComment & {
   depth: number;
@@ -418,7 +418,7 @@ export default function DiscussionDetailPage({
               </div>
               <div className="prose prose-invert max-w-none text-sm mb-3">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={markdownRemarkPlugins}
                   rehypePlugins={markdownRehypePlugins}
                   components={{
                     code: MarkdownCode,
@@ -548,7 +548,7 @@ export default function DiscussionDetailPage({
             </div>
             <div className="prose prose-invert max-w-none">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={markdownRemarkPlugins}
                 rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,

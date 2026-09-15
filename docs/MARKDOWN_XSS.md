@@ -1,13 +1,18 @@
 # Markdown XSS controls
 
 User and Nostr-sourced markdown (READMEs, repo files, About text, issue/PR bodies,
-discussion body + comments) is rendered with `react-markdown` + `rehype-raw`
-**and** `rehype-sanitize` via the shared helper:
+discussion body + comments) is rendered with `react-markdown` + `remark-gfm` +
+`remark-gemoji` + `rehype-raw` **and** `rehype-sanitize` via the shared helpers:
 
+`ui/src/lib/security/markdown-remark-plugins.ts` (GFM tables + GitHub `:shortcode:` → emoji)
 `ui/src/lib/security/markdown-rehype-plugins.ts`
 
 Never use `rehypeRaw` alone on those paths. Custom `components` (`code` / `img` / `a`)
 are not a substitute for sanitization.
+
+GitHub-style gemoji shortcodes (`:no_entry:`, `:building_construction:`, …) become
+Unicode emoji in preview. Unknown `:codes:` stay as text. Fenced/inline code is not
+converted.
 
 Mermaid fenced blocks go through `MermaidRenderer` with
 `securityLevel: "antiscript"` (not `"loose"`).
@@ -16,7 +21,8 @@ CSP in `ui/next.config.js` still allows `'unsafe-inline'` / `'unsafe-eval'` for
 Next/runtime needs. Sanitize is the primary XSS control for markdown; tightening
 CSP is a separate follow-up (Report-Only Bundle B is optional / parked).
 
-Unit coverage: `ui/src/lib/security/markdown-rehype-plugins.test.ts`.
+Unit coverage: `ui/src/lib/security/markdown-rehype-plugins.test.ts`,
+`ui/src/lib/security/markdown-remark-plugins.test.ts`.
 
 ## Separate sink: HTML / PDF file preview iframes
 

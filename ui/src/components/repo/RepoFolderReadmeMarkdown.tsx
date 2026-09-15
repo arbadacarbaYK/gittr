@@ -11,10 +11,10 @@ import {
 
 import { ReadmeMarkdownImage } from "@/components/repo/ReadmeMarkdownImage";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
+import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 /**
  * Only truly huge READMEs need a click. Real project READMEs often land in the
@@ -190,7 +190,7 @@ export const RepoFolderReadmeMarkdown = memo(function RepoFolderReadmeMarkdown({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={markdownRemarkPlugins}
       rehypePlugins={markdownRehypePlugins}
       components={
         {

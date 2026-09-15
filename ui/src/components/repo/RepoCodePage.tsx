@@ -233,6 +233,7 @@ import {
 } from "@/lib/repos/upstream-precedence";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
+import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
 import { pushAppUrl, replaceAppUrl } from "@/lib/utils/app-history";
@@ -354,7 +355,6 @@ import {
 } from "next/navigation";
 import { nip19 } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 /** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
 const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
@@ -20182,7 +20182,7 @@ export function RepoCodePage() {
                         className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:inline prose-code:not-prose"
                       >
                         <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
+                          remarkPlugins={markdownRemarkPlugins}
                           rehypePlugins={markdownRehypePlugins}
                           components={{
                             ...fileHeadingComponents,
@@ -20432,7 +20432,7 @@ export function RepoCodePage() {
             {mounted &&
             sidebarAboutText(repoData?.description, resolvedParams.repo) ? (
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={markdownRemarkPlugins}
                 rehypePlugins={markdownRehypePlugins}
                 components={{
                   a: repoDescriptionMarkdownAnchor,

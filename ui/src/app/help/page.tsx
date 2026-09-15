@@ -2326,7 +2326,9 @@ export default function HelpPage() {
             <p className="text-sm text-gray-400">
               <strong>Markdown anchors:</strong> In Markdown preview, headings
               show a link icon on hover. Click it to copy a direct heading link
-              and update the URL hash for easy sharing.
+              and update the URL hash for easy sharing. GitHub-style emoji
+              shortcodes such as <code>:no_entry:</code> render as the real
+              emoji (same as on GitHub).
             </p>
             <p className="text-sm text-gray-400">
               <strong>Mobile-friendly:</strong> Line numbers are hidden on

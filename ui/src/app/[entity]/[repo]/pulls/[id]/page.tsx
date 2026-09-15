@@ -78,6 +78,7 @@ import {
   getSecureItem,
 } from "@/lib/security/encryptedStorage";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
+import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import {
   getRepoStorageKey,
@@ -120,7 +121,6 @@ import { useRouter } from "next/navigation";
 import { getEventHash } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 interface ChangedFile {
   path: string;
@@ -2785,7 +2785,7 @@ export default function PRDetailPage({
           <div className="border border-gray-700 rounded p-4">
             <div className="prose prose-invert max-w-none mb-4">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={markdownRemarkPlugins}
                 rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,
@@ -2890,7 +2890,7 @@ export default function PRDetailPage({
                           </div>
                           <div className="prose prose-invert prose-sm max-w-none">
                             <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
+                              remarkPlugins={markdownRemarkPlugins}
                               rehypePlugins={markdownRehypePlugins}
                             >
                               {comment.content}

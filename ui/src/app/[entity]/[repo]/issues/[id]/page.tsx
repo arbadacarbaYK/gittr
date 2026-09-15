@@ -62,6 +62,7 @@ import {
 import { upsertIssue } from "@/lib/repos/warm-repo-issue-pr-counts";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
+import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -109,7 +110,6 @@ import { useRouter } from "next/navigation";
 import { type UnsignedEvent, nip19 } from "nostr-tools";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 interface Issue {
   id: string;
@@ -1936,7 +1936,7 @@ export default function IssueDetailPage({
           <div className="border border-gray-700 rounded p-4">
             <div className="prose prose-invert max-w-none mb-4">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={markdownRemarkPlugins}
                 rehypePlugins={markdownRehypePlugins}
                 components={{
                   code: MarkdownCode,
