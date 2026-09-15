@@ -554,7 +554,8 @@ const repoDataKeyPrefixes = [
   "gittr_prs__",
   "gittr_commits__",
   "gittr_releases__",
-  "gittr_discussions__",
+  "gittr_discussions_",
+  "gittr_projects_",
   "gittr_milestones_",
   "gittr_overrides__",
   "gittr_repo_overrides__",
@@ -581,7 +582,8 @@ const collectMetadataPatterns = (): Set<string> => {
     "gittr_prs__",
     "gittr_commits__",
     "gittr_releases__",
-    "gittr_discussions__",
+    "gittr_discussions_",
+    "gittr_projects_",
     "gittr_milestones_",
   ];
   for (let i = 0; i < localStorage.length; i++) {
@@ -1328,12 +1330,31 @@ export function rememberOpenRepoFileCache(entity: string, repo: string): void {
   ].slice(0, PROTECTED_FILE_CACHE_MAX);
 }
 
+/** Drop large disposable caches so a small write (discussions, comments) can succeed. */
+export function reclaimLocalStorageQuota(protectKeys: string[] = []): number {
+  const skip = new Set(protectKeys.filter(Boolean));
+  let removed = evictLargestOtherRepoFileKeys("", 16, skip);
+  try {
+    const meta = localStorage.getItem("gittr_metadata_cache");
+    if (meta && meta.length > 80_000) {
+      localStorage.removeItem("gittr_metadata_cache");
+      localStorage.removeItem("gittr_metadata_cache_saved_at");
+      removed++;
+    }
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}
+
 function evictLargestOtherRepoFileKeys(
   keepKey: string,
-  maxRemovals: number
+  maxRemovals: number,
+  extraSkip?: Set<string>
 ): number {
   const skip = new Set(protectedRepoFileKeys);
   if (keepKey) skip.add(keepKey);
+  extraSkip?.forEach((key) => skip.add(key));
   const entries: { key: string; len: number }[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);

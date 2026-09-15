@@ -17,6 +17,7 @@ import {
   parseDependencies,
   resolveImportPath,
 } from "@/lib/utils/dependency-parser";
+import { shouldScanDependencySourcePath } from "@/lib/utils/dependency-scan-path";
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
@@ -84,9 +85,6 @@ function isDependencyListingFile(f: { type?: string; path: string }): boolean {
   if (t === "dir" || t === "tree" || t === "folder") return false;
   return true;
 }
-
-const DEPENDENCY_CODE_FILE_RE =
-  /\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|py|pyw|go|rs|java|php|rb|vue|svelte)$/i;
 
 export default function DependenciesPage({
   params,
@@ -1704,7 +1702,7 @@ export default function DependenciesPage({
       setStatus(`Analyzing ${files.length} files for dependencies...`);
       const codeFiles = files.filter(
         (f) =>
-          isDependencyListingFile(f) && DEPENDENCY_CODE_FILE_RE.test(f.path)
+          isDependencyListingFile(f) && shouldScanDependencySourcePath(f.path)
       );
 
       if (codeFiles.length === 0) {
@@ -1747,10 +1745,6 @@ export default function DependenciesPage({
 
           if (content) {
             const deps = parseDependencies(file.path, content);
-            console.log(
-              `📦 [Dependencies] Parsed ${deps.length} dependencies from ${file.path}`,
-              deps
-            );
 
             // Resolve import paths
             const resolvedDeps = deps.map((dep) => {
@@ -1760,12 +1754,6 @@ export default function DependenciesPage({
                 to: resolved || dep.to,
               };
             });
-
-            if (resolvedDeps.length > 0) {
-              console.log(
-                `✅ [Dependencies] Adding ${resolvedDeps.length} resolved dependencies from ${file.path}`
-              );
-            }
 
             allDeps.push(...resolvedDeps);
 
@@ -1793,10 +1781,11 @@ export default function DependenciesPage({
         }
       }
 
-      console.log(
-        `✅ [Dependencies] Total dependencies found: ${allDeps.length}`,
-        allDeps
-      );
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          `✅ [Dependencies] Total dependencies found: ${allDeps.length}`
+        );
+      }
       setDependencies(allDeps);
       if (!layoutInitRef.current) {
         setShowFolders(false);

@@ -1123,16 +1123,14 @@ export function createStatusEvent(
   return event;
 }
 
-// Create and sign a Nostr discussion topic event (NIP-23 kind 30023)
-// Replies MUST use NIP-22 kind 1111 per NIP-23. Repo scope via "repo" tag for filtering.
-export function createDiscussionEvent(
+// Unsigned NIP-23 (kind 30023) discussion topic. Replies MUST use NIP-22 kind 1111.
+export function buildUnsignedDiscussionEvent(
   discussion: DiscussionEvent,
-  privateKey: string
+  pubkeyHex: string,
+  now = Math.floor(Date.now() / 1000)
 ): any {
-  const pubkey = getPublicKey(privateKey);
-  const now = Math.floor(Date.now() / 1000);
+  const pubkey = pubkeyHex.toLowerCase();
   const status = discussion.status || "open";
-
   const d =
     discussion.identifier ??
     `${discussion.repoEntity}/${discussion.repoName}/${now}-${Math.random()
@@ -1164,7 +1162,7 @@ export function createDiscussionEvent(
     tags.push(["category", discussion.category]); // keep for our filters
   }
 
-  const event = {
+  return {
     kind: KIND_LONG_FORM,
     created_at: now,
     tags,
@@ -1173,7 +1171,41 @@ export function createDiscussionEvent(
     id: "",
     sig: "",
   };
+}
 
+/** NIP-09 kind 5 for a discussion topic (event id + optional addressable `a` tag). */
+export function buildUnsignedDiscussionDeletionEvent(opts: {
+  eventId: string;
+  pubkeyHex: string;
+  dTag?: string;
+  title?: string;
+}): any {
+  const pubkey = opts.pubkeyHex.toLowerCase();
+  const tags: string[][] = [["e", opts.eventId]];
+  if (opts.dTag) {
+    tags.push(["a", `${KIND_LONG_FORM}:${pubkey}:${opts.dTag}`]);
+  }
+  const label = opts.title ? ` "${opts.title}"` : "";
+  return {
+    kind: KIND_DELETION,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: `Deleted discussion${label}`,
+    pubkey,
+    id: "",
+    sig: "",
+  };
+}
+
+// Create and sign a Nostr discussion topic event (NIP-23 kind 30023)
+export function createDiscussionEvent(
+  discussion: DiscussionEvent,
+  privateKey: string
+): any {
+  const event = buildUnsignedDiscussionEvent(
+    discussion,
+    getPublicKey(privateKey)
+  );
   event.id = getEventHash(event);
   event.sig = signEvent(event, privateKey);
   return event;

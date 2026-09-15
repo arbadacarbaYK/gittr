@@ -373,6 +373,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `status`: `open` or `closed` (gittr extension)
   - `category`: Category label (gittr extension)
 - **Content**: Markdown body (discussion description)
+- **Local cache**: gittr also stores a copy in this browser (`gittr_discussions__*`). That is **not** a Nostr/relay quota. If origin `localStorage` is full, publish still succeeds and the detail page hydrates by **event id**. Retrying the form reuses the same `d` tag so NIP-23 replaceable events collapse instead of duplicating. Owner **Delete** publishes NIP-09 kind **5** (`e` + optional `a` = `30023:pubkey:d`) and hides the row locally.
 
 ### Kind 9806: Bounties
 

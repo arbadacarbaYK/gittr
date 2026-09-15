@@ -14,19 +14,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { type Discussion, appendDiscussion } from "@/lib/discussions/storage";
+import {
+  type Discussion,
+  LOCAL_STORAGE_QUOTA_MESSAGE,
+  appendDiscussion,
+  normalizeDiscussionPubkey,
+} from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_LONG_FORM, createDiscussionEvent } from "@/lib/nostr/events";
+import { buildUnsignedDiscussionEvent } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
+  resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 
 import { X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import type { Event, UnsignedEvent } from "nostr-tools";
+import { getEventHash } from "nostr-tools";
 
 const DISCUSSION_CATEGORIES = [
   "General",
@@ -43,6 +48,7 @@ export default function NewDiscussionPage() {
   const router = useRouter();
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const draftDTagRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -62,12 +68,8 @@ export default function NewDiscussionPage() {
       setSubmitting(true);
       setErrorMsg("");
 
-      // Check if user is logged in
       if (!isLoggedIn || !currentUserPubkey) {
         setErrorMsg("Please sign in to create discussions.");
-        setTimeout(() => {
-          setErrorMsg("");
-        }, 6000);
         setSubmitting(false);
         return;
       }
@@ -87,115 +89,95 @@ export default function NewDiscussionPage() {
         return;
       }
 
+      if (!publish || !defaultRelays?.length) {
+        setErrorMsg(
+          "Nostr relays are not ready yet. Wait a moment and try again."
+        );
+        setSubmitting(false);
+        return;
+      }
+
       try {
         const now = Math.floor(Date.now() / 1000);
-        const identifier = `${entity}/${repo}/${now}-${Math.random()
-          .toString(36)
-          .slice(2, 10)}`;
+        if (!draftDTagRef.current) {
+          draftDTagRef.current = `${entity}/${repo}/${now}-${Math.random()
+            .toString(36)
+            .slice(2, 10)}`;
+        }
+        const identifier = draftDTagRef.current;
+        const ownerHex =
+          normalizeDiscussionPubkey(entity) ||
+          normalizeDiscussionPubkey(currentUserPubkey);
 
-        let discussionEvent: Event | null = null;
-
-        // Build and sign NIP-23 (kind 30023) event first so we have event.id for the discussion
-        if (publish && defaultRelays && defaultRelays.length > 0) {
-          try {
-            const signingCreds = await resolveSigningCredentials({
-              remoteSigner,
-            });
-            if (!signingCreds) {
-              console.warn("Cannot publish discussion: no signing method");
-            } else {
-              const { hasNip07, privateKey } = signingCreds;
-              const { getPublicKey } = await import("nostr-tools");
-              const authorPubkey = privateKey
-                ? getPublicKey(privateKey)
-                : (await (hasNip07 ? window.nostr.getPublicKey() : null)) ??
-                  currentUserPubkey;
-
-              if (hasNip07 && window.nostr) {
-                const unsignedEvent = {
-                  kind: KIND_LONG_FORM,
-                  created_at: now,
-                  tags: [
-                    ["d", identifier],
-                    ["title", title],
-                    ["summary", description.slice(0, 200)],
-                    ["published_at", String(now)],
-                    ["repo", `${entity}/${repo}`],
-                    ["status", "open"],
-                    ...(selectedCategory
-                      ? [
-                          ["t", selectedCategory],
-                          ["category", selectedCategory],
-                        ]
-                      : []),
-                  ],
-                  content: description,
-                  pubkey: authorPubkey,
-                } as unknown as UnsignedEvent;
-                discussionEvent = await window.nostr.signEvent(unsignedEvent);
-              } else if (privateKey) {
-                discussionEvent = createDiscussionEvent(
-                  {
-                    repoEntity: entity,
-                    repoName: repo,
-                    title,
-                    description,
-                    category: selectedCategory || undefined,
-                    status: "open",
-                    identifier,
-                  },
-                  privateKey
-                );
-              }
-
-              if (discussionEvent && publish) {
-                publish(discussionEvent, defaultRelays);
-                console.log(
-                  "✅ Published discussion (NIP-23 30023) to Nostr:",
-                  discussionEvent.id
-                );
-              }
-            }
-          } catch (err) {
-            console.error("Failed to publish discussion to Nostr:", err);
-          }
+        const signer = await resolveNostrSigner({ remoteSigner });
+        if (!signer) {
+          setErrorMsg(NO_SIGNING_METHOD_MESSAGE);
+          setSubmitting(false);
+          return;
         }
 
-        // Use event.id as discussion id (so NIP-22 comments can reference it); fallback to local id if not published
-        const discussionId = discussionEvent?.id ?? `local-${identifier}`;
+        const pubkeyHex = await signer.getPublicKey();
+        const unsigned = buildUnsignedDiscussionEvent(
+          {
+            repoEntity: entity,
+            repoName: repo,
+            title,
+            description,
+            category: selectedCategory || undefined,
+            status: "open",
+            identifier,
+            ownerPubkey: ownerHex || undefined,
+          },
+          pubkeyHex,
+          now
+        );
+        unsigned.id = getEventHash(unsigned);
+        const discussionEvent = await signer.signEvent(unsigned);
+        if (!discussionEvent?.id || !discussionEvent.sig) {
+          setErrorMsg(
+            "Could not sign the discussion. Unlock Amber (or your signer), then try again. Your text is still in this form."
+          );
+          setSubmitting(false);
+          return;
+        }
+
+        publish(discussionEvent, defaultRelays);
+        console.log(
+          "✅ Published discussion (NIP-23 30023) to Nostr:",
+          discussionEvent.id
+        );
 
         const newDiscussion: Discussion = {
-          id: discussionId,
+          id: discussionEvent.id,
           entity,
           repo,
           title,
           description,
           preview: description.substring(0, 200),
-          author: currentUserPubkey,
+          author: pubkeyHex || currentUserPubkey,
           authorName: initials || currentUserPubkey.slice(0, 8),
           category: selectedCategory || undefined,
-          createdAt: (discussionEvent?.created_at ?? now) * 1000,
+          createdAt: (discussionEvent.created_at ?? now) * 1000,
           commentCount: 0,
           comments: [],
+          dTag: identifier,
         };
 
-        try {
-          appendDiscussion(entity, repo, newDiscussion);
-          window.dispatchEvent(
-            new CustomEvent("gittr:discussion-created", {
-              detail: newDiscussion,
-            })
-          );
-        } catch (err) {
-          console.error("Failed to save discussion locally:", err);
-          const message = err instanceof Error ? err.message : String(err);
-          setErrorMsg(`Failed to save discussion: ${message}`);
-          setSubmitting(false);
-          return;
-        }
+        const saved = appendDiscussion(entity, repo, newDiscussion);
+        window.dispatchEvent(
+          new CustomEvent("gittr:discussion-created", {
+            detail: newDiscussion,
+          })
+        );
 
+        const cacheNote = saved.quota ? "?cache=full" : "";
         setSubmitting(false);
-        router.push(`/${entity}/${repo}/discussions`);
+        router.push(
+          `/${entity}/${repo}/discussions/${discussionEvent.id}${cacheNote}`
+        );
+        if (saved.quota) {
+          setErrorMsg(LOCAL_STORAGE_QUOTA_MESSAGE);
+        }
       } catch (error) {
         console.error("Error creating discussion:", error);
         const message =
@@ -213,6 +195,7 @@ export default function NewDiscussionPage() {
       initials,
       isLoggedIn,
       publish,
+      remoteSigner,
       repo,
       router,
       selectedCategory,

@@ -10,23 +10,32 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   type Discussion,
   type DiscussionComment,
+  LOCAL_STORAGE_QUOTA_MESSAGE,
+  discussionAuthorMatches,
+  discussionFromLongFormEvent,
+  hideDiscussion,
   loadDiscussionById,
   persistDiscussion,
 } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { buildUnsignedCommentEvent } from "@/lib/nostr/events";
+import {
+  KIND_COMMENT,
+  KIND_LONG_FORM,
+  buildUnsignedCommentEvent,
+  buildUnsignedDiscussionDeletionEvent,
+} from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import useSession from "@/lib/nostr/useSession";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 
-import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
+import { ArrowLeft, MessageCircle, Reply, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getEventHash } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -47,29 +56,113 @@ export default function DiscussionDetailPage({
     publish,
     defaultRelays,
     remoteSigner,
+    subscribe,
   } = useNostrContext();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const cacheFull = searchParams?.get("cache") === "full";
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load discussion
   useEffect(() => {
-    try {
-      const foundDiscussion = loadDiscussionById(
-        resolvedParams.entity,
-        resolvedParams.repo,
-        resolvedParams.id
-      );
-      setDiscussion(foundDiscussion);
-    } catch (error) {
-      console.error("Failed to load discussion:", error);
-    } finally {
+    const local = loadDiscussionById(
+      resolvedParams.entity,
+      resolvedParams.repo,
+      resolvedParams.id
+    );
+    if (local) {
+      setDiscussion(local);
       setLoading(false);
     }
-  }, [resolvedParams.entity, resolvedParams.id, resolvedParams.repo]);
+    if (!subscribe || !defaultRelays?.length || !resolvedParams.id) {
+      if (!local) setLoading(false);
+      return;
+    }
+    const unsubTopic = subscribe(
+      [{ ids: [resolvedParams.id], kinds: [KIND_LONG_FORM] }],
+      defaultRelays,
+      (ev) => {
+        if (ev.kind !== KIND_LONG_FORM || ev.id !== resolvedParams.id) return;
+        const fromNostr = discussionFromLongFormEvent(
+          ev as any,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        setDiscussion((prev) => {
+          const merged: Discussion = {
+            ...fromNostr,
+            comments: prev?.comments?.length
+              ? prev.comments
+              : fromNostr.comments,
+            commentCount: prev?.commentCount || fromNostr.commentCount,
+            authorName: prev?.authorName,
+          };
+          try {
+            persistDiscussion(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              merged
+            );
+          } catch {
+            /* cache is optional once the event is on relays */
+          }
+          return merged;
+        });
+        setLoading(false);
+      }
+    );
+    const unsubComments = subscribe(
+      [{ kinds: [KIND_COMMENT], "#E": [resolvedParams.id] }],
+      defaultRelays,
+      (ev) => {
+        if (ev.kind !== KIND_COMMENT || !ev.id) return;
+        const parent =
+          (ev.tags || []).find((t: string[]) => t[0] === "e")?.[1] ||
+          resolvedParams.id;
+        const comment: DiscussionComment = {
+          id: ev.id,
+          author: ev.pubkey,
+          content: ev.content || "",
+          createdAt: (ev.created_at || 0) * 1000,
+          parentId: parent && parent !== resolvedParams.id ? parent : undefined,
+        };
+        setDiscussion((prev) => {
+          if (!prev) return prev;
+          if (prev.comments.some((c) => c.id === comment.id)) return prev;
+          const comments = [...prev.comments, comment];
+          const next = {
+            ...prev,
+            comments,
+            commentCount: comments.length,
+          };
+          try {
+            persistDiscussion(resolvedParams.entity, resolvedParams.repo, next);
+          } catch {
+            /* cache is optional once the event is on relays */
+          }
+          return next;
+        });
+      }
+    );
+    const timeout = window.setTimeout(() => setLoading(false), 8000);
+    return () => {
+      unsubTopic();
+      unsubComments();
+      window.clearTimeout(timeout);
+    };
+  }, [
+    defaultRelays,
+    resolvedParams.entity,
+    resolvedParams.id,
+    resolvedParams.repo,
+    subscribe,
+  ]);
 
   // Get all participant pubkeys for metadata
   const participantPubkeys = discussion
@@ -176,6 +269,60 @@ export default function DiscussionDetailPage({
     remoteSigner,
     replyContent,
     replyParentId,
+  ]);
+
+  const handleDelete = useCallback(async () => {
+    if (!discussion || !currentUserPubkey) return;
+    if (!discussionAuthorMatches(discussion.author, currentUserPubkey)) return;
+    const ok = window.confirm(
+      "Delete this discussion? Relays will get a NIP-09 deletion. It will disappear from this browser’s list."
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setActionError("");
+    try {
+      if (!publish || !defaultRelays?.length) {
+        throw new Error("Nostr relays are not ready yet.");
+      }
+      const signer = await resolveNostrSigner({ remoteSigner });
+      if (!signer) {
+        throw new Error(NO_SIGNING_METHOD_MESSAGE);
+      }
+      const pubkeyHex = await signer.getPublicKey();
+      const unsigned = buildUnsignedDiscussionDeletionEvent({
+        eventId: discussion.id,
+        pubkeyHex,
+        dTag: discussion.dTag,
+        title: discussion.title,
+      });
+      unsigned.id = getEventHash(unsigned);
+      const signed = await signer.signEvent(unsigned);
+      if (!signed?.sig) {
+        throw new Error(
+          "Could not sign the deletion. Unlock Amber, then try again."
+        );
+      }
+      publish(signed, defaultRelays);
+      hideDiscussion(resolvedParams.entity, resolvedParams.repo, discussion.id);
+      window.dispatchEvent(new CustomEvent("gittr:discussion-deleted"));
+      router.push(
+        `/${resolvedParams.entity}/${resolvedParams.repo}/discussions`
+      );
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Failed to delete discussion"
+      );
+      setDeleting(false);
+    }
+  }, [
+    currentUserPubkey,
+    defaultRelays,
+    discussion,
+    publish,
+    remoteSigner,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    router,
   ]);
 
   const startReply = (parentId?: string, authorPubkey?: string) => {
@@ -321,6 +468,10 @@ export default function DiscussionDetailPage({
         <div className="text-center py-12">
           <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-500" />
           <h2 className="text-xl font-semibold mb-2">Discussion not found</h2>
+          <p className="text-sm text-gray-400 mb-4 max-w-md mx-auto">
+            gittr looks this up on Nostr by event id. If it never published, or
+            relays have not answered yet, try the list again in a moment.
+          </p>
           <Link
             href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}
           >
@@ -353,7 +504,30 @@ export default function DiscussionDetailPage({
             </AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold mb-2">{discussion.title}</h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-2xl font-bold mb-2">{discussion.title}</h1>
+              {discussionAuthorMatches(
+                discussion.author,
+                currentUserPubkey || ""
+              ) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                  className="shrink-0 text-red-400 border-red-800 hover:bg-red-950/40"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              )}
+            </div>
+            {(cacheFull || actionError) && (
+              <div className="mb-3 p-3 text-sm rounded border border-amber-800 bg-amber-950/30 text-amber-200">
+                {actionError || LOCAL_STORAGE_QUOTA_MESSAGE}
+              </div>
+            )}
             <div className="flex items-center gap-3 text-sm text-gray-400 mb-4">
               <Link
                 href={`/${discussion.author}`}

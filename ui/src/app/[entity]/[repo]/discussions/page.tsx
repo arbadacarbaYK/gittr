@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { type Discussion, loadDiscussions } from "@/lib/discussions/storage";
+import {
+  type Discussion,
+  discussionFromLongFormEvent,
+  loadDiscussions,
+  loadHiddenDiscussionIds,
+  mergeDiscussionLists,
+} from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_LONG_FORM } from "@/lib/nostr/events";
 import { formatDate24h } from "@/lib/utils/date-format";
@@ -11,35 +17,6 @@ import { formatDate24h } from "@/lib/utils/date-format";
 import { MessageCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-
-function parseLongFormEvent(
-  ev: {
-    id: string;
-    pubkey: string;
-    created_at: number;
-    content: string;
-    tags: string[][];
-  },
-  entity: string,
-  repo: string
-): Discussion {
-  const tag = (name: string) => ev.tags.find((t) => t[0] === name)?.[1];
-  const title = tag("title") ?? "";
-  const category = tag("category") ?? tag("t");
-  return {
-    id: ev.id,
-    entity,
-    repo,
-    title,
-    description: ev.content,
-    preview: ev.content.slice(0, 200),
-    author: ev.pubkey,
-    category: category ?? undefined,
-    createdAt: ev.created_at * 1000,
-    commentCount: 0,
-    comments: [],
-  };
-}
 
 export default function DiscussionsPage() {
   const [mounted, setMounted] = useState(false);
@@ -50,6 +27,7 @@ export default function DiscussionsPage() {
 
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [fromNostr, setFromNostr] = useState<Discussion[]>([]);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
   const repoScope = useMemo(
     () => (entity && repo ? `${entity}/${repo}` : ""),
@@ -63,6 +41,7 @@ export default function DiscussionsPage() {
   const refreshDiscussions = useCallback(() => {
     if (!mounted) return;
     setDiscussions(loadDiscussions(entity, repo));
+    setHiddenIds(loadHiddenDiscussionIds(entity, repo));
   }, [mounted, entity, repo]);
 
   useEffect(() => {
@@ -73,7 +52,7 @@ export default function DiscussionsPage() {
       (ev) => {
         if (ev.kind !== KIND_LONG_FORM) return;
         setFromNostr((prev) => {
-          const next = parseLongFormEvent(ev as any, entity, repo);
+          const next = discussionFromLongFormEvent(ev as any, entity, repo);
           const byId = new Map(prev.map((d) => [d.id, d]));
           byId.set(ev.id, next);
           return Array.from(byId.values()).sort(
@@ -93,19 +72,26 @@ export default function DiscussionsPage() {
       "gittr:discussion-created",
       handleDiscussionCreated
     );
-    return () =>
+    window.addEventListener(
+      "gittr:discussion-deleted",
+      handleDiscussionCreated
+    );
+    return () => {
       window.removeEventListener(
         "gittr:discussion-created",
         handleDiscussionCreated
       );
+      window.removeEventListener(
+        "gittr:discussion-deleted",
+        handleDiscussionCreated
+      );
+    };
   }, [refreshDiscussions, mounted]);
 
-  const merged = useMemo(() => {
-    const byId = new Map<string, Discussion>();
-    fromNostr.forEach((d) => byId.set(d.id, d));
-    discussions.forEach((d) => byId.set(d.id, d));
-    return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt);
-  }, [discussions, fromNostr]);
+  const merged = useMemo(
+    () => mergeDiscussionLists(fromNostr, discussions, hiddenIds),
+    [discussions, fromNostr, hiddenIds]
+  );
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">

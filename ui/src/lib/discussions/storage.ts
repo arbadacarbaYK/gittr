@@ -1,3 +1,5 @@
+import { nip19 } from "nostr-tools";
+
 export interface DiscussionComment {
   id: string;
   author: string;
@@ -21,12 +23,121 @@ export interface Discussion {
   preview?: string;
   entity?: string;
   repo?: string;
+  /** NIP-23 `d` tag — used to collapse replaceable retries. */
+  dTag?: string;
 }
 
-const DISCUSSION_STORAGE_PREFIX = "gittr_discussions";
+export type PersistDiscussionResult = {
+  ok: boolean;
+  quota: boolean;
+};
 
-const getStorageKey = (entity: string, repo: string): string =>
-  `${DISCUSSION_STORAGE_PREFIX}_${entity}_${repo}`;
+export const LOCAL_STORAGE_QUOTA_MESSAGE =
+  "This browser ran out of space for gittr’s local cache. The discussion lives on Nostr — it should still open from the list. Free space by closing unused cached repos, or clear site data for gittr.space.";
+
+const DISCUSSION_STORAGE_PREFIX = "gittr_discussions";
+const HIDDEN_STORAGE_PREFIX = "gittr_discussions_hidden";
+
+function normalizeEntityForDiscussionKey(entity: string): string {
+  if (!entity) return "";
+  if (entity.startsWith("npub")) return entity;
+  if (/^[0-9a-f]{64}$/i.test(entity)) {
+    try {
+      return nip19.npubEncode(entity.toLowerCase());
+    } catch {
+      return entity.toLowerCase();
+    }
+  }
+  return entity;
+}
+
+function discussionRepoKey(
+  prefix: string,
+  entity: string,
+  repo: string
+): string {
+  return `${prefix}__${normalizeEntityForDiscussionKey(entity)}__${repo}`;
+}
+
+export function isLocalStorageQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; code?: number; message?: string };
+  return (
+    e.name === "QuotaExceededError" ||
+    e.code === 22 ||
+    /quota/i.test(String(e.message || ""))
+  );
+}
+
+export function normalizeDiscussionPubkey(value: string | undefined): string {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  if (/^[0-9a-f]{64}$/i.test(raw)) return raw.toLowerCase();
+  if (raw.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(raw);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        return decoded.data.toLowerCase();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return raw.toLowerCase();
+}
+
+export function discussionAuthorMatches(
+  author: string | undefined,
+  viewer: string | undefined
+): boolean {
+  const a = normalizeDiscussionPubkey(author);
+  const b = normalizeDiscussionPubkey(viewer);
+  return Boolean(a && b && a === b);
+}
+
+export function collectDiscussionStorageKeys(
+  entity: string,
+  repo: string
+): string[] {
+  const seen = new Set<string>();
+  const add = (k: string) => {
+    if (k) seen.add(k);
+  };
+  add(discussionRepoKey(DISCUSSION_STORAGE_PREFIX, entity, repo));
+  add(`${DISCUSSION_STORAGE_PREFIX}_${entity}_${repo}`);
+  add(`${DISCUSSION_STORAGE_PREFIX}__${entity}__${repo}`);
+  if (/^[0-9a-f]{64}$/i.test(entity)) {
+    const hex = entity.toLowerCase();
+    add(`${DISCUSSION_STORAGE_PREFIX}_${hex}_${repo}`);
+    add(`${DISCUSSION_STORAGE_PREFIX}__${hex}__${repo}`);
+    try {
+      const npub = nip19.npubEncode(hex);
+      add(`${DISCUSSION_STORAGE_PREFIX}_${npub}_${repo}`);
+      add(`${DISCUSSION_STORAGE_PREFIX}__${npub}__${repo}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (entity.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(entity);
+      if (decoded.type === "npub" && typeof decoded.data === "string") {
+        const hex = decoded.data.toLowerCase();
+        add(`${DISCUSSION_STORAGE_PREFIX}_${hex}_${repo}`);
+        add(`${DISCUSSION_STORAGE_PREFIX}__${hex}__${repo}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...seen];
+}
+
+function collectHiddenStorageKeys(entity: string, repo: string): string[] {
+  return collectDiscussionStorageKeys(entity, repo).map((key) =>
+    key.replace(DISCUSSION_STORAGE_PREFIX, HIDDEN_STORAGE_PREFIX)
+  );
+}
 
 const sanitizeComment = (raw: unknown): DiscussionComment | null => {
   if (!raw || typeof raw !== "object") {
@@ -99,18 +210,57 @@ const sanitizeDiscussion = (raw: unknown): Discussion | null => {
     preview: typeof base.preview === "string" ? base.preview : undefined,
     entity: typeof base.entity === "string" ? base.entity : undefined,
     repo: typeof base.repo === "string" ? base.repo : undefined,
+    dTag: typeof base.dTag === "string" ? base.dTag : undefined,
   };
 };
 
-export const loadDiscussions = (entity: string, repo: string): Discussion[] => {
+function parseDiscussionArray(raw: string | null): Discussion[] {
+  if (!raw) return [];
   try {
-    const stored = localStorage.getItem(getStorageKey(entity, repo));
-    if (!stored) return [];
-    const parsed = JSON.parse(stored);
+    const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
       .map((item) => sanitizeDiscussion(item))
       .filter((discussion): discussion is Discussion => discussion !== null);
+  } catch {
+    return [];
+  }
+}
+
+function mergeById(rows: Discussion[]): Discussion[] {
+  const byId = new Map<string, Discussion>();
+  for (const row of rows) {
+    const prev = byId.get(row.id);
+    if (!prev) {
+      byId.set(row.id, row);
+      continue;
+    }
+    const richer =
+      (row.comments?.length || 0) >= (prev.comments?.length || 0) ? row : prev;
+    byId.set(row.id, {
+      ...prev,
+      ...richer,
+      dTag: richer.dTag || prev.dTag,
+      comments: richer.comments,
+      commentCount: Math.max(
+        richer.commentCount || 0,
+        prev.commentCount || 0,
+        richer.comments.length,
+        prev.comments.length
+      ),
+    });
+  }
+  return [...byId.values()];
+}
+
+export const loadDiscussions = (entity: string, repo: string): Discussion[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const merged: Discussion[] = [];
+    for (const key of collectDiscussionStorageKeys(entity, repo)) {
+      merged.push(...parseDiscussionArray(localStorage.getItem(key)));
+    }
+    return mergeById(merged);
   } catch {
     return [];
   }
@@ -125,11 +275,94 @@ export const loadDiscussionById = (
   return discussions.find((discussion) => discussion.id === id) ?? null;
 };
 
+function reclaimLocalStorageQuota(protectKeys: string[] = []): number {
+  if (typeof window === "undefined") return 0;
+  const skip = new Set(protectKeys.filter(Boolean));
+  const entries: { key: string; len: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith("gittr_files__") || skip.has(key)) continue;
+    const raw = localStorage.getItem(key);
+    entries.push({ key, len: raw ? raw.length : 0 });
+  }
+  entries.sort((a, b) => b.len - a.len);
+  let removed = 0;
+  for (const { key } of entries.slice(0, 16)) {
+    try {
+      localStorage.removeItem(key);
+      removed++;
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    const meta = localStorage.getItem("gittr_metadata_cache");
+    if (meta && meta.length > 80_000) {
+      localStorage.removeItem("gittr_metadata_cache");
+      localStorage.removeItem("gittr_metadata_cache_saved_at");
+      removed++;
+    }
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}
+
+function writeJsonWithReclaim(
+  key: string,
+  json: string
+): PersistDiscussionResult {
+  if (typeof window === "undefined") {
+    return { ok: false, quota: false };
+  }
+  try {
+    localStorage.setItem(key, json);
+    return { ok: true, quota: false };
+  } catch (err) {
+    if (!isLocalStorageQuotaError(err)) {
+      throw err;
+    }
+    try {
+      reclaimLocalStorageQuota([key]);
+    } catch {
+      /* ignore */
+    }
+    try {
+      localStorage.setItem(key, json);
+      return { ok: true, quota: false };
+    } catch (retryErr) {
+      if (isLocalStorageQuotaError(retryErr)) {
+        return { ok: false, quota: true };
+      }
+      throw retryErr;
+    }
+  }
+}
+
+function persistDiscussionList(
+  entity: string,
+  repo: string,
+  list: Discussion[]
+): PersistDiscussionResult {
+  const canonical = discussionRepoKey(DISCUSSION_STORAGE_PREFIX, entity, repo);
+  const result = writeJsonWithReclaim(canonical, JSON.stringify(list));
+  if (!result.ok) return result;
+  for (const key of collectDiscussionStorageKeys(entity, repo)) {
+    if (key === canonical) continue;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
+}
+
 export const persistDiscussion = (
   entity: string,
   repo: string,
   updatedDiscussion: Discussion
-): void => {
+): PersistDiscussionResult => {
   const discussions = loadDiscussions(entity, repo);
   const exists = discussions.some(
     (discussion) => discussion.id === updatedDiscussion.id
@@ -139,21 +372,124 @@ export const persistDiscussion = (
         discussion.id === updatedDiscussion.id ? updatedDiscussion : discussion
       )
     : [...discussions, updatedDiscussion];
-  localStorage.setItem(
-    getStorageKey(entity, repo),
-    JSON.stringify(updatedList)
-  );
+  return persistDiscussionList(entity, repo, updatedList);
 };
 
 export const appendDiscussion = (
   entity: string,
   repo: string,
   newDiscussion: Discussion
-): void => {
-  const discussions = loadDiscussions(entity, repo);
-  discussions.push(newDiscussion);
-  localStorage.setItem(
-    getStorageKey(entity, repo),
-    JSON.stringify(discussions)
+): PersistDiscussionResult => persistDiscussion(entity, repo, newDiscussion);
+
+export const removeDiscussion = (
+  entity: string,
+  repo: string,
+  id: string
+): PersistDiscussionResult => {
+  const next = loadDiscussions(entity, repo).filter(
+    (discussion) => discussion.id !== id
   );
+  return persistDiscussionList(entity, repo, next);
 };
+
+function parseHiddenIds(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === "string" && !!id);
+  } catch {
+    return [];
+  }
+}
+
+export function loadHiddenDiscussionIds(
+  entity: string,
+  repo: string
+): Set<string> {
+  const ids = new Set<string>();
+  if (typeof window === "undefined") return ids;
+  for (const key of collectHiddenStorageKeys(entity, repo)) {
+    for (const id of parseHiddenIds(localStorage.getItem(key))) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+export function hideDiscussion(
+  entity: string,
+  repo: string,
+  id: string
+): PersistDiscussionResult {
+  const ids = loadHiddenDiscussionIds(entity, repo);
+  ids.add(id);
+  const canonical = discussionRepoKey(HIDDEN_STORAGE_PREFIX, entity, repo);
+  const result = writeJsonWithReclaim(canonical, JSON.stringify([...ids]));
+  if (result.ok) {
+    removeDiscussion(entity, repo, id);
+  }
+  return result;
+}
+
+export function discussionFromLongFormEvent(
+  ev: {
+    id: string;
+    pubkey: string;
+    created_at: number;
+    content: string;
+    tags?: string[][];
+  },
+  entity: string,
+  repo: string
+): Discussion {
+  const tags = Array.isArray(ev.tags) ? ev.tags : [];
+  const tag = (name: string) => tags.find((t) => t[0] === name)?.[1];
+  const title = tag("title") || tag("subject") || "";
+  const category = tag("category") || tag("t") || undefined;
+  const dTag = tag("d") || undefined;
+  return {
+    id: ev.id,
+    entity,
+    repo,
+    title,
+    description: ev.content || "",
+    preview: (ev.content || "").slice(0, 200),
+    author: ev.pubkey,
+    category,
+    createdAt: (ev.created_at || 0) * 1000,
+    commentCount: 0,
+    comments: [],
+    dTag,
+  };
+}
+
+export function mergeDiscussionLists(
+  fromNostr: Discussion[],
+  fromLocal: Discussion[],
+  hiddenIds: Iterable<string> = []
+): Discussion[] {
+  const hidden = new Set(hiddenIds);
+  const byKey = new Map<string, Discussion>();
+  const put = (row: Discussion) => {
+    if (!row?.id || hidden.has(row.id)) return;
+    const author = normalizeDiscussionPubkey(row.author);
+    const key = row.dTag && author ? `d:${author}:${row.dTag}` : `id:${row.id}`;
+    const prev = byKey.get(key);
+    if (!prev || row.createdAt >= prev.createdAt) {
+      byKey.set(
+        key,
+        prev
+          ? {
+              ...prev,
+              ...row,
+              comments: row.comments?.length ? row.comments : prev.comments,
+            }
+          : row
+      );
+    }
+  };
+  fromNostr.forEach(put);
+  fromLocal.forEach(put);
+  return [...byKey.values()].sort((a, b) => b.createdAt - a.createdAt);
+}
