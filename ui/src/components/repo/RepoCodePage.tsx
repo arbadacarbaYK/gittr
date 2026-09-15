@@ -20269,13 +20269,6 @@ export function RepoCodePage() {
               </button>
               {cloneUrlsExpanded && (
                 <div className="space-y-3 mt-2">
-                  <p className="text-[11px] text-gray-500 leading-snug">
-                    Listed on the Nostr announcement. “Has files” means this
-                    page already loaded a tree from that host. Extra GRASP
-                    mirrors are often listed so other relays accept the note —
-                    we do not extra-probe them if GitHub or gittr already
-                    answered. Clone commands without the badge might not work.
-                  </p>
                   {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0) && (
                     <div className="space-y-1">
                       {[...httpCloneUrls, ...sshCloneUrls].map((url, idx) => {
