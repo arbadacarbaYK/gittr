@@ -99,8 +99,16 @@ export function filterDisplayCloneUrlsForSidebar(
   });
 }
 
-/** What this visit already learned about a sidebar clone URL — no extra probes. */
+/**
+ * Sidebar clone badges:
+ * - **source** = imported forge (GitHub/…). The Code tab often paints this tree first.
+ * - **files** = this deployment’s git host (`git.gittr.space`) on the announcement —
+ *   Push/import copies objects here even when GitHub won the file race.
+ * - **listed** = extra GRASP URL on the note; not verified this visit.
+ * Race “Skipped (another source succeeded)” stays listed, not empty.
+ */
 export type CloneUrlLiveHint =
+  | "source"
   | "has-files"
   | "no-files"
   | "checking"
@@ -134,52 +142,89 @@ function fetchStatusMatchesClone(
   return Boolean(key && src.includes(key));
 }
 
-/**
- * Map a sidebar clone row to what the Code-tab file race already observed.
- * "Skipped (another source succeeded)" stays **announced** — we never asked
- * that host. GitHub-first returns mean extra GRASP mirrors are often unknown.
- */
+function isThisDeploymentGitHost(
+  host: string,
+  primaryGitServerEnv?: string
+): boolean {
+  if (!host) return false;
+  if (host === "git.gittr.space") return true;
+  const primary = primaryGitHostFromEnv(primaryGitServerEnv);
+  return Boolean(primary && host === primary);
+}
+
+function matchingFetchRows(
+  cloneUrl: string,
+  rows: CloneUrlFetchStatusRow[] | undefined
+): CloneUrlFetchStatusRow[] {
+  return (rows || []).filter((row) => fetchStatusMatchesClone(row, cloneUrl));
+}
+
+function isSkippedRaceRow(row: CloneUrlFetchStatusRow): boolean {
+  return /skipped/i.test(String(row.error || ""));
+}
+
 export function cloneUrlLiveHint(
   cloneUrl: string,
   opts: {
     fetchStatuses?: CloneUrlFetchStatusRow[];
     successfulSourceUrls?: string[];
+    primaryGitServerEnv?: string;
+    sourceUrl?: string;
   }
 ): CloneUrlLiveHint {
   const host = gitUrlHostname(cloneUrl);
+  const matches = matchingFetchRows(cloneUrl, opts.fetchStatuses);
+  const realFail = matches.some(
+    (s) => s.status === "failed" && !isSkippedRaceRow(s)
+  );
+  if (realFail) return "no-files";
+  if (matches.some((s) => s.status === "pending" || s.status === "fetching")) {
+    return "checking";
+  }
+
+  if (sourceMatchesUpstreamClone(cloneUrl, opts.sourceUrl)) {
+    return "source";
+  }
+
+  if (isThisDeploymentGitHost(host, opts.primaryGitServerEnv)) {
+    return "has-files";
+  }
+
   for (const u of opts.successfulSourceUrls || []) {
     const other = gitUrlHostname(u);
     if (host && other && host === other) return "has-files";
     if (cloneUrlMatchKey(cloneUrl) === cloneUrlMatchKey(u)) return "has-files";
   }
-
-  const matches = (opts.fetchStatuses || []).filter((row) =>
-    fetchStatusMatchesClone(row, cloneUrl)
-  );
   if (matches.some((s) => s.status === "success")) return "has-files";
-  if (matches.some((s) => s.status === "pending" || s.status === "fetching")) {
-    return "checking";
-  }
-  const failed = matches.filter((s) => s.status === "failed");
-  if (failed.length > 0) {
-    const allSkipped = failed.every((s) =>
-      /skipped/i.test(String(s.error || ""))
-    );
-    if (allSkipped) return "announced";
-    return "no-files";
-  }
   return "announced";
 }
 
-export function cloneUrlLiveHintLabel(hint: CloneUrlLiveHint): string {
+export function cloneUrlLiveHintBadge(hint: CloneUrlLiveHint): string {
   switch (hint) {
+    case "source":
+      return "source";
     case "has-files":
-      return "has files";
+      return "files";
     case "no-files":
-      return "no files here";
+      return "empty";
     case "checking":
-      return "checking…";
+      return "…";
     default:
-      return "announced";
+      return "listed";
+  }
+}
+
+export function cloneUrlLiveHintTitle(hint: CloneUrlLiveHint): string {
+  switch (hint) {
+    case "source":
+      return "Imported from this forge. The Code tab often loads this tree first. That is not the same as gittr’s Nostr git copy.";
+    case "has-files":
+      return "Objects live here. gittr copies imports/Push onto git.gittr.space even if this page painted GitHub first. Other hosts only get this badge if this visit already loaded a tree from them.";
+    case "no-files":
+      return "This visit asked that host and got no file tree.";
+    case "checking":
+      return "Asking this host for a file tree.";
+    default:
+      return "On the Nostr announcement. Extra GRASP mirrors are listed so other relays accept the note — not verified to hold objects.";
   }
 }

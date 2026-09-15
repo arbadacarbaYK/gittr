@@ -34,7 +34,7 @@ Code browser rows show **last commit message + relative time** for the currently
 
 ## Clone URL sidebar (Aug 2026)
 
-"Clone URL (announced)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING` (gittr, shakespeare, gitnostr, ngit, …). It no longer collapses to only primary gittr + GitHub. Rows show whether this visit already fetched a tree from that host (`cloneUrlLiveHint`); skipped race losers stay “announced”, not “no files”.
+"Clone URL (announced)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. Compact badges: **source** (imported forge), **files** (`git.gittr.space` even if GitHub won the Code-tab race), **listed** (extra GRASP, skipped race losers), **empty** (real failed probe). Hover explains.
 
 ## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
 

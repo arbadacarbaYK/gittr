@@ -54,19 +54,36 @@ describe("filterDisplayCloneUrlsForSidebar", () => {
 describe("cloneUrlLiveHint", () => {
   const ngit = "https://relay.ngit.dev/npub1abc/repo.git";
   const gittr = "https://git.gittr.space/npub1abc/repo.git";
+  const github = "https://github.com/org/repo.git";
+  const env = "https://git.gittr.space";
 
-  it("marks a host that already returned a tree", () => {
+  it("marks gittr’s host as files even when GitHub won the Code-tab race", () => {
     expect(
       cloneUrlLiveHint(gittr, {
-        successfulSourceUrls: [gittr],
-        fetchStatuses: [{ source: "git.gittr.space", status: "success" }],
+        primaryGitServerEnv: env,
+        sourceUrl: github,
+        fetchStatuses: [{ source: "github.com", status: "success" }],
+        successfulSourceUrls: [github],
       })
     ).toBe("has-files");
   });
 
-  it("treats skipped race losers as announced, not empty", () => {
+  it("marks the imported forge as source, not as the Nostr git copy", () => {
+    expect(
+      cloneUrlLiveHint(github, {
+        primaryGitServerEnv: env,
+        sourceUrl: github,
+        fetchStatuses: [{ source: "github.com", status: "success" }],
+        successfulSourceUrls: [github],
+      })
+    ).toBe("source");
+  });
+
+  it("treats skipped extra GRASP as listed, not empty", () => {
     expect(
       cloneUrlLiveHint(ngit, {
+        primaryGitServerEnv: env,
+        sourceUrl: github,
         fetchStatuses: [
           {
             source: "relay.ngit.dev",
@@ -88,12 +105,12 @@ describe("cloneUrlLiveHint", () => {
     ).toBe("no-files");
   });
 
-  it("stays announced when GitHub won and extras were never tried", () => {
+  it("still uses a successful extra-GRASP fetch as files", () => {
     expect(
       cloneUrlLiveHint(ngit, {
-        fetchStatuses: [{ source: "github.com", status: "success" }],
-        successfulSourceUrls: ["https://github.com/org/repo.git"],
+        primaryGitServerEnv: env,
+        fetchStatuses: [{ source: "relay.ngit.dev", status: "success" }],
       })
-    ).toBe("announced");
+    ).toBe("has-files");
   });
 });

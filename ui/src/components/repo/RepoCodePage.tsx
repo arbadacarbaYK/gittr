@@ -253,7 +253,8 @@ import {
 } from "@/lib/utils/entity-resolver";
 import {
   cloneUrlLiveHint,
-  cloneUrlLiveHintLabel,
+  cloneUrlLiveHintBadge,
+  cloneUrlLiveHintTitle,
   filterDisplayCloneUrlsForSidebar,
 } from "@/lib/utils/filter-display-clone-urls";
 import {
@@ -20267,13 +20268,6 @@ export function RepoCodePage() {
               </button>
               {cloneUrlsExpanded && (
                 <div className="space-y-3 mt-2">
-                  <p className="text-[11px] text-gray-500 leading-snug">
-                    Listed on the Nostr announcement. “Has files” means this
-                    page already loaded a tree from that host. Extra GRASP
-                    mirrors are often listed so other relays accept the note —
-                    we do not extra-probe them if GitHub or gittr already
-                    answered.
-                  </p>
                   {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0) && (
                     <div className="space-y-1">
                       {[...httpCloneUrls, ...sshCloneUrls].map((url, idx) => {
@@ -20282,32 +20276,48 @@ export function RepoCodePage() {
                           fetchStatuses,
                           successfulSourceUrls:
                             sidebarSuccessfulSourceUrls(repoData),
+                          primaryGitServerEnv:
+                            process.env.NEXT_PUBLIC_GIT_SERVER_URL,
+                          sourceUrl:
+                            (effectiveSourceUrl &&
+                              String(effectiveSourceUrl).trim()) ||
+                            (typeof (repoData as { sourceUrl?: string })
+                              ?.sourceUrl === "string"
+                              ? String(
+                                  (repoData as { sourceUrl?: string }).sourceUrl
+                                ).trim()
+                              : ""),
                         });
-                        const hintClass =
+                        const badgeClass =
                           hint === "has-files"
-                            ? "text-green-400"
+                            ? "bg-green-900/40 text-green-300"
+                            : hint === "source"
+                            ? "bg-sky-900/40 text-sky-300"
                             : hint === "no-files"
-                            ? "text-amber-400/90"
+                            ? "bg-amber-900/40 text-amber-300"
                             : hint === "checking"
-                            ? "text-blue-400"
-                            : "text-gray-500";
+                            ? "bg-blue-900/40 text-blue-300"
+                            : "bg-white/10 text-gray-400";
                         return (
                           <div
                             key={`std-clone-${idx}`}
-                            className="flex items-start gap-2 text-xs"
+                            className="flex items-center gap-1.5 text-xs"
                           >
-                            <div className="min-w-0 flex-1">
-                              <code className="block text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
-                                {command}
-                              </code>
+                            <code className="min-w-0 flex-1 text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
+                              {command}
+                            </code>
+                            <Tooltip
+                              content={cloneUrlLiveHintTitle(hint)}
+                              mobileClickable
+                            >
                               <span
-                                className={`mt-0.5 inline-block ${hintClass}`}
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none ${badgeClass}`}
                               >
-                                {cloneUrlLiveHintLabel(hint)}
+                                {cloneUrlLiveHintBadge(hint)}
                               </span>
-                            </div>
+                            </Tooltip>
                             <button
-                              className="text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
+                              className="shrink-0 text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
                               onClick={() => copyCloneCommand(command)}
                               title="Copy clone command"
                             >
