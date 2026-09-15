@@ -37,9 +37,8 @@ describe("filterDisplayCloneUrlsForSidebar", () => {
     expect(out).toContain(`https://github.com/org/${repo}.git`);
     expect(out).toContain(`nostr://${npub}/${repo}`);
     expect(out.some((u) => u.includes("23.1.2.3"))).toBe(false);
-    expect(out.some((u) => u.includes("uid.ovh"))).toBe(false);
-    // relay.gittr.space is Nostr relay hostname — not on push allowlist
-    expect(out.some((u) => u.includes("relay.gittr.space"))).toBe(false);
+    expect(out.some((u) => u.includes("uid.ovh"))).toBe(true);
+    expect(out.some((u) => u.includes("relay.gittr.space"))).toBe(true);
   });
 
   it("keeps third-party GRASP when primary is absent from the announce", () => {

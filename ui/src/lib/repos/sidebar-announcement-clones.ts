@@ -1,11 +1,13 @@
 import {
   dedupeNormalizedCloneUrls,
   gitUrlHostname,
+  normalizeCloneUrlKey,
 } from "../utils/filter-display-clone-urls";
+import { GRASP_DOMAINS_EXCLUDED_FROM_PUSHING } from "../utils/grasp-servers";
 
 import { isForeignForgeUrl } from "./extract-forge-url-from-event-tags";
 
-/** gittr's own git host — never treat as "the announcement" unless the event listed it. */
+/** gittr's own git host — never invent it for Git Server when the event omitted it. */
 export function isGittrDeploymentCloneHost(hostname: string): boolean {
   const h = (hostname || "").toLowerCase();
   return h === "git.gittr.space" || h === "relay.gittr.space";
@@ -15,10 +17,48 @@ function uniqueHttps(urls: string[]): string[] {
   return dedupeNormalizedCloneUrls(urls.filter((u) => String(u || "").trim()));
 }
 
+function isExcludedGraspHost(hostname: string): boolean {
+  const h = (hostname || "").toLowerCase();
+  if (!h) return false;
+  return GRASP_DOMAINS_EXCLUDED_FROM_PUSHING.some(
+    (d) => h === d || h.endsWith(`.${d}`)
+  );
+}
+
 /**
- * Clone URLs to show as "from the announcement".
- * Prefer the live 30617 `clone` tags. Do not mix in successful fetch hosts
- * or inferred git.gittr.space mirrors — those made ngit repos look like gittr.
+ * Union of 30617 `clone[]` tags. Keep older event hosts (so a thinner later
+ * note cannot hide git.gittr.space). Drop inferred fetch mirrors that were
+ * never on those tags (uid.ovh, ngit-relay.nostrver.se, …).
+ */
+export function mergeAnnouncementTagClones(
+  prevAnnounced: readonly string[] | undefined | null,
+  eventTagClones: readonly string[] | undefined | null
+): string[] {
+  const tags = uniqueHttps(
+    (eventTagClones || []).filter(
+      (u) => typeof u === "string" && u.trim().length > 0
+    )
+  );
+  const prev = uniqueHttps(
+    (prevAnnounced || []).filter(
+      (u) => typeof u === "string" && u.trim().length > 0
+    )
+  );
+  const tagKeys = new Set(tags.map(normalizeCloneUrlKey));
+  const tagHosts = new Set(tags.map(gitUrlHostname).filter(Boolean));
+  const keptPrev = prev.filter((u) => {
+    const h = gitUrlHostname(u);
+    if (!isExcludedGraspHost(h)) return true;
+    return tagKeys.has(normalizeCloneUrlKey(u)) || tagHosts.has(h);
+  });
+  return uniqueHttps([...tags, ...keptPrev]);
+}
+
+/**
+ * Clone URL rows: every `clone[]` URL we already have from the announcement
+ * (and persisted / merged copies of that event), plus forge `source`.
+ * Do not hide git.gittr.space when it is on those lists. has-files is a badge
+ * elsewhere — it must not change which rows appear.
  */
 export function sidebarClonesFromAnnouncement(opts: {
   announcementClones?: string[] | null;
@@ -39,25 +79,7 @@ export function sidebarClonesFromAnnouncement(opts: {
     opts.forgeSourceUrl && isForeignForgeUrl(opts.forgeSourceUrl)
       ? [opts.forgeSourceUrl]
       : [];
-  if (announced.length > 0) {
-    // Event clones plus leftover mirrors/forge from local merge. Do not keep an
-    // inferred git.gittr.space unless the event actually listed it.
-    const announcedHosts = new Set(
-      announced.map((u) => gitUrlHostname(u)).filter(Boolean)
-    );
-    const extraMerged = merged.filter((u) => {
-      const h = gitUrlHostname(u);
-      if (isGittrDeploymentCloneHost(h) && !announcedHosts.has(h)) {
-        return false;
-      }
-      return true;
-    });
-    return uniqueHttps([...announced, ...extraMerged, ...forge]);
-  }
-  return uniqueHttps([
-    ...merged.filter((u) => !isGittrDeploymentCloneHost(gitUrlHostname(u))),
-    ...forge,
-  ]);
+  return uniqueHttps([...announced, ...merged, ...forge]);
 }
 
 export function pickGitServerFromAnnouncementClones(

@@ -1,8 +1,4 @@
-import {
-  GRASP_SERVERS_FOR_PUSHING,
-  isGraspDomainForPushing,
-  isGraspServer,
-} from "./grasp-servers";
+import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
 
 const UPSTREAM_HOSTS = ["github.com", "gitlab.com", "codeberg.org"] as const;
 
@@ -125,44 +121,31 @@ function sourceMatchesUpstreamClone(
 }
 
 /**
- * Sidebar clone list: keep primary git host + forge `source` + every host on the
- * Push allowlist (GRASP_SERVERS_FOR_PUSHING). Hide bare IP mirrors and random
- * third-party GRASP hosts that are not in the push set (legacy noise).
+ * Sidebar clone list: keep every URL the announcement already listed.
+ * Only strip empty rows, localhost, and bare-IP mirrors. has-files is a
+ * badge — this must not drop git.gittr.space or other event hosts.
  */
 export function filterDisplayCloneUrlsForSidebar(
   urls: string[],
-  options: {
+  _options?: {
     primaryGitServerEnv?: string;
     sourceUrl?: string;
   }
 ): string[] {
-  const withoutEmpty = urls.map((u) => String(u || "").trim()).filter(Boolean);
+  const withoutEmpty = urls
+    .map((u) => String(u || "").trim())
+    .filter((u) => u && !u.includes("localhost") && !u.includes("127.0.0.1"));
 
   const hasNamedHost = withoutEmpty.some((u) => {
     if (u.startsWith("nostr://")) return true;
     const h = gitUrlHostname(u);
     return !!h && !isIpLiteralHostname(h);
   });
-  const withoutBareIps = hasNamedHost
-    ? withoutEmpty.filter((u) => {
-        if (u.startsWith("nostr://")) return true;
-        return !isIpLiteralHostname(gitUrlHostname(u));
-      })
-    : withoutEmpty;
+  if (!hasNamedHost) return withoutEmpty;
 
-  const primary = primaryGitHostFromEnv(options.primaryGitServerEnv);
-  const src = options.sourceUrl?.trim();
-
-  return withoutBareIps.filter((u) => {
+  return withoutEmpty.filter((u) => {
     if (u.startsWith("nostr://")) return true;
-    if (src && sourceMatchesUpstreamClone(u, src)) return true;
-    const h = gitUrlHostname(u);
-    if (primary && h === primary) return true;
-    // Keep mirrors we actually advertise on Push to Nostr
-    if (isGraspDomainForPushing(h) || isGraspDomainForPushing(u)) return true;
-    // Drop other GRASP hosts not on the push allowlist
-    if (isGraspServer(u)) return false;
-    return true;
+    return !isIpLiteralHostname(gitUrlHostname(u));
   });
 }
 

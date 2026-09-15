@@ -96,6 +96,8 @@ export interface StoredRepo {
   readme?: string;
   forkedFrom?: string;
   clone?: string[];
+  /** Kind 30617 `clone[]` tags (union across snapshots). Not file-fetch extras. */
+  announcementClone?: string[];
   relays?: string[];
   topics?: string[];
   defaultBranch?: string;

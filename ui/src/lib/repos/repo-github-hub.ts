@@ -21,6 +21,7 @@ import {
   isUnusableRepositoryDescription,
 } from "@/lib/repos/repo-about-text";
 import { storedGithubSourceUnchanged } from "@/lib/repos/repo-page-chrome";
+import { mergeAnnouncementTagClones } from "@/lib/repos/sidebar-announcement-clones";
 import {
   type StoredRepo,
   loadStoredRepos,
@@ -693,6 +694,12 @@ export function persistRepoAnnouncementMeta(opts: {
   if (clone.length > 0) {
     patch.clone =
       idx >= 0 ? mergeCloneUrlLists(repos[idx]?.clone, clone) : clone;
+    if (eventId) {
+      patch.announcementClone = mergeAnnouncementTagClones(
+        idx >= 0 ? repos[idx]?.announcementClone : undefined,
+        clone
+      );
+    }
   }
   if (description) patch.description = description;
   if (owner) patch.ownerPubkey = owner;
@@ -715,6 +722,7 @@ export function persistRepoAnnouncementMeta(opts: {
       ...prev,
       ...patch,
       clone: mergeCloneUrlLists(prev.clone, clone),
+      announcementClone: patch.announcementClone || prev.announcementClone,
       sourceUrl: source || prev.sourceUrl,
       description: description || prev.description,
       lastNostrEventId: eventId || prev.lastNostrEventId,
@@ -757,7 +765,9 @@ export function persistRepoAnnouncementMeta(opts: {
       prev.publicRead === next.publicRead &&
       prev.syncedFromNostr === next.syncedFromNostr &&
       prev.status === next.status &&
-      JSON.stringify(prev.clone || []) === JSON.stringify(next.clone || []);
+      JSON.stringify(prev.clone || []) === JSON.stringify(next.clone || []) &&
+      JSON.stringify(prev.announcementClone || []) ===
+        JSON.stringify(next.announcementClone || []);
     if (unchanged) return;
     repos[idx] = next;
   }

@@ -188,6 +188,7 @@ import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-annou
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
 import {
+  mergeAnnouncementTagClones,
   pickGitServerFromAnnouncementClones,
   sidebarClonesFromAnnouncement,
 } from "@/lib/repos/sidebar-announcement-clones";
@@ -5179,7 +5180,11 @@ export function RepoCodePage() {
         persist: true,
         broadcast: true,
       });
-      if (cancelled || !hints) return;
+      if (cancelled) return;
+      if (!hints) {
+        profileCloneHintsKeyRef.current = "";
+        return;
+      }
       if (hints.clone.length > 0) {
         nip34AnnouncementCloneStatusRef.current = "present";
       }
@@ -5240,7 +5245,7 @@ export function RepoCodePage() {
           clone: mergedClone,
           ...(announced
             ? {
-                announcementClone: mergeCloneUrlLists(
+                announcementClone: mergeAnnouncementTagClones(
                   base.announcementClone,
                   announced
                 ),
@@ -5908,6 +5913,33 @@ export function RepoCodePage() {
           "✅ [File Fetch] Repo has files for this branch, skipping multi-source fetch (preventing retry loop)"
         );
         fileFetchAttemptedRef.current = repoKeyWithBranch;
+        const pk = (ownerPubkeyForFetch || "").toLowerCase();
+        if (/^[0-9a-f]{64}$/.test(pk)) {
+          void resolveLiveRepoAnnouncement({
+            ownerPubkey: pk,
+            repoName: resolvedParams.repo,
+            entity: resolvedParams.entity,
+            persist: true,
+            broadcast: true,
+          }).then((hints) => {
+            if (!hints?.clone?.length && !hints?.sourceUrl) return;
+            setRepoData((prev: any) => {
+              const base = prev || {};
+              return {
+                ...base,
+                clone: mergeCloneUrlLists(base.clone, hints.clone),
+                announcementClone: mergeAnnouncementTagClones(
+                  (base as { announcementClone?: string[] }).announcementClone,
+                  hints.clone
+                ),
+                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                lastNostrEventId:
+                  hints.lastNostrEventId || base.lastNostrEventId,
+                syncedFromNostr: true,
+              };
+            });
+          });
+        }
         return;
       } else {
         console.log(
@@ -6101,7 +6133,7 @@ export function RepoCodePage() {
               return {
                 ...base,
                 clone: mergedClone,
-                announcementClone: mergeCloneUrlLists(
+                announcementClone: mergeAnnouncementTagClones(
                   base.announcementClone,
                   hints.clone
                 ),
@@ -7161,20 +7193,14 @@ export function RepoCodePage() {
                 );
                 const grew = extra.length > 0;
                 if (grew) {
-                  const eventClones = eventRepoData.clone.filter(
-                    (url: string) =>
-                      url &&
-                      !url.includes("localhost") &&
-                      !url.includes("127.0.0.1")
-                  );
                   setRepoData((prev: any) => {
                     const base = prev || {};
                     return {
                       ...base,
-                      clone: mergeCloneUrlLists(base.clone, eventClones),
-                      announcementClone: mergeCloneUrlLists(
+                      clone: mergeCloneUrlLists(base.clone, extra),
+                      announcementClone: mergeAnnouncementTagClones(
                         base.announcementClone,
-                        eventClones
+                        extra
                       ),
                     };
                   });
@@ -7618,7 +7644,7 @@ export function RepoCodePage() {
                       return {
                         ...base,
                         clone: merged,
-                        announcementClone: mergeCloneUrlLists(
+                        announcementClone: mergeAnnouncementTagClones(
                           base.announcementClone,
                           eventClones
                         ),
@@ -8733,7 +8759,7 @@ export function RepoCodePage() {
                     sourceUrl: newSourceUrl,
                     forkedFrom: newForkedFrom,
                     clone: newClone,
-                    announcementClone: mergeCloneUrlLists(
+                    announcementClone: mergeAnnouncementTagClones(
                       (base as { announcementClone?: string[] })
                         .announcementClone,
                       Array.isArray(eventRepoData.clone)
@@ -8858,7 +8884,7 @@ export function RepoCodePage() {
                           resolvedParams.entity,
                           resolvedParams.repo
                         ),
-                        announcementClone: mergeCloneUrlLists(
+                        announcementClone: mergeAnnouncementTagClones(
                           (base as { announcementClone?: string[] })
                             .announcementClone,
                           Array.isArray(eventRepoData.clone)
@@ -9192,7 +9218,7 @@ export function RepoCodePage() {
                       base.clone,
                       eoseClones
                     );
-                    const mergedAnnounced = mergeCloneUrlLists(
+                    const mergedAnnounced = mergeAnnouncementTagClones(
                       (base as { announcementClone?: string[] })
                         .announcementClone,
                       eoseClones
@@ -17309,11 +17335,37 @@ export function RepoCodePage() {
           .announcementClone as string[])
       : [];
     const forgeFromLinks = forgeUrlFromRepoLinks((repoData as any)?.links);
+    let storedAnnounced: string[] = [];
+    if (typeof window !== "undefined" && resolvedParams.entity && decodedRepo) {
+      try {
+        const stored = findRepoByEntityAndName(
+          loadStoredRepos(),
+          resolvedParams.entity,
+          decodedRepo
+        );
+        const extra = stored as {
+          announcementClone?: string[];
+        };
+        if (Array.isArray(extra.announcementClone)) {
+          storedAnnounced = extra.announcementClone;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    const liveClone = Array.isArray((repoData as any)?.clone)
+      ? ((repoData as any).clone as string[])
+      : [];
+    const fromEvent = mergeAnnouncementTagClones(
+      storedAnnounced,
+      announcementClones
+    );
+    const eventHasClones = fromEvent.length > 0;
     let rawCloneList = sidebarClonesFromAnnouncement({
-      announcementClones,
-      mergedClones: Array.isArray((repoData as any)?.clone)
-        ? ((repoData as any).clone as string[])
-        : [],
+      announcementClones: eventHasClones ? fromEvent : [],
+      mergedClones: eventHasClones
+        ? []
+        : mergeAnnouncementTagClones(liveClone, []),
       forgeSourceUrl:
         (effectiveSourceUrl && String(effectiveSourceUrl).trim()) ||
         (typeof (repoData as any)?.sourceUrl === "string"
@@ -17324,39 +17376,6 @@ export function RepoCodePage() {
           : "") ||
         forgeFromLinks,
     });
-    const eventCloneFromRepo = announcementClones.length > 0;
-    if (
-      typeof window !== "undefined" &&
-      resolvedParams.entity &&
-      decodedRepo &&
-      !eventCloneFromRepo &&
-      rawCloneList.length === 0
-    ) {
-      try {
-        const repos = loadStoredRepos();
-        const stored = findRepoByEntityAndName(
-          repos,
-          resolvedParams.entity,
-          decodedRepo
-        );
-        const sclone =
-          (stored as { clone?: string[]; announcementClone?: string[] })
-            ?.announcementClone || (stored as { clone?: string[] })?.clone;
-        if (Array.isArray(sclone)) {
-          rawCloneList = sidebarClonesFromAnnouncement({
-            announcementClones: (stored as { announcementClone?: string[] })
-              ?.announcementClone,
-            mergedClones: sclone,
-            forgeSourceUrl:
-              (stored as { sourceUrl?: string })?.sourceUrl ||
-              (stored as { forkedFrom?: string })?.forkedFrom ||
-              "",
-          });
-        }
-      } catch {
-        /* ignore */
-      }
-    }
     const fromEffective =
       effectiveSourceUrl &&
       upstreamRefetchableHttpsGitClone(effectiveSourceUrl);
@@ -17373,9 +17392,9 @@ export function RepoCodePage() {
     if (fromRepoDataSource) {
       rawCloneList = [...rawCloneList, fromRepoDataSource];
     }
-    // successfulSources often exist before clone[] is written (bridge-first race).
+    // successfulSources only fill an empty list (badge must not change rows).
     const fromSuccessful = sidebarSuccessfulSourceUrls(repoData);
-    if (fromSuccessful.length > 0) {
+    if (rawCloneList.length === 0 && fromSuccessful.length > 0) {
       rawCloneList = [...rawCloneList, ...fromSuccessful];
     }
     if (rawCloneList.length === 0 && resolvedParams.entity && decodedRepo) {
@@ -17385,7 +17404,7 @@ export function RepoCodePage() {
         announcementClones,
         (repoData as { clone?: string[] })?.clone,
         fromSuccessful
-      ).filter((u) => !u.includes("git.gittr.space"));
+      );
     }
     const sourceForCloneFilter =
       (effectiveSourceUrl && String(effectiveSourceUrl).trim()) || dsUrl;

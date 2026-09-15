@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  mergeAnnouncementTagClones,
   pickGitServerFromAnnouncementClones,
   sidebarClonesFromAnnouncement,
 } from "./sidebar-announcement-clones";
@@ -8,51 +9,51 @@ import {
 const npub = "npub1k0y4eceal2zryes3azm6nsgt0r0jsa2v8zcsdf9uqxttn0jlfe9q04c9h8";
 
 describe("sidebarClonesFromAnnouncement", () => {
-  it("uses event clone tags and ignores inferred gittr", () => {
+  it("lists every event clone including git.gittr.space", () => {
     const announced = [
-      `https://grasp.t5.st/${npub}/amber-up.git`,
-      `https://gitnostr.com/${npub}/amber-up.git`,
-      `https://relay.ngit.dev/${npub}/amber-up.git`,
+      `https://git.gittr.space/${npub}/gittr.git`,
+      `https://git.shakespeare.diy/${npub}/gittr.git`,
+      `https://gitnostr.com/${npub}/gittr.git`,
+      `https://relay.ngit.dev/${npub}/gittr.git`,
+      `https://ngit.danconwaydev.com/${npub}/gittr.git`,
     ];
     const out = sidebarClonesFromAnnouncement({
       announcementClones: announced,
-      mergedClones: [
-        `https://git.gittr.space/${npub}/amber-up.git`,
-        ...announced,
-      ],
+      mergedClones: announced,
+      forgeSourceUrl: "https://github.com/arbadacarbaYK/gittr",
     });
-    expect(out).toEqual(announced);
-    expect(out.some((u) => u.includes("git.gittr.space"))).toBe(false);
+    for (const u of announced) {
+      expect(out).toContain(u);
+    }
+    expect(out.some((u) => u.includes("github.com"))).toBe(true);
   });
 
   it("does not invent gittr when the event has not arrived", () => {
     const out = sidebarClonesFromAnnouncement({
       announcementClones: [],
-      mergedClones: [
-        `https://git.gittr.space/${npub}/amber-up.git`,
-        `https://relay.ngit.dev/${npub}/amber-up.git`,
-      ],
+      mergedClones: [`https://relay.ngit.dev/${npub}/amber-up.git`],
     });
     expect(out).toEqual([`https://relay.ngit.dev/${npub}/amber-up.git`]);
+    expect(out.some((u) => u.includes("git.gittr.space"))).toBe(false);
   });
 
-  it("unions leftover GRASP mirrors onto a thin later announcement", () => {
+  it("keeps git.gittr.space from a persisted event when React announcement is thin", () => {
     const announced = [`https://relay.ngit.dev/${npub}/gittr.git`];
+    const persisted = [
+      `https://git.gittr.space/${npub}/gittr.git`,
+      `https://git.shakespeare.diy/${npub}/gittr.git`,
+      `https://gitnostr.com/${npub}/gittr.git`,
+      ...announced,
+    ];
     const out = sidebarClonesFromAnnouncement({
       announcementClones: announced,
-      mergedClones: [
-        `https://git.gittr.space/${npub}/gittr.git`,
-        `https://git.shakespeare.diy/${npub}/gittr.git`,
-        `https://gitnostr.com/${npub}/gittr.git`,
-        ...announced,
-      ],
+      mergedClones: persisted,
       forgeSourceUrl: "https://github.com/arbadacarbaYK/gittr",
     });
+    expect(out.some((u) => u.includes("git.gittr.space"))).toBe(true);
     expect(out.some((u) => u.includes("git.shakespeare.diy"))).toBe(true);
     expect(out.some((u) => u.includes("gitnostr.com"))).toBe(true);
     expect(out.some((u) => u.includes("github.com"))).toBe(true);
-    // Inferred gittr host stays hidden unless the event listed it
-    expect(out.some((u) => u.includes("git.gittr.space"))).toBe(false);
   });
 
   it("unions a GitHub source onto announcement GRASP clones", () => {
@@ -69,6 +70,36 @@ describe("sidebarClonesFromAnnouncement", () => {
       ...announced,
       "https://github.com/AndronixApp/AndronixOrigin",
     ]);
+  });
+});
+
+describe("mergeAnnouncementTagClones", () => {
+  it("keeps git.gittr.space from an older event when the latest note is thin", () => {
+    const gittr = `https://git.gittr.space/${npub}/gittr.git`;
+    const ngit = `https://relay.ngit.dev/${npub}/gittr.git`;
+    expect(mergeAnnouncementTagClones([gittr, ngit], [ngit])).toEqual(
+      expect.arrayContaining([gittr, ngit])
+    );
+  });
+
+  it("drops inferred uid.ovh that was never on the 30617 clone tags", () => {
+    const gittr = `https://git.gittr.space/${npub}/gittr.git`;
+    const ngit = `https://relay.ngit.dev/${npub}/gittr.git`;
+    const inferred = `https://git-01.uid.ovh/${npub}/gittr.git`;
+    const out = mergeAnnouncementTagClones(
+      [gittr, ngit, inferred],
+      [gittr, ngit]
+    );
+    expect(out).toEqual(expect.arrayContaining([gittr, ngit]));
+    expect(out.some((u) => u.includes("uid.ovh"))).toBe(false);
+  });
+
+  it("keeps an excluded GRASP host when the event actually listed it", () => {
+    const uid = `https://git-01.uid.ovh/${npub}/gittr.git`;
+    const ngit = `https://relay.ngit.dev/${npub}/gittr.git`;
+    expect(mergeAnnouncementTagClones([ngit], [ngit, uid])).toEqual(
+      expect.arrayContaining([ngit, uid])
+    );
   });
 });
 

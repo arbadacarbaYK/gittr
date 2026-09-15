@@ -34,7 +34,7 @@ Code browser rows show **last commit message + relative time** for the currently
 
 ## Clone URL sidebar (Sep 2026)
 
-"Clone URL" is the Push remotes, not "who won the file race". Kind **30617** is replaceable latest-wins for About / deleted, but **clone tags are unioned** across snapshots so a later ngit-only note cannot hide `git.gittr.space` / shakespeare / gitnostr. GitHub `source` is one row (with or without `.git`). `git.gittr.space` sorts first on this deployment. **has files** still means this visit loaded a tree from that host.
+Clone URL is the announcement’s `clone[]` plus forge `source`. **has files** is a badge only — GitHub winning the file race must not shrink the list, hide `git.gittr.space`, or add inferred fetch hosts that are not on the event. One row per host (`.git` / no-`.git` collapse).
 
 ## Clone URL sidebar (Aug 2026)
 

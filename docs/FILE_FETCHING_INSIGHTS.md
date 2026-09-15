@@ -184,7 +184,7 @@ The **nsite-gateway** (`pages.gittr.space`) is not a third-party cache in front 
 ## Sidebar: Git Server and Clone URL
 
 - **Git Server** is the forge URL from the announcement when one exists. For Nostr-only repos it is a GRASP clone from the same event (on this deployment, `git.gittr.space` when that host is listed).
-- **Clone URL** shows every `clone[]` host from **all** kind **30617** snapshots for this repo (not only the latest note), plus forge `source`. ngit / git-remote-nostr often republish a one-host announcement after gittr Push listed every GRASP mirror — a thinner later note must not hide those remotes. One row per host (`.git` / no-`.git` collapse). Order: this deployment’s git host, then the other Push GRASP mirrors, forge last. **has files** = this visit already loaded a tree from that host (`git clone` should work). No badge = listed on the note only (clone might not work). Same rule for every host; we do not extra-probe the rest after one already answered.
+- **Clone URL** shows every `clone[]` host from the kind **30617** (union across snapshots for this `d` tag) plus forge `source`. **has files** is only a badge for hosts this visit already loaded a tree from. File-fetch extras (uid.ovh, other inferred GRASP) do not appear unless those hosts are actually on the event. It does not hide `git.gittr.space` or any other announced remote.
 - After Clear local / flush, the live 30617 still fills description, clone tags, and event id.
 
 ## Push tip
