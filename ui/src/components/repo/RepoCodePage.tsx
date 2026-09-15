@@ -262,6 +262,7 @@ import {
   dedupeNormalizedCloneUrls,
   filterDisplayCloneUrlsForSidebar,
   mergeCloneUrlLists,
+  normalizeCloneUrlKey,
   orderCloneUrlsForSidebar,
 } from "@/lib/utils/filter-display-clone-urls";
 import {
@@ -551,14 +552,6 @@ function mergeDiscoverableCloneUrls(
     : [];
   const disc = [...discovered].filter(clean);
   return Array.from(new Set([...prevArr, ...disc]));
-}
-
-function normalizeCloneUrlKey(url: string): string {
-  return url
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(/\.git$/i, "")
-    .toLowerCase();
 }
 
 /**
@@ -858,6 +851,11 @@ export function RepoCodePage() {
       error?: string;
     }>
   >([]);
+  const [cloneHeadHints, setCloneHeadHints] = useState<
+    Record<string, "has-files" | "no-files" | "checking">
+  >({});
+  const cloneHeadHintsRef = useRef(cloneHeadHints);
+  cloneHeadHintsRef.current = cloneHeadHints;
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
@@ -17576,6 +17574,69 @@ export function RepoCodePage() {
 
   const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
 
+  useEffect(() => {
+    if (!mounted) return;
+    const urls = httpCloneUrls.filter(
+      (u) => typeof u === "string" && u.trim().length > 0
+    );
+    if (urls.length === 0) return;
+    let cancelled = false;
+    setCloneHeadHints((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const url of urls) {
+        const key = normalizeCloneUrlKey(url);
+        if (!next[key]) {
+          next[key] = "checking";
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    const pending = urls.filter((url) => {
+      const key = normalizeCloneUrlKey(url);
+      const hint = cloneHeadHintsRef.current[key];
+      return hint !== "has-files" && hint !== "no-files";
+    });
+    if (pending.length === 0) return undefined;
+
+    const run = async () => {
+      const workers = Math.min(3, pending.length);
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < pending.length && !cancelled) {
+          const url = pending[cursor++];
+          if (!url) continue;
+          const key = normalizeCloneUrlKey(url);
+          try {
+            const res = await fetchDeduped(
+              `/api/git/clone-heads?url=${encodeURIComponent(url)}`
+            );
+            const data = (await res.json().catch(() => null)) as {
+              hasRefs?: boolean;
+            } | null;
+            if (cancelled) return;
+            setCloneHeadHints((prev) => ({
+              ...prev,
+              [key]: data?.hasRefs ? "has-files" : "no-files",
+            }));
+          } catch {
+            if (!cancelled) {
+              setCloneHeadHints((prev) => ({ ...prev, [key]: "no-files" }));
+            }
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: workers }, () => worker()));
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // cloneHeadHints is read only to skip finished probes; listing is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, httpCloneUrls.join("|")]);
+
   /**
    * Git Server sidebar: prefer NIP-34 `source` / effective upstream forge.
    * Many native Nostr repos (ngit batch publishes) omit `source` entirely — then
@@ -20477,6 +20538,7 @@ export function RepoCodePage() {
                           fetchStatuses,
                           successfulSourceUrls:
                             sidebarSuccessfulSourceUrls(repoData),
+                          remoteHeads: cloneHeadHints,
                         });
                         const showBadge = cloneUrlLiveHintShowsBadge(hint);
                         const badgeClass =

@@ -17,7 +17,7 @@ Implementation:
 - `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`, `tree-last-commits.ts`, `sync-from-source.ts`
 - `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` / `git show`
 - `ui/src/lib/git/bare-repo-tree-last-commits.ts` — last-commit dates on the Code file list
-- `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar clone list (forge `source` plus every pushable GRASP host) and `cloneUrlLiveHint` (announced vs already fetched)
+- `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar clone list (forge `source` plus every 30617 `clone[]` host) and `cloneUrlLiveHint` (per-host `git ls-remote` via `/api/git/clone-heads`, not the Code-tab fetch winner)
 - `ui/src/lib/security/private-network-host.ts` — gittr.space never dials LAN / Tailscale / `.local` as relays or clones (Chrome local-network permission)
 
 ## Timeline (Code tab)
@@ -184,7 +184,7 @@ The **nsite-gateway** (`pages.gittr.space`) is not a third-party cache in front 
 ## Sidebar: Git Server and Clone URL
 
 - **Git Server** is the forge URL from the announcement when one exists. For Nostr-only repos it is a GRASP clone from the same event (on this deployment, `git.gittr.space` when that host is listed).
-- **Clone URL** shows every `clone[]` host from the kind **30617** (union across snapshots for this `d` tag) plus forge `source`. **has files** is only a badge. The list must not shrink during the visit (event hosts → GitHub-only → a subset). GitHub-first / GitHub import / localStorage hydrate must keep `announcementClone`. Do not read `localStorage` while rendering the sidebar (that mismatched SSR HTML and threw React #418). Inferred fetch hosts (uid.ovh) stay off the list unless the event named them.
+- **Clone URL** shows every `clone[]` host from the kind **30617** (union across snapshots for this `d` tag) plus forge `source`. **has files** is a badge on each listed HTTPS clone when `git ls-remote --heads` sees refs (`GET /api/git/clone-heads`) — including `git.gittr.space` after a gittr Push. That check is **not** the Code-tab file-fetch winner. GitHub winning the tree must not leave gittr unbadged. Inferred fetch hosts (uid.ovh) stay off the list unless the event named them.
 - After Clear local / flush, the live 30617 still fills description, clone tags, and event id.
 
 ## Push tip

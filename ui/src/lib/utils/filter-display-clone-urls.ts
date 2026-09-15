@@ -150,9 +150,9 @@ export function filterDisplayCloneUrlsForSidebar(
 }
 
 /**
- * Sidebar clone badge = this Code visit already loaded a file tree from that
- * host, so `git clone` is likely to work. Skipped extra GRASP stay announced
- * (no badge): they are often listed so other relays accept the note.
+ * Sidebar clone badge = that listed host currently has git refs (`git
+ * ls-remote --heads`), so `git clone` should work. Independent of which host
+ * won the Code-tab file tree. File-fetch skip/fail must not hide a Push remote.
  */
 export type CloneUrlLiveHint =
   | "has-files"
@@ -195,8 +195,19 @@ function matchingFetchRows(
   return (rows || []).filter((row) => fetchStatusMatchesClone(row, cloneUrl));
 }
 
-function isSkippedRaceRow(row: CloneUrlFetchStatusRow): boolean {
-  return /skipped/i.test(String(row.error || ""));
+function lookupRemoteHeadsHint(
+  cloneUrl: string,
+  remoteHeads?: Record<string, CloneUrlLiveHint>
+): CloneUrlLiveHint | undefined {
+  if (!remoteHeads) return undefined;
+  const key = normalizeCloneUrlKey(cloneUrl);
+  if (remoteHeads[key]) return remoteHeads[key];
+  const host = gitUrlHostname(cloneUrl);
+  if (!host) return undefined;
+  for (const [k, hint] of Object.entries(remoteHeads)) {
+    if (gitUrlHostname(k) === host) return hint;
+  }
+  return undefined;
 }
 
 export function cloneUrlLiveHint(
@@ -204,24 +215,30 @@ export function cloneUrlLiveHint(
   opts: {
     fetchStatuses?: CloneUrlFetchStatusRow[];
     successfulSourceUrls?: string[];
+    remoteHeads?: Record<string, CloneUrlLiveHint>;
   }
 ): CloneUrlLiveHint {
   const host = gitUrlHostname(cloneUrl);
   const matches = matchingFetchRows(cloneUrl, opts.fetchStatuses);
-  const realFail = matches.some(
-    (s) => s.status === "failed" && !isSkippedRaceRow(s)
-  );
-  if (realFail) return "no-files";
-  if (matches.some((s) => s.status === "pending" || s.status === "fetching")) {
-    return "checking";
-  }
-
   for (const u of opts.successfulSourceUrls || []) {
     const other = gitUrlHostname(u);
     if (host && other && host === other) return "has-files";
     if (cloneUrlMatchKey(cloneUrl) === cloneUrlMatchKey(u)) return "has-files";
   }
   if (matches.some((s) => s.status === "success")) return "has-files";
+
+  const probed = lookupRemoteHeadsHint(cloneUrl, opts.remoteHeads);
+  if (
+    probed === "has-files" ||
+    probed === "no-files" ||
+    probed === "checking"
+  ) {
+    return probed;
+  }
+
+  if (matches.some((s) => s.status === "pending" || s.status === "fetching")) {
+    return "checking";
+  }
   return "announced";
 }
 
@@ -245,12 +262,12 @@ export function cloneUrlLiveHintBadge(hint: CloneUrlLiveHint): string {
 export function cloneUrlLiveHintTitle(hint: CloneUrlLiveHint): string {
   switch (hint) {
     case "has-files":
-      return "This page already loaded a file tree from this host, so git clone should work.";
+      return "This host has git refs, so git clone should work.";
     case "no-files":
-      return "This visit asked that host and got no file tree. git clone is unlikely to work.";
+      return "This gittr server could not see git refs on that host.";
     case "checking":
-      return "Asking this host for a file tree.";
+      return "Checking whether git clone would find a repo here.";
     default:
-      return "On the Nostr announcement only. git clone might not work — we did not load a tree from here this visit.";
+      return "On the Nostr announcement. Checking git refs separately from the Code-tab file tree.";
   }
 }

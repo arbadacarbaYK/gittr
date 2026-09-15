@@ -69,7 +69,7 @@ describe("cloneUrlLiveHint", () => {
     expect(cloneUrlLiveHintShowsBadge("has-files")).toBe(true);
   });
 
-  it("does not badge gittr just because GitHub won the race", () => {
+  it("does not badge gittr just because GitHub won the Code-tab race", () => {
     expect(
       cloneUrlLiveHint(gittr, {
         fetchStatuses: [{ source: "github.com", status: "success" }],
@@ -79,7 +79,19 @@ describe("cloneUrlLiveHint", () => {
     expect(cloneUrlLiveHintShowsBadge("announced")).toBe(false);
   });
 
-  it("treats skipped extra GRASP as announced, not no-files", () => {
+  it("badges gittr when ls-remote sees refs even if GitHub won the tree", () => {
+    expect(
+      cloneUrlLiveHint(gittr, {
+        fetchStatuses: [{ source: "github.com", status: "success" }],
+        successfulSourceUrls: [github],
+        remoteHeads: {
+          "https://git.gittr.space/npub1abc/repo": "has-files",
+        },
+      })
+    ).toBe("has-files");
+  });
+
+  it("ignores skipped file-fetch rows and uses the independent probe", () => {
     expect(
       cloneUrlLiveHint(ngit, {
         fetchStatuses: [
@@ -89,21 +101,24 @@ describe("cloneUrlLiveHint", () => {
             error: "Skipped (another source succeeded)",
           },
         ],
+        remoteHeads: {
+          "https://relay.ngit.dev/npub1abc/repo": "has-files",
+        },
       })
-    ).toBe("announced");
+    ).toBe("has-files");
   });
 
-  it("marks a real failed probe", () => {
+  it("marks a host with no git refs", () => {
     expect(
       cloneUrlLiveHint(ngit, {
-        fetchStatuses: [
-          { source: "relay.ngit.dev", status: "failed", error: "404" },
-        ],
+        remoteHeads: {
+          "https://relay.ngit.dev/npub1abc/repo": "no-files",
+        },
       })
     ).toBe("no-files");
   });
 
-  it("badges extra GRASP only when this visit loaded a tree from them", () => {
+  it("badges extra GRASP when this visit loaded a tree from them", () => {
     expect(
       cloneUrlLiveHint(ngit, {
         fetchStatuses: [{ source: "relay.ngit.dev", status: "success" }],
