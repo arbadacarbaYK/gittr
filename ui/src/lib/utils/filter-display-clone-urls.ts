@@ -100,15 +100,11 @@ export function filterDisplayCloneUrlsForSidebar(
 }
 
 /**
- * Sidebar clone badges:
- * - **source** = imported forge (GitHub/…). The Code tab often paints this tree first.
- * - **files** = this deployment’s git host (`git.gittr.space`) on the announcement —
- *   Push/import copies objects here even when GitHub won the file race.
- * - **listed** = extra GRASP URL on the note; not verified this visit.
- * Race “Skipped (another source succeeded)” stays listed, not empty.
+ * Sidebar clone badge = this Code visit already loaded a file tree from that
+ * host, so `git clone` is likely to work. Skipped extra GRASP stay announced
+ * (no badge): they are often listed so other relays accept the note.
  */
 export type CloneUrlLiveHint =
-  | "source"
   | "has-files"
   | "no-files"
   | "checking"
@@ -142,16 +138,6 @@ function fetchStatusMatchesClone(
   return Boolean(key && src.includes(key));
 }
 
-function isThisDeploymentGitHost(
-  host: string,
-  primaryGitServerEnv?: string
-): boolean {
-  if (!host) return false;
-  if (host === "git.gittr.space") return true;
-  const primary = primaryGitHostFromEnv(primaryGitServerEnv);
-  return Boolean(primary && host === primary);
-}
-
 function matchingFetchRows(
   cloneUrl: string,
   rows: CloneUrlFetchStatusRow[] | undefined
@@ -168,8 +154,6 @@ export function cloneUrlLiveHint(
   opts: {
     fetchStatuses?: CloneUrlFetchStatusRow[];
     successfulSourceUrls?: string[];
-    primaryGitServerEnv?: string;
-    sourceUrl?: string;
   }
 ): CloneUrlLiveHint {
   const host = gitUrlHostname(cloneUrl);
@@ -182,14 +166,6 @@ export function cloneUrlLiveHint(
     return "checking";
   }
 
-  if (sourceMatchesUpstreamClone(cloneUrl, opts.sourceUrl)) {
-    return "source";
-  }
-
-  if (isThisDeploymentGitHost(host, opts.primaryGitServerEnv)) {
-    return "has-files";
-  }
-
   for (const u of opts.successfulSourceUrls || []) {
     const other = gitUrlHostname(u);
     if (host && other && host === other) return "has-files";
@@ -199,32 +175,32 @@ export function cloneUrlLiveHint(
   return "announced";
 }
 
+export function cloneUrlLiveHintShowsBadge(hint: CloneUrlLiveHint): boolean {
+  return hint !== "announced";
+}
+
 export function cloneUrlLiveHintBadge(hint: CloneUrlLiveHint): string {
   switch (hint) {
-    case "source":
-      return "source";
     case "has-files":
-      return "files";
+      return "has files";
     case "no-files":
-      return "empty";
+      return "no files";
     case "checking":
       return "…";
     default:
-      return "listed";
+      return "";
   }
 }
 
 export function cloneUrlLiveHintTitle(hint: CloneUrlLiveHint): string {
   switch (hint) {
-    case "source":
-      return "Imported from this forge. The Code tab often loads this tree first. That is not the same as gittr’s Nostr git copy.";
     case "has-files":
-      return "Objects live here. gittr copies imports/Push onto git.gittr.space even if this page painted GitHub first. Other hosts only get this badge if this visit already loaded a tree from them.";
+      return "This page already loaded a file tree from this host, so git clone should work.";
     case "no-files":
-      return "This visit asked that host and got no file tree.";
+      return "This visit asked that host and got no file tree. git clone is unlikely to work.";
     case "checking":
       return "Asking this host for a file tree.";
     default:
-      return "On the Nostr announcement. Extra GRASP mirrors are listed so other relays accept the note — not verified to hold objects.";
+      return "On the Nostr announcement only. git clone might not work — we did not load a tree from here this visit.";
   }
 }

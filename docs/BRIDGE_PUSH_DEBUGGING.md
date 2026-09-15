@@ -34,7 +34,7 @@ Code browser rows show **last commit message + relative time** for the currently
 
 ## Clone URL sidebar (Aug 2026)
 
-"Clone URL (announced)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. Compact badges: **source** (imported forge), **files** (`git.gittr.space` even if GitHub won the Code-tab race), **listed** (extra GRASP, skipped race losers), **empty** (real failed probe). Hover explains.
+"Clone URL (announced)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. The **has files** badge is only for hosts this visit actually loaded a tree from (so `git clone` should work). Skipped extra GRASP stay unbadged. Do not special-case `git.gittr.space`.
 
 ## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
 

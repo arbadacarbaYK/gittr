@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cloneUrlLiveHint,
+  cloneUrlLiveHintShowsBadge,
   filterDisplayCloneUrlsForSidebar,
 } from "./filter-display-clone-urls";
 import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
@@ -55,35 +56,30 @@ describe("cloneUrlLiveHint", () => {
   const ngit = "https://relay.ngit.dev/npub1abc/repo.git";
   const gittr = "https://git.gittr.space/npub1abc/repo.git";
   const github = "https://github.com/org/repo.git";
-  const env = "https://git.gittr.space";
 
-  it("marks gittr’s host as files even when GitHub won the Code-tab race", () => {
+  it("badges GitHub has-files when this visit loaded the tree from GitHub", () => {
     expect(
-      cloneUrlLiveHint(gittr, {
-        primaryGitServerEnv: env,
-        sourceUrl: github,
+      cloneUrlLiveHint(github, {
         fetchStatuses: [{ source: "github.com", status: "success" }],
         successfulSourceUrls: [github],
       })
     ).toBe("has-files");
+    expect(cloneUrlLiveHintShowsBadge("has-files")).toBe(true);
   });
 
-  it("marks the imported forge as source, not as the Nostr git copy", () => {
+  it("does not badge gittr just because GitHub won the race", () => {
     expect(
-      cloneUrlLiveHint(github, {
-        primaryGitServerEnv: env,
-        sourceUrl: github,
+      cloneUrlLiveHint(gittr, {
         fetchStatuses: [{ source: "github.com", status: "success" }],
         successfulSourceUrls: [github],
       })
-    ).toBe("source");
+    ).toBe("announced");
+    expect(cloneUrlLiveHintShowsBadge("announced")).toBe(false);
   });
 
-  it("treats skipped extra GRASP as listed, not empty", () => {
+  it("treats skipped extra GRASP as announced, not no-files", () => {
     expect(
       cloneUrlLiveHint(ngit, {
-        primaryGitServerEnv: env,
-        sourceUrl: github,
         fetchStatuses: [
           {
             source: "relay.ngit.dev",
@@ -105,10 +101,9 @@ describe("cloneUrlLiveHint", () => {
     ).toBe("no-files");
   });
 
-  it("still uses a successful extra-GRASP fetch as files", () => {
+  it("badges extra GRASP only when this visit loaded a tree from them", () => {
     expect(
       cloneUrlLiveHint(ngit, {
-        primaryGitServerEnv: env,
         fetchStatuses: [{ source: "relay.ngit.dev", status: "success" }],
       })
     ).toBe("has-files");
