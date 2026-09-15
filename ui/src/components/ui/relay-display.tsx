@@ -181,7 +181,7 @@ export function RelayDisplay({
             </span>
           </button>
           {gitSourcesExpanded && (
-            <div className="space-y-1 ml-6">
+            <div className="space-y-1 ml-0 min-w-0">
               {gitSourceStatuses.map((gitStatus, idx) => {
                 const displayName =
                   gitStatus.displayName ||
@@ -241,7 +241,7 @@ export function RelayDisplay({
             </span>
           </button>
           {graspExpanded && (
-            <div className="space-y-1 ml-6">
+            <div className="space-y-1 ml-0 min-w-0">
               {allGraspServers.map((server) => {
                 const domain = graspCanonicalHost(server);
                 return (
@@ -283,7 +283,7 @@ export function RelayDisplay({
             </span>
           </button>
           {relaysExpanded && (
-            <div className="space-y-1 ml-6">
+            <div className="space-y-1 ml-0 min-w-0">
               {regularRelays.map((relay, idx) => {
                 // Extract domain from URL
                 const domain = relay.replace(/^wss?:\/\//, "").split("/")[0];

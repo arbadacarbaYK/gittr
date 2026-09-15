@@ -17911,7 +17911,7 @@ export function RepoCodePage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         <div
           id="gittr-repo-main"
-          className="col-span-1 lg:col-span-4 xl:col-span-5"
+          className="col-span-1 min-w-0 lg:col-span-4 xl:col-span-5"
         >
           <div className="flex flex-row items-center justify-between gap-2">
             <div>
@@ -20147,7 +20147,7 @@ export function RepoCodePage() {
         </div>
 
         <aside
-          className="col-span-1 lg:col-span-1 xl:col-span-1 space-y-2"
+          className="col-span-1 min-w-0 space-y-2 overflow-x-hidden lg:col-span-1 xl:col-span-1"
           suppressHydrationWarning
         >
           <div className="flex justify-between">
@@ -20260,7 +20260,7 @@ export function RepoCodePage() {
                 onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
                 className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
               >
-                <span>Clone URL (announced)</span>
+                <span>Clone URL</span>
                 {cloneUrlsExpanded ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -20288,31 +20288,31 @@ export function RepoCodePage() {
                         return (
                           <div
                             key={`std-clone-${idx}`}
-                            className="flex items-start gap-2 text-xs"
+                            className="flex min-w-0 flex-col gap-1 text-xs"
                           >
-                            <code className="min-w-0 flex-1 text-gray-100 bg-gray-900/70 px-2 py-1.5 rounded break-all leading-snug">
+                            <code className="block min-w-0 w-full text-gray-100 bg-gray-900/70 px-2 py-1.5 rounded break-all leading-snug">
                               {command}
                             </code>
-                            <div className="flex w-[4.5rem] shrink-0 flex-col items-center gap-0.5 pt-0.5">
+                            <div className="flex items-center justify-end gap-1">
                               {showBadge ? (
                                 <Tooltip
-                                  className="w-full"
                                   content={cloneUrlLiveHintTitle(hint)}
                                   mobileClickable
                                 >
                                   <span
-                                    className={`block w-full rounded px-1 py-0.5 text-center text-[10px] font-medium leading-none whitespace-nowrap ${badgeClass}`}
+                                    className={`rounded px-1.5 py-1 text-center text-[10px] font-medium leading-none whitespace-nowrap ${badgeClass}`}
                                   >
                                     {cloneUrlLiveHintBadge(hint)}
                                   </span>
                                 </Tooltip>
                               ) : null}
                               <button
-                                className="text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
+                                type="button"
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-purple-300 hover:text-purple-100 rounded hover:bg-white/5 transition-colors"
                                 onClick={() => copyCloneCommand(command)}
                                 title="Copy clone command"
                               >
-                                <Copy className="h-3 w-3" />
+                                <Copy className="h-3.5 w-3.5" />
                               </button>
                             </div>
                           </div>
@@ -20323,10 +20323,7 @@ export function RepoCodePage() {
                   {nostrCloneUrls.length > 0 && (
                     <div className="space-y-2 rounded border border-purple-900/40 bg-purple-900/10 p-2">
                       <p className="text-xs text-purple-200">
-                        nostr:// clone (requires git-remote-nostr)
-                      </p>
-                      <p className="text-[11px] text-purple-200/70 leading-snug">
-                        With{" "}
+                        nostr:// needs{" "}
                         <a
                           href="https://github.com/aljazceru/awesome-nostr#git"
                           target="_blank"
@@ -20335,46 +20332,31 @@ export function RepoCodePage() {
                         >
                           git-remote-nostr
                         </a>
-                        , the usual form is{" "}
-                        <code className="text-purple-100/90">
-                          nostr://&lt;npub&gt;/&lt;repo&gt;
-                        </code>{" "}
-                        — relays and optional git host are resolved from your
-                        helper config and the repository&apos;s data on Nostr,
-                        not from this sidebar. If the event includes{" "}
-                        <code className="text-purple-100/90">
-                          nostr://…@…/…
-                        </code>
-                        , that pins a host and is shown verbatim.
+                        . Prefer https unless you use that helper.
                       </p>
                       {nostrCloneUrls.map((url, idx) => {
                         const command = `git clone ${url}`;
                         return (
                           <div
                             key={`nostr-clone-${idx}`}
-                            className="flex items-center gap-2 text-xs"
+                            className="flex min-w-0 flex-col gap-1 text-xs"
                           >
-                            <code className="flex-1 text-purple-100 bg-purple-950/50 px-2 py-1 rounded break-all">
+                            <code className="block min-w-0 w-full text-purple-100 bg-purple-950/50 px-2 py-1.5 rounded break-all">
                               {command}
                             </code>
-                            <button
-                              className="text-purple-200 hover:text-white p-1 rounded hover:bg-white/5 transition-colors"
-                              onClick={() => copyCloneCommand(command)}
-                              title="Copy clone command"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </button>
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-purple-200 hover:text-white rounded hover:bg-white/5 transition-colors"
+                                onClick={() => copyCloneCommand(command)}
+                                title="Copy clone command"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
-                      <p className="text-[11px] text-purple-200/80 leading-snug">
-                        Plain{" "}
-                        <code className="text-purple-100/90">
-                          git clone https://…
-                        </code>{" "}
-                        works for GRASP HTTPS remotes; use the nostr:// form
-                        only if you use the remote helper.
-                      </p>
                     </div>
                   )}
                 </div>
@@ -23884,20 +23866,20 @@ export function RepoCodePage() {
                         if (internalForkUrl)
                           window.location.href = internalForkUrl;
                       }}
-                      className="text-purple-500 hover:underline text-xs flex items-center gap-1"
+                      className="text-purple-500 hover:underline text-xs flex min-w-0 items-start gap-1"
                     >
-                      <GitFork className="h-3 w-3" />
-                      {displayText}
+                      <GitFork className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span className="min-w-0 break-all">{displayText}</span>
                     </a>
                   ) : (
                     <a
                       href={forkedFrom}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-purple-500 hover:underline text-xs flex items-center gap-1"
+                      className="text-purple-500 hover:underline text-xs flex min-w-0 items-start gap-1"
                     >
-                      <GitFork className="h-3 w-3" />
-                      {displayText}
+                      <GitFork className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span className="min-w-0 break-all">{displayText}</span>
                     </a>
                   )}
                 </div>
