@@ -34,6 +34,16 @@ describe("shouldInferGraspCloneUrls", () => {
     ).toBe(false);
   });
 
+  it("does not treat a present announcement as empty when the local URL list is stale", () => {
+    expect(
+      shouldInferGraspCloneUrls({
+        collectedCloneCount: 0,
+        announcementStatus: "present",
+        allowLastResort: true,
+      })
+    ).toBe(false);
+  });
+
   it("allows a last-resort guess only when still unknown", () => {
     expect(
       shouldInferGraspCloneUrls({

@@ -95,6 +95,26 @@ describe("mergeAnnouncementTagClones", () => {
     expect(out.some((u) => u.includes("uid.ovh"))).toBe(false);
   });
 
+  it("does not shrink a full event list when fetch clone is GitHub-only", () => {
+    const announced = [
+      `https://git.gittr.space/${npub}/gittr.git`,
+      `https://git.shakespeare.diy/${npub}/gittr.git`,
+      `https://gitnostr.com/${npub}/gittr.git`,
+      `https://relay.ngit.dev/${npub}/gittr.git`,
+      `https://relay.gittr.space/${npub}/gittr.git`,
+      `https://ngit.danconwaydev.com/${npub}/gittr.git`,
+    ];
+    const out = sidebarClonesFromAnnouncement({
+      announcementClones: announced,
+      mergedClones: announced,
+      forgeSourceUrl: "https://github.com/arbadacarbaYK/gittr",
+    });
+    for (const u of announced) {
+      expect(out).toContain(u);
+    }
+    expect(out.filter((u) => u.includes("github.com"))).toHaveLength(1);
+  });
+
   it("keeps git.gittr.space from a persisted event when the live snapshot is thin", () => {
     const gittr = `https://git.gittr.space/${npub}/gittr.git`;
     const ngit = `https://relay.ngit.dev/${npub}/gittr.git`;

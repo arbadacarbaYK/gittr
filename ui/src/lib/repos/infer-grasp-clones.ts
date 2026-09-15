@@ -4,7 +4,8 @@ export type AnnouncementCloneStatus = "unknown" | "empty" | "present";
  * Guess well-known GRASP HTTPS paths only when the kind 30617 for this repo
  * arrived and really had no clone tags. If the announcement is still in flight,
  * do not invent git.gittr.space / ngit — that races real clone tags (e.g. a
- * self-hosted git remote on the event).
+ * self-hosted git remote on the event). A later fetch run with an empty local
+ * URL array must not remap `present` → `empty`.
  */
 export function shouldInferGraspCloneUrls(args: {
   collectedCloneCount: number;

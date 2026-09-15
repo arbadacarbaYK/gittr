@@ -34,7 +34,7 @@ Code browser rows show **last commit message + relative time** for the currently
 
 ## Clone URL sidebar (Sep 2026)
 
-Clone URL is the announcement’s `clone[]` plus forge `source`. **has files** is a badge only — GitHub winning the file race must not shrink the list, hide `git.gittr.space`, or add inferred fetch hosts that are not on the event. One row per host (`.git` / no-`.git` collapse).
+Clone URL is the announcement’s `clone[]` plus forge `source`. **has files** is a badge only — GitHub winning the file race must not shrink the list, hide `git.gittr.space`, or add inferred fetch hosts that are not on the event. One row per host (`.git` / no-`.git` collapse). If the list flashes **all event hosts → GitHub only → a subset**, a later `setRepoData` dropped `announcementClone` and a fetch run with an empty URL array remapped `present` → `empty` and inferred 4 GRASP. Keep `announcementClone` across GitHub-first / import / localStorage rebuilds; never infer when the 30617 already had clone tags.
 
 ## Clone URL sidebar (Aug 2026)
 

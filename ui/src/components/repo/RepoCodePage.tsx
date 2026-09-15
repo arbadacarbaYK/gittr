@@ -680,17 +680,20 @@ function inferGraspClonesIfNeeded(
   entity: string,
   repo: string,
   announcementStatus: AnnouncementCloneStatus,
-  allowLastResort?: boolean
+  allowLastResort?: boolean,
+  alreadyAnnounced?: readonly string[] | null
 ): void {
+  if (
+    announcementStatus === "present" ||
+    (Array.isArray(alreadyAnnounced) && alreadyAnnounced.length > 0)
+  ) {
+    return;
+  }
   const usable = cloneUrls.filter(isLikelyGitCloneUrl).length;
-  const status: AnnouncementCloneStatus =
-    usable === 0 && announcementStatus === "present"
-      ? "empty"
-      : announcementStatus;
   if (
     !shouldInferGraspCloneUrls({
       collectedCloneCount: usable,
-      announcementStatus: status,
+      announcementStatus,
       allowLastResort,
     })
   ) {
@@ -701,6 +704,16 @@ function inferGraspClonesIfNeeded(
   for (const url of inferred) {
     if (!cloneUrls.includes(url)) cloneUrls.push(url);
   }
+}
+
+function preservedAnnouncementClone(
+  repo: { announcementClone?: string[] } | null | undefined,
+  prev: { announcementClone?: string[] } | null | undefined
+): string[] {
+  return mergeAnnouncementTagClones(
+    prev?.announcementClone,
+    repo?.announcementClone
+  );
 }
 
 /**
@@ -4114,7 +4127,14 @@ export function RepoCodePage() {
             ) as RepoLink[],
             defaultBranch:
               (repo as StoredRepo).filesBranch || repo.defaultBranch || "main",
-            clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
+            clone: mergeCloneUrlLists(
+              (repo as { clone?: string[] }).clone,
+              (repoDataRef.current as { clone?: string[] } | null)?.clone
+            ),
+            announcementClone: preservedAnnouncementClone(
+              repo as { announcementClone?: string[] },
+              repoDataRef.current as { announcementClone?: string[] } | null
+            ),
             relays: (repo as any).relays || [],
             ownerPubkey: ownerPubkey || repo.ownerPubkey,
             lastNostrEventId:
@@ -4516,6 +4536,16 @@ export function RepoCodePage() {
                   branches: (d.branches || []) as string[],
                   tags: (d.tags || []) as string[],
                   links: (repo.links || d.links || []) as RepoLink[],
+                  clone: mergeCloneUrlLists(
+                    (repo as { clone?: string[] }).clone,
+                    (repoDataRef.current as { clone?: string[] } | null)?.clone
+                  ),
+                  announcementClone: preservedAnnouncementClone(
+                    repo as { announcementClone?: string[] },
+                    repoDataRef.current as {
+                      announcementClone?: string[];
+                    } | null
+                  ),
                 },
                 repo,
                 repoDataRef.current,
@@ -6652,12 +6682,22 @@ export function RepoCodePage() {
                       prev?.clone,
                       initialCloneUrls
                     );
+                    const liveAnnounced = preservedAnnouncementClone(
+                      prev as { announcementClone?: string[] },
+                      repoDataRef.current as {
+                        announcementClone?: string[];
+                      } | null
+                    );
                     const updated = prev
                       ? {
                           ...prev,
                           files: filesToApply,
                           filesBranch: branchFromFetch,
                           clone: mergedClone,
+                          announcementClone:
+                            liveAnnounced.length > 0
+                              ? liveAnnounced
+                              : prev.announcementClone,
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
@@ -6679,6 +6719,10 @@ export function RepoCodePage() {
                           filesBranch: branchFromFetch,
                           defaultBranch: "main",
                           clone: mergedClone,
+                          announcementClone:
+                            liveAnnounced.length > 0
+                              ? liveAnnounced
+                              : undefined,
                           successfulSources: [
                             {
                               source: status.source,
@@ -7677,7 +7721,7 @@ export function RepoCodePage() {
                       ) {
                         return prev;
                       }
-                      return {
+                      const next = {
                         ...base,
                         clone: merged,
                         announcementClone: nextAnnounced,
@@ -7685,6 +7729,8 @@ export function RepoCodePage() {
                           eventRepoData.lastEventId || base.lastNostrEventId,
                         syncedFromNostr: true,
                       };
+                      repoDataRef.current = next;
+                      return next;
                     });
                     const hasFilesNow = !!(
                       Array.isArray(repoDataRef.current?.files) &&
@@ -7692,7 +7738,11 @@ export function RepoCodePage() {
                     );
                     // Clone tags are already merged into repoData. Do not abort an
                     // in-flight fetch or re-run the whole pipeline (that freezes chrome).
-                    if (!hasFilesNow && !fileFetchInProgressRef.current) {
+                    if (
+                      !hasFilesNow &&
+                      !fileFetchInProgressRef.current &&
+                      nip34AnnouncementCloneStatusRef.current !== "present"
+                    ) {
                       fileFetchAttemptedRef.current = "";
                       setAnnouncementFetchTick((t) => t + 1);
                     }
@@ -9513,7 +9563,13 @@ export function RepoCodePage() {
                   cloneUrls,
                   resolvedParams.entity,
                   resolvedParams.repo,
-                  nip34AnnouncementCloneStatusRef.current
+                  nip34AnnouncementCloneStatusRef.current,
+                  undefined,
+                  (
+                    repoDataRef.current as {
+                      announcementClone?: string[];
+                    } | null
+                  )?.announcementClone
                 );
                 if (cloneUrls.length > 0) {
                   setRepoData((prev: any) =>
@@ -10190,7 +10246,9 @@ export function RepoCodePage() {
             resolvedParams.entity,
             resolvedParams.repo,
             nip34AnnouncementCloneStatusRef.current,
-            true
+            true,
+            (repoDataRef.current as { announcementClone?: string[] } | null)
+              ?.announcementClone
           );
           if (existing.length > 0) {
             setRepoData((prev: any) =>
@@ -10324,7 +10382,10 @@ export function RepoCodePage() {
               cloneUrls,
               resolvedParams.entity,
               resolvedParams.repo,
-              nip34AnnouncementCloneStatusRef.current
+              nip34AnnouncementCloneStatusRef.current,
+              undefined,
+              (repoDataRef.current as { announcementClone?: string[] } | null)
+                ?.announcementClone
             );
             if (cloneUrls.length > 0) {
               setRepoData((prev: any) =>
@@ -10493,6 +10554,12 @@ export function RepoCodePage() {
                               filesBranch: branchFromFetch,
                               sourceUrl: sourceUrlToSet,
                               clone: mergeDiscoverableCloneUrls([], cloneUrls),
+                              announcementClone: preservedAnnouncementClone(
+                                null,
+                                repoDataRef.current as {
+                                  announcementClone?: string[];
+                                } | null
+                              ),
                             };
                         return updated;
                       });
@@ -10601,6 +10668,12 @@ export function RepoCodePage() {
                         files,
                         sourceUrl: sourceUrlFromStatus,
                         clone: mergeDiscoverableCloneUrls([], cloneUrls),
+                        announcementClone: preservedAnnouncementClone(
+                          null,
+                          repoDataRef.current as {
+                            announcementClone?: string[];
+                          } | null
+                        ),
                       };
                   return updated;
                 });
@@ -17368,36 +17441,18 @@ export function RepoCodePage() {
           .announcementClone as string[])
       : [];
     const forgeFromLinks = forgeUrlFromRepoLinks((repoData as any)?.links);
-    let storedAnnounced: string[] = [];
-    if (typeof window !== "undefined" && resolvedParams.entity && decodedRepo) {
-      try {
-        const stored = findRepoByEntityAndName(
-          loadStoredRepos(),
-          resolvedParams.entity,
-          decodedRepo
-        );
-        const extra = stored as {
-          announcementClone?: string[];
-        };
-        if (Array.isArray(extra.announcementClone)) {
-          storedAnnounced = extra.announcementClone;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
     const liveClone = Array.isArray((repoData as any)?.clone)
       ? ((repoData as any).clone as string[])
       : [];
     const fromEvent = sidebarEventCloneUrls({
       announcementClones,
-      storedAnnounced,
+      storedAnnounced: [],
     });
     const eventHasClones = fromEvent.length > 0;
     let rawCloneList = sidebarClonesFromAnnouncement({
-      announcementClones: eventHasClones ? fromEvent : [],
+      announcementClones: fromEvent,
       mergedClones: eventHasClones
-        ? []
+        ? fromEvent
         : mergeAnnouncementTagClones(liveClone, []),
       forgeSourceUrl:
         (effectiveSourceUrl && String(effectiveSourceUrl).trim()) ||
