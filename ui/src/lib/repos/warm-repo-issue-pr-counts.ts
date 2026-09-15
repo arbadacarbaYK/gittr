@@ -19,7 +19,7 @@ import {
 } from "@/lib/utils/entity-normalizer";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import {
-  normalizeIssueListStatus,
+  issueStatusForNostrKind1621Merge,
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -110,10 +110,7 @@ export function upsertIssue(entity: string, repo: string, event: any): void {
     }
   }
   const prior = idx >= 0 ? existing[idx] : undefined;
-  const status =
-    prior?.status && normalizeIssueListStatus(prior.status) === "closed"
-      ? prior.status
-      : "open";
+  const status = issueStatusForNostrKind1621Merge(prior?.status);
   const row = {
     ...(prior || {}),
     id: event.id,
@@ -199,8 +196,10 @@ function applyStatus(
 
   let status = "open";
   if (event.kind === KIND_STATUS_CLOSED) status = "closed";
-  else if (event.kind === KIND_STATUS_APPLIED) status = "merged";
-  else if (event.kind === KIND_STATUS_DRAFT) status = "draft";
+  else if (event.kind === KIND_STATUS_APPLIED) {
+    // NIP-34: 1631 is Applied/Merged on PRs and Resolved on issues.
+    status = kind === "issues" ? "closed" : "merged";
+  } else if (event.kind === KIND_STATUS_DRAFT) status = "draft";
   else if (event.kind === KIND_STATUS_OPEN) status = "open";
 
   const prior = rows[idx];
@@ -409,7 +408,7 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
     };
 
     subscribeStatuses(
-      [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+      [KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED],
       issueIdToRepo,
       "issues"
     );
@@ -513,7 +512,11 @@ export function startWarmRepoIssuePrFromNostr(opts: {
         subscribe(
           [
             {
-              kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+              kinds: [
+                KIND_STATUS_OPEN,
+                KIND_STATUS_APPLIED,
+                KIND_STATUS_CLOSED,
+              ],
               "#e": issueIds.slice(0, 200),
               // No `#k` — NIP-34 status events historically omit it; `#e` is enough.
             },

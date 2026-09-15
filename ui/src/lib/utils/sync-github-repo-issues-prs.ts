@@ -9,9 +9,19 @@ import {
   readRepoPullsFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
 import {
+  type GithubRefetchMergeOptions,
   mergeGithubIssuesAfterRefetch,
   mergeGithubPrsAfterRefetch,
 } from "@/lib/utils/issue-pr-status";
+
+const GITHUB_LIST_PER_PAGE = 100;
+
+function githubListFetchIsComplete(
+  fetchedCount: number,
+  maxPages: number
+): boolean {
+  return fetchedCount < maxPages * GITHUB_LIST_PER_PAGE;
+}
 
 function parseGithubOwnerRepo(
   sourceUrl: string
@@ -50,7 +60,7 @@ async function fetchGithubListPages(
   for (let page = 1; page <= maxPages; page++) {
     const endpoint = `${endpointPathAndQuery}${
       hasQuery ? "&" : "?"
-    }per_page=100&page=${page}`;
+    }per_page=${GITHUB_LIST_PER_PAGE}&page=${page}`;
     const res = await fetch(
       `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`,
       { signal: AbortSignal.timeout(8000) }
@@ -66,7 +76,7 @@ async function fetchGithubListPages(
     }
     if (chunk.length === 0) break;
     all.push(...chunk);
-    if (chunk.length < 100) break;
+    if (chunk.length < GITHUB_LIST_PER_PAGE) break;
   }
   return all;
 }
@@ -133,7 +143,15 @@ export async function syncGithubIssuesForRepo(
 
     const key = getRepoStorageKey("gittr_issues", entity, repoSlug);
     const existing = readRepoIssuesFromLocalStorage(entity, repoSlug);
-    const merged = mergeGithubIssuesAfterRefetch(existing, githubIssues);
+    const mergeOpts: GithubRefetchMergeOptions = {
+      openOnly: Boolean(options?.openOnly),
+      fetchComplete: githubListFetchIsComplete(githubList.length, maxPages),
+    };
+    const merged = mergeGithubIssuesAfterRefetch(
+      existing,
+      githubIssues,
+      mergeOpts
+    );
     localStorage.setItem(key, JSON.stringify(merged));
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("gittr:issue-updated"));
@@ -204,7 +222,11 @@ export async function syncGithubPullsForRepo(
 
     const key = getRepoStorageKey("gittr_prs", entity, repoSlug);
     const existing = readRepoPullsFromLocalStorage(entity, repoSlug);
-    const merged = mergeGithubPrsAfterRefetch(existing, githubPRs);
+    const mergeOpts: GithubRefetchMergeOptions = {
+      openOnly: Boolean(options?.openOnly),
+      fetchComplete: githubListFetchIsComplete(githubList.length, maxPages),
+    };
+    const merged = mergeGithubPrsAfterRefetch(existing, githubPRs, mergeOpts);
     localStorage.setItem(key, JSON.stringify(merged));
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("gittr:pr-updated"));

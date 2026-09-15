@@ -53,6 +53,7 @@ import { sortListItems } from "@/lib/utils/issue-pr-list-search";
 import {
   countMergedIssueComments,
   issueOrPrListRef,
+  issueStatusForNostrKind1621Merge,
   mergeGithubIssuesAfterRefetch,
   normalizeIssueListStatus,
   shareableIssueOrPrPathId,
@@ -605,7 +606,10 @@ export default function IssuesPage({}) {
           if (!repo) return;
 
           const key = getRepoStorageKey("gittr_issues", entity, repoName);
-          const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
+          const existingIssues = readRepoIssuesFromLocalStorage(
+            entity,
+            repoName
+          ) as any[];
 
           // Check if issue already exists
           const existingIndex = existingIssues.findIndex(
@@ -649,9 +653,13 @@ export default function IssuesPage({}) {
               (t: string[]) => t[0] === "p" && (t[2] === "assignee" || !t[2])
             )
             .map((t: string[]) => t[1]);
-          // Status: Default to "open" - will be updated by status events (kinds 1630-1632)
-          // NIP-34: Status comes from separate status events, not tags
-          const status = "open"; // Default, will be updated by status event subscription
+          // Kind 1621 has no status tag. Default open, but do not overwrite
+          // a locally closed/resolved row when relays replay the body event.
+          const status = issueStatusForNostrKind1621Merge(
+            existingIndex >= 0
+              ? existingIssues[existingIndex]?.status
+              : undefined
+          );
 
           const issue = {
             id: event.id,

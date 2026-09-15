@@ -21,9 +21,11 @@ import { hasWriteAccess } from "@/lib/repo-permissions";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
+import { readRepoIssuesFromLocalStorage } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import {
   issueOrPrListRef,
+  normalizeIssueListStatus,
   shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -169,6 +171,19 @@ export default function ProjectsPage() {
     }
   }, [entity, repo]);
 
+  const loadOpenIssues = useCallback(() => {
+    try {
+      const issues = readRepoIssuesFromLocalStorage(entity, repo) as Array<{
+        status?: string;
+      }>;
+      setOpenIssues(
+        issues.filter((i) => normalizeIssueListStatus(i.status) === "open")
+      );
+    } catch {
+      setOpenIssues([]);
+    }
+  }, [entity, repo]);
+
   // Load projects
   useEffect(() => {
     reloadProjects();
@@ -188,6 +203,8 @@ export default function ProjectsPage() {
           subscribe,
           defaultRelays,
         });
+        if (cancelled) return;
+        loadOpenIssues();
         const url = sourceUrl || rec?.sourceUrl || "";
         if (!url || !url.includes("github.com")) {
           if (!cancelled) {
@@ -225,7 +242,7 @@ export default function ProjectsPage() {
     return () => {
       cancelled = true;
     };
-  }, [entity, repo, subscribe, defaultRelays, reloadProjects]);
+  }, [entity, repo, subscribe, defaultRelays, reloadProjects, loadOpenIssues]);
 
   useEffect(() => {
     const onUpdated = () => reloadProjects();
@@ -233,15 +250,17 @@ export default function ProjectsPage() {
     return () => window.removeEventListener("gittr:project-updated", onUpdated);
   }, [reloadProjects]);
 
-  // Load open issues for auto-linking
+  // Load open issues for auto-linking. Re-read after GitHub hydrate / close.
   useEffect(() => {
-    try {
-      const key = `gittr_issues__${entity}__${repo}`;
-      const issues = JSON.parse(localStorage.getItem(key) || "[]");
-      const open = issues.filter((i: any) => i.status === "open");
-      setOpenIssues(open);
-    } catch {}
-  }, [entity, repo]);
+    loadOpenIssues();
+    const onUpdated = () => loadOpenIssues();
+    window.addEventListener("gittr:issue-updated", onUpdated);
+    window.addEventListener("gittr:issue-created", onUpdated);
+    return () => {
+      window.removeEventListener("gittr:issue-updated", onUpdated);
+      window.removeEventListener("gittr:issue-created", onUpdated);
+    };
+  }, [loadOpenIssues]);
 
   // Check if user has write access (owner or maintainer) - required for create/edit/delete
   useEffect(() => {

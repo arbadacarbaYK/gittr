@@ -11,6 +11,7 @@ import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_ISSUE,
+  KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
@@ -41,6 +42,7 @@ import {
 import {
   countMergedIssueComments,
   issueOrPrListRef,
+  issueStatusForNostrKind1621Merge,
   normalizeIssueListStatus,
   shareableIssueOrPrPathId,
 } from "@/lib/utils/issue-pr-status";
@@ -442,9 +444,13 @@ export default function RepoIssuesPage({
                   (p: string | undefined): p is string => !!p && p !== pTag?.[1]
                 ); // Exclude repo owner
 
-              // Status: Default to "open" - will be updated by status events (kinds 1630-1632)
-              // NIP-34: Status comes from separate status events, not tags
-              const status = "open"; // Default, will be updated by status event subscription
+              // Kind 1621 has no status tag. Default open, but do not overwrite
+              // a locally closed/resolved row when relays replay the body event.
+              const status = issueStatusForNostrKind1621Merge(
+                existingIndex >= 0
+                  ? existingIssues[existingIndex]?.status
+                  : undefined
+              );
 
               const issue = {
                 id: event.id,
@@ -507,7 +513,7 @@ export default function RepoIssuesPage({
       if (issueEventIds.length > 0) {
         const statusFilters: any[] = [
           {
-            kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+            kinds: [KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED],
             "#e": issueEventIds,
             // No `#k` — NIP-34 status events historically omit it; `#e` scopes to issues.
           },
@@ -537,7 +543,10 @@ export default function RepoIssuesPage({
             if (issueIndex >= 0) {
               // Update issue status based on status event kind
               let newStatus: "open" | "closed" = "open";
-              if (event.kind === KIND_STATUS_CLOSED) {
+              if (
+                event.kind === KIND_STATUS_CLOSED ||
+                event.kind === KIND_STATUS_APPLIED
+              ) {
                 newStatus = "closed";
               } else if (event.kind === KIND_STATUS_OPEN) {
                 newStatus = "open";

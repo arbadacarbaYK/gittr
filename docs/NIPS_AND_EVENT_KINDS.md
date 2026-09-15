@@ -183,7 +183,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 
 ### Projects / Kanban (no finalized NIP yet)
 
-- **gittr ToDo tab** (`/{entity}/{repo}/projects`): local boards in `localStorage`, plus **read-only import of GitHub Projects V2** when a GitHub `sourceUrl` exists (GraphQL via `/api/github/graphql`).
+- **gittr ToDo tab** (`/{entity}/{repo}/projects`): local boards in `localStorage`, plus **read-only import of GitHub Projects V2** when a GitHub `sourceUrl` exists (GraphQL via `/api/github/graphql`). **Quick Add from Open Issues** lists the same currently-open tickets as the Issues tab (GitHub + Nostr). Closed tickets drop off when GitHub refetch or NIP-34 status events (1630/1631/1632) update `localStorage`.
 - **Policy**: mirror source like Issues — refresh on tab open; do **not** write column moves back to GitHub; keep local-only boards editable beside GH mirrors.
 - **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
 - **Future GitHub write-back**: optional **user GitHub OAuth** (not a new kind) when NIP-39 / upstream identity matches — see helper-tools `snippets/github-oauth-writeback/`. Keep Nostr as collaboration truth; OAuth is a forge bridge.
@@ -320,7 +320,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - **1631**: Applied/Merged (for PRs/patches) or Resolved (for issues)
   - **1632**: Closed
   - **1633**: Draft
-- **Client rehydrate**: Status subscriptions for a known PR/issue list filter by `#e` (root ids) only. On kind **1631**, set `status: merged` and `mergedBy` from the status event pubkey. gittr’s web Close on a **Nostr** issue now publishes kind **1632** the same way. Forge-imported `issue-N` / `pr-N` rows are not closed from gittr.
+- **Client rehydrate**: Status subscriptions for a known PR/issue list filter by `#e` (root ids) only. On kind **1631**, PRs set `status: merged` and `mergedBy` from the status event pubkey; **issues** set `status: closed` (Resolved). gittr’s web Close on a **Nostr** issue now publishes kind **1632** the same way. Forge-imported `issue-N` / `pr-N` rows are not closed from gittr. Kind **1621** body replay must not overwrite a closed row back to open.
 
 ### Kind 10317: User GRASP List (NIP-34)
 

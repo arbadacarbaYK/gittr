@@ -51,8 +51,25 @@ export function normalizeIssueListStatus(
   const v = String(s || "open")
     .toLowerCase()
     .trim();
-  if (v === "closed" || v === "done" || v === "resolved") return "closed";
+  // "merged" is NIP-34 kind 1631 Applied/Resolved when it landed on an issue row.
+  if (v === "closed" || v === "done" || v === "resolved" || v === "merged") {
+    return "closed";
+  }
   return "open";
+}
+
+/**
+ * Kind 1621 (issue body) does not carry lifecycle status. Relay replay must not
+ * spread `status: "open"` over a row that was already closed/resolved locally.
+ */
+export function issueStatusForNostrKind1621Merge(
+  existingStatus: string | undefined,
+  kindDefault: "open" = "open"
+): string {
+  if (normalizeIssueListStatus(existingStatus) === "closed") {
+    return String(existingStatus || "closed");
+  }
+  return kindDefault;
 }
 
 /** Normalize PR status: merged and closed bucket as "closed" for tabs. */
@@ -526,10 +543,21 @@ export function countMergedIssueComments(
  *   `sourcePrStillOpen` so the UI can explain drift (until GitHub reflects the merge).
  * - Keeps hydrated `changedFiles` / git hints so the PR page does not go blank on refetch.
  */
+export type GithubRefetchMergeOptions = {
+  /** GitHub query was `state=open` (header badge warm). */
+  openOnly?: boolean;
+  /**
+   * Every matching GitHub page was fetched (last page short or empty).
+   * Truncated `maxPages` fetches must NOT treat missing open rows as closed.
+   */
+  fetchComplete?: boolean;
+};
+
 function leftoverGithubStyleRows(
   existing: unknown[],
   fetched: unknown[],
-  isGithubId: (id: unknown) => boolean
+  isGithubId: (id: unknown) => boolean,
+  options?: GithubRefetchMergeOptions
 ): unknown[] {
   const fetchedIds = new Set<string>();
   const fetchedNums = new Set<string>();
@@ -541,7 +569,7 @@ function leftoverGithubStyleRows(
     const num = String(r.number ?? "").trim();
     if (num) fetchedNums.add(num);
   }
-  return existing.filter((row) => {
+  const leftovers = existing.filter((row) => {
     if (!row || typeof row !== "object") return false;
     const r = row as Record<string, unknown>;
     if (!isGithubId(r.id)) return false;
@@ -551,11 +579,24 @@ function leftoverGithubStyleRows(
     if (num && fetchedNums.has(num)) return false;
     return true;
   });
+
+  // Complete open-only fetch: a leftover still marked open is closed on GitHub.
+  // Keep already-closed/merged leftovers as-is (badge warm must not drop them).
+  if (options?.openOnly && options?.fetchComplete) {
+    return leftovers.map((row) => {
+      const r = row as Record<string, unknown>;
+      const raw = String(r.status ?? "open").toLowerCase();
+      if (raw === "closed" || raw === "merged") return r;
+      return { ...r, status: "closed" };
+    });
+  }
+  return leftovers;
 }
 
 export function mergeGithubPrsAfterRefetch(
   existing: unknown[],
-  githubRows: unknown[]
+  githubRows: unknown[],
+  options?: GithubRefetchMergeOptions
 ): unknown[] {
   const ex = Array.isArray(existing) ? existing : [];
   const gh = Array.isArray(githubRows) ? githubRows : [];
@@ -599,7 +640,12 @@ export function mergeGithubPrsAfterRefetch(
   });
 
   // Open-only / truncated GitHub pages must not delete closed `pr-N` rows.
-  const leftoverGithub = leftoverGithubStyleRows(ex, gh, isGithubStylePrId);
+  const leftoverGithub = leftoverGithubStyleRows(
+    ex,
+    gh,
+    isGithubStylePrId,
+    options
+  );
   return [...merged, ...leftoverGithub, ...nostrOnly];
 }
 
@@ -608,7 +654,8 @@ export function mergeGithubPrsAfterRefetch(
  */
 export function mergeGithubIssuesAfterRefetch(
   existing: unknown[],
-  githubRows: unknown[]
+  githubRows: unknown[],
+  options?: GithubRefetchMergeOptions
 ): unknown[] {
   const ex = Array.isArray(existing) ? existing : [];
   const gh = Array.isArray(githubRows) ? githubRows : [];
@@ -652,7 +699,12 @@ export function mergeGithubIssuesAfterRefetch(
     };
   });
 
-  const leftoverGithub = leftoverGithubStyleRows(ex, gh, isGithubStyleIssueId);
+  const leftoverGithub = leftoverGithubStyleRows(
+    ex,
+    gh,
+    isGithubStyleIssueId,
+    options
+  );
   return dedupeIssueRowsByNumber([
     ...mergedGh,
     ...leftoverGithub,

@@ -9,8 +9,10 @@ import {
   forgeLifecycleBlockedMessage,
   issueOrPrDisplayNumber,
   issueOrPrListRef,
+  issueStatusForNostrKind1621Merge,
   mergeGithubIssuesAfterRefetch,
   mergeGithubPrsAfterRefetch,
+  normalizeIssueListStatus,
   shareableIssueOrPrPathId,
 } from "./issue-pr-status";
 
@@ -93,6 +95,18 @@ describe("mergeGithubPrsAfterRefetch", () => {
     expect(merged[0]!.changedFiles).toHaveLength(1);
   });
 
+  it("marks leftover open GitHub PRs closed when an open-only fetch is complete", () => {
+    const existing = [
+      { id: "pr-8", number: "8", status: "open", title: "was open" },
+    ];
+    const githubRows: unknown[] = [];
+    const merged = mergeGithubPrsAfterRefetch(existing, githubRows, {
+      openOnly: true,
+      fetchComplete: true,
+    }) as Array<{ id?: string; status?: string }>;
+    expect(merged.find((r) => r.id === "pr-8")?.status).toBe("closed");
+  });
+
   it("keeps closed GitHub PRs when the refetch is open-only", () => {
     const existing = [
       { id: "pr-40", number: "40", status: "closed", title: "old closed" },
@@ -170,6 +184,59 @@ describe("mergeGithubIssuesAfterRefetch", () => {
     }>;
     const ids = merged.map((r) => r.id).sort();
     expect(ids).toEqual(["issue-3", "issue-4"]);
+  });
+
+  it("marks leftover open GitHub issues closed when an open-only fetch is complete", () => {
+    const existing = [
+      { id: "issue-27", number: "27", status: "open", title: "was open" },
+      { id: "issue-4", number: "4", status: "open", title: "wip" },
+    ];
+    const githubRows = [
+      { id: "issue-4", number: "4", status: "open", title: "wip" },
+    ];
+    const merged = mergeGithubIssuesAfterRefetch(existing, githubRows, {
+      openOnly: true,
+      fetchComplete: true,
+    }) as Array<{ id?: string; status?: string }>;
+    expect(merged.find((r) => r.id === "issue-27")?.status).toBe("closed");
+    expect(merged.find((r) => r.id === "issue-4")?.status).toBe("open");
+  });
+
+  it("keeps leftover open GitHub issues when an open-only fetch is truncated", () => {
+    const existing = [
+      { id: "issue-99", number: "99", status: "open", title: "page 2" },
+    ];
+    const githubRows = [
+      { id: "issue-1", number: "1", status: "open", title: "page 1" },
+    ];
+    const merged = mergeGithubIssuesAfterRefetch(existing, githubRows, {
+      openOnly: true,
+      fetchComplete: false,
+    }) as Array<{ id?: string; status?: string }>;
+    expect(merged.find((r) => r.id === "issue-99")?.status).toBe("open");
+  });
+});
+
+describe("issueStatusForNostrKind1621Merge", () => {
+  it("keeps closed/resolved rows closed when kind 1621 replays", () => {
+    expect(issueStatusForNostrKind1621Merge("closed")).toBe("closed");
+    expect(issueStatusForNostrKind1621Merge("resolved")).toBe("resolved");
+    expect(issueStatusForNostrKind1621Merge("done")).toBe("done");
+    expect(issueStatusForNostrKind1621Merge("merged")).toBe("merged");
+  });
+
+  it("defaults new issue bodies to open", () => {
+    expect(issueStatusForNostrKind1621Merge(undefined)).toBe("open");
+    expect(issueStatusForNostrKind1621Merge("open")).toBe("open");
+  });
+});
+
+describe("normalizeIssueListStatus", () => {
+  it("treats resolved and kind-1631 merged issue rows as closed", () => {
+    expect(normalizeIssueListStatus("open")).toBe("open");
+    expect(normalizeIssueListStatus("closed")).toBe("closed");
+    expect(normalizeIssueListStatus("resolved")).toBe("closed");
+    expect(normalizeIssueListStatus("merged")).toBe("closed");
   });
 });
 
