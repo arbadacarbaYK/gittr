@@ -98,3 +98,88 @@ export function filterDisplayCloneUrlsForSidebar(
     return true;
   });
 }
+
+/** What this visit already learned about a sidebar clone URL — no extra probes. */
+export type CloneUrlLiveHint =
+  | "has-files"
+  | "no-files"
+  | "checking"
+  | "announced";
+
+export type CloneUrlFetchStatusRow = {
+  source: string;
+  status: "pending" | "fetching" | "success" | "failed";
+  error?: string;
+};
+
+function cloneUrlMatchKey(url: string): string {
+  const host = gitUrlHostname(url);
+  if (host) return host;
+  return String(url || "")
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+}
+
+function fetchStatusMatchesClone(
+  row: CloneUrlFetchStatusRow,
+  cloneUrl: string
+): boolean {
+  const host = gitUrlHostname(cloneUrl);
+  const src = String(row.source || "").toLowerCase();
+  if (!src) return false;
+  if (host && (src === host || src.includes(host))) return true;
+  const key = cloneUrlMatchKey(cloneUrl);
+  return Boolean(key && src.includes(key));
+}
+
+/**
+ * Map a sidebar clone row to what the Code-tab file race already observed.
+ * "Skipped (another source succeeded)" stays **announced** — we never asked
+ * that host. GitHub-first returns mean extra GRASP mirrors are often unknown.
+ */
+export function cloneUrlLiveHint(
+  cloneUrl: string,
+  opts: {
+    fetchStatuses?: CloneUrlFetchStatusRow[];
+    successfulSourceUrls?: string[];
+  }
+): CloneUrlLiveHint {
+  const host = gitUrlHostname(cloneUrl);
+  for (const u of opts.successfulSourceUrls || []) {
+    const other = gitUrlHostname(u);
+    if (host && other && host === other) return "has-files";
+    if (cloneUrlMatchKey(cloneUrl) === cloneUrlMatchKey(u)) return "has-files";
+  }
+
+  const matches = (opts.fetchStatuses || []).filter((row) =>
+    fetchStatusMatchesClone(row, cloneUrl)
+  );
+  if (matches.some((s) => s.status === "success")) return "has-files";
+  if (matches.some((s) => s.status === "pending" || s.status === "fetching")) {
+    return "checking";
+  }
+  const failed = matches.filter((s) => s.status === "failed");
+  if (failed.length > 0) {
+    const allSkipped = failed.every((s) =>
+      /skipped/i.test(String(s.error || ""))
+    );
+    if (allSkipped) return "announced";
+    return "no-files";
+  }
+  return "announced";
+}
+
+export function cloneUrlLiveHintLabel(hint: CloneUrlLiveHint): string {
+  switch (hint) {
+    case "has-files":
+      return "has files";
+    case "no-files":
+      return "no files here";
+    case "checking":
+      return "checking…";
+    default:
+      return "announced";
+  }
+}

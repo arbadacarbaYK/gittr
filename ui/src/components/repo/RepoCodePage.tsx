@@ -251,7 +251,11 @@ import {
   isDisplayableProfilePicture,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { filterDisplayCloneUrlsForSidebar } from "@/lib/utils/filter-display-clone-urls";
+import {
+  cloneUrlLiveHint,
+  cloneUrlLiveHintLabel,
+  filterDisplayCloneUrlsForSidebar,
+} from "@/lib/utils/filter-display-clone-urls";
 import {
   capRepoFileTreeForDisplay,
   filterGraspMirrorPollutionFromFileTree,
@@ -20254,7 +20258,7 @@ export function RepoCodePage() {
                 onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
                 className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
               >
-                <span>Clone URL (event)</span>
+                <span>Clone URL (announced)</span>
                 {cloneUrlsExpanded ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -20263,18 +20267,45 @@ export function RepoCodePage() {
               </button>
               {cloneUrlsExpanded && (
                 <div className="space-y-3 mt-2">
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    Listed on the Nostr announcement. “Has files” means this
+                    page already loaded a tree from that host. Extra GRASP
+                    mirrors are often listed so other relays accept the note —
+                    we do not extra-probe them if GitHub or gittr already
+                    answered.
+                  </p>
                   {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0) && (
                     <div className="space-y-1">
                       {[...httpCloneUrls, ...sshCloneUrls].map((url, idx) => {
                         const command = `git clone ${url}`;
+                        const hint = cloneUrlLiveHint(url, {
+                          fetchStatuses,
+                          successfulSourceUrls:
+                            sidebarSuccessfulSourceUrls(repoData),
+                        });
+                        const hintClass =
+                          hint === "has-files"
+                            ? "text-green-400"
+                            : hint === "no-files"
+                            ? "text-amber-400/90"
+                            : hint === "checking"
+                            ? "text-blue-400"
+                            : "text-gray-500";
                         return (
                           <div
                             key={`std-clone-${idx}`}
-                            className="flex items-center gap-2 text-xs"
+                            className="flex items-start gap-2 text-xs"
                           >
-                            <code className="flex-1 text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
-                              {command}
-                            </code>
+                            <div className="min-w-0 flex-1">
+                              <code className="block text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
+                                {command}
+                              </code>
+                              <span
+                                className={`mt-0.5 inline-block ${hintClass}`}
+                              >
+                                {cloneUrlLiveHintLabel(hint)}
+                              </span>
+                            </div>
                             <button
                               className="text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
                               onClick={() => copyCloneCommand(command)}

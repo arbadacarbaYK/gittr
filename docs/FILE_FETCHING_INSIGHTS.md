@@ -17,7 +17,7 @@ Implementation:
 - `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`, `tree-last-commits.ts`, `sync-from-source.ts`
 - `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` / `git show`
 - `ui/src/lib/git/bare-repo-tree-last-commits.ts` — last-commit dates on the Code file list
-- `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar clone list (forge `source` plus every pushable GRASP host)
+- `ui/src/lib/utils/filter-display-clone-urls.ts` — sidebar clone list (forge `source` plus every pushable GRASP host) and `cloneUrlLiveHint` (announced vs already fetched)
 - `ui/src/lib/security/private-network-host.ts` — gittr.space never dials LAN / Tailscale / `.local` as relays or clones (Chrome local-network permission)
 
 ## Timeline (Code tab)
@@ -183,7 +183,7 @@ The **nsite-gateway** (`pages.gittr.space`) is not a third-party cache in front 
 ## Sidebar: Git Server and Clone URL
 
 - **Git Server** is the forge URL from the announcement when one exists. For Nostr-only repos it is a GRASP clone from the same event (on this deployment, `git.gittr.space` when that host is listed).
-- **Clone URL (event)** shows forge `source` plus **every** host on the push GRASP set (`git.gittr.space`, ngit, shakespeare, gitnostr, …).
+- **Clone URL (announced)** shows forge `source` plus **every** host on the push GRASP set (`git.gittr.space`, ngit, shakespeare, gitnostr, …). Each row is a `git clone` from the 30617 map, plus a **has files / no files here / checking / announced** hint from the Code-tab file race (`fetchStatuses` / `successfulSources`). Extra GRASP hosts skipped after GitHub-first stay **announced**, not empty — we do not extra-probe `info/refs` for the sidebar.
 - After Clear local / flush, the live 30617 still fills description, clone tags, and event id.
 
 ## Push tip

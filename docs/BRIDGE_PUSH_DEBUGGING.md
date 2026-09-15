@@ -34,7 +34,7 @@ Code browser rows show **last commit message + relative time** for the currently
 
 ## Clone URL sidebar (Aug 2026)
 
-"Clone URL (event)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING` (gittr, shakespeare, gitnostr, ngit, …). It no longer collapses to only primary gittr + GitHub.
+"Clone URL (announced)" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING` (gittr, shakespeare, gitnostr, ngit, …). It no longer collapses to only primary gittr + GitHub. Rows show whether this visit already fetched a tree from that host (`cloneUrlLiveHint`); skipped race losers stay “announced”, not “no files”.
 
 ## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
 
