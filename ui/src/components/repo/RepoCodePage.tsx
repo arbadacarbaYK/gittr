@@ -20295,30 +20295,33 @@ export function RepoCodePage() {
                         return (
                           <div
                             key={`std-clone-${idx}`}
-                            className="flex items-center gap-1.5 text-xs"
+                            className="flex items-start gap-2 text-xs"
                           >
-                            <code className="min-w-0 flex-1 text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
+                            <code className="min-w-0 flex-1 text-gray-100 bg-gray-900/70 px-2 py-1.5 rounded break-all leading-snug">
                               {command}
                             </code>
-                            {showBadge ? (
-                              <Tooltip
-                                content={cloneUrlLiveHintTitle(hint)}
-                                mobileClickable
-                              >
-                                <span
-                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none ${badgeClass}`}
+                            <div className="flex w-[4.5rem] shrink-0 flex-col items-center gap-0.5 pt-0.5">
+                              {showBadge ? (
+                                <Tooltip
+                                  className="w-full"
+                                  content={cloneUrlLiveHintTitle(hint)}
+                                  mobileClickable
                                 >
-                                  {cloneUrlLiveHintBadge(hint)}
-                                </span>
-                              </Tooltip>
-                            ) : null}
-                            <button
-                              className="shrink-0 text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
-                              onClick={() => copyCloneCommand(command)}
-                              title="Copy clone command"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </button>
+                                  <span
+                                    className={`block w-full rounded px-1 py-0.5 text-center text-[10px] font-medium leading-none whitespace-nowrap ${badgeClass}`}
+                                  >
+                                    {cloneUrlLiveHintBadge(hint)}
+                                  </span>
+                                </Tooltip>
+                              ) : null}
+                              <button
+                                className="text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
+                                onClick={() => copyCloneCommand(command)}
+                                title="Copy clone command"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
