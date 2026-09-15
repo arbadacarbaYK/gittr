@@ -4,7 +4,10 @@ import * as React from "react";
 
 import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
-import { appNavigate } from "@/lib/utils/app-navigate";
+import {
+  appNavigate,
+  dispatchPauseHeavyCatalog,
+} from "@/lib/utils/app-navigate";
 
 import { Menu, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -95,6 +98,21 @@ export function MainNav({ items, children }: MainNavProps) {
               href={item.disabled ? "#" : item.href}
               rel={item.openInNewTab ? "noopener noreferrer" : undefined}
               target={item.openInNewTab ? "_blank" : undefined}
+              onPointerDown={(e) => {
+                if (
+                  item.disabled ||
+                  item.openInNewTab ||
+                  item.href === "#" ||
+                  e.button !== 0 ||
+                  e.metaKey ||
+                  e.ctrlKey ||
+                  e.shiftKey ||
+                  e.altKey
+                ) {
+                  return;
+                }
+                dispatchPauseHeavyCatalog(pathname);
+              }}
               onClick={(e) => {
                 if (item.disabled || item.href === "#") {
                   e.preventDefault();

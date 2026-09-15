@@ -6,6 +6,7 @@ import {
   hrefLeavesCurrentPath,
   isHeavyDirectoryPath,
   isLiveCatalogPath,
+  isPauseHeavyWorkPath,
   isProfileEntityPath,
   isRepoCodePath,
   isUrgentLeavePath,
@@ -47,6 +48,20 @@ describe("isHeavyDirectoryPath", () => {
     expect(isHeavyDirectoryPath("/pages")).toBe(true);
     expect(isHeavyDirectoryPath("/explore")).toBe(false);
     expect(isHeavyDirectoryPath(CODE_PATH)).toBe(false);
+  });
+});
+
+describe("isPauseHeavyWorkPath", () => {
+  it("includes Apps, Pages, and profile URLs", () => {
+    expect(isPauseHeavyWorkPath("/apps")).toBe(true);
+    expect(isPauseHeavyWorkPath("/pages")).toBe(true);
+    expect(
+      isPauseHeavyWorkPath(
+        "/npub18ams6ewn5aj2n3wt2qawzglx9mr4nzksxhvrdc4gzrecw7n5tvjqctp424"
+      )
+    ).toBe(true);
+    expect(isPauseHeavyWorkPath("/explore")).toBe(false);
+    expect(isPauseHeavyWorkPath(CODE_PATH)).toBe(false);
   });
 });
 
@@ -160,6 +175,15 @@ describe("softNavHardFallbackMs", () => {
     );
   });
 
+  it("recovers /apps from a profile in about a second", () => {
+    expect(
+      softNavHardFallbackMs(
+        "/apps",
+        "/npub18ams6ewn5aj2n3wt2qawzglx9mr4nzksxhvrdc4gzrecw7n5tvjqctp424"
+      )
+    ).toBe(SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS);
+  });
+
   it("keeps the long stall window when staying on /apps", () => {
     expect(softNavHardFallbackMs("/apps", "/apps")).toBe(
       SOFT_NAV_HARD_FALLBACK_MS
@@ -189,6 +213,16 @@ describe("shouldPauseHeavyCatalogOnAnchorLeave", () => {
       shouldPauseHeavyCatalogOnAnchorLeave({
         href: "/explore",
         currentPathname: "/apps",
+      })
+    ).toBe(true);
+  });
+
+  it("pauses when leaving a profile for /apps", () => {
+    expect(
+      shouldPauseHeavyCatalogOnAnchorLeave({
+        href: "/apps",
+        currentPathname:
+          "/npub18ams6ewn5aj2n3wt2qawzglx9mr4nzksxhvrdc4gzrecw7n5tvjqctp424",
       })
     ).toBe(true);
   });

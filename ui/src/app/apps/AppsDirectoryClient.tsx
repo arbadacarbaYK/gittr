@@ -45,7 +45,8 @@ import { cn } from "@/lib/utils";
 import {
   PAUSE_HEAVY_CATALOG_EVENT,
   appNavigate,
-  shouldPauseHeavyCatalogOnAnchorLeave,
+  isModifiedPointerClick,
+  shouldPauseHeavyWorkFromPointerTarget,
 } from "@/lib/utils/app-navigate";
 
 import {
@@ -310,20 +311,11 @@ export function AppsDirectoryClient() {
   useEffect(() => {
     const onPause = () => pauseCatalogForLeave();
     const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      if (isModifiedPointerClick(e)) {
         return;
       }
-      const el = e.target;
-      if (!(el instanceof Element)) return;
-      const a = el.closest("a");
-      if (!(a instanceof HTMLAnchorElement)) return;
       if (
-        !shouldPauseHeavyCatalogOnAnchorLeave({
-          href: a.getAttribute("href"),
-          currentPathname: pathname || "/apps",
-          target: a.getAttribute("target"),
-          download: a.hasAttribute("download"),
-        })
+        !shouldPauseHeavyWorkFromPointerTarget(e.target, pathname || "/apps")
       ) {
         return;
       }

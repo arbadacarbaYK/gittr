@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
 import { nip19 } from "nostr-tools";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  contactListMentionsHex,
   followersCountFromContactEvents,
   followingCountFromContactEvents,
   loadContactListBackup,
@@ -61,6 +62,49 @@ describe("parseContactListPubkeys", () => {
         content: JSON.stringify({ p: [[bNpub, "", "wss://x"]] }),
       }).sort()
     ).toEqual([a, b].sort());
+  });
+});
+
+describe("contactListMentionsHex", () => {
+  it("matches a p-tag hex without parsing JSON content", () => {
+    const profile = "f".repeat(64);
+    expect(
+      contactListMentionsHex(
+        {
+          tags: [
+            ["p", "a".repeat(64)],
+            ["p", profile],
+          ],
+          content: JSON.stringify({ p: ["b".repeat(64)] }),
+        },
+        profile
+      )
+    ).toBe(true);
+  });
+
+  it("falls back to JSON content when tags miss the hex", () => {
+    const profile = "f".repeat(64);
+    expect(
+      contactListMentionsHex(
+        {
+          tags: [["p", "a".repeat(64)]],
+          content: JSON.stringify({ p: [profile] }),
+        },
+        profile
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when the list never mentions the profile", () => {
+    expect(
+      contactListMentionsHex(
+        {
+          tags: [["p", "a".repeat(64)]],
+          content: "",
+        },
+        "f".repeat(64)
+      )
+    ).toBe(false);
   });
 });
 

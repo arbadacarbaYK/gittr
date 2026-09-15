@@ -3,12 +3,17 @@
 import { useEffect, useState } from "react";
 
 import {
+  contactListMentionsHex,
   followersCountFromContactEvents,
   followingCountFromContactEvents,
   normalizeContactPubkey,
-  parseContactListPubkeys,
 } from "@/lib/nostr/contact-list";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import {
+  PAUSE_HEAVY_CATALOG_EVENT,
+  isModifiedPointerClick,
+  shouldPauseHeavyWorkFromPointerTarget,
+} from "@/lib/utils/app-navigate";
 
 type SubscribeFn = (
   filters: unknown[],
@@ -35,6 +40,9 @@ type ContactListEvent = {
   content?: string | null;
   kind?: number;
 };
+
+/** Coalesce follower/following setState so a 400-event kind-3 flood cannot starve chrome nav. */
+export const FOLLOW_COUNT_FLUSH_MS = 280;
 
 /**
  * Public social graph sizes for a profile (works logged out).
@@ -65,12 +73,17 @@ export function useProfileFollowCounts(
     const followerEvents: ContactListEvent[] = [];
 
     let cancelled = false;
+    let paused = false;
     let followingWsSettled = !subscribe || relays.length === 0;
     let followingHttpSettled = false;
     let followersSettled = !subscribe || relays.length === 0;
+    let followingFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let followersFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let unsubFollowing: (() => void) | void;
+    let unsubFollowers: (() => void) | void;
 
     const publishFollowing = () => {
-      if (cancelled) return;
+      if (cancelled || paused) return;
       const count = followingCountFromContactEvents(followingEvents);
       if (count > 0) {
         setFollowing(count);
@@ -81,44 +94,62 @@ export function useProfileFollowCounts(
       }
     };
     const publishFollowers = () => {
-      if (cancelled) return;
+      if (cancelled || paused) return;
       setFollowers(followersCountFromContactEvents(hex, followerEvents));
     };
 
-    const unsubFollowing =
+    const scheduleFollowing = () => {
+      if (cancelled || paused || followingFlushTimer) return;
+      followingFlushTimer = setTimeout(() => {
+        followingFlushTimer = null;
+        publishFollowing();
+      }, FOLLOW_COUNT_FLUSH_MS);
+    };
+    const scheduleFollowers = () => {
+      if (cancelled || paused || followersFlushTimer) return;
+      followersFlushTimer = setTimeout(() => {
+        followersFlushTimer = null;
+        publishFollowers();
+      }, FOLLOW_COUNT_FLUSH_MS);
+    };
+
+    unsubFollowing =
       subscribe && relays.length
         ? subscribe(
             [{ kinds: [3], authors: [hex], limit: 20 }],
             relays,
             (event) => {
-              if (cancelled || event?.kind !== 3) return;
+              if (cancelled || paused || event?.kind !== 3) return;
               followingEvents.push(event);
-              publishFollowing();
+              scheduleFollowing();
             },
             8_000,
             () => {
               followingWsSettled = true;
-              publishFollowing();
+              scheduleFollowing();
             }
           )
         : undefined;
 
-    const unsubFollowers =
+    unsubFollowers =
       subscribe && relays.length
         ? subscribe(
             [{ kinds: [3], "#p": [hex], limit: 400 }],
             relays,
             (event) => {
-              if (cancelled || event?.kind !== 3) return;
-              if (!parseContactListPubkeys(event).includes(hex)) return;
+              if (cancelled || paused || event?.kind !== 3) return;
+              if (!contactListMentionsHex(event, hex)) return;
               followerEvents.push(event);
-              publishFollowers();
+              scheduleFollowers();
             },
             12_000,
             () => {
               followersSettled = true;
-              publishFollowers();
-              if (followerEvents.length === 0) setFollowers(0);
+              if (followerEvents.length === 0) {
+                if (!cancelled && !paused) setFollowers(0);
+                return;
+              }
+              scheduleFollowers();
             }
           )
         : undefined;
@@ -130,7 +161,7 @@ export function useProfileFollowCounts(
       .then(async (res) => {
         if (!res.ok) return;
         const body = (await res.json()) as { event?: ContactListEvent | null };
-        if (cancelled || !body?.event) return;
+        if (cancelled || paused || !body?.event) return;
         followingEvents.push(body.event);
       })
       .catch(() => {
@@ -138,10 +169,11 @@ export function useProfileFollowCounts(
       })
       .finally(() => {
         followingHttpSettled = true;
-        publishFollowing();
+        scheduleFollowing();
       });
 
     const safety = window.setTimeout(() => {
+      if (cancelled || paused) return;
       if (!followingWsSettled) followingWsSettled = true;
       if (!followingHttpSettled) followingHttpSettled = true;
       publishFollowing();
@@ -151,10 +183,19 @@ export function useProfileFollowCounts(
       }
     }, 15_000);
 
-    return () => {
+    const stopWork = () => {
+      paused = true;
       cancelled = true;
       ac.abort();
       window.clearTimeout(safety);
+      if (followingFlushTimer) {
+        clearTimeout(followingFlushTimer);
+        followingFlushTimer = null;
+      }
+      if (followersFlushTimer) {
+        clearTimeout(followersFlushTimer);
+        followersFlushTimer = null;
+      }
       try {
         unsubFollowing?.();
       } catch {
@@ -165,6 +206,28 @@ export function useProfileFollowCounts(
       } catch {
         /* ignore */
       }
+    };
+
+    const onPause = () => stopWork();
+    const onPointerDown = (e: PointerEvent) => {
+      if (isModifiedPointerClick(e)) return;
+      if (
+        !shouldPauseHeavyWorkFromPointerTarget(
+          e.target,
+          window.location.pathname
+        )
+      ) {
+        return;
+      }
+      stopWork();
+    };
+    window.addEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+    document.addEventListener("pointerdown", onPointerDown, true);
+
+    return () => {
+      window.removeEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      stopWork();
     };
   }, [profileHex, subscribe, defaultRelays]);
 

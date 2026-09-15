@@ -11,11 +11,12 @@
  *
  * Chrome clicks (`router.push`) are **urgent** — not wrapped in
  * `startTransition`. Explore/Home/Issues live catalogs, Code hydrate, Apps
- * catalog flushes, and profile 30617 starve concurrent transitions, so the
- * address bar, header, and `/apps` owner-name links look dead until React is
- * idle. Leaving `/apps` or `/pages` also pauses the catalog and uses the
- * 1.2s hard fallback (same as Home from Code). Urgent push lets the click
- * land immediately; hard `location.assign` remains last-resort.
+ * catalog flushes, and profile 30617 / follow-count storms starve concurrent
+ * transitions, so the address bar, header, and `/apps` owner-name links look
+ * dead until React is idle. Leaving `/apps`, `/pages`, or a profile `/{npub}`
+ * pauses that work and uses the 1.2s hard fallback (same as Home from Code).
+ * Urgent push lets the click land immediately; hard `location.assign` remains
+ * last-resort.
  */
 
 function normalizePath(href: string): string {
@@ -117,16 +118,21 @@ export function isUrgentLeavePath(pathname: string): boolean {
 }
 
 /**
- * `/apps` (and `/pages`) listen for this so chrome Home/logo/nav can stop
- * catalog `setState` before `router.push` — owner-name clicks used to look
- * dead while a live 4000/12000 NIP-82 scrape kept flushing.
+ * `/apps`, `/pages`, and profile `/{npub}` listen for this so chrome
+ * Home/logo/Apps can stop catalog `setState` and follow-count recounts
+ * before `router.push`. Owner-name and Apps-from-profile clicks used to
+ * look dead while a live scrape (NIP-82 or kind 30617 / kind 3) kept flushing.
  */
 export const PAUSE_HEAVY_CATALOG_EVENT = "gittr:pause-heavy-catalog";
+
+export function isPauseHeavyWorkPath(pathname: string): boolean {
+  return isHeavyDirectoryPath(pathname) || isProfileEntityPath(pathname);
+}
 
 export function dispatchPauseHeavyCatalog(pathname?: string | null): void {
   if (typeof window === "undefined") return;
   const from = pathname || window.location.pathname;
-  if (!isHeavyDirectoryPath(from)) return;
+  if (!isPauseHeavyWorkPath(from)) return;
   try {
     window.dispatchEvent(new Event(PAUSE_HEAVY_CATALOG_EVENT));
   } catch {
@@ -151,7 +157,7 @@ export function hrefLeavesCurrentPath(
 }
 
 /**
- * Pointer-down on an in-app `<a>` that leaves `/apps` or `/pages`.
+ * Pointer-down on an in-app `<a>` that leaves `/apps`, `/pages`, or a profile.
  * New-tab / download / same-hub clicks keep the catalog running.
  */
 export function shouldPauseHeavyCatalogOnAnchorLeave(opts: {
@@ -160,11 +166,41 @@ export function shouldPauseHeavyCatalogOnAnchorLeave(opts: {
   target?: string | null;
   download?: boolean;
 }): boolean {
-  if (!isHeavyDirectoryPath(opts.currentPathname)) return false;
+  if (!isPauseHeavyWorkPath(opts.currentPathname)) return false;
   if (!opts.href || opts.href.startsWith("#")) return false;
   if (opts.download) return false;
   if ((opts.target || "").toLowerCase() === "_blank") return false;
   return hrefLeavesCurrentPath(opts.href, opts.currentPathname);
+}
+
+/** True for non-primary / modified clicks that should keep background work running. */
+export function isModifiedPointerClick(e: {
+  button?: number;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+}): boolean {
+  return (
+    (e.button != null && e.button !== 0) ||
+    Boolean(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+  );
+}
+
+/** Capture-phase pointerdown helper for profile / Apps / Pages leave. */
+export function shouldPauseHeavyWorkFromPointerTarget(
+  target: EventTarget | null,
+  currentPathname: string
+): boolean {
+  if (!(target instanceof Element)) return false;
+  const a = target.closest("a");
+  if (!(a instanceof HTMLAnchorElement)) return false;
+  return shouldPauseHeavyCatalogOnAnchorLeave({
+    href: a.getAttribute("href"),
+    currentPathname,
+    target: a.getAttribute("target"),
+    download: a.hasAttribute("download"),
+  });
 }
 
 /**
@@ -200,7 +236,8 @@ export function softNavHardFallbackMs(
   // Owner-name on /apps is `/{npub}`, not Home. An 8s fallback made that
   // click look ignored while the catalog was still flushing.
   if (
-    isHeavyDirectoryPath(currentPathname) &&
+    (isHeavyDirectoryPath(currentPathname) ||
+      isProfileEntityPath(currentPathname)) &&
     canonicalPath(href) !== canonicalPath(currentPathname)
   ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;

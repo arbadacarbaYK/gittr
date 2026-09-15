@@ -21,6 +21,7 @@ import {
 } from "@/lib/nostr/nip82-software";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
+import { PAUSE_HEAVY_CATALOG_EVENT } from "@/lib/utils/app-navigate";
 
 import { Globe, Smartphone } from "lucide-react";
 import Link from "next/link";
@@ -132,7 +133,14 @@ export function ProfilePagesAppsSections({
     lastCountsRef.current = { pages: 0, apps: 0 };
     onCountsRef.current?.({ pages: 0, apps: 0 });
 
-    const cancelIdle = runWhenIdle(
+    let cancelIdle = () => {};
+    const onPause = () => {
+      cancelled = true;
+      cancelIdle();
+    };
+    window.addEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+
+    cancelIdle = runWhenIdle(
       () => {
         if (cancelled) return;
         setPagesLoading(true);
@@ -192,6 +200,7 @@ export function ProfilePagesAppsSections({
 
     return () => {
       cancelled = true;
+      window.removeEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
       cancelIdle();
     };
   }, [ownerHex, pagesRefreshNonce]);

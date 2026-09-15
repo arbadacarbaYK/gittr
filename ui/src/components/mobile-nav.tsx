@@ -6,7 +6,10 @@ import { useLockBody } from "@/lib/hooks/use-lock-body";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { cn } from "@/lib/utils";
-import { appNavigate } from "@/lib/utils/app-navigate";
+import {
+  appNavigate,
+  dispatchPauseHeavyCatalog,
+} from "@/lib/utils/app-navigate";
 import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -122,6 +125,18 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
               <a
                 key={index}
                 href={item.href}
+                onPointerDown={(e) => {
+                  if (
+                    e.button !== 0 ||
+                    e.metaKey ||
+                    e.ctrlKey ||
+                    e.shiftKey ||
+                    e.altKey
+                  ) {
+                    return;
+                  }
+                  dispatchPauseHeavyCatalog(pathname);
+                }}
                 onClick={(e) => {
                   go(item.href, e);
                 }}

@@ -36,6 +36,8 @@ On every public profile (`/{npub}`), gittr shows **Following** and **Followers**
 
 Follower totals are **relay-dependent lower bounds**, not a global census — still useful for WoT-style legitimacy next to repos. Tooltips explain this. The logged-in **TrustBadge** (hops from *you*) remains separate.
 
+Chrome **Apps / Home / Explore** from a profile must not wait for those counts: kind-3 follower events (up to 400) plus the live 30617 catalog used to `setState` on every event and starve `router.push`. Leaving a profile now **pauses** that work (same `gittr:pause-heavy-catalog` event as `/apps`) and hard-falls back in ~1.2s if `/apps` still has not committed. Counts may stay `…` after you leave — that is intended.
+
 Code: `ui/src/lib/nostr/useProfileFollowCounts.ts`, helpers in `contact-list.ts`.
 
 ## Data sources (priority)

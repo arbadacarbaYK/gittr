@@ -83,6 +83,11 @@ import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
 import { type UserStats } from "@/lib/stats";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import {
+  PAUSE_HEAVY_CATALOG_EVENT,
+  isModifiedPointerClick,
+  shouldPauseHeavyWorkFromPointerTarget,
+} from "@/lib/utils/app-navigate";
+import {
   getRepoOwnerPubkey,
   getUserMetadata,
 } from "@/lib/utils/entity-resolver";
@@ -2254,9 +2259,12 @@ export default function EntityPage({
     const byKey: ProfileRepoAccumulator = new Map();
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
     let lastLogged = 0;
+    let paused = false;
+    let unsub: (() => void) | void;
+    let settle: ReturnType<typeof setTimeout> | null = null;
 
     const flush = () => {
-      if (profileHexLiveRef.current !== hex) return;
+      if (paused || profileHexLiveRef.current !== hex) return;
       const rows = profileRepoRowsFromAccumulator(byKey).map((row) =>
         toProfileRepoCard(row)
       );
@@ -2271,14 +2279,32 @@ export default function EntityPage({
     };
 
     const scheduleFlush = () => {
-      if (flushTimer) return;
+      if (paused || flushTimer) return;
       flushTimer = setTimeout(() => {
         flushTimer = null;
         flush();
       }, 120);
     };
 
-    const unsub = subscribe(
+    const pauseWork = () => {
+      if (paused) return;
+      paused = true;
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (settle) {
+        clearTimeout(settle);
+        settle = null;
+      }
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    unsub = subscribe(
       [
         {
           kinds: [KIND_REPOSITORY_NIP34],
@@ -2288,6 +2314,7 @@ export default function EntityPage({
       ],
       relays,
       (event) => {
+        if (paused) return;
         if (event.kind !== KIND_REPOSITORY_NIP34) return;
         if (String(event.pubkey || "").toLowerCase() !== hex) return;
         if (isPublisherBlocklisted(event.pubkey)) return;
@@ -2297,21 +2324,33 @@ export default function EntityPage({
       undefined
     );
 
-    const settle = setTimeout(() => {
+    settle = setTimeout(() => {
       flush();
       if (profileHexLiveRef.current === hex) {
         setNetworkReposLoading(false);
       }
     }, 12_000);
 
-    return () => {
-      if (flushTimer) clearTimeout(flushTimer);
-      clearTimeout(settle);
-      try {
-        unsub();
-      } catch {
-        /* ignore */
+    const onPause = () => pauseWork();
+    const onPointerDown = (e: PointerEvent) => {
+      if (isModifiedPointerClick(e)) return;
+      if (
+        !shouldPauseHeavyWorkFromPointerTarget(
+          e.target,
+          window.location.pathname
+        )
+      ) {
+        return;
       }
+      pauseWork();
+    };
+    window.addEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+    document.addEventListener("pointerdown", onPointerDown, true);
+
+    return () => {
+      window.removeEventListener(PAUSE_HEAVY_CATALOG_EVENT, onPause);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      pauseWork();
     };
   }, [isPubkey, profileHexForFetch, subscribe, defaultRelays]);
 

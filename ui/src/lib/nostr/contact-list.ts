@@ -5,7 +5,6 @@
  * Kind 3 is replaceable: a short publish wipes the previous follow graph.
  * Always merge onto the largest known list before signing.
  */
-
 import { nip19 } from "nostr-tools";
 
 const BACKUP_PREFIX = "gittr_contact_list_backup_";
@@ -89,11 +88,7 @@ export function parseContactListPubkeys(event: {
 
   if (Array.isArray(event.tags)) {
     for (const tag of event.tags) {
-      if (
-        Array.isArray(tag) &&
-        tag[0] === "p" &&
-        typeof tag[1] === "string"
-      ) {
+      if (Array.isArray(tag) && tag[0] === "p" && typeof tag[1] === "string") {
         const pk = normalizeContactPubkey(tag[1]);
         if (pk) out.add(pk);
       }
@@ -129,6 +124,34 @@ export function parseContactListPubkeys(event: {
   }
 
   return Array.from(out);
+}
+
+/**
+ * Fast check while ingesting follower kind-3 events. Prefer a `p` tag hex
+ * match so we do not JSON.parse huge contact-list content on every websocket
+ * event (that starved chrome clicks on busy profiles).
+ */
+export function contactListMentionsHex(
+  event: {
+    tags?: string[][] | null;
+    content?: string | null;
+  },
+  profileHex: string
+): boolean {
+  const target = normalizeContactPubkey(profileHex);
+  if (!target) return false;
+  if (Array.isArray(event.tags)) {
+    for (const tag of event.tags) {
+      if (Array.isArray(tag) && tag[0] === "p" && typeof tag[1] === "string") {
+        if (tag[1].toLowerCase() === target) return true;
+      }
+    }
+  }
+  const trimmed = (event.content || "").trim();
+  if (!trimmed.startsWith("{") && !trimmed.toLowerCase().startsWith("npub1")) {
+    return false;
+  }
+  return parseContactListPubkeys(event).includes(target);
 }
 
 /**
