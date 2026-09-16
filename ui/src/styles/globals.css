@@ -130,6 +130,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #39404a;
   --color-link: #f7931a;
   --color-link-hover: #ffb347;
+  --color-on-accent: var(--color-text-primary);
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -146,6 +147,8 @@ html.gittr-needs-status-bar-gap {
   --color-border: #00ff4140; /* Green with transparency */
   --color-link: #00ff41; /* Neon green links */
   --color-link-hover: #39ff14;
+  /* Filled buttons: black ink on neon green (not green-on-green). */
+  --color-on-accent: #000000;
   --font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace;
 }
 
@@ -162,6 +165,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #ff69b440; /* Pink with transparency */
   --color-link: #ff69b4;
   --color-link-hover: #ff1493;
+  --color-on-accent: #1a0f1f;
   --font-family: 'Georgia', 'Times New Roman', serif;
 }
 
@@ -178,6 +182,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #383B42;
   --color-link: #a855f7;
   --color-link-hover: #c084fc;
+  --color-on-accent: #ffffff;
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -194,6 +199,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #39404a;
   --color-link: #f7931a;
   --color-link-hover: #ffb347;
+  --color-on-accent: var(--color-text-primary);
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -210,6 +216,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #ff00ff40; /* Magenta with transparency */
   --color-link: #ff00ff;
   --color-link-hover: #00ffff;
+  --color-on-accent: var(--color-text-primary);
   --font-family: 'Impact', 'Arial Black', sans-serif;
 }
 
@@ -226,6 +233,7 @@ html.gittr-needs-status-bar-gap {
   --color-border: #1f2937; /* Subtle border */
   --color-link: #38bdf8; /* Sky blue links */
   --color-link-hover: #7dd3fc;
+  --color-on-accent: var(--color-text-primary);
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -292,10 +300,12 @@ body {
 
 .theme-bg-accent-primary {
   background-color: var(--color-accent-primary);
+  color: var(--color-on-accent);
 }
 
 .theme-bg-accent-primary:hover {
   background-color: var(--color-accent-hover);
+  color: var(--color-on-accent);
 }
 
 .theme-border {
@@ -570,6 +580,40 @@ a:hover {
 :root[data-theme="arcade80s"] .text-white,
 :root[data-theme="midnight"] .text-white {
   color: var(--color-text-primary) !important;
+}
+
+/* Filled accent buttons: ink on the fill, not body text (avoids green-on-green). */
+:root[data-theme="bitcoin"] .bg-purple-600,
+:root[data-theme="cypherpunk"] .bg-purple-600,
+:root[data-theme="girly"] .bg-purple-600,
+:root[data-theme="arcade80s"] .bg-purple-600,
+:root[data-theme="midnight"] .bg-purple-600,
+:root[data-theme="bitcoin"] .bg-purple-600.text-white,
+:root[data-theme="cypherpunk"] .bg-purple-600.text-white,
+:root[data-theme="girly"] .bg-purple-600.text-white,
+:root[data-theme="arcade80s"] .bg-purple-600.text-white,
+:root[data-theme="midnight"] .bg-purple-600.text-white,
+:root[data-theme="bitcoin"] .bg-purple-600:hover,
+:root[data-theme="cypherpunk"] .bg-purple-600:hover,
+:root[data-theme="girly"] .bg-purple-600:hover,
+:root[data-theme="arcade80s"] .bg-purple-600:hover,
+:root[data-theme="midnight"] .bg-purple-600:hover,
+:root[data-theme="bitcoin"] .hover\:bg-purple-700:hover,
+:root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover,
+:root[data-theme="girly"] .hover\:bg-purple-700:hover,
+:root[data-theme="arcade80s"] .hover\:bg-purple-700:hover,
+:root[data-theme="midnight"] .hover\:bg-purple-700:hover,
+:root[data-theme="bitcoin"] .theme-bg-accent-primary,
+:root[data-theme="cypherpunk"] .theme-bg-accent-primary,
+:root[data-theme="girly"] .theme-bg-accent-primary,
+:root[data-theme="arcade80s"] .theme-bg-accent-primary,
+:root[data-theme="midnight"] .theme-bg-accent-primary,
+:root[data-theme="bitcoin"] .theme-bg-accent-primary.text-white,
+:root[data-theme="cypherpunk"] .theme-bg-accent-primary.text-white,
+:root[data-theme="girly"] .theme-bg-accent-primary.text-white,
+:root[data-theme="arcade80s"] .theme-bg-accent-primary.text-white,
+:root[data-theme="midnight"] .theme-bg-accent-primary.text-white {
+  color: var(--color-on-accent) !important;
 }
 
 :root[data-theme="bitcoin"] .text-gray-400,
