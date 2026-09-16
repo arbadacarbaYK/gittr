@@ -12,6 +12,7 @@ import {
   urlLooksPrivateOrLocal,
 } from "../security/private-network-host";
 import { isGraspServer, isHexPathGitHost } from "../utils/grasp-servers";
+import { isHashtreeCloneUrl } from "../utils/hashtree-clone";
 
 /**
  * NIP-34 `d` must be a bare repo identifier (e.g. "gamestr"), not
@@ -372,7 +373,7 @@ const FORGE_CLONE_HOST =
 export function isLikelyGitCloneUrl(url: string): boolean {
   const raw = (url || "").trim();
   if (!raw) return false;
-  if (/^htree:\/\//i.test(raw)) return false;
+  if (isHashtreeCloneUrl(raw)) return false;
   let host = "";
   try {
     const normalized = raw

@@ -60,6 +60,20 @@ describe("extractGithubUrlFromEventTags", () => {
     ]);
     expect(url).toBe("");
   });
+
+  it("does not treat Iris Hashtree clone tags as forge source", () => {
+    const url = extractGithubUrlFromEventTags([
+      [
+        "clone",
+        "htree://npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu/gyoza-hanto",
+      ],
+      [
+        "web",
+        "https://git.iris.to/#/npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu/gyoza-hanto",
+      ],
+    ]);
+    expect(url).toBe("");
+  });
 });
 
 describe("extractForgeSourceFromEventTags", () => {

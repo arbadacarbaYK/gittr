@@ -1,13 +1,17 @@
 import { isGraspServer } from "./grasp-servers";
+import { isHashtreeCloneUrl } from "./hashtree-clone";
 
 /**
  * True for https(s) remotes that look like host/owner/repo.
  * Allows `/npub1…/repo` on non-GRASP hosts (home Freebox, self-hosted GRASP-shaped
  * paths) so they can be listed via `/api/git/repo-files`. Known GRASP hosts are
  * handled separately as nostr-git.
+ *
+ * Iris `htree://` (and the accidental `https://htree://` rewrite) is not HTTPS git.
  */
 export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
   if (!raw || typeof raw !== "string") return false;
+  if (isHashtreeCloneUrl(raw)) return false;
   try {
     let u = raw.trim();
     const sshMatch = u.match(/^git@([^:]+):(.+)$/);
@@ -29,7 +33,8 @@ export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
       host === "localhost" ||
       host === "127.0.0.1" ||
       host.endsWith(".local") ||
-      host === "0.0.0.0"
+      host === "0.0.0.0" ||
+      host === "htree"
     ) {
       return false;
     }
@@ -50,6 +55,7 @@ export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
 export function isRefetchableUpstreamSourceUrl(raw: string): boolean {
   if (!raw || typeof raw !== "string") return false;
   const t = raw.trim();
+  if (isHashtreeCloneUrl(t)) return false;
   if (
     t.includes("github.com") ||
     t.includes("gitlab.com") ||

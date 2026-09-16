@@ -1,5 +1,7 @@
 import { nip19 } from "nostr-tools";
 
+import { isHashtreeCloneUrl } from "../utils/hashtree-clone";
+
 export type ProfileRepoCloneHints = {
   clone: string[];
   sourceUrl?: string;
@@ -93,10 +95,12 @@ export async function fetchRepoCloneHintsFromProfile(
           )
           .map((u) => u.trim())
       : [];
-    const sourceUrl =
+    const sourceRaw =
       typeof match.sourceUrl === "string" && match.sourceUrl.trim()
         ? match.sourceUrl.trim()
         : undefined;
+    const sourceUrl =
+      sourceRaw && !isHashtreeCloneUrl(sourceRaw) ? sourceRaw : undefined;
 
     const lastNostrEventId =
       typeof match.lastNostrEventId === "string" &&

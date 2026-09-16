@@ -46,6 +46,13 @@ describe("isLikelyGitCloneUrl", () => {
       )
     ).toBe(false);
   });
+
+  it("rejects Iris Hashtree clones including the https://htree:// rewrite", () => {
+    expect(isLikelyGitCloneUrl(`htree://${npub}/gyoza-hanto`)).toBe(false);
+    expect(isLikelyGitCloneUrl(`https://htree://${npub}/gyoza-hanto.git`)).toBe(
+      false
+    );
+  });
 });
 
 describe("gitCloneUrlsForFileFetch", () => {

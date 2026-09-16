@@ -681,7 +681,9 @@ export function persistRepoAnnouncementMeta(opts: {
     patch.lastNostrEventId = eventId;
     patch.nostrEventId = eventId;
   }
-  if (source) patch.sourceUrl = source;
+  if (source && isRefetchableUpstreamSourceUrl(source)) {
+    patch.sourceUrl = source;
+  }
   const prevForSanitize = idx >= 0 ? repos[idx] : undefined;
   const sanitizedFork = sanitizeForkedFromField(
     forkedRaw || prevForSanitize?.forkedFrom,

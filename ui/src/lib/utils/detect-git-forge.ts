@@ -3,6 +3,8 @@
  */
 import { hostnameLooksPrivateOrLocal } from "../security/private-network-host";
 
+import { isHashtreeCloneUrl } from "./hashtree-clone";
+
 export type GitForgeType =
   | "github"
   | "gitlab"
@@ -179,6 +181,7 @@ export function parseOwnerRepoFromGitUrl(sourceUrl: string): {
 export function isCloneableUpstreamSourceUrl(sourceUrl: string): boolean {
   const raw = (sourceUrl || "").trim();
   if (!raw) return false;
+  if (isHashtreeCloneUrl(raw)) return false;
   // Nostr git mirrors use /npub1…/repo — bridge already hosts those; not "upstream forge"
   if (/\/npub1[a-z0-9]+(\/|$)/i.test(raw)) return false;
 

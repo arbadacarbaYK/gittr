@@ -52,6 +52,20 @@ describe("filterDisplayCloneUrlsForSidebar", () => {
     });
     expect(out).toContain(`https://git.shakespeare.diy/${npub}/${repo}.git`);
   });
+
+  it("canonicalizes accidental https://htree:// rewrite to htree://", () => {
+    const npubFull =
+      "npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu";
+    const out = filterDisplayCloneUrlsForSidebar(
+      [
+        `htree://${npubFull}/gyoza-hanto`,
+        `https://htree://${npubFull}/gyoza-hanto.git`,
+      ],
+      { primaryGitServerEnv: "https://git.gittr.space" }
+    );
+    expect(out.every((u) => u.startsWith("htree://"))).toBe(true);
+    expect(out.some((u) => u.startsWith("https://htree://"))).toBe(false);
+  });
 });
 
 describe("cloneUrlLiveHint", () => {

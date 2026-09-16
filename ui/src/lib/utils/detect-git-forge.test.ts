@@ -79,4 +79,17 @@ describe("isCloneableUpstreamSourceUrl", () => {
       isCloneableUpstreamSourceUrl("https://git.gittr.space/npub1abc/repo.git")
     ).toBe(false);
   });
+
+  it("rejects Iris Hashtree clones", () => {
+    expect(
+      isCloneableUpstreamSourceUrl(
+        "htree://npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu/gyoza-hanto"
+      )
+    ).toBe(false);
+    expect(
+      isCloneableUpstreamSourceUrl(
+        "https://htree://npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu/gyoza-hanto.git"
+      )
+    ).toBe(false);
+  });
 });

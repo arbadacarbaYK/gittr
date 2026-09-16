@@ -1,3 +1,4 @@
+import { isHashtreeCloneUrl } from "../utils/hashtree-clone";
 import { nip34TagValuesFromRow } from "../utils/nip34-tag-values";
 
 /** Hosts that are Nostr-git mirrors, not foreign forge upstreams. */
@@ -7,6 +8,7 @@ const GRASP_OR_GITTR_HOST_RE =
 function looksLikeForeignForgeUrl(raw: string): boolean {
   if (!raw || typeof raw !== "string") return false;
   const t = raw.trim();
+  if (isHashtreeCloneUrl(t)) return false;
   if (
     t.includes("github.com") ||
     t.includes("gitlab.com") ||

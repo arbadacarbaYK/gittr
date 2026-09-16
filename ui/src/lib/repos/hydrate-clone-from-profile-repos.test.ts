@@ -101,6 +101,29 @@ describe("fetchRepoCloneHintsFromProfile", () => {
     expect(await fetchRepoCloneHintsFromProfile("bad", "LiE")).toBeNull();
   });
 
+  it("does not treat Iris Hashtree clones as forge sourceUrl", async () => {
+    const htree =
+      "htree://npub1vx40p5mkcwyrg2gnthf343y39tf0zqxl56ajvql2m9q3rxremynsfp37lu/gyoza-hanto";
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        repos: [
+          {
+            repo: "gyoza-hanto",
+            clone: [htree],
+            sourceUrl: htree,
+          },
+        ],
+      }),
+    });
+    const hints = await fetchRepoCloneHintsFromProfile(
+      "a".repeat(64),
+      "gyoza-hanto"
+    );
+    expect(hints?.clone).toEqual([htree]);
+    expect(hints?.sourceUrl).toBeUndefined();
+  });
+
   it("accepts npub and decodes to hex for the profile-repos query", async () => {
     const { nip19 } = await import("nostr-tools");
     const hex =

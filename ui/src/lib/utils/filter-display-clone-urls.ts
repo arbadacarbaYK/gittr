@@ -1,11 +1,15 @@
 import { GRASP_SERVERS_FOR_PUSHING } from "./grasp-servers";
+import {
+  isHashtreeCloneUrl,
+  normalizeHashtreeCloneUrl,
+} from "./hashtree-clone";
 
 const UPSTREAM_HOSTS = ["github.com", "gitlab.com", "codeberg.org"] as const;
 
 /** Hostname for https URLs, or host part of git@host:path */
 export function gitUrlHostname(url: string): string {
   const u = String(url || "").trim();
-  if (!u || u.startsWith("nostr://")) return "";
+  if (!u || u.startsWith("nostr://") || isHashtreeCloneUrl(u)) return "";
   if (/^git@/i.test(u)) {
     return (u.slice(4).split(":")[0] ?? "").toLowerCase();
   }
@@ -134,6 +138,7 @@ export function filterDisplayCloneUrlsForSidebar(
 ): string[] {
   const withoutEmpty = urls
     .map((u) => String(u || "").trim())
+    .map((u) => normalizeHashtreeCloneUrl(u) || u)
     .filter((u) => u && !u.includes("localhost") && !u.includes("127.0.0.1"));
 
   const hasNamedHost = withoutEmpty.some((u) => {

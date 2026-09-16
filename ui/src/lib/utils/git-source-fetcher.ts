@@ -64,6 +64,7 @@ export function addUpstreamSourceToCloneUrls(
 ): void {
   if (!rawSource || typeof rawSource !== "string") return;
   const trimmed = rawSource.trim();
+  if (isHashtreeCloneUrl(trimmed)) return;
   if (!isRefetchableUpstreamSourceUrl(trimmed)) return;
 
   let cloneUrl = trimmed;
@@ -2017,6 +2018,25 @@ export async function fetchFilesFromMultipleSources(
 
   const gitCloneUrls = gitCloneUrlsForFileFetch(cloneUrls);
   if (gitCloneUrls.length === 0) {
+    if (cloneUrls.some((u) => isHashtreeCloneUrl(u))) {
+      const statuses: FetchStatus[] = cloneUrls
+        .filter((u) => isHashtreeCloneUrl(u))
+        .map((url) => {
+          const source = parseGitSource(url);
+          return {
+            source,
+            status: "failed" as const,
+            error:
+              "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
+            fetchedAt: Date.now(),
+          };
+        });
+      console.info(
+        `ℹ️ [Git Source] Only Hashtree clones remained after git-URL filter — skipping multi-source fetch`
+      );
+      statuses.forEach((s) => onStatusUpdate?.(s));
+      return { files: null, statuses };
+    }
     console.info(
       `ℹ️ [Git Source] No git clone URLs after skipping ${cloneUrls.length} relay homepage(s)`
     );
@@ -2363,11 +2383,12 @@ export async function fetchFilesFromMultipleSources(
 
     // CRITICAL: Use Promise.race to return as soon as first source succeeds (don't wait for all)
     // Continue updating statuses in the background, but don't block the UI
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<{
       files: null;
       statuses: FetchStatus[];
     }>((resolve) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         console.log(
           `⏱️ [Git Source] Timeout waiting for first success, returning current statuses`
         );
@@ -2481,11 +2502,27 @@ export async function fetchFilesFromMultipleSources(
       return null;
     });
 
-    // Race between first success and timeout - return immediately when first succeeds
+    // If every source fails immediately (unknown / Hashtree rewrite), do not
+    // park on the 45s first-success timeout — that held fileFetchInProgressRef.
+    const allSettledPromise = Promise.allSettled(fetchPromises).then(() => {
+      const success = statuses.find(
+        (s) => s.status === "success" && s.files && s.files.length > 0
+      );
+      if (success?.files) {
+        return { files: success.files, statuses };
+      }
+      return { files: null, statuses };
+    });
+
+    // Race between first success, all-sources-done, and timeout
     const raceResult = await Promise.race([
       firstSuccessPromise,
+      allSettledPromise,
       timeoutPromise,
     ]);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
     if (
       raceResult &&
       raceResult.files &&

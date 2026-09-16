@@ -19,4 +19,13 @@ describe("generic HTTPS remotes", () => {
     expect(isGenericHttpsGitRemoteUrl(url)).toBe(false);
     expect(isRefetchableUpstreamSourceUrl(url)).toBe(false);
   });
+
+  it("does not treat Iris Hashtree clones as refetchable HTTPS git", () => {
+    const htree = `htree://${npub}/gyoza-hanto`;
+    const rewritten = `https://htree://${npub}/gyoza-hanto.git`;
+    expect(isGenericHttpsGitRemoteUrl(htree)).toBe(false);
+    expect(isRefetchableUpstreamSourceUrl(htree)).toBe(false);
+    expect(isGenericHttpsGitRemoteUrl(rewritten)).toBe(false);
+    expect(isRefetchableUpstreamSourceUrl(rewritten)).toBe(false);
+  });
 });

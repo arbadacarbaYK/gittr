@@ -142,6 +142,8 @@ Normal READMEs (up to ~200 KB) format automatically; only enormous bodies need
 
 Some NIP-34 announces (e.g. [Iris Git](https://git.iris.to/)) use `clone` → `htree://npub1…/repo` (needs `git-remote-htree` on the machine) and `web` → `https://git.iris.to/#/…`. gittr labels these and, when every clone is Hashtree-only, shows an Iris CTA plus copyable `git clone htree://…`. The bridge cannot clone `htree://`.
 
+Do **not** rewrite `htree://` to `https://htree://…`. That string is not HTTPS git: it is typed `unknown`, the Iris empty-state vanishes, and multi-source fetch can sit until the 45s first-success timeout. Treat `htree://`, `https://htree://…`, and hostname `htree` as Hashtree-only — skip bridge / `/api/import` / generic HTTPS listing.
+
 ## GRASP remotes
 
 Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. For each clone URL, in parallel:

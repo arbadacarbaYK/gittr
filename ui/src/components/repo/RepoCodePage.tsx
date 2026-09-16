@@ -6332,6 +6332,11 @@ export function RepoCodePage() {
         }
       }
 
+      if (sourceUrl && isHashtreeCloneUrl(sourceUrl)) {
+        // Iris Hashtree is not an HTTPS git remote — never rewrite to https://htree://
+        sourceUrl = "";
+      }
+
       if (sourceUrl) {
         // Convert sourceUrl to proper clone URL format if needed
         let cloneUrl = sourceUrl;
@@ -6503,14 +6508,7 @@ export function RepoCodePage() {
           );
           markFileFetchAttempt(repoKeyWithBranch);
           fileFetchInProgressRef.current = false;
-          setFetchStatuses(
-            initialCloneUrls.map((url) => ({
-              source: parseGitSource(url).displayName,
-              status: "failed" as const,
-              error:
-                "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
-            }))
-          );
+          setFetchStatuses([]);
           setFetchingFilesFromGit({ source: null, message: "" });
           return;
         }
@@ -9544,14 +9542,7 @@ export function RepoCodePage() {
                   );
                   markFileFetchAttempt(repoKeyWithBranch);
                   fileFetchInProgressRef.current = false;
-                  setFetchStatuses(
-                    cloneUrls.map((url) => ({
-                      source: parseGitSource(url).displayName,
-                      status: "failed" as const,
-                      error:
-                        "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
-                    }))
-                  );
+                  setFetchStatuses([]);
                   setFetchingFilesFromGit({ source: null, message: "" });
                   if (unsub) unsub();
                   return;
@@ -18986,6 +18977,7 @@ export function RepoCodePage() {
             )}
             {mounted &&
               fetchStatuses.length > 0 &&
+              !hashtreeOnlyEmpty &&
               (() => {
                 // Check if we have files - if so, show success message briefly, then hide
                 const hasFiles = safeFiles.length > 0;
