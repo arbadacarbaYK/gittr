@@ -4,11 +4,13 @@ import {
   appendDiscussion,
   collectDiscussionStorageKeys,
   discussionFromLongFormEvent,
+  discussionsForTab,
   hideDiscussion,
   loadDiscussionById,
   loadDiscussions,
   loadHiddenDiscussionIds,
   mergeDiscussionLists,
+  mergeDiscussionListsForView,
   persistDiscussion,
 } from "./storage";
 
@@ -152,5 +154,37 @@ describe("discussion storage", () => {
       "CLI-Tools"
     );
     expect(store.has("gittr_files__other__repo")).toBe(false);
+  });
+
+  it("lets nostr-only tabs pick the local copy when it differs", () => {
+    const nostr = {
+      ...sample,
+      description: "on relays",
+      source: "nostr" as const,
+    };
+    const local = {
+      ...sample,
+      description: "in this browser",
+      source: "local" as const,
+    };
+    const picked = mergeDiscussionListsForView([nostr], [local], [], "local");
+    expect(picked).toHaveLength(1);
+    expect(picked[0]?.description).toBe("in this browser");
+    const live = mergeDiscussionListsForView([nostr], [local], [], "nostr");
+    expect(live[0]?.description).toBe("on relays");
+  });
+
+  it("hides Nostr threads on forge-backed repos", () => {
+    const gh = {
+      ...sample,
+      id: "gh-discussion-12",
+      source: "github" as const,
+    };
+    expect(
+      discussionsForTab([gh, sample], "forge-readonly").map((d) => d.id)
+    ).toEqual(["gh-discussion-12"]);
+    expect(
+      discussionsForTab([gh, sample], "nostr-local").map((d) => d.id)
+    ).toEqual([sample.id]);
   });
 });

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
+import { loadProjects } from "@/lib/projects/storage";
 
 import {
   Calendar,
@@ -59,10 +60,10 @@ export default function UserProjectsPage() {
 
       repos.forEach((repo: any) => {
         try {
-          const projectKey = `gittr_projects_${repo.entity}_${
-            repo.repo || repo.slug
-          }`;
-          const projects = JSON.parse(localStorage.getItem(projectKey) || "[]");
+          const projects = loadProjects(
+            repo.entity,
+            repo.repo || repo.slug || ""
+          );
 
           projects.forEach((project: any) => {
             if (project.status === "active" && project.items.length > 0) {

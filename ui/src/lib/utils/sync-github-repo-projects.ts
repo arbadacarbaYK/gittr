@@ -1,11 +1,20 @@
 /**
  * Import GitHub Projects V2 into the repo ToDo/Kanban tab (read-only from source).
- * Local-only boards/notes are preserved; GH-sourced boards are replaced each sync.
+ * GitHub boards are replaced each sync. Local boards stay in storage but are
+ * hidden on forge-backed repos (ToDo shows the forge copy only).
  *
  * No finalized Nostr NIP for git kanban yet — we mirror GH like Issues and keep
  * board state in localStorage until a draft (#1665 / #1804 / Headway) settles.
  */
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import {
+  isGithubProject,
+  loadProjects,
+  mergeGithubProjectsIntoLocal,
+  persistProjects,
+} from "@/lib/projects/storage";
+
+export { isGithubProject, mergeGithubProjectsIntoLocal };
 
 export type KanbanStatus = "todo" | "in_progress" | "done";
 
@@ -135,22 +144,6 @@ function mapStatusName(
     return "in_progress";
   }
   return "todo";
-}
-
-function projectsStorageKey(entity: string, repo: string): string {
-  return `gittr_projects_${entity}_${repo}`;
-}
-
-function isGithubProject(p: SyncedProject): boolean {
-  return p.source === "github" || p.id.startsWith("gh-project-");
-}
-
-export function mergeGithubProjectsIntoLocal(
-  local: SyncedProject[],
-  fromGithub: SyncedProject[]
-): SyncedProject[] {
-  const keptLocal = local.filter((p) => !isGithubProject(p));
-  return [...fromGithub, ...keptLocal];
 }
 
 export async function syncGithubProjectsForRepo(
@@ -294,17 +287,9 @@ export async function syncGithubProjectsForRepo(
         };
       });
 
-    const key = projectsStorageKey(entity, repoSlug);
-    let local: SyncedProject[] = [];
-    try {
-      const raw = JSON.parse(localStorage.getItem(key) || "[]");
-      local = Array.isArray(raw) ? raw : [];
-    } catch {
-      local = [];
-    }
-
+    const local = loadProjects(entity, repoSlug);
     const merged = mergeGithubProjectsIntoLocal(local, fromGithub);
-    localStorage.setItem(key, JSON.stringify(merged));
+    persistProjects(entity, repoSlug, merged);
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("gittr:project-updated", {

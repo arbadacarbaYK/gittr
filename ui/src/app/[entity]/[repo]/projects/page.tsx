@@ -17,7 +17,18 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
+import {
+  isGithubProject,
+  loadProjects,
+  persistProjects,
+  projectsForTab,
+} from "@/lib/projects/storage";
 import { hasWriteAccess } from "@/lib/repo-permissions";
+import {
+  type CollaborationTabMode,
+  collaborationTabMode,
+  isGithubCollaborationUrl,
+} from "@/lib/repos/collaboration-tab-source";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
@@ -145,31 +156,25 @@ export default function ProjectsPage() {
   const [openIssues, setOpenIssues] = useState<any[]>([]);
   const [syncingGithub, setSyncingGithub] = useState(false);
   const [githubImportNote, setGithubImportNote] = useState<string | null>(null);
+  const [tabMode, setTabMode] = useState<CollaborationTabMode | null>(null);
+  const [forgeLabel, setForgeLabel] = useState("GitHub");
 
   const reloadProjects = useCallback(() => {
     try {
-      const stored = JSON.parse(
-        localStorage.getItem(`gittr_projects_${entity}_${repo}`) || "[]"
-      ) as Project[];
-      const normalized = normalizeProjects(stored);
-      setProjects(normalized);
+      const stored = normalizeProjects(loadProjects(entity, repo) as Project[]);
+      persistProjects(entity, repo, stored);
+      const visible = tabMode
+        ? (projectsForTab(stored, tabMode) as Project[])
+        : [];
+      setProjects(visible);
       setSelectedProject((prev) => {
-        if (prev && normalized.some((p) => p.id === prev)) return prev;
-        return normalized[0]?.id ?? null;
+        if (prev && visible.some((p) => p.id === prev)) return prev;
+        return visible[0]?.id ?? null;
       });
-      // Persist clamp of legacy full GH bodies so refresh stays compact.
-      try {
-        localStorage.setItem(
-          `gittr_projects_${entity}_${repo}`,
-          JSON.stringify(normalized)
-        );
-      } catch {
-        /* ignore quota */
-      }
     } catch {
       /* ignore */
     }
-  }, [entity, repo]);
+  }, [entity, repo, tabMode]);
 
   const loadOpenIssues = useCallback(() => {
     try {
@@ -206,10 +211,35 @@ export default function ProjectsPage() {
         if (cancelled) return;
         loadOpenIssues();
         const url = sourceUrl || rec?.sourceUrl || "";
-        if (!url || !url.includes("github.com")) {
+        const mode = collaborationTabMode({
+          sourceUrl: url || rec?.sourceUrl,
+          forkedFrom: rec?.forkedFrom,
+          clone: rec?.clone,
+        });
+        if (!cancelled) {
+          setTabMode(mode);
+          setForgeLabel(
+            url.includes("gitlab")
+              ? "GitLab"
+              : url.includes("codeberg")
+              ? "Codeberg"
+              : url.includes("github")
+              ? "GitHub"
+              : "the forge"
+          );
+        }
+        if (mode === "forge-readonly" && !isGithubCollaborationUrl(url)) {
           if (!cancelled) {
             setGithubImportNote(
-              "No GitHub upstream — ToDo boards stay local-only."
+              "This repo’s git source is on a forge. ToDo shows the forge board only (read-only). gittr does not write Projects back, and only GitHub Projects V2 can be imported here."
+            );
+          }
+          return;
+        }
+        if (mode === "nostr-local") {
+          if (!cancelled) {
+            setGithubImportNote(
+              "Nostr-only repo — ToDo boards stay in this browser (there is no kanban NIP yet)."
             );
           }
           return;
@@ -222,12 +252,12 @@ export default function ProjectsPage() {
             result.imported > 0
               ? `Synced ${result.imported} GitHub Project${
                   result.imported === 1 ? "" : "s"
-                } (read-only from source). Local boards kept.`
+                } (read-only). gittr does not write back to GitHub.`
               : "No GitHub Projects on this repo (or none visible to the token)."
           );
         } else if (result.error && result.error !== "not-github") {
           setGithubImportNote(
-            "GitHub Projects sync failed — showing local boards. Public ProjectV2 may need token access."
+            "GitHub Projects sync failed — showing the last cached forge board if this browser still has it."
           );
         }
       } catch (e) {
@@ -287,18 +317,22 @@ export default function ProjectsPage() {
   const isGithubBoard =
     !!project &&
     (project.source === "github" || project.id.startsWith("gh-project-"));
-  /** Local boards are editable; GitHub Projects are read-only mirrors (re-synced on tab open). */
-  const canEditBoard = hasWrite && !isGithubBoard;
+  /** Local boards are editable on Nostr-only repos. Forge boards are read-only. */
+  const canEditBoard = hasWrite && !isGithubBoard && tabMode === "nostr-local";
 
   const saveProjects = useCallback(
     (updated: Project[]) => {
-      setProjects(updated);
-      localStorage.setItem(
-        `gittr_projects_${entity}_${repo}`,
-        JSON.stringify(updated)
-      );
+      const stored = loadProjects(entity, repo);
+      const githubKept = stored.filter((p) => isGithubProject(p));
+      const localKept = stored.filter((p) => !isGithubProject(p));
+      const next =
+        tabMode === "forge-readonly"
+          ? [...updated.filter((p) => isGithubProject(p)), ...localKept]
+          : [...githubKept, ...updated.filter((p) => !isGithubProject(p))];
+      persistProjects(entity, repo, next);
+      setProjects(projectsForTab(next, tabMode || "nostr-local") as Project[]);
     },
-    [entity, repo]
+    [entity, repo, tabMode]
   );
 
   const handleCreateProject = async () => {
@@ -310,6 +344,13 @@ export default function ProjectsPage() {
 
     if (!hasWrite) {
       alert("Only owners and maintainers can create projects");
+      return;
+    }
+
+    if (tabMode === "forge-readonly") {
+      alert(
+        `This repo’s git source is on ${forgeLabel}. ToDo is a read-only mirror — add cards on ${forgeLabel}.`
+      );
       return;
     }
 
@@ -336,6 +377,7 @@ export default function ProjectsPage() {
       items: [],
       createdAt: Date.now(),
       view: "kanban",
+      source: "local",
     };
     const updated = [...projects, newProject];
     saveProjects(updated);
@@ -350,8 +392,8 @@ export default function ProjectsPage() {
     if (!project) return;
     if (!canEditBoard) {
       alert(
-        isGithubBoard
-          ? "GitHub Projects are read-only mirrors. Create a local project (as owner/maintainer) to add cards."
+        tabMode === "forge-readonly" || isGithubBoard
+          ? `This board lives on ${forgeLabel}. gittr shows it read-only and does not write back.`
           : "Only owners and maintainers can add items to this board."
       );
       return;
@@ -1424,10 +1466,10 @@ export default function ProjectsPage() {
               {syncingGithub ? "Syncing GitHub Projects…" : githubImportNote}
             </p>
           )}
-          {isGithubBoard && (
+          {tabMode === "forge-readonly" && (
             <p className="mt-1 text-xs text-amber-400/90">
-              Viewing a GitHub Project (read-only). Edits stay on GitHub; local
-              boards below remain editable.
+              Viewing {forgeLabel} Projects (read-only). gittr does not write
+              boards back to the forge.
             </p>
           )}
         </div>
@@ -1447,7 +1489,7 @@ export default function ProjectsPage() {
               )}
             </Button>
           )}
-          {hasWrite && (
+          {hasWrite && tabMode === "nostr-local" && (
             <Button onClick={handleCreateProject}>
               <Plus className="mr-2 h-4 w-4" />
               New Project
@@ -1461,9 +1503,13 @@ export default function ProjectsPage() {
         {projects.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#383B42] bg-[#171B21] px-3 py-2">
             <span className="text-sm text-gray-400">
-              {hasWrite ? "No projects yet" : "No projects on this repo yet"}
+              {tabMode === "forge-readonly"
+                ? `No ${forgeLabel} Projects visible here`
+                : hasWrite
+                ? "No projects yet"
+                : "No projects on this repo yet"}
             </span>
-            {hasWrite && (
+            {hasWrite && tabMode === "nostr-local" && (
               <Button size="sm" onClick={handleCreateProject}>
                 <Plus className="mr-1 h-4 w-4" />
                 Create

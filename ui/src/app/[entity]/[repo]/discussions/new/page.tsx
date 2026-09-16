@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,10 @@ import {
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
+import { collaborationTabMode } from "@/lib/repos/collaboration-tab-source";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { X } from "lucide-react";
 import Link from "next/link";
@@ -52,6 +56,7 @@ export default function NewDiscussionPage() {
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [forgeBlocked, setForgeBlocked] = useState(false);
   const { initials, isLoggedIn } = useSession();
   const {
     publish,
@@ -59,6 +64,21 @@ export default function NewDiscussionPage() {
     pubkey: currentUserPubkey,
     remoteSigner,
   } = useNostrContext();
+
+  useEffect(() => {
+    try {
+      const repos = loadStoredRepos();
+      const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const mode = collaborationTabMode({
+        sourceUrl: rec?.sourceUrl,
+        forkedFrom: rec?.forkedFrom,
+        clone: rec?.clone,
+      });
+      setForgeBlocked(mode === "forge-readonly");
+    } catch {
+      setForgeBlocked(false);
+    }
+  }, [entity, repo]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -89,6 +109,14 @@ export default function NewDiscussionPage() {
         return;
       }
 
+      if (forgeBlocked) {
+        setErrorMsg(
+          "This repo’s git source is on a forge. gittr shows GitHub Discussions read-only and does not create a parallel Nostr thread."
+        );
+        setSubmitting(false);
+        return;
+      }
+
       if (!publish || !defaultRelays?.length) {
         setErrorMsg(
           "Nostr relays are not ready yet. Wait a moment and try again."
@@ -105,7 +133,10 @@ export default function NewDiscussionPage() {
             .slice(2, 10)}`;
         }
         const identifier = draftDTagRef.current;
+        const repos = loadStoredRepos();
+        const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
         const ownerHex =
+          getRepoOwnerPubkey(rec, entity) ||
           normalizeDiscussionPubkey(entity) ||
           normalizeDiscussionPubkey(currentUserPubkey);
 
@@ -161,6 +192,7 @@ export default function NewDiscussionPage() {
           commentCount: 0,
           comments: [],
           dTag: identifier,
+          source: "nostr",
         };
 
         const saved = appendDiscussion(entity, repo, newDiscussion);
@@ -189,6 +221,7 @@ export default function NewDiscussionPage() {
       }
     },
     [
+      forgeBlocked,
       currentUserPubkey,
       defaultRelays,
       entity,
@@ -214,99 +247,110 @@ export default function NewDiscussionPage() {
         </Link>
         <h1 className="text-2xl font-bold mb-2">Start a New Discussion</h1>
         <p className="text-gray-400">
-          Share ideas, ask questions, or get feedback from the community
+          {forgeBlocked
+            ? "This repo has a forge git source. Discussions are read-only from GitHub."
+            : "Share ideas, ask questions, or get feedback from the community"}
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {errorMsg && (
-          <div className="p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
-            {errorMsg}
-          </div>
-        )}
+      {forgeBlocked ? (
+        <div className="p-4 bg-amber-950/40 border border-amber-600/50 rounded text-amber-100/90 text-sm">
+          gittr does not write to GitHub Discussions. Open the Discussions tab
+          for the forge copy.
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {errorMsg && (
+            <div className="p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
+              {errorMsg}
+            </div>
+          )}
 
-        <div className="space-y-2">
-          <label htmlFor="category" className="block text-sm font-medium">
-            Category (optional)
-          </label>
-          <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" type="button">
-                  {selectedCategory || "Select category"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Category</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {DISCUSSION_CATEGORIES.map((cat) => (
-                  <DropdownMenuItem
-                    key={cat}
-                    onClick={() =>
-                      setSelectedCategory(selectedCategory === cat ? null : cat)
-                    }
-                  >
-                    {cat}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {selectedCategory && (
-              <Badge
-                variant="outline"
-                className="border-purple-700 text-purple-400 bg-purple-900/20"
-              >
-                {selectedCategory}
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory(null)}
-                  className="ml-1 hover:text-red-400"
+          <div className="space-y-2">
+            <label htmlFor="category" className="block text-sm font-medium">
+              Category (optional)
+            </label>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" type="button">
+                    {selectedCategory || "Select category"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>Category</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {DISCUSSION_CATEGORIES.map((cat) => (
+                    <DropdownMenuItem
+                      key={cat}
+                      onClick={() =>
+                        setSelectedCategory(
+                          selectedCategory === cat ? null : cat
+                        )
+                      }
+                    >
+                      {cat}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {selectedCategory && (
+                <Badge
+                  variant="outline"
+                  className="border-purple-700 text-purple-400 bg-purple-900/20"
                 >
-                  <X className="h-3 w-3 inline" />
-                </button>
-              </Badge>
-            )}
+                  {selectedCategory}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(null)}
+                    className="ml-1 hover:text-red-400"
+                  >
+                    <X className="h-3 w-3 inline" />
+                  </button>
+                </Badge>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <label htmlFor="title" className="block text-sm font-medium">
-            Title *
-          </label>
-          <Input
-            id="title"
-            ref={titleRef}
-            placeholder="Discussion title"
-            required
-            className="w-full"
-          />
-        </div>
+          <div className="space-y-2">
+            <label htmlFor="title" className="block text-sm font-medium">
+              Title *
+            </label>
+            <Input
+              id="title"
+              ref={titleRef}
+              placeholder="Discussion title"
+              required
+              className="w-full"
+            />
+          </div>
 
-        <div className="space-y-2">
-          <label htmlFor="description" className="block text-sm font-medium">
-            Description *
-          </label>
-          <Textarea
-            id="description"
-            ref={descriptionRef}
-            placeholder="What's on your mind?"
-            required
-            rows={12}
-            className="w-full font-mono text-sm"
-          />
-        </div>
+          <div className="space-y-2">
+            <label htmlFor="description" className="block text-sm font-medium">
+              Description *
+            </label>
+            <Textarea
+              id="description"
+              ref={descriptionRef}
+              placeholder="What's on your mind?"
+              required
+              rows={12}
+              className="w-full font-mono text-sm"
+            />
+          </div>
 
-        <div className="flex justify-end gap-4">
-          <Link href={`/${entity}/${repo}/discussions`}>
-            <Button type="button" variant="outline">
-              Cancel
+          <div className="flex justify-end gap-4">
+            <Link href={`/${entity}/${repo}/discussions`}>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </Link>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Creating..." : "Start Discussion"}
             </Button>
-          </Link>
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Creating..." : "Start Discussion"}
-          </Button>
-        </div>
-      </form>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -183,8 +183,8 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 
 ### Projects / Kanban (no finalized NIP yet)
 
-- **gittr ToDo tab** (`/{entity}/{repo}/projects`): local boards in `localStorage`, plus **read-only import of GitHub Projects V2** when a GitHub `sourceUrl` exists (GraphQL via `/api/github/graphql`). **Quick Add from Open Issues** lists the same currently-open tickets as the Issues tab (GitHub + Nostr). Closed tickets drop off when GitHub refetch or NIP-34 status events (1630/1631/1632) update `localStorage`.
-- **Policy**: mirror source like Issues — refresh on tab open; do **not** write column moves back to GitHub; keep local-only boards editable beside GH mirrors.
+- **gittr ToDo tab** (`/{entity}/{repo}/projects`): **Forge-backed** repos (GitHub/GitLab/Codeberg/Gitea `source`) show the forge board **read-only** (GitHub Projects V2 import). gittr does **not** write cards back, and does **not** mix this-browser boards into that view. **Nostr-only** repos keep boards in this browser (`gittr_projects__*`, including legacy `gittr_projects_<entity>_<repo>`). There is no kanban NIP yet, so there is no Nostr copy to choose; restart keeps the same browser’s board. **Quick Add from Open Issues** lists the same currently-open tickets as the Issues tab (GitHub + Nostr). Closed tickets drop off when GitHub refetch or NIP-34 status events (1630/1631/1632) update `localStorage`.
+- **Policy**: if the git source is a forge, ToDo/Discussions **show the forge copy only** (read-only). If the repo is Nostr-only, ToDo is this-browser (until a kanban NIP exists) and Discussions are NIP-23 with a **Nostr vs this-browser** switch when both copies exist. Do **not** write column moves back to GitHub.
 - **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
 - **Future GitHub write-back**: optional **user GitHub OAuth** (not a new kind) when NIP-39 / upstream identity matches — see helper-tools `snippets/github-oauth-writeback/`. Keep Nostr as collaboration truth; OAuth is a forge bridge.
 - **Helper write-up for a future NIP**: `gittr-helper-tools/snippets/todos-discussions-kanban/` (surfaces, rules, suggested event shape).
@@ -369,11 +369,12 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `summary`: Short summary (optional)
   - `published_at`: Unix timestamp (string)
   - `t`: Topic/category (NIP-23 hashtag)
-  - `repo`: Repository scope — `entity/repo` (e.g. `npub.../my-repo`) for filtering
+  - `repo`: Repository scope — gittr writes both `npub…/repo` and `hex/repo` so a URL entity change after restart still matches
+  - `a` / `p`: optional NIP-34 pointer `30617:<owner-hex>:<repo>` when the owner pubkey is known
   - `status`: `open` or `closed` (gittr extension)
   - `category`: Category label (gittr extension)
 - **Content**: Markdown body (discussion description)
-- **Local cache**: gittr also stores a copy in this browser (`gittr_discussions__*`). That is **not** a Nostr/relay quota. If origin `localStorage` is full, publish still succeeds and the detail page hydrates by **event id**. Retrying the form reuses the same `d` tag so NIP-23 replaceable events collapse instead of duplicating. Owner **Delete** publishes NIP-09 kind **5** (`e` + optional `a` = `30023:pubkey:d`) and hides the row locally.
+- **Local cache**: gittr also stores a copy in this browser (`gittr_discussions__*`). List refetch writes that cache so a restart still shows rows. On Nostr-only repos a **Nostr / This browser** switch picks which copy to show when they differ. Forge-backed repos hide Nostr threads and show GitHub Discussions read-only instead. A `QuotaExceededError` is **origin localStorage**, not a relay quota. If origin `localStorage` is full, publish still succeeds and the detail page hydrates by **event id**. Retrying the form reuses the same `d` tag so NIP-23 replaceable events collapse instead of duplicating. Owner **Delete** publishes NIP-09 kind **5** (`e` + optional `a` = `30023:pubkey:d`) and hides the row locally.
 
 ### Kind 9806: Bounties
 

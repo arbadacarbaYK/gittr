@@ -25,6 +25,9 @@ export interface Discussion {
   repo?: string;
   /** NIP-23 `d` tag — used to collapse replaceable retries. */
   dTag?: string;
+  source?: "github" | "nostr" | "local";
+  htmlUrl?: string;
+  githubNumber?: number;
 }
 
 export type PersistDiscussionResult = {
@@ -211,6 +214,17 @@ const sanitizeDiscussion = (raw: unknown): Discussion | null => {
     entity: typeof base.entity === "string" ? base.entity : undefined,
     repo: typeof base.repo === "string" ? base.repo : undefined,
     dTag: typeof base.dTag === "string" ? base.dTag : undefined,
+    source:
+      base.source === "github" ||
+      base.source === "nostr" ||
+      base.source === "local"
+        ? base.source
+        : id.startsWith("gh-discussion-")
+        ? "github"
+        : undefined,
+    htmlUrl: typeof base.htmlUrl === "string" ? base.htmlUrl : undefined,
+    githubNumber:
+      typeof base.githubNumber === "number" ? base.githubNumber : undefined,
   };
 };
 
@@ -461,7 +475,55 @@ export function discussionFromLongFormEvent(
     commentCount: 0,
     comments: [],
     dTag,
+    source: "nostr",
   };
+}
+
+export function isGithubDiscussion(d: {
+  source?: string;
+  id?: string;
+}): boolean {
+  return d.source === "github" || Boolean(d.id?.startsWith("gh-discussion-"));
+}
+
+export function discussionBodiesDiffer(
+  a: Discussion | null | undefined,
+  b: Discussion | null | undefined
+): boolean {
+  if (!a || !b) return Boolean(a || b);
+  return (
+    a.title !== b.title ||
+    a.description !== b.description ||
+    (a.comments?.length || 0) !== (b.comments?.length || 0)
+  );
+}
+
+/** Persist the full list (used after Nostr list hydrate so restart still has rows). */
+export function persistDiscussionListPublic(
+  entity: string,
+  repo: string,
+  list: Discussion[]
+): PersistDiscussionResult {
+  return persistDiscussionList(entity, repo, mergeById(list));
+}
+
+export function discussionsForTab(
+  list: Discussion[],
+  mode: "forge-readonly" | "nostr-local"
+): Discussion[] {
+  if (mode === "forge-readonly") {
+    return list.filter((d) => isGithubDiscussion(d));
+  }
+  return list.filter((d) => !isGithubDiscussion(d));
+}
+
+export function pickDiscussionVersion(
+  fromNostr: Discussion | null,
+  fromLocal: Discussion | null,
+  view: "nostr" | "local"
+): Discussion | null {
+  if (view === "local") return fromLocal || fromNostr;
+  return fromNostr || fromLocal;
 }
 
 export function mergeDiscussionLists(
@@ -492,4 +554,53 @@ export function mergeDiscussionLists(
   fromNostr.forEach(put);
   fromLocal.forEach(put);
   return [...byKey.values()].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function discussionMergeKey(row: Discussion): string {
+  const author = normalizeDiscussionPubkey(row.author);
+  return row.dTag && author ? `d:${author}:${row.dTag}` : `id:${row.id}`;
+}
+
+/** Pick Nostr or this-browser copy per row (same d-tag / id). */
+export function mergeDiscussionListsForView(
+  fromNostr: Discussion[],
+  fromLocal: Discussion[],
+  hiddenIds: Iterable<string> = [],
+  view: "nostr" | "local" = "nostr"
+): Discussion[] {
+  const hidden = new Set(hiddenIds);
+  const nostrByKey = new Map<string, Discussion>();
+  const localByKey = new Map<string, Discussion>();
+  for (const row of fromNostr) {
+    if (!row?.id || hidden.has(row.id) || isGithubDiscussion(row)) continue;
+    nostrByKey.set(discussionMergeKey(row), row);
+  }
+  for (const row of fromLocal) {
+    if (!row?.id || hidden.has(row.id) || isGithubDiscussion(row)) continue;
+    localByKey.set(discussionMergeKey(row), row);
+  }
+  const keys = new Set([...nostrByKey.keys(), ...localByKey.keys()]);
+  const out: Discussion[] = [];
+  for (const key of keys) {
+    const n = nostrByKey.get(key);
+    const l = localByKey.get(key);
+    const picked = view === "local" ? l || n : n || l;
+    if (picked) {
+      out.push(
+        picked === n && l
+          ? {
+              ...n,
+              comments: n.comments?.length ? n.comments : l.comments,
+              commentCount: Math.max(
+                n.commentCount || 0,
+                l.commentCount || 0,
+                n.comments?.length || 0,
+                l.comments?.length || 0
+              ),
+            }
+          : picked
+      );
+    }
+  }
+  return out.sort((a, b) => b.createdAt - a.createdAt);
 }

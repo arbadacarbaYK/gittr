@@ -1,4 +1,5 @@
 // Nostr event types and utilities for repositories, issues, PRs
+import { discussionRepoTagValues } from "@/lib/discussions/repo-scope";
 import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
@@ -1137,13 +1138,18 @@ export function buildUnsignedDiscussionEvent(
       .toString(36)
       .slice(2, 10)}`;
 
+  const repoTags = discussionRepoTagValues(
+    discussion.repoEntity,
+    discussion.repoName,
+    discussion.ownerPubkey
+  );
   const tags: string[][] = [
     ["d", d],
     ["title", discussion.title],
     ["subject", discussion.title], // Improves compatibility with issue-centric UIs
     ["summary", discussion.description.slice(0, 200)],
     ["published_at", String(now)],
-    ["repo", `${discussion.repoEntity}/${discussion.repoName}`],
+    ...repoTags.map((value) => ["repo", value]),
     ["status", status],
   ];
   if (

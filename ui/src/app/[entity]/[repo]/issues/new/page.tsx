@@ -44,6 +44,7 @@ import {
   formatNotificationMessage,
   sendNotification,
 } from "@/lib/notifications";
+import { loadProjects } from "@/lib/projects/storage";
 import { resolveRepoForPublish } from "@/lib/repos/resolve-repo-for-publish";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import {
@@ -157,10 +158,7 @@ export default function RepoIssueNewPage() {
 
       // Load projects
       try {
-        const projectsKey = `gittr_projects_${entity}_${repo}`;
-        const projects = JSON.parse(
-          localStorage.getItem(projectsKey) || "[]"
-        ) as any[];
+        const projects = loadProjects(entity, repo);
         setAvailableProjects(
           projects.map((p: any) => ({ id: p.id, name: p.name }))
         );

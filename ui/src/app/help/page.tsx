@@ -3667,10 +3667,16 @@ export default function HelpPage() {
 
             <HelpTopic id="projects" title={<>Projects, Kanban, milestones</>}>
               <p>
-                Each repo has <strong>Projects</strong> with{" "}
-                <strong>Kanban</strong> and <strong>Roadmap</strong> views. Drag
-                cards to update status. <strong>Milestones</strong> live in repo
-                Settings and on issues/PRs. Open{" "}
+                Each repo has a <strong>ToDo</strong> tab (Projects) with{" "}
+                <strong>Kanban</strong> and <strong>Roadmap</strong> views. If
+                the git source is GitHub/GitLab/Codeberg, gittr shows that
+                forge’s board <strong>read-only</strong> — it does not write
+                cards back, and it does not keep a second this-browser board in
+                that view (that is why notes seemed to vanish after a restart).
+                Nostr-only repos keep the board in this browser until a kanban
+                NIP exists; drag cards to update status.{" "}
+                <strong>Milestones</strong> live in repo Settings and on
+                issues/PRs. Open{" "}
                 <Link
                   href="/projects"
                   className="text-purple-400 hover:text-purple-300"
@@ -3678,6 +3684,18 @@ export default function HelpPage() {
                   /projects
                 </Link>{" "}
                 for the aggregated board.
+              </p>
+            </HelpTopic>
+
+            <HelpTopic id="discussions" title={<>Discussions</>}>
+              <p>
+                <strong>Forge-backed</strong> repos show GitHub Discussions
+                only, read-only — gittr never posts back.{" "}
+                <strong>Nostr-only</strong> repos publish NIP-23 threads to
+                relays and keep a cache in this browser. After a restart the
+                cache is still there; if the live relay copy differs, use{" "}
+                <strong>Nostr</strong> vs <strong>This browser</strong> to pick
+                which version to read.
               </p>
             </HelpTopic>
 

@@ -12,10 +12,13 @@ import {
   type DiscussionComment,
   LOCAL_STORAGE_QUOTA_MESSAGE,
   discussionAuthorMatches,
+  discussionBodiesDiffer,
   discussionFromLongFormEvent,
   hideDiscussion,
+  isGithubDiscussion,
   loadDiscussionById,
   persistDiscussion,
+  pickDiscussionVersion,
 } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
@@ -29,10 +32,21 @@ import {
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  type CollaborationViewPref,
+  readCollabViewPref,
+} from "@/lib/repos/collaboration-tab-source";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import {
+  fetchGithubDiscussionDetail,
+  parseGithubDiscussionNumber,
+} from "@/lib/utils/sync-github-repo-discussions";
 
 import { ArrowLeft, MessageCircle, Reply, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -68,7 +82,11 @@ export default function DiscussionDetailPage({
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [viewPref, setViewPref] = useState<CollaborationViewPref>("nostr");
+  const [nostrCopy, setNostrCopy] = useState<Discussion | null>(null);
+  const [localCopy, setLocalCopy] = useState<Discussion | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const githubThread = isGithubDiscussion({ id: resolvedParams.id });
 
   useEffect(() => {
     const local = loadDiscussionById(
@@ -77,9 +95,51 @@ export default function DiscussionDetailPage({
       resolvedParams.id
     );
     if (local) {
+      setLocalCopy(local);
       setDiscussion(local);
       setLoading(false);
     }
+
+    if (githubThread) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const repos = loadStoredRepos();
+          const rec = findRepoByEntityAndName<StoredRepo>(
+            repos,
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const { sourceUrl } = await hydrateRepoFromGithub(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            { repoRecord: rec }
+          );
+          const url = sourceUrl || rec?.sourceUrl || "";
+          const number = parseGithubDiscussionNumber(resolvedParams.id);
+          if (!url || number == null) {
+            if (!local) setLoading(false);
+            return;
+          }
+          const detail = await fetchGithubDiscussionDetail(url, number);
+          if (cancelled || !detail) {
+            if (!local) setLoading(false);
+            return;
+          }
+          persistDiscussion(resolvedParams.entity, resolvedParams.repo, detail);
+          setDiscussion(detail);
+          setLoading(false);
+        } catch {
+          if (!local) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setViewPref(readCollabViewPref(resolvedParams.entity, resolvedParams.repo));
+
     if (!subscribe || !defaultRelays?.length || !resolvedParams.id) {
       if (!local) setLoading(false);
       return;
@@ -94,6 +154,7 @@ export default function DiscussionDetailPage({
           resolvedParams.entity,
           resolvedParams.repo
         );
+        setNostrCopy(fromNostr);
         setDiscussion((prev) => {
           const merged: Discussion = {
             ...fromNostr,
@@ -158,6 +219,7 @@ export default function DiscussionDetailPage({
     };
   }, [
     defaultRelays,
+    githubThread,
     resolvedParams.entity,
     resolvedParams.id,
     resolvedParams.repo,
@@ -181,6 +243,7 @@ export default function DiscussionDetailPage({
   );
 
   const handleReply = useCallback(async () => {
+    if (githubThread) return;
     if (!replyContent.trim() || !discussion || !currentUserPubkey) return;
 
     try {
@@ -260,6 +323,7 @@ export default function DiscussionDetailPage({
       alert("Failed to add comment: " + (error as Error).message);
     }
   }, [
+    githubThread,
     discussion,
     currentUserPubkey,
     publish,
@@ -272,6 +336,7 @@ export default function DiscussionDetailPage({
   ]);
 
   const handleDelete = useCallback(async () => {
+    if (githubThread) return;
     if (!discussion || !currentUserPubkey) return;
     if (!discussionAuthorMatches(discussion.author, currentUserPubkey)) return;
     const ok = window.confirm(
@@ -315,6 +380,7 @@ export default function DiscussionDetailPage({
       setDeleting(false);
     }
   }, [
+    githubThread,
     currentUserPubkey,
     defaultRelays,
     discussion,
@@ -428,15 +494,17 @@ export default function DiscussionDetailPage({
                 </ReactMarkdown>
               </div>
               <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => startReply(comment.id, comment.author)}
-                  className="text-xs h-7"
-                >
-                  <Reply className="h-3 w-3 mr-1" />
-                  Reply
-                </Button>
+                {!githubThread && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => startReply(comment.id, comment.author)}
+                    className="text-xs h-7"
+                  >
+                    <Reply className="h-3 w-3 mr-1" />
+                    Reply
+                  </Button>
+                )}
                 <Reactions
                   targetId={comment.id}
                   targetType="comment"
@@ -469,8 +537,9 @@ export default function DiscussionDetailPage({
           <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-500" />
           <h2 className="text-xl font-semibold mb-2">Discussion not found</h2>
           <p className="text-sm text-gray-400 mb-4 max-w-md mx-auto">
-            gittr looks this up on Nostr by event id. If it never published, or
-            relays have not answered yet, try the list again in a moment.
+            gittr looks this up on Nostr by event id, or from GitHub if this
+            repo’s source is a forge. If it never published, or relays have not
+            answered yet, try the list again in a moment.
           </p>
           <Link
             href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}
@@ -482,8 +551,13 @@ export default function DiscussionDetailPage({
     );
   }
 
-  const authorMeta = getMetadataForPubkey(discussion.author);
-  const threadedComments = buildCommentTree(discussion.comments);
+  const shown = githubThread
+    ? discussion
+    : pickDiscussionVersion(nostrCopy, localCopy, viewPref) || discussion;
+  const versionsDiffer =
+    !githubThread && discussionBodiesDiffer(nostrCopy, localCopy);
+  const authorMeta = getMetadataForPubkey(shown.author);
+  const threadedComments = buildCommentTree(shown.comments);
 
   return (
     <div className="container mx-auto max-w-4xl p-6">
@@ -505,11 +579,20 @@ export default function DiscussionDetailPage({
           </Avatar>
           <div className="flex-1">
             <div className="flex items-start justify-between gap-3">
-              <h1 className="text-2xl font-bold mb-2">{discussion.title}</h1>
-              {discussionAuthorMatches(
-                discussion.author,
-                currentUserPubkey || ""
-              ) && (
+              <h1 className="text-2xl font-bold mb-2">{shown.title}</h1>
+              {githubThread && shown.htmlUrl ? (
+                <a
+                  href={shown.htmlUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-xs uppercase tracking-wide text-amber-400 hover:text-amber-200"
+                >
+                  Open on GitHub
+                </a>
+              ) : discussionAuthorMatches(
+                  shown.author,
+                  currentUserPubkey || ""
+                ) ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -521,8 +604,37 @@ export default function DiscussionDetailPage({
                   <Trash2 className="h-4 w-4 mr-1" />
                   {deleting ? "Deleting..." : "Delete"}
                 </Button>
-              )}
+              ) : null}
             </div>
+            {githubThread && (
+              <p className="mb-3 text-xs text-amber-400/90">
+                This thread lives on GitHub. gittr shows it read-only and does
+                not write replies back.
+              </p>
+            )}
+            {versionsDiffer && (
+              <div className="mb-3 flex rounded-md border border-[#383B42] overflow-hidden text-xs w-fit">
+                <span className="px-3 py-1.5 text-gray-500">Showing</span>
+                <span
+                  className={`px-3 py-1.5 ${
+                    viewPref === "nostr"
+                      ? "bg-purple-900/50 text-purple-100"
+                      : "text-gray-400"
+                  }`}
+                >
+                  Nostr
+                </span>
+                <span
+                  className={`px-3 py-1.5 border-l border-[#383B42] ${
+                    viewPref === "local"
+                      ? "bg-purple-900/50 text-purple-100"
+                      : "text-gray-400"
+                  }`}
+                >
+                  This browser
+                </span>
+              </div>
+            )}
             {(cacheFull || actionError) && (
               <div className="mb-3 p-3 text-sm rounded border border-amber-800 bg-amber-950/30 text-amber-200">
                 {actionError || LOCAL_STORAGE_QUOTA_MESSAGE}
@@ -533,15 +645,15 @@ export default function DiscussionDetailPage({
                 href={`/${discussion.author}`}
                 className="hover:text-purple-400"
               >
-                {(authorMeta?.name || discussion.author.slice(0, 8)) + "..."}
+                {(authorMeta?.name || shown.author.slice(0, 8)) + "..."}
               </Link>
               <span>•</span>
-              <span>{formatDateTime24h(discussion.createdAt)}</span>
-              {discussion.category && (
+              <span>{formatDateTime24h(shown.createdAt)}</span>
+              {shown.category && (
                 <>
                   <span>•</span>
                   <Badge className="bg-purple-900/30 text-purple-400">
-                    {discussion.category}
+                    {shown.category}
                   </Badge>
                 </>
               )}
@@ -554,12 +666,12 @@ export default function DiscussionDetailPage({
                   code: MarkdownCode,
                 }}
               >
-                {discussion.description}
+                {shown.description}
               </ReactMarkdown>
             </div>
             <div className="mt-4">
               <Reactions
-                targetId={discussion.id}
+                targetId={shown.id}
                 targetType="discussion"
                 entity={resolvedParams.entity}
                 repo={resolvedParams.repo}
@@ -572,15 +684,16 @@ export default function DiscussionDetailPage({
       {/* Comments Section */}
       <div className="border-t border-gray-700 pt-6">
         <h2 className="text-xl font-semibold mb-4">
-          {discussion.commentCount || 0}{" "}
-          {discussion.commentCount === 1 ? "Comment" : "Comments"}
+          {shown.commentCount || 0}{" "}
+          {shown.commentCount === 1 ? "Comment" : "Comments"}
         </h2>
 
         {/* Threaded Comments */}
         <div className="space-y-4 mb-6">
           {threadedComments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No comments yet. Be the first to comment!
+              No comments yet
+              {githubThread ? "." : ". Be the first to comment!"}
             </div>
           ) : (
             threadedComments.map((comment) => renderComment(comment))
@@ -588,7 +701,7 @@ export default function DiscussionDetailPage({
         </div>
 
         {/* Reply Form */}
-        {currentUserPubkey ? (
+        {githubThread ? null : currentUserPubkey ? (
           <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
             {replyingTo && (
               <div className="mb-2 text-sm text-gray-400">
