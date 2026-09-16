@@ -1,6 +1,6 @@
 /**
- * After Your Apps "Remove listing", drop that App (id) row from local repo
- * Links. Relays already got NIP-09; gittr_repos was still showing the old Push.
+ * After Your Apps "Remove listing", clear announcedAppId so the next Push
+ * does not re-announce. Keep the App (id) Links row (except stray GITTR).
  */
 import { stripAppListingFromRepoFields } from "./enrich-repo-links";
 import { loadStoredRepos, saveStoredRepos } from "./storage";

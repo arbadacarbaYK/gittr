@@ -274,10 +274,20 @@ export default function HelpPage() {
             AppImage / DMG / … also work. Other binaries on that same tag can be
             linked as extra NIP-82 assets; files stay on the forge. Pick a
             specific tag on the repo{" "}
-            <strong className="text-white">Releases</strong> tab. An optional
-            pin copies the installer onto public Blossom hosts (never gittr’s
-            Pages Blossom, except gittr’s own Android APK). Zapstore listing is
-            optional and free — see{" "}
+            <strong className="text-white">Releases</strong> tab. Announcing
+            does not add the APK to the git files — visitors get{" "}
+            <strong className="text-white">About → Links</strong>{" "}
+            <strong className="text-white">App (id)</strong> on the Code tab
+            (and Downloads on Releases /{" "}
+            <Link
+              href="/apps"
+              className="text-purple-400 hover:text-purple-300"
+            >
+              /apps
+            </Link>
+            ) without a second Push. An optional pin copies the installer onto
+            public Blossom hosts (never gittr’s Pages Blossom, except gittr’s
+            own Android APK). Zapstore listing is optional and free — see{" "}
             <Link
               href="#publish-pages-apps"
               className="text-purple-400 hover:text-purple-300"
@@ -3524,8 +3534,14 @@ export default function HelpPage() {
                 always come from{" "}
                 <code className="text-purple-200">ui/public/zapstore/</code>.
                 The repo <strong className="text-white">Releases</strong> tab
-                lists all forge download assets (not only APKs). How Releases,
-                forge files, and announces fit together:{" "}
+                lists all forge download assets (not only APKs). The Code-tab{" "}
+                <strong className="text-white">About → Links</strong> sidebar
+                shows <strong className="text-white">App (id)</strong> for
+                everyone — from the last Push, or hydrated from the app catalog
+                if this browser never announced. Duplicate App rows for the same
+                package id are collapsed. Announcing does <em>not</em> put the
+                APK into the git file tree. How Releases, forge files, and
+                announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"
@@ -3547,8 +3563,9 @@ export default function HelpPage() {
                   Your Apps
                 </Link>{" "}
                 to remove a leftover listing (one app id) without deleting the
-                git repo or the APK file. That also drops the Code-tab{" "}
-                <strong className="text-white">App (id)</strong> link — leftover{" "}
+                git repo or the APK file. The Code-tab{" "}
+                <strong className="text-white">App (id)</strong> link stays so
+                the next Push still publishes it — leftover{" "}
                 <code className="text-purple-200">GITTR</code> is not kept next
                 to <code className="text-purple-200">space.gittr.app</code>.
               </p>

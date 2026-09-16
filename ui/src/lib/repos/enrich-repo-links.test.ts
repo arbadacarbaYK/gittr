@@ -59,6 +59,30 @@ describe("mergeAnnouncementLinksWithLocal", () => {
     );
     expect(merged.map((l) => l.label)).toEqual(["App (space.gittr.app)"]);
   });
+
+  it("collapses the same App id from local vs catalog origins", () => {
+    const merged = mergeAnnouncementLinksWithLocal(
+      [
+        {
+          type: "other",
+          url: "http://127.0.0.1:3000/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+      ],
+      [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+      ]
+    );
+    const appRows = merged.filter((l) =>
+      /^App \(/i.test(String(l.label || ""))
+    );
+    expect(appRows).toHaveLength(1);
+    expect(appRows[0]?.label).toBe("App (space.gittr.buhogo)");
+  });
 });
 
 describe("enrichRepoLinks", () => {
@@ -130,6 +154,47 @@ describe("enrichRepoLinks", () => {
     });
     expect(links.map((l) => l.label)).not.toContain("App (GITTR)");
   });
+
+  it("keeps a single App row when local and catalog origins differ", () => {
+    const links = enrichRepoLinks({
+      existing: [
+        {
+          type: "other",
+          url: "http://127.0.0.1:3000/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+      ],
+      announcedAppId: "space.gittr.buhogo",
+      siteOrigin: "https://gittr.space",
+    });
+    const appRows = links.filter((l) => /^App \(/i.test(String(l.label || "")));
+    expect(appRows).toHaveLength(1);
+    expect(appRows[0]?.url).toBe(
+      "https://gittr.space/apps?q=space.gittr.buhogo"
+    );
+  });
+
+  it("keeps an existing App link when announcedAppId is cleared", () => {
+    const links = enrichRepoLinks({
+      existing: [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+      ],
+      announcedAppId: null,
+      siteOrigin: "https://gittr.space",
+    });
+    const appRows = links.filter((l) => /^App \(/i.test(String(l.label || "")));
+    expect(appRows).toHaveLength(1);
+    expect(appRows[0]?.label).toBe("App (space.gittr.buhogo)");
+  });
 });
 
 describe("stripAppListingFromRepoFields", () => {
@@ -155,5 +220,26 @@ describe("stripAppListingFromRepoFields", () => {
     expect(out.changed).toBe(true);
     expect(out.announcedAppId).toBe("space.gittr.app");
     expect(out.links?.map((l) => l.label)).toEqual(["App (space.gittr.app)"]);
+  });
+
+  it("clears announcedAppId but keeps the App (id) link", () => {
+    const out = stripAppListingFromRepoFields(
+      {
+        announcedAppId: "space.gittr.buhogo",
+        links: [
+          {
+            type: "other" as const,
+            url: "https://gittr.space/apps?q=space.gittr.buhogo",
+            label: "App (space.gittr.buhogo)",
+          },
+        ],
+      },
+      "space.gittr.buhogo"
+    );
+    expect(out.changed).toBe(true);
+    expect(out.announcedAppId).toBeUndefined();
+    expect(out.links?.map((l) => l.label)).toEqual([
+      "App (space.gittr.buhogo)",
+    ]);
   });
 });

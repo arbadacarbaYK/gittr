@@ -120,6 +120,7 @@ import {
   removeAutoNostrPagesLinks,
   removeDroppedAutoAppLinks,
   removeStaleAutoLinks,
+  siteOriginFallback,
 } from "@/lib/repos/enrich-repo-links";
 import {
   localExtrasAreHollowOnly,
@@ -137,6 +138,7 @@ import {
   shouldInferGraspCloneUrls,
 } from "@/lib/repos/infer-grasp-clones";
 import { languageFromFilename } from "@/lib/repos/infer-languages-from-files";
+import { resolveRepoAppId } from "@/lib/repos/listed-app-for-repo";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import {
   mergeRepoStateWithStorage,
@@ -232,6 +234,7 @@ import {
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
+import { useListedAppIdForRepo } from "@/lib/repos/use-listed-app-for-repo";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
@@ -972,6 +975,11 @@ export function RepoCodePage() {
   }, [resolvedParams.entity]);
 
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
+  const catalogAppId = useListedAppIdForRepo({
+    ownerPubkeyHex: (repoOwnerPubkey || entityPubkey || "").toLowerCase(),
+    repoName: decodedRepo,
+    entity: resolvedParams.entity,
+  });
   /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push proceeds without enforcing that block. */
   const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
   useEffect(() => {
@@ -2179,8 +2187,10 @@ export function RepoCodePage() {
       nostrPagesLabel: nostrPagesLinkLabel(
         pagesSiteMatchedDTag || candidateGittrPagesUrls?.dTag
       ),
-      announcedAppId:
-        (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
+      announcedAppId: resolveRepoAppId(
+        (repoData as StoredRepo | null | undefined)?.announcedAppId,
+        catalogAppId
+      ),
       siteOrigin:
         mounted && typeof window !== "undefined"
           ? window.location.origin
@@ -2196,6 +2206,7 @@ export function RepoCodePage() {
     pagesSiteMatchedDTag,
     candidateGittrPagesUrls?.namedUrl,
     candidateGittrPagesUrls?.dTag,
+    catalogAppId,
     mounted,
   ]);
   /** Iris Hashtree-only repos: no HTTPS git tree for the Code browser. */
@@ -3252,6 +3263,38 @@ export function RepoCodePage() {
     repoOwnerPubkey,
     decodedRepo,
   ]);
+
+  useEffect(() => {
+    if (!isOwner || !catalogAppId || !mounted) return;
+    try {
+      const repos = loadStoredRepos();
+      const idx = repos.findIndex(
+        (r) =>
+          findRepoByEntityAndName([r], resolvedParams.entity, decodedRepo) !==
+          undefined
+      );
+      if (idx < 0 || !repos[idx]) return;
+      const rec = repos[idx] as StoredRepo & { announcedAppId?: string };
+      const appId = resolveRepoAppId(rec.announcedAppId, catalogAppId);
+      if (!appId) return;
+      const nextLinks = enrichRepoLinks({
+        existing: rec.links,
+        announcedAppId: appId,
+        sourceUrl: rec.sourceUrl,
+        siteOrigin: siteOriginFallback(null),
+      });
+      if (JSON.stringify(rec.links || []) === JSON.stringify(nextLinks)) {
+        return;
+      }
+      repos[idx] = { ...rec, links: nextLinks };
+      saveStoredRepos(repos);
+      setRepoData((prev: StoredRepo | null) =>
+        prev ? { ...prev, links: nextLinks } : prev
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [isOwner, catalogAppId, mounted, resolvedParams.entity, decodedRepo]);
 
   // This must run BEFORE the main useEffect to ensure resolvedOwnerPubkey is set early
   useEffect(() => {
@@ -23960,6 +24003,10 @@ export function RepoCodePage() {
                               null
                             }
                             onAnnounced={(announcedAppId) => {
+                              const origin =
+                                typeof window !== "undefined"
+                                  ? window.location.origin
+                                  : null;
                               try {
                                 const repos = loadStoredRepos();
                                 const updated = repos.map((r) => {
@@ -23968,14 +24015,34 @@ export function RepoCodePage() {
                                       r.slug === resolvedParams.repo) &&
                                     r.entity === resolvedParams.entity;
                                   if (!matches) return r;
-                                  return { ...r, announcedAppId };
+                                  return {
+                                    ...r,
+                                    announcedAppId,
+                                    links: enrichRepoLinks({
+                                      existing: r.links,
+                                      announcedAppId,
+                                      sourceUrl: r.sourceUrl,
+                                      siteOrigin: origin,
+                                    }),
+                                  };
                                 });
                                 saveStoredRepos(updated);
                               } catch {
                                 /* ignore */
                               }
                               setRepoData((prev: any) =>
-                                prev ? { ...prev, announcedAppId } : prev
+                                prev
+                                  ? {
+                                      ...prev,
+                                      announcedAppId,
+                                      links: enrichRepoLinks({
+                                        existing: prev.links,
+                                        announcedAppId,
+                                        sourceUrl: prev.sourceUrl,
+                                        siteOrigin: origin,
+                                      }),
+                                    }
+                                  : prev
                               );
                             }}
                           />

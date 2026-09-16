@@ -193,10 +193,14 @@ export function stripAppListingFromRepoFields<
   if (!drop) return { ...repo, changed: false };
   const dropLc = drop.toLowerCase();
   const linksIn = Array.isArray(repo.links) ? repo.links : [];
-  const links = linksIn.filter((link) => {
-    const id = parseAutoAppLinkId(link);
-    return !id || id.toLowerCase() !== dropLc;
-  });
+  // Keep App (id) after Remove listing so the next Push still publishes it.
+  // Stray GITTR is the leftover duplicate card — drop that row.
+  const links = isStraySoftwareAppId(drop)
+    ? linksIn.filter((link) => {
+        const id = parseAutoAppLinkId(link);
+        return !id || id.toLowerCase() !== dropLc;
+      })
+    : linksIn;
   const announced = (repo.announcedAppId || "").trim();
   const clearAnnounced = announced.toLowerCase() === dropLc;
   const changed =
@@ -306,8 +310,10 @@ export function mergeAnnouncementLinksWithLocal(
   const cleanedParsed = stripNonDocumentationWebLinks(
     removeDroppedAutoAppLinks(parsedFromNostr)
   );
-  if (cleanedParsed.length === 0) return cleanedExisting;
-  return mergeRepoLinks(cleanedExisting, cleanedParsed);
+  if (cleanedParsed.length === 0) {
+    return collapseAutoAppLinks(cleanedExisting);
+  }
+  return collapseAutoAppLinks(mergeRepoLinks(cleanedExisting, cleanedParsed));
 }
 
 export function enrichRepoLinks(
@@ -365,5 +371,36 @@ export function enrichRepoLinks(
     });
   }
 
-  return mergeRepoLinks(base, additions);
+  return collapseAutoAppLinks(
+    mergeRepoLinks(base, additions),
+    input.siteOrigin
+  );
+}
+
+/** One App (id) row per package id; URL rewritten to the current site origin. */
+export function collapseAutoAppLinks(
+  links: EnrichableRepoLink[] | undefined | null,
+  siteOrigin?: string | null
+): EnrichableRepoLink[] {
+  const origin = siteOriginFallback(siteOrigin);
+  const seen = new Set<string>();
+  const out: EnrichableRepoLink[] = [];
+  for (const link of Array.isArray(links) ? links : []) {
+    if (!link?.url) continue;
+    const id = parseAutoAppLinkId(link);
+    if (!id) {
+      out.push(link);
+      continue;
+    }
+    if (isStraySoftwareAppId(id)) continue;
+    const key = id.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      type: "other",
+      url: `${origin}/apps?q=${encodeURIComponent(id)}`,
+      label: `App (${id})`,
+    });
+  }
+  return out;
 }
