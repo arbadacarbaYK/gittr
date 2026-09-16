@@ -106,3 +106,16 @@ export function resolveRepoAppId(
   }
   return null;
 }
+
+/** Catalog display name when it is the same package id we are showing. */
+export function resolveRepoAppName(
+  appId?: string | null,
+  catalog?: { appId: string; name: string } | null
+): string | null {
+  const id = (appId || "").trim();
+  const catalogId = (catalog?.appId || "").trim();
+  const name = (catalog?.name || "").trim();
+  if (!id || !catalogId || !name) return null;
+  if (id.toLowerCase() !== catalogId.toLowerCase()) return null;
+  return name;
+}

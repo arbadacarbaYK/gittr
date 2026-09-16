@@ -276,8 +276,8 @@ export default function HelpPage() {
             specific tag on the repo{" "}
             <strong className="text-white">Releases</strong> tab. Announcing
             does not add the APK to the git files — visitors get{" "}
-            <strong className="text-white">About → Links</strong>{" "}
-            <strong className="text-white">App (id)</strong> on the Code tab
+            <strong className="text-white">About → Links</strong> with the{" "}
+            <strong className="text-white">app name</strong> on the Code tab
             (and Downloads on Releases /{" "}
             <Link
               href="/apps"
@@ -3536,12 +3536,19 @@ export default function HelpPage() {
                 The repo <strong className="text-white">Releases</strong> tab
                 lists all forge download assets (not only APKs). The Code-tab{" "}
                 <strong className="text-white">About → Links</strong> sidebar
-                shows <strong className="text-white">App (id)</strong> for
-                everyone — from the last Push, or hydrated from the app catalog
-                if this browser never announced. Duplicate App rows for the same
-                package id are collapsed. Announcing does <em>not</em> put the
-                APK into the git file tree. How Releases, forge files, and
-                announces fit together:{" "}
+                shows the <strong className="text-white">app name</strong> (same
+                as{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>
+                ) for everyone — from the last Push, or hydrated from the app
+                catalog if this browser never announced. Duplicate App rows for
+                the same package id are collapsed. Announcing does <em>not</em>{" "}
+                put the APK into the git file tree. How Releases, forge files,
+                and announces fit together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"
@@ -3564,7 +3571,7 @@ export default function HelpPage() {
                 </Link>{" "}
                 to remove a leftover listing (one app id) without deleting the
                 git repo or the APK file. The Code-tab{" "}
-                <strong className="text-white">App (id)</strong> link stays so
+                <strong className="text-white">app name</strong> link stays so
                 the next Push still publishes it — leftover{" "}
                 <code className="text-purple-200">GITTR</code> is not kept next
                 to <code className="text-purple-200">space.gittr.app</code>.

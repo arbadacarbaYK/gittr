@@ -11,20 +11,22 @@ type CatalogPayload = {
   apps?: ListedAppLike[];
 };
 
-/** Author-scoped NIP-82 app id for this Code-tab repo, or null. */
-export function useListedAppIdForRepo(opts: {
+export type ListedAppRef = { appId: string; name: string };
+
+/** Author-scoped NIP-82 app for this Code-tab repo, or null. */
+export function useListedAppForRepo(opts: {
   ownerPubkeyHex: string;
   repoName: string;
   entity: string;
-}): string | null {
+}): ListedAppRef | null {
   const owner = (opts.ownerPubkeyHex || "").trim().toLowerCase();
   const repo = (opts.repoName || "").trim();
   const entity = opts.entity || "";
-  const [appId, setAppId] = useState<string | null>(null);
+  const [app, setApp] = useState<ListedAppRef | null>(null);
 
   useEffect(() => {
     if (!owner || !/^[0-9a-f]{64}$/.test(owner) || !repo) {
-      setAppId(null);
+      setApp(null);
       return;
     }
     let cancelled = false;
@@ -41,9 +43,11 @@ export function useListedAppIdForRepo(opts: {
           repoName: repo,
           entity,
         });
-        setAppId(match?.appId?.trim() || null);
+        const appId = match?.appId?.trim() || "";
+        const name = match?.name?.trim() || "";
+        setApp(appId ? { appId, name: name || appId } : null);
       } catch {
-        if (!cancelled) setAppId(null);
+        if (!cancelled) setApp(null);
       }
     })();
     return () => {
@@ -51,5 +55,5 @@ export function useListedAppIdForRepo(opts: {
     };
   }, [owner, repo, entity]);
 
-  return appId;
+  return app;
 }

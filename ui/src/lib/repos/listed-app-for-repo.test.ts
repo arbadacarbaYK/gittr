@@ -6,6 +6,7 @@ import { KIND_SOFTWARE_APPLICATION } from "../nostr/nip82-software";
 import {
   pickListedAppForRepo,
   resolveRepoAppId,
+  resolveRepoAppName,
   softwareAppMatchesGittrRepo,
 } from "./listed-app-for-repo";
 
@@ -142,5 +143,25 @@ describe("resolveRepoAppId", () => {
     expect(resolveRepoAppId("GITTR", "space.gittr.app")).toBe(
       "space.gittr.app"
     );
+  });
+});
+
+describe("resolveRepoAppName", () => {
+  it("returns the catalog name when the package id matches", () => {
+    expect(
+      resolveRepoAppName("space.gittr.buhogo", {
+        appId: "space.gittr.buhogo",
+        name: "buho-go",
+      })
+    ).toBe("buho-go");
+  });
+
+  it("does not use another listing's name", () => {
+    expect(
+      resolveRepoAppName("space.gittr.buhogo", {
+        appId: "space.gittr.app",
+        name: "gittr",
+      })
+    ).toBeNull();
   });
 });

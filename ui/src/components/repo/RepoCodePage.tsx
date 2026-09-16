@@ -138,7 +138,10 @@ import {
   shouldInferGraspCloneUrls,
 } from "@/lib/repos/infer-grasp-clones";
 import { languageFromFilename } from "@/lib/repos/infer-languages-from-files";
-import { resolveRepoAppId } from "@/lib/repos/listed-app-for-repo";
+import {
+  resolveRepoAppId,
+  resolveRepoAppName,
+} from "@/lib/repos/listed-app-for-repo";
 import { localOverrideDisplayUrl } from "@/lib/repos/local-override-media";
 import {
   mergeRepoStateWithStorage,
@@ -234,7 +237,7 @@ import {
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
-import { useListedAppIdForRepo } from "@/lib/repos/use-listed-app-for-repo";
+import { useListedAppForRepo } from "@/lib/repos/use-listed-app-for-repo";
 import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
@@ -975,11 +978,12 @@ export function RepoCodePage() {
   }, [resolvedParams.entity]);
 
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
-  const catalogAppId = useListedAppIdForRepo({
+  const catalogApp = useListedAppForRepo({
     ownerPubkeyHex: (repoOwnerPubkey || entityPubkey || "").toLowerCase(),
     repoName: decodedRepo,
     entity: resolvedParams.entity,
   });
+  const catalogAppId = catalogApp?.appId || null;
   /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push proceeds without enforcing that block. */
   const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
   useEffect(() => {
@@ -2180,6 +2184,10 @@ export function RepoCodePage() {
       pagesSiteListedByGateway === true
         ? repoData?.links || []
         : removeAutoNostrPagesLinks(repoData?.links || []);
+    const announcedAppId = resolveRepoAppId(
+      (repoData as StoredRepo | null | undefined)?.announcedAppId,
+      catalogAppId
+    );
     return enrichRepoLinks({
       existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
@@ -2187,10 +2195,8 @@ export function RepoCodePage() {
       nostrPagesLabel: nostrPagesLinkLabel(
         pagesSiteMatchedDTag || candidateGittrPagesUrls?.dTag
       ),
-      announcedAppId: resolveRepoAppId(
-        (repoData as StoredRepo | null | undefined)?.announcedAppId,
-        catalogAppId
-      ),
+      announcedAppId,
+      announcedAppName: resolveRepoAppName(announcedAppId, catalogApp),
       siteOrigin:
         mounted && typeof window !== "undefined"
           ? window.location.origin
@@ -2207,6 +2213,7 @@ export function RepoCodePage() {
     candidateGittrPagesUrls?.namedUrl,
     candidateGittrPagesUrls?.dTag,
     catalogAppId,
+    catalogApp,
     mounted,
   ]);
   /** Iris Hashtree-only repos: no HTTPS git tree for the Code browser. */
@@ -3280,6 +3287,7 @@ export function RepoCodePage() {
       const nextLinks = enrichRepoLinks({
         existing: rec.links,
         announcedAppId: appId,
+        announcedAppName: resolveRepoAppName(appId, catalogApp),
         sourceUrl: rec.sourceUrl,
         siteOrigin: siteOriginFallback(null),
       });
@@ -3294,7 +3302,14 @@ export function RepoCodePage() {
     } catch {
       /* ignore */
     }
-  }, [isOwner, catalogAppId, mounted, resolvedParams.entity, decodedRepo]);
+  }, [
+    isOwner,
+    catalogAppId,
+    catalogApp,
+    mounted,
+    resolvedParams.entity,
+    decodedRepo,
+  ]);
 
   // This must run BEFORE the main useEffect to ensure resolvedOwnerPubkey is set early
   useEffect(() => {

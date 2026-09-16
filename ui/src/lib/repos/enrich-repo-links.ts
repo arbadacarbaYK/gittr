@@ -145,22 +145,44 @@ export function isStraySoftwareAppId(appId?: string | null): boolean {
   return GITTR_STRAY_APP_IDS.some((s) => s.toLowerCase() === id);
 }
 
-/** Auto Code-tab row from a NIP-82 announce (`App (id)` → `/apps?q=id`). */
+/** True when the visible label is the old `App (package.id)` form. */
+export function isPackageIdAppLabel(label?: string | null): boolean {
+  return /^App \(.+\)$/i.test((label || "").trim());
+}
+
+/** Prefer the catalog / announce display name; fall back to `App (id)`. */
+export function autoAppLinkLabel(
+  appId: string,
+  opts?: {
+    name?: string | null;
+    existingLabels?: Array<string | undefined | null>;
+  }
+): string {
+  const name = (opts?.name || "").trim();
+  if (name && !isPackageIdAppLabel(name)) return name;
+  for (const raw of opts?.existingLabels || []) {
+    const label = (raw || "").trim();
+    if (label && !isPackageIdAppLabel(label)) return label;
+  }
+  return `App (${appId})`;
+}
+
+/** Auto Code-tab row from a NIP-82 announce (name → `/apps?q=id`). */
 export function parseAutoAppLinkId(
   link: EnrichableRepoLink | undefined | null
 ): string | null {
   if (!link?.url) return null;
-  const label = (link.label || "").trim();
-  const fromLabel = /^App \((.+)\)$/i.exec(label);
-  if (fromLabel?.[1]?.trim()) return fromLabel[1].trim();
   try {
     const u = new URL(link.url.trim());
-    if (!/\/apps\/?$/i.test(u.pathname)) return null;
-    const q = u.searchParams.get("q");
-    return q?.trim() || null;
+    if (/\/apps\/?$/i.test(u.pathname)) {
+      const q = u.searchParams.get("q");
+      if (q?.trim()) return q.trim();
+    }
   } catch {
-    return null;
+    /* fall through to legacy App (id) labels */
   }
+  const fromLabel = /^App \((.+)\)$/i.exec((link.label || "").trim());
+  return fromLabel?.[1]?.trim() || null;
 }
 
 /**
@@ -282,6 +304,8 @@ export type EnrichRepoLinksInput = {
   /** Public Pages name (NIP-5A `d`) — shown on the About → Links row. */
   nostrPagesLabel?: string | null;
   announcedAppId?: string | null;
+  /** Catalog / announce display name — Code-tab Links shows this, not the package id. */
+  announcedAppName?: string | null;
   siteOrigin?: string | null;
   /** @deprecated ignored */
   guessGithubPages?: boolean;
@@ -367,22 +391,36 @@ export function enrichRepoLinks(
     additions.push({
       type: "other",
       url: `${origin}/apps?q=${encodeURIComponent(appId)}`,
-      label: `App (${appId})`,
+      label: autoAppLinkLabel(appId, { name: input.announcedAppName }),
     });
   }
 
   return collapseAutoAppLinks(
     mergeRepoLinks(base, additions),
-    input.siteOrigin
+    input.siteOrigin,
+    {
+      announcedAppId: appId,
+      announcedAppName: appId ? input.announcedAppName : null,
+    }
   );
 }
 
-/** One App (id) row per package id; URL rewritten to the current site origin. */
+/** One App row per package id; URL rewritten to the current site origin. */
 export function collapseAutoAppLinks(
   links: EnrichableRepoLink[] | undefined | null,
-  siteOrigin?: string | null
+  siteOrigin?: string | null,
+  names?: { announcedAppId?: string | null; announcedAppName?: string | null }
 ): EnrichableRepoLink[] {
   const origin = siteOriginFallback(siteOrigin);
+  const labelsById = new Map<string, string[]>();
+  for (const link of Array.isArray(links) ? links : []) {
+    const id = parseAutoAppLinkId(link);
+    if (!id || isStraySoftwareAppId(id)) continue;
+    const key = id.toLowerCase();
+    const list = labelsById.get(key) || [];
+    list.push(link.label || "");
+    labelsById.set(key, list);
+  }
   const seen = new Set<string>();
   const out: EnrichableRepoLink[] = [];
   for (const link of Array.isArray(links) ? links : []) {
@@ -396,10 +434,19 @@ export function collapseAutoAppLinks(
     const key = id.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+    const nameForId =
+      names?.announcedAppId && names.announcedAppId.toLowerCase() === key
+        ? names.announcedAppName
+        : !names?.announcedAppId
+        ? names?.announcedAppName
+        : null;
     out.push({
       type: "other",
       url: `${origin}/apps?q=${encodeURIComponent(id)}`,
-      label: `App (${id})`,
+      label: autoAppLinkLabel(id, {
+        name: nameForId,
+        existingLabels: labelsById.get(key),
+      }),
     });
   }
   return out;

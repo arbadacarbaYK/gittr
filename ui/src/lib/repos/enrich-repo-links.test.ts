@@ -78,7 +78,7 @@ describe("mergeAnnouncementLinksWithLocal", () => {
       ]
     );
     const appRows = merged.filter((l) =>
-      /^App \(/i.test(String(l.label || ""))
+      String(l.url || "").includes("/apps?q=")
     );
     expect(appRows).toHaveLength(1);
     expect(appRows[0]?.label).toBe("App (space.gittr.buhogo)");
@@ -194,6 +194,26 @@ describe("enrichRepoLinks", () => {
     const appRows = links.filter((l) => /^App \(/i.test(String(l.label || "")));
     expect(appRows).toHaveLength(1);
     expect(appRows[0]?.label).toBe("App (space.gittr.buhogo)");
+  });
+
+  it("labels the App row with the catalog name, not the package id", () => {
+    const links = enrichRepoLinks({
+      existing: [
+        {
+          type: "other",
+          url: "https://gittr.space/apps?q=space.gittr.buhogo",
+          label: "App (space.gittr.buhogo)",
+        },
+      ],
+      announcedAppId: "space.gittr.buhogo",
+      announcedAppName: "buho-go",
+      siteOrigin: "https://gittr.space",
+    });
+    const appRows = links.filter((l) =>
+      String(l.url || "").includes("/apps?q=space.gittr.buhogo")
+    );
+    expect(appRows).toHaveLength(1);
+    expect(appRows[0]?.label).toBe("buho-go");
   });
 });
 
