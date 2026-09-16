@@ -416,3 +416,28 @@ export function dedupeSoftwareApps(
   }
   return map;
 }
+
+/**
+ * Union two catalog paints. Relays only return the newest ~4000 kind 32267
+ * events, so a fresh scrape can drop older unique apps when new ones appear.
+ * Newest `createdAt` wins on the same pubkey+appId; missing keys are kept.
+ */
+export function mergeSoftwareApps(
+  previous: ParsedSoftwareApp[] | undefined | null,
+  incoming: ParsedSoftwareApp[] | undefined | null
+): ParsedSoftwareApp[] {
+  const map = new Map<string, ParsedSoftwareApp>();
+  for (const app of previous || []) {
+    if (!app?.pubkey || !app?.appId) continue;
+    map.set(appDedupKey(app.pubkey, app.appId), app);
+  }
+  for (const app of incoming || []) {
+    if (!app?.pubkey || !app?.appId) continue;
+    const key = appDedupKey(app.pubkey, app.appId);
+    const prev = map.get(key);
+    if (!prev || (app.createdAt || 0) > (prev.createdAt || 0)) {
+      map.set(key, app);
+    }
+  }
+  return sortSoftwareAppsByCreatedAt(Array.from(map.values()));
+}

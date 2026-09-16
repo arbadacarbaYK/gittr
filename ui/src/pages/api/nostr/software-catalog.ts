@@ -7,11 +7,16 @@ import {
   type ParsedSoftwareRelease,
   appDedupKey,
   dedupeSoftwareApps,
+  mergeSoftwareApps,
   parseSoftwareRelease,
   preferOwnerSoftwareApps,
   sortSoftwareAppsByCreatedAt,
 } from "@/lib/nostr/nip82-software";
 import { RELAY_ZAPSTORE } from "@/lib/nostr/software-catalog-relays";
+import {
+  loadSoftwareCatalogSnapshot,
+  saveSoftwareCatalogSnapshot,
+} from "@/lib/nostr/software-catalog-snapshot";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -28,8 +33,42 @@ const CATALOG_RELAYS = [
 ];
 
 const FETCH_MS = 20000;
-/** Once we have apps, don't wait the full 20s for stragglers. */
-const EARLY_EXIT_AFTER_APPS_MS = 8000;
+/** Grace after Zapstore EOSE — do not start this on the first app event
+ *  (relay.gittr.space can EOSE empty in ~100ms and starve Zapstore). */
+const EARLY_EXIT_AFTER_ZAPSTORE_MS = 8000;
+
+function catalogRelayUrl(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object" && "url" in raw) {
+    return String((raw as { url: string }).url || "");
+  }
+  return "";
+}
+
+function isZapstoreRelayUrl(url: string): boolean {
+  return /relay\.zapstore\.dev/i.test(url);
+}
+
+function mergeReleaseRecords(
+  previous: Record<string, ParsedSoftwareRelease[]> | undefined,
+  incoming: Record<string, ParsedSoftwareRelease[]>
+): Record<string, ParsedSoftwareRelease[]> {
+  const out: Record<string, ParsedSoftwareRelease[]> = {};
+  const keys = new Set([
+    ...Object.keys(previous || {}),
+    ...Object.keys(incoming || {}),
+  ]);
+  for (const key of keys) {
+    const byD = new Map<string, ParsedSoftwareRelease>();
+    for (const r of [...(previous?.[key] || []), ...(incoming[key] || [])]) {
+      if (!r?.d) continue;
+      const prev = byD.get(r.d);
+      if (!prev || r.createdAt >= prev.createdAt) byD.set(r.d, r);
+    }
+    if (byD.size > 0) out[key] = Array.from(byD.values());
+  }
+  return out;
+}
 
 type CatalogResponse = {
   apps: ParsedSoftwareApp[];
@@ -73,7 +112,7 @@ async function fetchCatalogFromRelays(
   const appLimit = authorScoped ? 80 : 4000;
   const releaseLimit = authorScoped ? 200 : 12000;
   const fetchMs = authorScoped ? 8000 : FETCH_MS;
-  const earlyExitMs = authorScoped ? 2500 : EARLY_EXIT_AFTER_APPS_MS;
+  const earlyExitMs = authorScoped ? 2500 : EARLY_EXIT_AFTER_ZAPSTORE_MS;
 
   await new Promise<void>((resolve) => {
     let settled = false;
@@ -123,7 +162,7 @@ async function fetchCatalogFromRelays(
         if (isPublisherBlocklisted(event.pubkey)) return;
         if (event.kind === KIND_SOFTWARE_APPLICATION) {
           rawApps.push(event);
-          maybeEarlyExit();
+          if (authorScoped) maybeEarlyExit();
           return;
         }
         if (event.kind === KIND_SOFTWARE_RELEASE) {
@@ -136,15 +175,13 @@ async function fetchCatalogFromRelays(
       undefined,
       (relayInfo) => {
         // EOSE from one relay — keep waiting for others (Zapstore) until timeout.
-        const url =
-          typeof relayInfo === "string"
-            ? relayInfo
-            : relayInfo &&
-              typeof relayInfo === "object" &&
-              "url" in (relayInfo as object)
-            ? String((relayInfo as { url: string }).url || "")
-            : "";
-        if (url) eoseRelays.add(url.toLowerCase().replace(/\/+$/, ""));
+        const url = catalogRelayUrl(relayInfo)
+          .toLowerCase()
+          .replace(/\/+$/, "");
+        if (url) eoseRelays.add(url);
+        if (!authorScoped && isZapstoreRelayUrl(url) && rawApps.length > 0) {
+          maybeEarlyExit();
+        }
         if (eoseRelays.size >= CATALOG_RELAYS.length && rawApps.length > 0) {
           finish();
         }
@@ -183,24 +220,76 @@ async function fetchCatalogFromRelays(
 const GLOBAL_CACHE_MS = 120_000;
 let globalCache: { at: number; catalog: CatalogResponse } | null = null;
 let globalInflight: Promise<CatalogResponse> | null = null;
+let diskLoad: Promise<void> | null = null;
+
+function mergeCatalogResponse(
+  previous: CatalogResponse | null | undefined,
+  incoming: CatalogResponse
+): CatalogResponse {
+  return {
+    apps: mergeSoftwareApps(previous?.apps, incoming.apps),
+    releasesByApp: mergeReleaseRecords(
+      previous?.releasesByApp,
+      incoming.releasesByApp
+    ),
+    releasesByAppId: mergeReleaseRecords(
+      previous?.releasesByAppId,
+      incoming.releasesByAppId
+    ),
+    relayCount: Math.max(previous?.relayCount || 0, incoming.relayCount || 0),
+  };
+}
+
+async function ensureDiskCatalog(): Promise<void> {
+  if (!diskLoad) {
+    diskLoad = loadSoftwareCatalogSnapshot()
+      .then((snap) => {
+        if (!snap?.apps?.length || globalCache) return;
+        globalCache = {
+          at: snap.at,
+          catalog: {
+            apps: snap.apps,
+            releasesByApp: snap.releasesByApp || {},
+            releasesByAppId: snap.releasesByAppId || {},
+            relayCount: snap.relayCount || CATALOG_RELAYS.length,
+          },
+        };
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }
+  await diskLoad;
+}
 
 async function getGlobalCatalog(): Promise<CatalogResponse> {
+  await ensureDiskCatalog();
   const now = Date.now();
   if (globalCache && now - globalCache.at < GLOBAL_CACHE_MS) {
     return globalCache.catalog;
   }
+  const stale = globalCache?.catalog;
   if (!globalInflight) {
     globalInflight = fetchCatalogFromRelays(null)
       .then((catalog) => {
         if (catalog.apps.length > 0) {
-          globalCache = { at: Date.now(), catalog };
+          const merged = mergeCatalogResponse(globalCache?.catalog, catalog);
+          globalCache = { at: Date.now(), catalog: merged };
+          void saveSoftwareCatalogSnapshot({
+            at: globalCache.at,
+            ...merged,
+          }).catch(() => {
+            /* ignore */
+          });
+          return merged;
         }
-        return catalog;
+        return globalCache?.catalog ?? catalog;
       })
       .finally(() => {
         globalInflight = null;
       });
   }
+  if (stale && stale.apps.length > 0) return stale;
   return globalInflight;
 }
 

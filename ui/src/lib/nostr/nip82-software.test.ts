@@ -5,9 +5,11 @@ import {
   KIND_SOFTWARE_ASSET,
   KIND_SOFTWARE_RELEASE,
   type NostrEventLike,
+  type ParsedSoftwareApp,
   type ParsedSoftwareRelease,
   gittrRepoPathFromNip34A,
   gittrRepoPathFromRepositoryUrl,
+  mergeSoftwareApps,
   normalizeSoftwareIconUrl,
   parseSoftwareApp,
   parseSoftwareAsset,
@@ -276,5 +278,54 @@ describe("pickLatestMainRelease", () => {
       release("1.0.0", 1, "main"),
     ]);
     expect(picked?.version).toBe("1.0.0");
+  });
+});
+
+describe("mergeSoftwareApps", () => {
+  const pkA = "aa".repeat(32);
+  const pkB = "bb".repeat(32);
+
+  const app = (
+    pubkey: string,
+    appId: string,
+    name: string,
+    createdAt: number
+  ): ParsedSoftwareApp =>
+    parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: createdAt,
+      content: "",
+      tags: [
+        ["d", appId],
+        ["name", name],
+      ],
+    })!;
+
+  it("keeps unique apps the latest scrape omitted", () => {
+    const previous = [
+      app(pkA, "space.gittr.old", "old", 10),
+      app(pkB, "space.gittr.buhogo", "buho-go", 20),
+    ];
+    const incoming = [app(pkB, "space.gittr.buhogo", "buho-go", 30)];
+    const merged = mergeSoftwareApps(previous, incoming);
+    expect(merged).toHaveLength(2);
+    expect(merged.map((a) => a.appId).sort()).toEqual([
+      "space.gittr.buhogo",
+      "space.gittr.old",
+    ]);
+    expect(
+      merged.find((a) => a.appId === "space.gittr.buhogo")?.createdAt
+    ).toBe(30);
+  });
+
+  it("grows the catalog when a new package id arrives", () => {
+    const previous = [app(pkA, "space.gittr.app", "gittr", 10)];
+    const incoming = [
+      app(pkA, "space.gittr.app", "gittr", 10),
+      app(pkB, "space.gittr.buhogo", "buho-go", 40),
+    ];
+    expect(mergeSoftwareApps(previous, incoming)).toHaveLength(2);
   });
 });

@@ -3546,7 +3546,19 @@ export default function HelpPage() {
                 </Link>
                 ) for everyone — from the last Push, or hydrated from the app
                 catalog if this browser never announced. Duplicate App rows for
-                the same package id are collapsed. Announcing does <em>not</em>{" "}
+                the same package id are collapsed.{" "}
+                <strong className="text-white">Listed</strong> on{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  /apps
+                </Link>{" "}
+                is unique publisher + package id (not every new card you notice)
+                — a republish of the same id updates the listing without adding
+                1. The hub keeps a running snapshot so older apps are not
+                dropped when relays only return the newest few thousand
+                announces. Announcing does <em>not</em>{" "}
                 put the APK into the git file tree. How Releases, forge files,
                 and announces fit together:{" "}
                 <Link

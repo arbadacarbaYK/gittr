@@ -365,6 +365,18 @@ export function AppsDirectoryClient() {
           );
         }
         refreshAppsFromRef();
+        const kept = dedupeSoftwareApps(rawAppEventsRef.current);
+        rawAppEventsRef.current = Array.from(kept.values()).map(
+          (a) =>
+            a.raw ?? {
+              id: "",
+              pubkey: a.pubkey,
+              kind: KIND_SOFTWARE_APPLICATION,
+              created_at: a.createdAt,
+              content: a.content,
+              tags: [],
+            }
+        );
       }
       if (data.releasesByApp) {
         for (const [k, list] of Object.entries(data.releasesByApp)) {
@@ -585,6 +597,14 @@ export function AppsDirectoryClient() {
       }
     });
   }, [loading, apps.length, fetchCatalogFromServer]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (leavingRef.current) return;
+      void fetchCatalogFromServer();
+    }, 150_000);
+    return () => window.clearInterval(id);
+  }, [fetchCatalogFromServer]);
 
   const releasesForApp = useCallback(
     (app: ParsedSoftwareApp): ParsedSoftwareRelease[] => {
