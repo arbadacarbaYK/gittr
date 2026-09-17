@@ -3,7 +3,12 @@ import { Suspense } from "react";
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
 import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
+import { decodeOgOwnerPubkey } from "@/lib/seo/og-owner-pubkey";
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
+import {
+  maybeRedirectVanityRepo,
+  resolveVanityRepoPubkey,
+} from "@/lib/seo/vanity-repo-redirect";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { openGraphImageDescriptor } from "@/lib/utils/social-image";
 
@@ -75,27 +80,26 @@ export async function generateMetadata({
     }
 
     let ownerName = resolvedParams.entity;
-    let ownerPubkey: string | null = null;
+    let ownerPubkey: string | null = decodeOgOwnerPubkey(resolvedParams.entity);
     try {
-      if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
-        ownerPubkey = resolvedParams.entity.toLowerCase();
+      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
         ownerName = nip19.npubEncode(resolvedParams.entity);
       } else if (resolvedParams.entity.startsWith("npub")) {
         ownerName = resolvedParams.entity;
-        try {
-          const decoded = nip19.decode(resolvedParams.entity);
-          if (decoded.type === "npub") {
-            ownerPubkey = (decoded.data as string).toLowerCase();
-          }
-        } catch {
-          // Invalid npub
-        }
+      } else if (!ownerPubkey) {
+        ownerPubkey = await resolveVanityRepoPubkey(
+          resolvedParams.entity,
+          decodedRepo
+        );
+        if (ownerPubkey) ownerName = nip19.npubEncode(ownerPubkey);
       }
     } catch {
       // Use entity as-is
     }
 
-    const pathEntity = encodeURIComponent(resolvedParams.entity);
+    const pathEntity = ownerPubkey
+      ? encodeURIComponent(nip19.npubEncode(ownerPubkey))
+      : encodeURIComponent(resolvedParams.entity);
     const pathRepo = encodeURIComponent(decodedRepo);
     const url = `${baseUrl}/${pathEntity}/${pathRepo}`;
     // Composed dark card. ?v= busts X/Telegram when only a dependency file changed
@@ -255,12 +259,22 @@ export async function generateMetadata({
   }
 }
 
-export default function RepoLayout({
+export default async function RepoLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
   params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
+  const { entity, repo } = await params;
+  let decodedRepo = repo;
+  try {
+    decodedRepo = decodeURIComponent(repo);
+  } catch {
+    decodedRepo = repo;
+  }
+  await maybeRedirectVanityRepo(entity, decodedRepo);
+
   // useSearchParams() in RepoLayoutClient needs a Suspense boundary or soft
   // client navigations (tab clicks) can hang with no URL change.
   return (

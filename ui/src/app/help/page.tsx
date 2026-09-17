@@ -3556,7 +3556,12 @@ export default function HelpPage() {
                 </Link>{" "}
                 is unique publisher + package id (not every new card you notice)
                 — a republish of the same id updates the listing without adding
-                1. Zapstore only answers 50 app events per request, so{" "}
+                1. After Zapstore paging, Listed can sit around two thousand
+                because Zapstore’s indexer lists a large mobile catalog (still
+                unique publisher + id). Owner{" "}
+                <strong className="text-white">Remove listing</strong> is NIP-09
+                and hides that author’s card; it does not shrink Zapstore’s
+                catalog. Zapstore only answers 50 app events per request, so{" "}
                 <strong className="text-white">Listed</strong> keeps climbing
                 for a short while as gittr walks older pages. The hub keeps a
                 running snapshot so those apps are not dropped on the next

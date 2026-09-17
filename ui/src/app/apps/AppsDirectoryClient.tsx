@@ -21,9 +21,11 @@ import {
   type ParsedSoftwareAsset,
   type ParsedSoftwareRelease,
   appDedupKey,
+  collectNip09SoftwareDeletions,
   dedupeSoftwareApps,
   mergeSoftwareApps,
   mimeToKindLabel,
+  omitDeletedSoftwareApps,
   parseSoftwareAsset,
   parseSoftwareRelease,
   pickAndroidApkAsset,
@@ -208,8 +210,9 @@ export function AppsDirectoryClient() {
     useState<GittrAndroidLatestOk | null>(null);
 
   const rawAppEventsRef = useRef<NostrEventLike[]>([]);
-  /** NIP-09 kind 5 — hide app/release/asset events by id (repo NIP-34 unchanged). */
-  const deletedEventIdsRef = useRef<Set<string>>(new Set());
+  /** NIP-09 kind 5 — event id → deletion author (repo NIP-34 unchanged). */
+  const deletedEventAuthorsRef = useRef<Map<string, string>>(new Map());
+  const deletedAddressKeysRef = useRef<Set<string>>(new Set());
   const releasesRef = useRef<Map<string, ParsedSoftwareRelease[]>>(new Map());
   const releasesByAppIdRef = useRef<Map<string, ParsedSoftwareRelease[]>>(
     new Map()
@@ -244,23 +247,30 @@ export function AppsDirectoryClient() {
 
   const refreshAppsFromRef = useCallback(() => {
     if (leavingRef.current) return;
-    const deleted = deletedEventIdsRef.current;
-    const kept = rawAppEventsRef.current.filter(
-      (ev) => !ev.id || !deleted.has(ev.id)
+    const map = dedupeSoftwareApps(rawAppEventsRef.current);
+    setApps(
+      omitDeletedSoftwareApps(
+        sortSoftwareAppsByCreatedAt(Array.from(map.values())),
+        deletedEventAuthorsRef.current,
+        deletedAddressKeysRef.current
+      )
     );
-    const map = dedupeSoftwareApps(kept);
-    setApps(sortSoftwareAppsByCreatedAt(Array.from(map.values())));
   }, []);
 
   const pruneDeletedReleases = useCallback(() => {
     if (leavingRef.current) return;
-    const deleted = deletedEventIdsRef.current;
+    const authors = deletedEventAuthorsRef.current;
+    const addrs = deletedAddressKeysRef.current;
     const pruneMap = (src: Map<string, ParsedSoftwareRelease[]>) => {
       const next = new Map<string, ParsedSoftwareRelease[]>();
       for (const [k, list] of src) {
-        const filtered = list.filter(
-          (r) => !r.raw?.id || !deleted.has(r.raw.id)
-        );
+        const filtered = list.filter((r) => {
+          const id = (r.raw?.id || "").toLowerCase();
+          const owner = (r.pubkey || "").toLowerCase();
+          if (id && authors.get(id) === owner) return false;
+          if (addrs.has(`30063:${owner}:${r.d}`.toLowerCase())) return false;
+          return true;
+        });
         if (filtered.length > 0) next.set(k, filtered);
       }
       return next;
@@ -271,7 +281,10 @@ export function AppsDirectoryClient() {
     setReleasesByAppId(new Map(releasesByAppIdRef.current));
     setAssetsById((prev) => {
       const next = new Map(prev);
-      for (const id of deleted) next.delete(id);
+      for (const [id, author] of authors) {
+        const asset = next.get(id);
+        if (asset && asset.pubkey?.toLowerCase() === author) next.delete(id);
+      }
       return next;
     });
   }, []);
@@ -334,7 +347,9 @@ export function AppsDirectoryClient() {
   const mergeReleaseEvent = useCallback(
     (event: NostrEventLike) => {
       if (isPublisherBlocklisted(event.pubkey)) return;
-      if (event.id && deletedEventIdsRef.current.has(event.id)) return;
+      const eid = (event.id || "").toLowerCase();
+      const author = eid ? deletedEventAuthorsRef.current.get(eid) : undefined;
+      if (author && author === (event.pubkey || "").toLowerCase()) return;
       const r = parseSoftwareRelease(event);
       if (!r) return;
       const key = appDedupKey(r.pubkey, r.appId);
@@ -346,15 +361,66 @@ export function AppsDirectoryClient() {
     [scheduleCatalogFlush]
   );
 
+  const ingestDeletionEvent = useCallback(
+    (event: NostrEventLike) => {
+      if (event.kind !== 5) return;
+      const author = (event.pubkey || "").toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(author)) return;
+      const hits = collectNip09SoftwareDeletions(event);
+      let changed = false;
+      for (const id of hits.eventIds) {
+        if (deletedEventAuthorsRef.current.get(id) !== author) {
+          deletedEventAuthorsRef.current.set(id, author);
+          changed = true;
+        }
+      }
+      for (const a of hits.addressKeys) {
+        if (!deletedAddressKeysRef.current.has(a)) {
+          deletedAddressKeysRef.current.add(a);
+          changed = true;
+        }
+      }
+      if (changed) {
+        refreshAppsFromRef();
+        pruneDeletedReleases();
+      }
+    },
+    [refreshAppsFromRef, pruneDeletedReleases]
+  );
+
   const applyServerCatalog = useCallback(
     (data: {
       apps?: ParsedSoftwareApp[];
       releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
       releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
+      deletedEventAuthors?: Record<string, string>;
+      deletedAddressKeys?: string[];
     }) => {
       if (leavingRef.current) return;
+      if (data.deletedEventAuthors) {
+        for (const [id, pk] of Object.entries(data.deletedEventAuthors)) {
+          if (!/^[0-9a-f]{64}$/i.test(id) || !/^[0-9a-f]{64}$/i.test(pk)) {
+            continue;
+          }
+          deletedEventAuthorsRef.current.set(
+            id.toLowerCase(),
+            pk.toLowerCase()
+          );
+        }
+      }
+      if (data.deletedAddressKeys) {
+        for (const a of data.deletedAddressKeys) {
+          if (a) deletedAddressKeysRef.current.add(String(a).toLowerCase());
+        }
+      }
       if (data.apps?.length) {
-        setApps((prev) => mergeSoftwareApps(prev, data.apps));
+        setApps((prev) =>
+          omitDeletedSoftwareApps(
+            mergeSoftwareApps(prev, data.apps),
+            deletedEventAuthorsRef.current,
+            deletedAddressKeysRef.current
+          )
+        );
         for (const a of data.apps) {
           rawAppEventsRef.current.push(slimSoftwareAppForCatalog(a).raw);
         }
@@ -362,6 +428,11 @@ export function AppsDirectoryClient() {
         rawAppEventsRef.current = Array.from(kept.values()).map(
           (a) => slimSoftwareAppForCatalog(a).raw
         );
+      } else if (
+        deletedEventAuthorsRef.current.size > 0 ||
+        deletedAddressKeysRef.current.size > 0
+      ) {
+        refreshAppsFromRef();
       }
       if (data.releasesByApp) {
         for (const [k, list] of Object.entries(data.releasesByApp)) {
@@ -379,8 +450,9 @@ export function AppsDirectoryClient() {
         }
         setReleasesByAppId(new Map(releasesByAppIdRef.current));
       }
+      pruneDeletedReleases();
     },
-    []
+    [pruneDeletedReleases, refreshAppsFromRef]
   );
 
   const [catalogBackfilling, setCatalogBackfilling] = useState(false);
@@ -395,6 +467,8 @@ export function AppsDirectoryClient() {
         apps?: ParsedSoftwareApp[];
         releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
         releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
+        deletedEventAuthors?: Record<string, string>;
+        deletedAddressKeys?: string[];
         backfilling?: boolean;
       };
       applyServerCatalog(data);
@@ -449,7 +523,8 @@ export function AppsDirectoryClient() {
   useEffect(() => {
     if (leavingRef.current) return;
     rawAppEventsRef.current = [];
-    deletedEventIdsRef.current = new Set();
+    deletedEventAuthorsRef.current = new Map();
+    deletedAddressKeysRef.current = new Set();
     releasesRef.current = new Map();
     releasesByAppIdRef.current = new Map();
     assetsRef.current = new Set();
@@ -473,6 +548,24 @@ export function AppsDirectoryClient() {
       finishLoading();
     }, 18000);
 
+    const startLiveDeletionWatch = () => {
+      if (!subscribe || cancelled || leavingRef.current || cleaned) return;
+      const unsub = subscribe(
+        [{ kinds: [5], limit: 800 }],
+        relays,
+        (event: NostrEventLike) => {
+          if (cancelled || leavingRef.current) return;
+          ingestDeletionEvent(event);
+        },
+        400
+      );
+      const prev = liveUnsub;
+      liveUnsub = () => {
+        prev();
+        unsub();
+      };
+    };
+
     const startLiveCatalogFallback = () => {
       if (!subscribe || cancelled || leavingRef.current || cleaned) return;
       const unsub = subscribe(
@@ -485,28 +578,15 @@ export function AppsDirectoryClient() {
         (event: NostrEventLike) => {
           if (cancelled || leavingRef.current) return;
           if (event.kind === 5) {
-            let changed = false;
-            for (const t of event.tags || []) {
-              if (
-                t[0] === "e" &&
-                typeof t[1] === "string" &&
-                /^[0-9a-f]{64}$/i.test(t[1])
-              ) {
-                const id = t[1].toLowerCase();
-                if (!deletedEventIdsRef.current.has(id)) {
-                  deletedEventIdsRef.current.add(id);
-                  changed = true;
-                }
-              }
-            }
-            if (changed) {
-              refreshAppsFromRef();
-              pruneDeletedReleases();
-            }
+            ingestDeletionEvent(event);
             return;
           }
           if (event.kind === KIND_SOFTWARE_APPLICATION) {
-            if (event.id && deletedEventIdsRef.current.has(event.id)) {
+            const eid = (event.id || "").toLowerCase();
+            const delAuthor = eid
+              ? deletedEventAuthorsRef.current.get(eid)
+              : undefined;
+            if (delAuthor && delAuthor === (event.pubkey || "").toLowerCase()) {
               finishLoading();
               return;
             }
@@ -530,12 +610,17 @@ export function AppsDirectoryClient() {
         unsub();
         return;
       }
-      liveUnsub = unsub;
+      const prev = liveUnsub;
+      liveUnsub = () => {
+        prev();
+        unsub();
+      };
     };
 
     void (async () => {
       const ok = await fetchCatalogFromServer();
       if (cancelled || leavingRef.current) return;
+      startLiveDeletionWatch();
       if (ok) {
         // Snapshot like /pages — a live 4000/12000 scrape starves chrome
         // and owner-name clicks even when search shows one card.
@@ -571,6 +656,7 @@ export function AppsDirectoryClient() {
     refreshAppsFromRef,
     pruneDeletedReleases,
     mergeReleaseEvent,
+    ingestDeletionEvent,
     scheduleCatalogFlush,
   ]);
 

@@ -442,6 +442,111 @@ export function mergeSoftwareApps(
   return sortSoftwareAppsByCreatedAt(Array.from(map.values()));
 }
 
+const SOFTWARE_NIP09_A = /^(32267|30063|3063):[0-9a-f]{64}:.+/i;
+
+/** NIP-09 kind 5 `e` / `a` tags that point at app, release, or asset events. */
+export function collectNip09SoftwareDeletions(event: {
+  kind?: number;
+  pubkey?: string;
+  tags?: string[][];
+}): { eventIds: string[]; addressKeys: string[] } {
+  const eventIds: string[] = [];
+  const addressKeys: string[] = [];
+  if (event.kind !== 5) return { eventIds, addressKeys };
+  const author = (event.pubkey || "").toLowerCase();
+  for (const t of event.tags || []) {
+    if (
+      t[0] === "e" &&
+      typeof t[1] === "string" &&
+      /^[0-9a-f]{64}$/i.test(t[1])
+    ) {
+      eventIds.push(t[1].toLowerCase());
+    }
+    if (t[0] === "a" && typeof t[1] === "string") {
+      const a = t[1].trim();
+      if (!SOFTWARE_NIP09_A.test(a)) continue;
+      const key = a.toLowerCase();
+      const tagged = key.split(":")[1] || "";
+      if (author && tagged === author) addressKeys.push(key);
+    }
+  }
+  return { eventIds, addressKeys };
+}
+
+export function mergeDeletedEventAuthors(
+  previous: Record<string, string> | Map<string, string> | null | undefined,
+  incoming: Record<string, string> | Map<string, string> | null | undefined,
+  cap = 8000
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (
+    src: Record<string, string> | Map<string, string> | null | undefined
+  ) => {
+    if (!src) return;
+    const entries = src instanceof Map ? src.entries() : Object.entries(src);
+    for (const [id, pk] of entries) {
+      if (!/^[0-9a-f]{64}$/i.test(id) || !/^[0-9a-f]{64}$/i.test(pk)) continue;
+      out[id.toLowerCase()] = pk.toLowerCase();
+      if (Object.keys(out).length >= cap) return;
+    }
+  };
+  add(previous);
+  add(incoming);
+  return out;
+}
+
+function deletedAuthorsMap(
+  deletedEventAuthors:
+    | Map<string, string>
+    | Record<string, string>
+    | null
+    | undefined
+): Map<string, string> {
+  if (!deletedEventAuthors) return new Map();
+  if (deletedEventAuthors instanceof Map) return deletedEventAuthors;
+  return new Map(
+    Object.entries(deletedEventAuthors).map(([id, pk]) => [
+      id.toLowerCase(),
+      String(pk).toLowerCase(),
+    ])
+  );
+}
+
+export function softwareAppIsDeleted(
+  app: ParsedSoftwareApp,
+  deletedEventAuthors:
+    | Map<string, string>
+    | Record<string, string>
+    | null
+    | undefined,
+  deletedAddressKeys?: Iterable<string>
+): boolean {
+  const authors = deletedAuthorsMap(deletedEventAuthors);
+  const id = (app.raw?.id || "").toLowerCase();
+  const owner = (app.pubkey || "").toLowerCase();
+  if (id && authors.get(id) === owner) return true;
+  if (!deletedAddressKeys) return false;
+  const addrs =
+    deletedAddressKeys instanceof Set
+      ? deletedAddressKeys
+      : new Set([...deletedAddressKeys].map((a) => String(a).toLowerCase()));
+  return addrs.has(`32267:${owner}:${app.appId}`.toLowerCase());
+}
+
+export function omitDeletedSoftwareApps(
+  apps: ParsedSoftwareApp[] | undefined | null,
+  deletedEventAuthors:
+    | Map<string, string>
+    | Record<string, string>
+    | null
+    | undefined,
+  deletedAddressKeys?: Iterable<string>
+): ParsedSoftwareApp[] {
+  return (apps || []).filter(
+    (app) => !softwareAppIsDeleted(app, deletedEventAuthors, deletedAddressKeys)
+  );
+}
+
 /** Rebuild NIP-82 tags so a slim catalog event can be parsed again. */
 export function softwareAppCatalogTags(app: ParsedSoftwareApp): string[][] {
   const tags: string[][] = [

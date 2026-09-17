@@ -21,6 +21,8 @@ export type SoftwareCatalogSnapshot = {
   relayCount: number;
   zapstoreUntil?: number | null;
   zapstoreBackfillDone?: boolean;
+  deletedEventAuthors?: Record<string, string>;
+  deletedAddressKeys?: string[];
 };
 
 export async function loadSoftwareCatalogSnapshot(): Promise<SoftwareCatalogSnapshot | null> {
@@ -53,6 +55,8 @@ export async function saveSoftwareCatalogSnapshot(
       relayCount: snap.relayCount || 0,
       zapstoreUntil: snap.zapstoreUntil ?? null,
       zapstoreBackfillDone: !!snap.zapstoreBackfillDone,
+      deletedEventAuthors: snap.deletedEventAuthors || {},
+      deletedAddressKeys: snap.deletedAddressKeys || [],
     }),
     "utf8"
   );

@@ -6,8 +6,11 @@ import {
   type ParsedSoftwareApp,
   type ParsedSoftwareRelease,
   appDedupKey,
+  collectNip09SoftwareDeletions,
   dedupeSoftwareApps,
+  mergeDeletedEventAuthors,
   mergeSoftwareApps,
+  omitDeletedSoftwareApps,
   parseSoftwareRelease,
   preferOwnerSoftwareApps,
   slimReleaseRecordsForCatalog,
@@ -24,7 +27,10 @@ import {
   ZAPSTORE_FIRST_WAVE_PAGES,
   ZAPSTORE_KIND_ONLY_PAGE_LIMIT,
   nextUntilFromCreatedAts,
+  olderZapstoreUntil,
   zapstoreAppPageFilter,
+  zapstoreCursorNeedsResume,
+  zapstoreUntilFromOldestApp,
 } from "@/lib/nostr/software-catalog-zapstore-page";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -96,7 +102,44 @@ type CatalogResponse = {
   relayCount: number;
   zapstoreUntil?: number | null;
   zapstoreBackfillDone?: boolean;
+  deletedEventAuthors?: Record<string, string>;
+  deletedAddressKeys?: string[];
 };
+
+function unionAddressKeys(
+  a?: string[] | null,
+  b?: string[] | null,
+  cap = 8000
+): string[] {
+  const out = new Set<string>();
+  for (const key of [...(a || []), ...(b || [])]) {
+    const k = String(key || "").toLowerCase();
+    if (!k) continue;
+    out.add(k);
+    if (out.size >= cap) break;
+  }
+  return [...out];
+}
+
+function omitDeletedReleaseRecords(
+  rec: Record<string, ParsedSoftwareRelease[]> | undefined,
+  authors: Record<string, string>,
+  addressKeys: string[]
+): Record<string, ParsedSoftwareRelease[]> {
+  const addrs = new Set(addressKeys.map((k) => k.toLowerCase()));
+  const out: Record<string, ParsedSoftwareRelease[]> = {};
+  for (const [key, list] of Object.entries(rec || {})) {
+    const kept = (list || []).filter((r) => {
+      const id = (r.raw?.id || "").toLowerCase();
+      const owner = (r.pubkey || "").toLowerCase();
+      if (id && authors[id] === owner) return false;
+      if (addrs.has(`30063:${owner}:${r.d}`.toLowerCase())) return false;
+      return true;
+    });
+    if (kept.length > 0) out[key] = kept;
+  }
+  return out;
+}
 
 function slimCatalog(catalog: CatalogResponse): CatalogResponse {
   return {
@@ -106,6 +149,8 @@ function slimCatalog(catalog: CatalogResponse): CatalogResponse {
     relayCount: catalog.relayCount,
     zapstoreUntil: catalog.zapstoreUntil ?? null,
     zapstoreBackfillDone: !!catalog.zapstoreBackfillDone,
+    deletedEventAuthors: catalog.deletedEventAuthors || {},
+    deletedAddressKeys: catalog.deletedAddressKeys || [],
   };
 }
 
@@ -136,6 +181,8 @@ async function fetchCatalogFromRelays(
   const rawApps: NostrEventLike[] = [];
   const releasesByApp = new Map<string, ParsedSoftwareRelease[]>();
   const releasesByAppId = new Map<string, ParsedSoftwareRelease[]>();
+  const deletedEventAuthors = new Map<string, string>();
+  const deletedAddressKeys = new Set<string>();
   const eoseRelays = new Set<string>();
   const authorScoped =
     !!authorHex && /^[0-9a-f]{64}$/i.test(authorHex)
@@ -176,20 +223,36 @@ async function fetchCatalogFromRelays(
       limit: releaseLimit,
     };
     const filters: Record<string, unknown>[] = [appFilter, releaseFilter];
+    const deletionFilter: Record<string, unknown> = {
+      kinds: [5],
+      limit: authorScoped ? 200 : 2000,
+    };
     if (authorScoped) {
       appFilter.authors = [authorScoped];
       releaseFilter.authors = [authorScoped];
+      deletionFilter.authors = [authorScoped];
       filters.push({
         kinds: [KIND_SOFTWARE_APPLICATION],
         "#p": [authorScoped],
         limit: appLimit,
       });
     }
+    filters.push(deletionFilter);
 
     pool.subscribe(
       filters,
       relays,
       (event: NostrEventLike) => {
+        if (event.kind === 5) {
+          const author = (event.pubkey || "").toLowerCase();
+          if (!/^[0-9a-f]{64}$/.test(author)) return;
+          const hits = collectNip09SoftwareDeletions(event);
+          for (const id of hits.eventIds) {
+            deletedEventAuthors.set(id, author);
+          }
+          for (const a of hits.addressKeys) deletedAddressKeys.add(a);
+          return;
+        }
         if (isPublisherBlocklisted(event.pubkey)) return;
         if (event.kind === KIND_SOFTWARE_APPLICATION) {
           rawApps.push(event);
@@ -231,6 +294,9 @@ async function fetchCatalogFromRelays(
     apps = preferOwnerSoftwareApps(apps, authorScoped);
   }
   apps = sortSoftwareAppsByCreatedAt(apps);
+  const deletionAuthors = Object.fromEntries(deletedEventAuthors);
+  const deletionAddrs = [...deletedAddressKeys];
+  apps = omitDeletedSoftwareApps(apps, deletionAuthors, deletionAddrs);
 
   const toRecord = (m: Map<string, ParsedSoftwareRelease[]>) => {
     const out: Record<string, ParsedSoftwareRelease[]> = {};
@@ -240,9 +306,19 @@ async function fetchCatalogFromRelays(
 
   return {
     apps,
-    releasesByApp: toRecord(releasesByApp),
-    releasesByAppId: toRecord(releasesByAppId),
+    releasesByApp: omitDeletedReleaseRecords(
+      toRecord(releasesByApp),
+      deletionAuthors,
+      deletionAddrs
+    ),
+    releasesByAppId: omitDeletedReleaseRecords(
+      toRecord(releasesByAppId),
+      deletionAuthors,
+      deletionAddrs
+    ),
     relayCount: relays.length,
+    deletedEventAuthors: deletionAuthors,
+    deletedAddressKeys: deletionAddrs,
   };
 }
 
@@ -338,20 +414,63 @@ function mergeCatalogResponse(
   previous: CatalogResponse | null | undefined,
   incoming: CatalogResponse
 ): CatalogResponse {
+  const deletedEventAuthors = mergeDeletedEventAuthors(
+    previous?.deletedEventAuthors,
+    incoming.deletedEventAuthors
+  );
+  const deletedAddressKeys = unionAddressKeys(
+    previous?.deletedAddressKeys,
+    incoming.deletedAddressKeys
+  );
+  const until = olderZapstoreUntil(
+    previous?.zapstoreUntil,
+    incoming.zapstoreUntil
+  );
+  const zapstoreBackfillDone = incoming.zapstoreBackfillDone
+    ? true
+    : !!previous?.zapstoreBackfillDone &&
+      until === (previous?.zapstoreUntil ?? until);
   return {
-    apps: mergeSoftwareApps(previous?.apps, incoming.apps),
-    releasesByApp: mergeReleaseRecords(
-      previous?.releasesByApp,
-      incoming.releasesByApp
+    apps: omitDeletedSoftwareApps(
+      mergeSoftwareApps(previous?.apps, incoming.apps),
+      deletedEventAuthors,
+      deletedAddressKeys
     ),
-    releasesByAppId: mergeReleaseRecords(
-      previous?.releasesByAppId,
-      incoming.releasesByAppId
+    releasesByApp: omitDeletedReleaseRecords(
+      mergeReleaseRecords(previous?.releasesByApp, incoming.releasesByApp),
+      deletedEventAuthors,
+      deletedAddressKeys
+    ),
+    releasesByAppId: omitDeletedReleaseRecords(
+      mergeReleaseRecords(previous?.releasesByAppId, incoming.releasesByAppId),
+      deletedEventAuthors,
+      deletedAddressKeys
     ),
     relayCount: Math.max(previous?.relayCount || 0, incoming.relayCount || 0),
-    zapstoreUntil: incoming.zapstoreUntil ?? previous?.zapstoreUntil ?? null,
-    zapstoreBackfillDone:
-      incoming.zapstoreBackfillDone || previous?.zapstoreBackfillDone || false,
+    zapstoreUntil: until,
+    zapstoreBackfillDone,
+    deletedEventAuthors,
+    deletedAddressKeys,
+  };
+}
+
+function repairZapstoreCursor(catalog: CatalogResponse): CatalogResponse {
+  const created = (catalog.apps || []).map((a) => a.createdAt);
+  if (
+    !catalog.zapstoreBackfillDone ||
+    !zapstoreCursorNeedsResume({
+      done: true,
+      until: catalog.zapstoreUntil,
+      appCreatedAts: created,
+    })
+  ) {
+    return catalog;
+  }
+  return {
+    ...catalog,
+    zapstoreUntil:
+      zapstoreUntilFromOldestApp(created) ?? catalog.zapstoreUntil ?? null,
+    zapstoreBackfillDone: false,
   };
 }
 
@@ -374,14 +493,20 @@ async function ensureDiskCatalog(): Promise<void> {
         if (!snap?.apps?.length || globalCache) return;
         globalCache = {
           at: snap.at,
-          catalog: {
-            apps: snap.apps,
+          catalog: repairZapstoreCursor({
+            apps: omitDeletedSoftwareApps(
+              snap.apps,
+              snap.deletedEventAuthors || {},
+              snap.deletedAddressKeys || []
+            ),
             releasesByApp: snap.releasesByApp || {},
             releasesByAppId: snap.releasesByAppId || {},
             relayCount: snap.relayCount || CATALOG_RELAYS.length,
             zapstoreUntil: snap.zapstoreUntil ?? null,
             zapstoreBackfillDone: !!snap.zapstoreBackfillDone,
-          },
+            deletedEventAuthors: snap.deletedEventAuthors || {},
+            deletedAddressKeys: snap.deletedAddressKeys || [],
+          }),
         };
       })
       .catch(() => {
@@ -459,6 +584,16 @@ async function scrapeGlobalCatalog(): Promise<CatalogResponse> {
 
 async function getGlobalCatalog(): Promise<CatalogResponse> {
   await ensureDiskCatalog();
+  if (globalCache?.catalog) {
+    const repaired = repairZapstoreCursor(globalCache.catalog);
+    if (
+      repaired.zapstoreBackfillDone !==
+        globalCache.catalog.zapstoreBackfillDone ||
+      repaired.zapstoreUntil !== globalCache.catalog.zapstoreUntil
+    ) {
+      globalCache.catalog = repaired;
+    }
+  }
   const now = Date.now();
   if (globalCache && now - globalCache.at < GLOBAL_CACHE_MS) {
     if (!globalCache.catalog.zapstoreBackfillDone) {

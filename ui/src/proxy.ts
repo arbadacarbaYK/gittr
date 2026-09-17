@@ -8,6 +8,7 @@ import type { NextRequest } from "next/server";
  * opens Nostr pools. 404 (not 429) so crawlers drop the URL instead of retrying.
  *
  * Next.js 16: middleware.ts is proxy.ts (network boundary).
+ * Stamps pathname/search so vanity `/DisplayName/repo/issues` can 307 to npub.
  */
 export function proxy(request: NextRequest) {
   if (searchParamsHaveAbsurdRepoPath(request.nextUrl.searchParams)) {
@@ -16,7 +17,12 @@ export function proxy(request: NextRequest) {
       headers: { "Cache-Control": "public, max-age=300" },
     });
   }
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-gittr-pathname", request.nextUrl.pathname);
+  requestHeaders.set("x-gittr-search", request.nextUrl.search);
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 }
 
 export const config = {

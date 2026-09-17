@@ -7,10 +7,12 @@ import {
   type NostrEventLike,
   type ParsedSoftwareApp,
   type ParsedSoftwareRelease,
+  collectNip09SoftwareDeletions,
   gittrRepoPathFromNip34A,
   gittrRepoPathFromRepositoryUrl,
   mergeSoftwareApps,
   normalizeSoftwareIconUrl,
+  omitDeletedSoftwareApps,
   parseSoftwareApp,
   parseSoftwareAsset,
   pickLatestMainRelease,
@@ -328,6 +330,54 @@ describe("mergeSoftwareApps", () => {
       app(pkB, "space.gittr.buhogo", "buho-go", 40),
     ];
     expect(mergeSoftwareApps(previous, incoming)).toHaveLength(2);
+  });
+});
+
+describe("omitDeletedSoftwareApps", () => {
+  const eid = "ab".repeat(32);
+  const owner = "aa".repeat(32);
+  const other = "bb".repeat(32);
+
+  it("hides an app only when the same author signed kind 5", () => {
+    const listed = parseSoftwareApp({
+      ...appEvent([]),
+      id: eid,
+      pubkey: owner,
+    })!;
+    expect(
+      omitDeletedSoftwareApps([listed], new Map([[eid, owner]]))
+    ).toHaveLength(0);
+    expect(
+      omitDeletedSoftwareApps([listed], new Map([[eid, other]]))
+    ).toHaveLength(1);
+  });
+
+  it("honors a 32267 a-tag from that author", () => {
+    const listed = parseSoftwareApp({
+      ...appEvent([]),
+      id: eid,
+      pubkey: owner,
+    })!;
+    const a = `32267:${owner}:app.id`;
+    expect(omitDeletedSoftwareApps([listed], {}, [a])).toHaveLength(0);
+  });
+});
+
+describe("collectNip09SoftwareDeletions", () => {
+  it("keeps a-tags only when they name the deletion author", () => {
+    const owner = "aa".repeat(32);
+    const other = "bb".repeat(32);
+    const hits = collectNip09SoftwareDeletions({
+      kind: 5,
+      pubkey: owner,
+      tags: [
+        ["e", "ab".repeat(32)],
+        ["a", `32267:${owner}:app.id`],
+        ["a", `32267:${other}:app.id`],
+      ],
+    });
+    expect(hits.eventIds).toEqual(["ab".repeat(32)]);
+    expect(hits.addressKeys).toEqual([`32267:${owner}:app.id`]);
   });
 });
 
