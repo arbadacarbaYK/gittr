@@ -6,7 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { DIRECTORY_TILE_ARTICLE_CLASS } from "@/components/ui/directory-tile-card";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
-import { repositoryUrlToReleasesHref } from "@/lib/nostr/nip82-repository-links";
+import { softwareAppCardLinks } from "@/lib/nostr/nip82-repository-links";
 import {
   type ParsedSoftwareApp,
   platformHintToLabel,
@@ -243,22 +243,57 @@ export function SoftwareAppDirectoryCard({
 
 /** Default actions when the directory is not resolving APK assets (profile). */
 export function SoftwareAppProfileFooter({ app }: { app: ParsedSoftwareApp }) {
+  const links = softwareAppCardLinks(app);
   return (
     <>
-      {app.gittrRepoPath ? (
+      <SoftwareAppSourceButtons
+        app={app}
+        webLabel="Open"
+        webVariant="default"
+      />
+      {!links.repoHref && !links.releasesHref && !links.webHref ? (
         <a
           className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-          href={app.gittrRepoPath}
-          rel="noopener noreferrer"
-          target="_blank"
+          href="/apps"
         >
-          Repo
+          View in Apps
         </a>
       ) : null}
-      {app.repository ? (
+    </>
+  );
+}
+
+/** Repo = source you can audit; Releases = forge downloads when distinct. */
+export function SoftwareAppSourceButtons({
+  app,
+  webLabel = "Website",
+  webVariant = "outline",
+}: {
+  app: ParsedSoftwareApp;
+  webLabel?: string;
+  webVariant?: "outline" | "default";
+}) {
+  const links = softwareAppCardLinks(app);
+  return (
+    <>
+      {links.repoHref ? (
         <a
           className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-          href={repositoryUrlToReleasesHref(app.repository)}
+          href={links.repoHref}
+          rel="noopener noreferrer"
+          target="_blank"
+          title="Source code"
+        >
+          Repo
+          {links.repoIsExternal ? (
+            <ExternalLink className="ml-1.5 h-3 w-3" />
+          ) : null}
+        </a>
+      ) : null}
+      {links.releasesHref ? (
+        <a
+          className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+          href={links.releasesHref}
           rel="noopener noreferrer"
           target="_blank"
         >
@@ -266,25 +301,18 @@ export function SoftwareAppProfileFooter({ app }: { app: ParsedSoftwareApp }) {
           <ExternalLink className="ml-1.5 h-3 w-3" />
         </a>
       ) : null}
-      {app.webUrl ? (
+      {links.webHref ? (
         <a
           className={cn(
-            buttonVariants({ size: "sm", variant: "default" }),
-            "shadow-sm"
+            buttonVariants({ size: "sm", variant: webVariant }),
+            webVariant === "default" ? "shadow-sm" : undefined
           )}
-          href={app.webUrl}
+          href={links.webHref}
           rel="noopener noreferrer"
           target="_blank"
         >
-          Open
+          {webLabel}
           <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-        </a>
-      ) : !app.repository && !app.gittrRepoPath ? (
-        <a
-          className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-          href="/apps"
-        >
-          View in Apps
         </a>
       ) : null}
     </>

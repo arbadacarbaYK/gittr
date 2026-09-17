@@ -3584,7 +3584,15 @@ export default function HelpPage() {
                 >
                   /apps
                 </Link>
-                . Signed-in owners: user menu{" "}
+                . Each card&apos;s <strong className="text-white">Repo</strong>{" "}
+                button is the source tree so you can verify the code (gittr Code
+                when the announce has a NIP-34 pointer, otherwise
+                Zapstore&apos;s{" "}
+                <code className="text-purple-200">repository</code> URL — that
+                tag is meant to be{" "}
+                <code className="text-purple-200">git clone</code>
+                -able). <strong className="text-white">Releases</strong> is the
+                forge download page. Signed-in owners: user menu{" "}
                 <Link
                   href="/apps/mine"
                   className="text-purple-400 hover:text-purple-300"

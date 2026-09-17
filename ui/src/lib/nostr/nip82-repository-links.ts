@@ -1,6 +1,46 @@
 /**
- * Map publisher `repository` URLs to a "releases" view when we recognize the host.
+ * NIP-82 `repository` is the cloneable source tree ("must be able to git clone").
+ * Zapstore listings almost always have this; a NIP-34 `a` tag is optional and rare.
  */
+
+function hrefsMatch(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  return (
+    a.trim().replace(/\/+$/, "").toLowerCase() ===
+    b.trim().replace(/\/+$/, "").toLowerCase()
+  );
+}
+
+/** Browseable source URL from a NIP-82 `repository` tag (not the /releases page). */
+export function repositoryUrlToSourceHref(
+  repository: string
+): string | undefined {
+  const raw = repository.trim();
+  if (!raw) return undefined;
+
+  const ssh = raw.match(/^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (ssh?.[1] && ssh[2] && ssh[3]) {
+    return `https://${ssh[1]}/${ssh[2]}/${ssh[3].replace(/\.git$/i, "")}`;
+  }
+
+  try {
+    const base = raw.includes("://") ? raw : `https://${raw}`;
+    const url = new URL(base);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+    url.username = "";
+    url.password = "";
+    const segs = url.pathname.split("/").filter(Boolean);
+    if (segs.length > 0) {
+      segs[segs.length - 1] = segs[segs.length - 1]!.replace(/\.git$/i, "");
+      url.pathname = `/${segs.join("/")}`;
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return undefined;
+  }
+}
 
 /** Parse `owner` / `repo` for github.com (https or git@). */
 export function parseGitHubRepoSpec(
@@ -96,4 +136,41 @@ export function repositoryUrlToReleasesHref(repository: string): string {
   } catch {
     return raw;
   }
+}
+
+export type SoftwareAppCardLinkInput = {
+  gittrRepoPath?: string;
+  repository?: string;
+  webUrl?: string;
+};
+
+/**
+ * Card footer hrefs: **Repo** is source you can audit (gittr Code when we have
+ * a NIP-34 pointer, else the Zapstore/NIP-82 `repository` URL). **Releases** is
+ * the forge downloads page only when we can name one that is not the tree.
+ */
+export function softwareAppCardLinks(app: SoftwareAppCardLinkInput): {
+  repoHref?: string;
+  repoIsExternal: boolean;
+  releasesHref?: string;
+  webHref?: string;
+} {
+  const source = app.repository
+    ? repositoryUrlToSourceHref(app.repository)
+    : undefined;
+  const gittr = (app.gittrRepoPath || "").trim() || undefined;
+  const repoHref = gittr || source;
+  const rewritten = app.repository
+    ? repositoryUrlToReleasesHref(app.repository)
+    : undefined;
+  const releasesHref =
+    rewritten && source && !hrefsMatch(rewritten, source)
+      ? rewritten
+      : undefined;
+  return {
+    repoHref,
+    repoIsExternal: !!repoHref && /^https?:\/\//i.test(repoHref),
+    releasesHref,
+    webHref: app.webUrl,
+  };
 }

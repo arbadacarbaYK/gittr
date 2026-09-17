@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { SoftwareAppDirectoryCard } from "@/components/apps/SoftwareAppDirectoryCard";
+import {
+  SoftwareAppDirectoryCard,
+  SoftwareAppSourceButtons,
+} from "@/components/apps/SoftwareAppDirectoryCard";
 import { buttonVariants } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { assetIdsAndRelayHintsFromRelease } from "@/lib/nostr/nip82-repo-releases";
-import {
-  parseGitHubRepoSpec,
-  repositoryUrlToReleasesHref,
-} from "@/lib/nostr/nip82-repository-links";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
@@ -53,14 +53,7 @@ import {
   shouldPauseHeavyWorkFromPointerTarget,
 } from "@/lib/utils/app-navigate";
 
-import {
-  ChevronDown,
-  Download,
-  ExternalLink,
-  Loader2,
-  Package,
-  Search,
-} from "lucide-react";
+import { ChevronDown, Download, Loader2, Package, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
@@ -1207,53 +1200,7 @@ export function AppsDirectoryClient() {
                             </span>
                           )}
 
-                          {app.gittrRepoPath ? (
-                            <a
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                })
-                              )}
-                              href={app.gittrRepoPath}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              Repo
-                            </a>
-                          ) : null}
-                          {app.repository ? (
-                            <a
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                })
-                              )}
-                              href={repositoryUrlToReleasesHref(app.repository)}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              Releases
-                              <ExternalLink className="ml-1.5 h-3 w-3" />
-                            </a>
-                          ) : null}
-                          {app.webUrl ? (
-                            <a
-                              className={cn(
-                                buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                })
-                              )}
-                              href={app.webUrl}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              Website
-                              <ExternalLink className="ml-1.5 h-3 w-3" />
-                            </a>
-                          ) : null}
+                          <SoftwareAppSourceButtons app={app} />
                         </>
                       }
                     />
