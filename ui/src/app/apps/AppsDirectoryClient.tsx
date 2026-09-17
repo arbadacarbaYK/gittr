@@ -22,12 +22,14 @@ import {
   type ParsedSoftwareRelease,
   appDedupKey,
   dedupeSoftwareApps,
+  mergeSoftwareApps,
   mimeToKindLabel,
   parseSoftwareAsset,
   parseSoftwareRelease,
   pickAndroidApkAsset,
   pickLatestMainRelease,
   platformHintToLabel,
+  slimSoftwareAppForCatalog,
   sortSoftwareAppsByCreatedAt,
 } from "@/lib/nostr/nip82-software";
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
@@ -352,30 +354,13 @@ export function AppsDirectoryClient() {
     }) => {
       if (leavingRef.current) return;
       if (data.apps?.length) {
+        setApps((prev) => mergeSoftwareApps(prev, data.apps));
         for (const a of data.apps) {
-          rawAppEventsRef.current.push(
-            a.raw ?? {
-              id: "",
-              pubkey: a.pubkey,
-              kind: KIND_SOFTWARE_APPLICATION,
-              created_at: a.createdAt,
-              content: a.content,
-              tags: [],
-            }
-          );
+          rawAppEventsRef.current.push(slimSoftwareAppForCatalog(a).raw);
         }
-        refreshAppsFromRef();
         const kept = dedupeSoftwareApps(rawAppEventsRef.current);
         rawAppEventsRef.current = Array.from(kept.values()).map(
-          (a) =>
-            a.raw ?? {
-              id: "",
-              pubkey: a.pubkey,
-              kind: KIND_SOFTWARE_APPLICATION,
-              created_at: a.createdAt,
-              content: a.content,
-              tags: [],
-            }
+          (a) => slimSoftwareAppForCatalog(a).raw
         );
       }
       if (data.releasesByApp) {
@@ -395,8 +380,10 @@ export function AppsDirectoryClient() {
         setReleasesByAppId(new Map(releasesByAppIdRef.current));
       }
     },
-    [refreshAppsFromRef]
+    []
   );
+
+  const [catalogBackfilling, setCatalogBackfilling] = useState(false);
 
   const fetchCatalogFromServer = useCallback(async () => {
     try {
@@ -408,8 +395,10 @@ export function AppsDirectoryClient() {
         apps?: ParsedSoftwareApp[];
         releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
         releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
+        backfilling?: boolean;
       };
       applyServerCatalog(data);
+      setCatalogBackfilling(!!data.backfilling);
       return (data.apps?.length ?? 0) > 0;
     } catch {
       return false;
@@ -605,6 +594,15 @@ export function AppsDirectoryClient() {
     }, 150_000);
     return () => window.clearInterval(id);
   }, [fetchCatalogFromServer]);
+
+  useEffect(() => {
+    if (!catalogBackfilling) return;
+    const id = window.setInterval(() => {
+      if (leavingRef.current) return;
+      void fetchCatalogFromServer();
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [catalogBackfilling, fetchCatalogFromServer]);
 
   const releasesForApp = useCallback(
     (app: ParsedSoftwareApp): ParsedSoftwareRelease[] => {

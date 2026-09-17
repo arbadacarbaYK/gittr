@@ -19,6 +19,8 @@ export type SoftwareCatalogSnapshot = {
   releasesByApp: Record<string, ParsedSoftwareRelease[]>;
   releasesByAppId: Record<string, ParsedSoftwareRelease[]>;
   relayCount: number;
+  zapstoreUntil?: number | null;
+  zapstoreBackfillDone?: boolean;
 };
 
 export async function loadSoftwareCatalogSnapshot(): Promise<SoftwareCatalogSnapshot | null> {
@@ -49,6 +51,8 @@ export async function saveSoftwareCatalogSnapshot(
       releasesByApp: snap.releasesByApp || {},
       releasesByAppId: snap.releasesByAppId || {},
       relayCount: snap.relayCount || 0,
+      zapstoreUntil: snap.zapstoreUntil ?? null,
+      zapstoreBackfillDone: !!snap.zapstoreBackfillDone,
     }),
     "utf8"
   );

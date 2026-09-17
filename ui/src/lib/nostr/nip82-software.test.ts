@@ -16,6 +16,7 @@ import {
   pickLatestMainRelease,
   preferOwnerSoftwareApps,
   safeHttpUrlTag,
+  slimSoftwareAppForCatalog,
   sortSoftwareAppsByCreatedAt,
 } from "./nip82-software";
 
@@ -327,5 +328,28 @@ describe("mergeSoftwareApps", () => {
       app(pkB, "space.gittr.buhogo", "buho-go", 40),
     ];
     expect(mergeSoftwareApps(previous, incoming)).toHaveLength(2);
+  });
+});
+
+describe("slimSoftwareAppForCatalog", () => {
+  it("round-trips name and id without relaypool metadata", () => {
+    const parsed = parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey: "aa".repeat(32),
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 9,
+      content: "long description ".repeat(40),
+      tags: [
+        ["d", "space.gittr.buhogo"],
+        ["name", "buho-go"],
+        ["summary", "maps"],
+      ],
+    })!;
+    const slim = slimSoftwareAppForCatalog(parsed);
+    expect(slim.raw).not.toHaveProperty("relayPool");
+    expect(slim.content).toBe("maps");
+    const again = parseSoftwareApp(slim.raw);
+    expect(again?.appId).toBe("space.gittr.buhogo");
+    expect(again?.name).toBe("buho-go");
   });
 });

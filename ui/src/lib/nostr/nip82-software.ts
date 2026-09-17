@@ -441,3 +441,75 @@ export function mergeSoftwareApps(
   }
   return sortSoftwareAppsByCreatedAt(Array.from(map.values()));
 }
+
+/** Rebuild NIP-82 tags so a slim catalog event can be parsed again. */
+export function softwareAppCatalogTags(app: ParsedSoftwareApp): string[][] {
+  const tags: string[][] = [
+    ["d", app.appId],
+    ["name", app.name],
+  ];
+  if (app.summary) tags.push(["summary", app.summary]);
+  if (app.icon) tags.push(["icon", app.icon]);
+  if (app.repository) tags.push(["repository", app.repository]);
+  if (app.webUrl) tags.push(["url", app.webUrl]);
+  if (app.license) tags.push(["license", app.license]);
+  for (const t of app.topics) tags.push(["t", t]);
+  for (const f of app.platformHints) tags.push(["f", f]);
+  for (const p of app.attributedPubkeys) tags.push(["p", p]);
+  return tags;
+}
+
+/**
+ * Drop relaypool metadata and long descriptions so /apps JSON stays under
+ * Next’s 4MB warning as the Zapstore page-walk grows past ~509 apps.
+ */
+export function slimSoftwareAppForCatalog(
+  app: ParsedSoftwareApp
+): ParsedSoftwareApp {
+  const content = app.summary || (app.content || "").slice(0, 280);
+  return {
+    ...app,
+    content,
+    raw: {
+      id: app.raw?.id || "",
+      pubkey: app.pubkey,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: app.createdAt,
+      content,
+      tags: softwareAppCatalogTags(app),
+    },
+  };
+}
+
+export function slimSoftwareReleaseForCatalog(
+  r: ParsedSoftwareRelease
+): ParsedSoftwareRelease {
+  return {
+    ...r,
+    raw: {
+      id: r.raw?.id || "",
+      pubkey: r.pubkey,
+      kind: KIND_SOFTWARE_RELEASE,
+      created_at: r.createdAt,
+      content: r.content || "",
+      tags: [
+        ["d", r.d],
+        ["i", r.appId],
+        ["version", r.version],
+        ["c", r.channel || "main"],
+        ...r.assetEventIds.map((id) => ["e", id]),
+      ],
+    },
+  };
+}
+
+export function slimReleaseRecordsForCatalog(
+  map: Record<string, ParsedSoftwareRelease[]> | undefined
+): Record<string, ParsedSoftwareRelease[]> {
+  const out: Record<string, ParsedSoftwareRelease[]> = {};
+  for (const [k, list] of Object.entries(map || {})) {
+    const latest = pickLatestMainRelease(list);
+    if (latest) out[k] = [slimSoftwareReleaseForCatalog(latest)];
+  }
+  return out;
+}

@@ -3556,11 +3556,13 @@ export default function HelpPage() {
                 </Link>{" "}
                 is unique publisher + package id (not every new card you notice)
                 — a republish of the same id updates the listing without adding
-                1. The hub keeps a running snapshot so older apps are not
-                dropped when relays only return the newest few thousand
-                announces. Announcing does <em>not</em>{" "}
-                put the APK into the git file tree. How Releases, forge files,
-                and announces fit together:{" "}
+                1. Zapstore only answers 50 app events per request, so{" "}
+                <strong className="text-white">Listed</strong> keeps climbing
+                for a short while as gittr walks older pages. The hub keeps a
+                running snapshot so those apps are not dropped on the next
+                refresh. Announcing does <em>not</em> put the APK into the git
+                file tree. How Releases, forge files, and announces fit
+                together:{" "}
                 <Link
                   href="#releases"
                   className="text-purple-400 hover:text-purple-300"
