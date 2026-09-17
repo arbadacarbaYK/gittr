@@ -3556,9 +3556,12 @@ export default function HelpPage() {
                 </Link>{" "}
                 is unique publisher + package id (not every new card you notice)
                 — a republish of the same id updates the listing without adding
-                1. After Zapstore paging, Listed can sit around two thousand
-                because Zapstore’s indexer lists a large mobile catalog (still
-                unique publisher + id). Owner{" "}
+                1. After Zapstore paging, Listed can sit around three thousand
+                because Zapstore’s indexer lists a large mobile catalog under
+                <em>one</em> publisher (still unique publisher + id). That is
+                the same Nostr app list gittr already counts — Zapstore’s relay
+                is just where most kind 32267 events live, not a second counter
+                added on top. Owner{" "}
                 <strong className="text-white">Remove listing</strong> is NIP-09
                 and hides that author’s card; it does not shrink Zapstore’s
                 catalog. Zapstore only answers 50 app events per request, so{" "}
