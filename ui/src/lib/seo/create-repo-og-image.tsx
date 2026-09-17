@@ -158,8 +158,9 @@ export async function createRepoOgImage(
                   marginTop: 22,
                   fontSize: 26,
                   lineHeight: 1.35,
-                  color: "rgb(170, 178, 190)",
-                  maxWidth: 760,
+                  color: "rgb(198, 206, 218)",
+                  width: 720,
+                  maxWidth: 720,
                 }}
               >
                 {data.description}

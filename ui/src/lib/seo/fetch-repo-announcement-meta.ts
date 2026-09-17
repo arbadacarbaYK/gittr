@@ -1,5 +1,6 @@
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
+import { resolveOgOwnerPubkey } from "@/lib/seo/og-owner-pubkey";
 
 export type RepoAnnouncementMeta = {
   description: string | null;
@@ -20,20 +21,11 @@ export async function fetchRepoAnnouncementMeta(
   timeoutMs = 1500
 ): Promise<RepoAnnouncementMeta> {
   try {
-    let ownerPubkey: string | null = null;
-    if (/^[0-9a-f]{64}$/i.test(entity)) {
-      ownerPubkey = entity.toLowerCase();
-    } else if (entity.startsWith("npub")) {
-      const { nip19 } = await import("nostr-tools");
-      try {
-        const decoded = nip19.decode(entity);
-        if (decoded.type === "npub") {
-          ownerPubkey = (decoded.data as string).toLowerCase();
-        }
-      } catch {
-        /* invalid npub */
-      }
-    }
+    const ownerPubkey = await resolveOgOwnerPubkey(
+      entity,
+      repoName,
+      Math.min(800, timeoutMs)
+    );
 
     if (!ownerPubkey) return EMPTY;
 

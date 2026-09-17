@@ -31,7 +31,9 @@ function softNavMetadata(
 ): Metadata {
   const title = `${entity}/${decodedRepo}`;
   const description = buildRepoFallbackDescription(entity, decodedRepo);
-  const url = `${baseUrl}/${encodeURIComponent(entity)}/${encodeURIComponent(decodedRepo)}`;
+  const url = `${baseUrl}/${encodeURIComponent(entity)}/${encodeURIComponent(
+    decodedRepo
+  )}`;
   return {
     title,
     description,
@@ -98,7 +100,7 @@ export async function generateMetadata({
     const url = `${baseUrl}/${pathEntity}/${pathRepo}`;
     // Composed dark card. ?v= busts X/Telegram when only a dependency file changed
     // (Next’s content-hash on this route may not move).
-    const cardUrl = `${url}/opengraph-image?v=fastog1`;
+    const cardUrl = `${url}/opengraph-image?v=about2`;
 
     let ownerDisplayName = ownerName;
     if (ownerPubkey) {
@@ -221,7 +223,7 @@ export async function generateMetadata({
     const url = `${baseUrl}/${encodeURIComponent(
       resolvedParams.entity
     )}/${encodeURIComponent(decodedRepo)}`;
-    const cardUrl = `${url}/opengraph-image?v=fastog1`;
+    const cardUrl = `${url}/opengraph-image?v=about2`;
 
     return {
       title,

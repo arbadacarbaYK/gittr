@@ -18,6 +18,10 @@ import {
   fetchRepoLogoUrlFromNostr,
   readRepoLogoFromBridge,
 } from "@/lib/og-repo-image";
+import {
+  mergeOgDescriptions,
+  resolveOgOwnerPubkey,
+} from "@/lib/seo/og-owner-pubkey";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 
 import { nip19 } from "nostr-tools";
@@ -42,20 +46,6 @@ export type RepoOgData = {
   sourceForks: number | null;
   nostrStars: number | null;
 };
-
-function resolvePubkey(entity: string): string | null {
-  if (/^[0-9a-f]{64}$/i.test(entity)) return entity.toLowerCase();
-  if (entity.startsWith("npub")) {
-    try {
-      const decoded = nip19.decode(entity);
-      if (decoded.type === "npub")
-        return (decoded.data as string).toLowerCase();
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
-}
 
 function cleanRepoName(repoName: string): string {
   let name = repoName;
@@ -253,12 +243,38 @@ async function fetchAnnouncementBits(
             created_at?: number;
           }) => {
             const bits = bitsFromEvent(event);
-            if (!best || bits.createdAt >= best.createdAt) {
+            if (!best) {
               best = bits;
+            } else if (bits.createdAt >= best.createdAt) {
+              best = {
+                ...bits,
+                description: mergeOgDescriptions(
+                  bits.description,
+                  best.description,
+                  repoName
+                ),
+                github: bits.github || best.github,
+                imageUrl: bits.imageUrl || best.imageUrl,
+                eventId: bits.eventId || best.eventId,
+              };
+            } else {
+              best = {
+                ...best,
+                description: mergeOgDescriptions(
+                  best.description,
+                  bits.description,
+                  repoName
+                ),
+                github: best.github || bits.github,
+                imageUrl: best.imageUrl || bits.imageUrl,
+              };
             }
-            // First useful hit: short grace for a newer replaceable event, then go.
+            // Don't paint without About if a later replaceable event still has it.
             if (best?.eventId && !settleTimer) {
-              settleTimer = setTimeout(() => finish(best || empty), 280);
+              const grace = best.description
+                ? 280
+                : Math.max(500, timeoutMs - 80);
+              settleTimer = setTimeout(() => finish(best || empty), grace);
             }
           }
         );
@@ -540,7 +556,15 @@ export async function fetchRepoOgData(
   _baseUrl?: string
 ): Promise<RepoOgData> {
   const repoName = cleanRepoName(repo);
-  const ownerPubkey = resolvePubkey(entity);
+  // Hard budget for social crawlers (X often drops images after ~3–5s total).
+  const HARD_MS = 2800;
+  const started = Date.now();
+  const remaining = () => Math.max(120, HARD_MS - (Date.now() - started));
+  const ownerPubkey = await resolveOgOwnerPubkey(
+    entity,
+    repoName,
+    Math.min(800, remaining())
+  );
 
   if (!ownerPubkey) {
     return {
@@ -553,11 +577,6 @@ export async function fetchRepoOgData(
       nostrStars: null,
     };
   }
-
-  // Hard budget for social crawlers (X often drops images after ~3–5s total).
-  const HARD_MS = 2200;
-  const started = Date.now();
-  const remaining = () => Math.max(120, HARD_MS - (Date.now() - started));
 
   const [announcement, owner] = await Promise.all([
     fetchAnnouncementBits(ownerPubkey, repoName, Math.min(1100, remaining())),

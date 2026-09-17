@@ -14,6 +14,7 @@ export const revalidate = 3600;
 /**
  * Bump when OG composition / fetch budget changes so Next’s
  * `opengraph-image?<hash>` and crawler caches pick up a new URL.
+ * v=about2: vanity URLs (/DrShift/…) must resolve the owner so About paints.
  */
 export const alt = "Repository on gittr";
 export const size = OG_SIZE;
