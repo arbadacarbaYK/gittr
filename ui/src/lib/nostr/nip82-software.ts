@@ -4,7 +4,12 @@
  */
 import { nip19 } from "nostr-tools";
 
+import { GITTR_OWNER_NPUB, GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
 import { compareSemver } from "../repo/gittr-android-shell";
+
+/** Keep in sync with `GITTR_ANDROID_APP_ID` — do not import that module (cycle). */
+const OFFICIAL_GITTR_APP_ID = "space.gittr.app";
+const OFFICIAL_GITTR_REPO_SLUG = "gittr";
 
 export const KIND_SOFTWARE_APPLICATION = 32267;
 export const KIND_SOFTWARE_RELEASE = 30063;
@@ -142,6 +147,99 @@ export function gittrRepoPathFromSoftwareEvent(
   return undefined;
 }
 
+/** Reverse of `gittrRepoPathFromNip34A` so slim catalog events can keep Repo. */
+export function nip34AddressFromGittrRepoPath(path: string): string | null {
+  const m = String(path || "")
+    .trim()
+    .match(/^\/(npub1[a-z0-9]+|[0-9a-f]{64})\/([^/]+)$/i);
+  if (!m?.[1] || !m[2]) return null;
+  const repo = m[2].trim();
+  if (!repo || /[\s/?#]/.test(repo)) return null;
+  let hex = m[1];
+  if (/^npub1/i.test(hex)) {
+    try {
+      const decoded = nip19.decode(hex);
+      if (decoded.type !== "npub") return null;
+      hex = typeof decoded.data === "string" ? decoded.data : "";
+    } catch {
+      return null;
+    }
+  }
+  hex = hex.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) return null;
+  return `30617:${hex}:${repo}`;
+}
+
+/** Operator `space.gittr.app` always points at the gittr Code tab. */
+export function officialGittrAndroidRepoPath(
+  pubkey: string,
+  appId: string
+): string | undefined {
+  if ((pubkey || "").trim().toLowerCase() !== GITTR_OWNER_PUBKEY_HEX) {
+    return undefined;
+  }
+  if ((appId || "").trim().toLowerCase() !== OFFICIAL_GITTR_APP_ID) {
+    return undefined;
+  }
+  return `/${GITTR_OWNER_NPUB}/${OFFICIAL_GITTR_REPO_SLUG}`;
+}
+
+function gittrRepoPathForParsedApp(
+  event: NostrEventLike,
+  appId: string,
+  repository?: string
+): string | undefined {
+  return (
+    gittrRepoPathFromSoftwareEvent(event, repository) ||
+    officialGittrAndroidRepoPath(event.pubkey, appId)
+  );
+}
+
+/** NIP-34 `a` tags to keep on a slim catalog event (pointer + optional relay). */
+export function softwareAppNip34CatalogTags(
+  app: ParsedSoftwareApp
+): string[][] {
+  const seen = new Set<string>();
+  const out: string[][] = [];
+  const push = (tag: string[]) => {
+    const addr = (tag[1] || "").trim();
+    if (!addr) return;
+    if (!gittrRepoPathFromNip34A(addr)) return;
+    const key = addr.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(tag[2] ? [tag[0]!, addr, tag[2]] : [tag[0]!, addr]);
+  };
+  for (const t of app.raw?.tags || []) {
+    if (t[0] === "a") push(t);
+  }
+  if (out.length === 0 && app.gittrRepoPath) {
+    const addr = nip34AddressFromGittrRepoPath(app.gittrRepoPath);
+    if (addr) push(["a", addr]);
+  }
+  return out;
+}
+
+function withPreservedGittrRepoPath(
+  incoming: ParsedSoftwareApp,
+  prev?: ParsedSoftwareApp
+): ParsedSoftwareApp {
+  if (incoming.gittrRepoPath || !prev?.gittrRepoPath) return incoming;
+  const tags = [...(incoming.raw?.tags || [])];
+  const hasA = tags.some(
+    (t) => t[0] === "a" && !!gittrRepoPathFromNip34A(t[1] || "")
+  );
+  if (!hasA) {
+    const addr = nip34AddressFromGittrRepoPath(prev.gittrRepoPath);
+    if (addr) tags.push(["a", addr]);
+  }
+  return {
+    ...incoming,
+    gittrRepoPath: prev.gittrRepoPath,
+    raw: incoming.raw ? { ...incoming.raw, tags } : incoming.raw,
+  };
+}
+
 export interface ParsedSoftwareApp {
   pubkey: string;
   appId: string;
@@ -162,7 +260,8 @@ export interface ParsedSoftwareApp {
   attributedPubkeys: string[];
   /**
    * gittr Code-tab path (`/{npub}/{repo}`) when the event points at a NIP-34
-   * repo (`a` tag) or a gittr.space repository URL. Absent for most Zapstore apps.
+   * repo (`a` tag), a gittr.space repository URL, or the official
+   * `space.gittr.app` listing. Absent for most Zapstore apps.
    */
   gittrRepoPath?: string;
   content: string;
@@ -200,7 +299,7 @@ export function parseSoftwareApp(
       .filter(Boolean),
     license: readTag(event, "license"),
     attributedPubkeys,
-    gittrRepoPath: gittrRepoPathFromSoftwareEvent(event, repository),
+    gittrRepoPath: gittrRepoPathForParsedApp(event, appId, repository),
     content: typeof event.content === "string" ? event.content : "",
     createdAt: event.created_at,
     raw: event,
@@ -436,7 +535,7 @@ export function mergeSoftwareApps(
     const key = appDedupKey(app.pubkey, app.appId);
     const prev = map.get(key);
     if (!prev || (app.createdAt || 0) > (prev.createdAt || 0)) {
-      map.set(key, app);
+      map.set(key, withPreservedGittrRepoPath(app, prev));
     }
   }
   return sortSoftwareAppsByCreatedAt(Array.from(map.values()));
@@ -561,6 +660,7 @@ export function softwareAppCatalogTags(app: ParsedSoftwareApp): string[][] {
   for (const t of app.topics) tags.push(["t", t]);
   for (const f of app.platformHints) tags.push(["f", f]);
   for (const p of app.attributedPubkeys) tags.push(["p", p]);
+  for (const a of softwareAppNip34CatalogTags(app)) tags.push(a);
   return tags;
 }
 

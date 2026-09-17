@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { GITTR_OWNER_NPUB, GITTR_OWNER_PUBKEY_HEX } from "../gittr-repo-links";
+
 import {
   KIND_SOFTWARE_APPLICATION,
   KIND_SOFTWARE_ASSET,
@@ -11,7 +13,9 @@ import {
   gittrRepoPathFromNip34A,
   gittrRepoPathFromRepositoryUrl,
   mergeSoftwareApps,
+  nip34AddressFromGittrRepoPath,
   normalizeSoftwareIconUrl,
+  officialGittrAndroidRepoPath,
   omitDeletedSoftwareApps,
   parseSoftwareApp,
   parseSoftwareAsset,
@@ -144,6 +148,41 @@ describe("gittrRepoPath from NIP-82 apps", () => {
   it("ignores hostile or empty a-tags", () => {
     expect(gittrRepoPathFromNip34A("30617:nothex:repo")).toBe(null);
     expect(gittrRepoPathFromNip34A(`30617:${hex}:a/b`)).toBe(null);
+  });
+
+  it("round-trips /{npub}/{repo} back to a 30617 a-tag", () => {
+    const path = gittrRepoPathFromNip34A(`30617:${hex}:cargo-limit`);
+    expect(path).toBeTruthy();
+    expect(nip34AddressFromGittrRepoPath(path!)).toBe(
+      `30617:${hex}:cargo-limit`
+    );
+    expect(nip34AddressFromGittrRepoPath(`/${hex}/cargo-limit`)).toBe(
+      `30617:${hex}:cargo-limit`
+    );
+    expect(nip34AddressFromGittrRepoPath("/npub1x/repo")).toBe(null);
+  });
+
+  it("always links official space.gittr.app to the gittr Code tab", () => {
+    const expected = `/${GITTR_OWNER_NPUB}/gittr`;
+    expect(
+      officialGittrAndroidRepoPath(GITTR_OWNER_PUBKEY_HEX, "space.gittr.app")
+    ).toBe(expected);
+    expect(
+      officialGittrAndroidRepoPath(hex, "space.gittr.app")
+    ).toBeUndefined();
+    const parsed = parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey: GITTR_OWNER_PUBKEY_HEX,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 1,
+      content: "",
+      tags: [
+        ["d", "space.gittr.app"],
+        ["name", "gittr"],
+        ["repository", "https://github.com/arbadacarbaYK/gittr"],
+      ],
+    });
+    expect(parsed?.gittrRepoPath).toBe(expected);
   });
 });
 
@@ -331,6 +370,39 @@ describe("mergeSoftwareApps", () => {
     ];
     expect(mergeSoftwareApps(previous, incoming)).toHaveLength(2);
   });
+
+  it("keeps a gittr Repo path when a newer listing drops the a-tag", () => {
+    const withPath = parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey: pkA,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 10,
+      content: "",
+      tags: [
+        ["d", "space.gittr.cargo"],
+        ["name", "cargo"],
+        ["a", `30617:${pkA}:cargo-limit`],
+      ],
+    })!;
+    const withoutPath = parseSoftwareApp({
+      id: "2".repeat(64),
+      pubkey: pkA,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 20,
+      content: "",
+      tags: [
+        ["d", "space.gittr.cargo"],
+        ["name", "cargo"],
+        ["repository", "https://github.com/org/cargo-limit"],
+      ],
+    })!;
+    expect(withPath.gittrRepoPath).toBeTruthy();
+    expect(withoutPath.gittrRepoPath).toBeUndefined();
+    const merged = mergeSoftwareApps([withPath], [withoutPath]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.createdAt).toBe(20);
+    expect(merged[0]?.gittrRepoPath).toBe(withPath.gittrRepoPath);
+  });
 });
 
 describe("omitDeletedSoftwareApps", () => {
@@ -401,5 +473,48 @@ describe("slimSoftwareAppForCatalog", () => {
     const again = parseSoftwareApp(slim.raw);
     expect(again?.appId).toBe("space.gittr.buhogo");
     expect(again?.name).toBe("buho-go");
+  });
+
+  it("keeps the NIP-34 a-tag so Repo survives catalog reparse", () => {
+    const hex = "aa".repeat(32);
+    const parsed = parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey: hex,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 9,
+      content: "long description ".repeat(40),
+      tags: [
+        ["d", "space.gittr.cargo"],
+        ["name", "cargo-limit"],
+        ["a", `30617:${hex}:cargo-limit`, "wss://relay.zapstore.dev"],
+        ["repository", "https://github.com/org/cargo-limit"],
+      ],
+    })!;
+    expect(parsed.gittrRepoPath).toBeTruthy();
+    const slim = slimSoftwareAppForCatalog(parsed);
+    const aTag = slim.raw.tags.find((t) => t[0] === "a");
+    expect(aTag?.[1]).toBe(`30617:${hex}:cargo-limit`);
+    const again = parseSoftwareApp(slim.raw);
+    expect(again?.gittrRepoPath).toBe(parsed.gittrRepoPath);
+  });
+
+  it("rebuilds an a-tag from gittrRepoPath when raw already lost it", () => {
+    const hex = "aa".repeat(32);
+    const path = gittrRepoPathFromNip34A(`30617:${hex}:cargo-limit`)!;
+    const parsed = parseSoftwareApp({
+      id: "1".repeat(64),
+      pubkey: hex,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 9,
+      content: "",
+      tags: [
+        ["d", "space.gittr.cargo"],
+        ["name", "cargo-limit"],
+      ],
+    })!;
+    const restored = { ...parsed, gittrRepoPath: path };
+    const slim = slimSoftwareAppForCatalog(restored);
+    expect(slim.raw.tags.some((t) => t[0] === "a")).toBe(true);
+    expect(parseSoftwareApp(slim.raw)?.gittrRepoPath).toBe(path);
   });
 });
