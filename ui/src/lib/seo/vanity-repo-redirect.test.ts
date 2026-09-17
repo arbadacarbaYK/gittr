@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalNpubRepoPath,
   isOgImageRepoSuffix,
+  isSocialCardCrawler,
+  ogImageNameFromPath,
   profileNamesMatchEntity,
   repoPathAfterEntityRepo,
+  vanityOgImageRedirectTarget,
 } from "./vanity-repo-redirect";
 
 const PK = "f6150173b5d6f079b43540d84a8a95d50cf01a48c9d6037984e3d9600d5522af";
@@ -38,11 +41,33 @@ describe("canonicalNpubRepoPath", () => {
   });
 });
 
-describe("isOgImageRepoSuffix", () => {
-  it("skips social-card image routes so composition still runs at the vanity URL", () => {
-    expect(isOgImageRepoSuffix("/opengraph-image")).toBe(true);
-    expect(isOgImageRepoSuffix("/twitter-image")).toBe(true);
-    expect(isOgImageRepoSuffix("/issues")).toBe(false);
+describe("ogImageNameFromPath", () => {
+  it("sends vanity social-card images to the npub image URL", () => {
+    expect(ogImageNameFromPath("/opengraph-image")).toBe("opengraph-image");
+    expect(ogImageNameFromPath("/twitter-image")).toBe("twitter-image");
+    expect(ogImageNameFromPath("/issues")).toBeNull();
+  });
+});
+
+describe("vanityOgImageRedirectTarget", () => {
+  it("rewrites vanity twitter/opengraph image paths onto the npub", () => {
+    expect(
+      vanityOgImageRedirectTarget("/DrShift/buho-go/twitter-image", PK)
+    ).toBe(`/${NPUB}/buho-go/twitter-image`);
+    expect(
+      vanityOgImageRedirectTarget("/DrShift/buho-go/opengraph-image", PK)
+    ).toBe(`/${NPUB}/buho-go/opengraph-image`);
+    expect(
+      vanityOgImageRedirectTarget(`/${NPUB}/buho-go/twitter-image`, PK)
+    ).toBeNull();
+  });
+});
+
+describe("isSocialCardCrawler", () => {
+  it("keeps X/Telegram on the HTML page so About meta is not lost on 307", () => {
+    expect(isSocialCardCrawler("Twitterbot/1.0")).toBe(true);
+    expect(isSocialCardCrawler("TelegramBot (like TwitterBot)")).toBe(true);
+    expect(isSocialCardCrawler("Mozilla/5.0 Chrome/120")).toBe(false);
   });
 });
 

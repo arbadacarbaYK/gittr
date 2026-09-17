@@ -1,6 +1,9 @@
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
-import { resolveOgOwnerPubkey } from "@/lib/seo/og-owner-pubkey";
+import {
+  mergeOgDescriptions,
+  resolveOgOwnerPubkey,
+} from "@/lib/seo/og-owner-pubkey";
 
 export type RepoAnnouncementMeta = {
   description: string | null;
@@ -18,14 +21,18 @@ const EMPTY: RepoAnnouncementMeta = {
 export async function fetchRepoAnnouncementMeta(
   entity: string,
   repoName: string,
-  timeoutMs = 1500
+  timeoutMs = 1500,
+  ownerPubkeyHex?: string | null
 ): Promise<RepoAnnouncementMeta> {
   try {
-    const ownerPubkey = await resolveOgOwnerPubkey(
-      entity,
-      repoName,
-      Math.min(800, timeoutMs)
-    );
+    const ownerPubkey =
+      ownerPubkeyHex && /^[0-9a-f]{64}$/i.test(ownerPubkeyHex)
+        ? ownerPubkeyHex.toLowerCase()
+        : await resolveOgOwnerPubkey(
+            entity,
+            repoName,
+            Math.min(800, timeoutMs)
+          );
 
     if (!ownerPubkey) return EMPTY;
 
@@ -48,17 +55,20 @@ export async function fetchRepoAnnouncementMeta(
 
         return new Promise<RepoAnnouncementMeta>((resolve) => {
           let resolved = false;
-          const timeout = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              try {
-                pool?.close();
-              } catch {
-                /* ignore */
-              }
-              resolve(EMPTY);
+          let best: RepoAnnouncementMeta = EMPTY;
+          let newestAt = -1;
+          const finish = (value: RepoAnnouncementMeta) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            try {
+              pool?.close();
+            } catch {
+              /* ignore */
             }
-          }, timeoutMs);
+            resolve(value);
+          };
+          const timeout = setTimeout(() => finish(best), timeoutMs);
 
           try {
             pool.subscribe(
@@ -67,62 +77,60 @@ export async function fetchRepoAnnouncementMeta(
                   kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
                   authors: [ownerPubkey],
                   "#d": [repoName],
-                  limit: 1,
+                  limit: 5,
                 },
               ],
               DEFAULT_RELAYS,
-              (event: { content?: string; tags?: string[][] }) => {
+              (event: {
+                content?: string;
+                tags?: string[][];
+                created_at?: number;
+              }) => {
                 if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                try {
-                  pool?.close();
-                } catch {
-                  /* ignore */
-                }
-
                 try {
                   const content = JSON.parse(event.content || "{}");
-                  const description =
-                    (typeof content.description === "string"
+                  const fromJson =
+                    typeof content.description === "string"
                       ? content.description
-                      : null) || null;
+                      : null;
                   const descTag = event.tags?.find(
                     (t) => t[0] === "description"
                   );
-                  const tagDescription =
+                  const fromTag =
                     typeof descTag?.[1] === "string" ? descTag[1] : null;
-
-                  resolve({
-                    description: description || tagDescription,
-                    nostrPublicRead: isPublicReadFromEvent(
-                      event as import("nostr-tools").Event
-                    ),
-                  });
+                  const description = mergeOgDescriptions(
+                    fromJson || fromTag,
+                    best.description,
+                    repoName
+                  );
+                  const createdAt =
+                    typeof event.created_at === "number" ? event.created_at : 0;
+                  const publicRead = isPublicReadFromEvent(
+                    event as import("nostr-tools").Event
+                  );
+                  if (createdAt >= newestAt) {
+                    newestAt = createdAt;
+                    best = {
+                      description,
+                      nostrPublicRead: publicRead,
+                    };
+                  } else {
+                    best = {
+                      ...best,
+                      description,
+                    };
+                  }
                 } catch {
-                  resolve(EMPTY);
+                  /* keep best */
                 }
               },
               undefined,
               () => {
-                if (!resolved) {
-                  resolved = true;
-                  clearTimeout(timeout);
-                  try {
-                    pool?.close();
-                  } catch {
-                    /* ignore */
-                  }
-                  resolve(EMPTY);
-                }
+                if (best.description) finish(best);
               }
             );
           } catch {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              resolve(EMPTY);
-            }
+            finish(best);
           }
         });
       } catch {

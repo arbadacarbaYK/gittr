@@ -47,6 +47,45 @@ export function isOgImageRepoSuffix(suffixOrPath: string): boolean {
   );
 }
 
+export function ogImageNameFromPath(
+  pathname: string
+): "opengraph-image" | "twitter-image" | null {
+  if (/twitter-image/.test(pathname || "")) return "twitter-image";
+  if (/opengraph-image/.test(pathname || "")) return "opengraph-image";
+  return null;
+}
+
+/**
+ * Layout never wraps `opengraph-image` / `twitter-image`, so those routes
+ * redirect themselves. Returns null when the entity is already npub/hex.
+ */
+export function vanityOgImageRedirectTarget(
+  pathname: string,
+  ownerPubkeyHex: string
+): string | null {
+  const imageName = ogImageNameFromPath(pathname);
+  if (!imageName || !ownerPubkeyHex) return null;
+  const parts = (pathname || "").split("/").filter(Boolean);
+  if (parts.length < 3) return null;
+  let entity = parts[0]!;
+  try {
+    entity = decodeURIComponent(entity);
+  } catch {
+    /* keep */
+  }
+  if (decodeOgOwnerPubkey(entity)) return null;
+  return `/${nip19.npubEncode(ownerPubkeyHex)}/${parts[1]}/${imageName}`;
+}
+
+/** X/Telegram/Slack/etc. need the HTML meta, not a 307 with an empty body. */
+export function isSocialCardCrawler(
+  userAgent: string | null | undefined
+): boolean {
+  return /Twitterbot|facebookexternalhit|Facebot|TelegramBot|Slackbot|LinkedInBot|Discordbot|WhatsApp|Iframely|Pinterest|vkShare|Applebot|SkypeUriPreview/i.test(
+    userAgent || ""
+  );
+}
+
 export function canonicalNpubRepoPath(
   pubkeyHex: string,
   repo: string,
@@ -160,6 +199,27 @@ export async function maybeRedirectVanityRepo(
   const pathname = h.get("x-gittr-pathname") || "";
   const search = h.get("x-gittr-search") || "";
   const suffix = repoPathAfterEntityRepo(pathname, entity, repo);
-  if (isOgImageRepoSuffix(suffix) || isOgImageRepoSuffix(pathname)) return;
+  const imageName =
+    ogImageNameFromPath(pathname) || ogImageNameFromPath(suffix);
+  if (imageName) {
+    redirect(canonicalNpubRepoPath(pk, repo, `/${imageName}`, search));
+  }
+  if (isSocialCardCrawler(h.get("user-agent"))) return;
   redirect(canonicalNpubRepoPath(pk, repo, suffix, search));
+}
+
+/** OG image routes skip the repo layout — 307 here so X hits the npub PNG. */
+export async function maybeRedirectVanityOgImage(
+  entity: string,
+  repo: string
+): Promise<void> {
+  const pk = await resolveVanityRepoPubkey(entity, repo);
+  if (!pk) return;
+  const { headers } = await import("next/headers");
+  const { redirect } = await import("next/navigation");
+  const h = await headers();
+  const pathname = h.get("x-gittr-pathname") || "";
+  const search = h.get("x-gittr-search") || "";
+  const imageName = ogImageNameFromPath(pathname) || "opengraph-image";
+  redirect(canonicalNpubRepoPath(pk, repo, `/${imageName}`, search));
 }

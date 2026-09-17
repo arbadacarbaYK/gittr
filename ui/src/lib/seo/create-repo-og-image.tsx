@@ -75,6 +75,40 @@ function StatPill({ children }: { children: ReactNode }) {
   );
 }
 
+/** Satori will not wrap a single text node; split words so About stays left of the logo. */
+function OgWrappedDescription({
+  text,
+  width,
+}: {
+  text: string;
+  width: number;
+}) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        marginTop: 22,
+        fontSize: 26,
+        lineHeight: 1.35,
+        color: "rgb(198, 206, 218)",
+        width,
+        maxWidth: width,
+        maxHeight: 150,
+        overflow: "hidden",
+      }}
+    >
+      {words.map((word, i) => (
+        <div key={i} style={{ display: "flex", marginRight: 8 }}>
+          {word}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Logo-accent repo card: name dominates; optional logo badge; dual stars. */
 export async function createRepoOgImage(
   data: RepoOgData
@@ -152,19 +186,10 @@ export async function createRepoOgImage(
               {data.ownerLabel}
             </div>
             {data.description ? (
-              <div
-                style={{
-                  display: "flex",
-                  marginTop: 22,
-                  fontSize: 26,
-                  lineHeight: 1.35,
-                  color: "rgb(198, 206, 218)",
-                  width: 720,
-                  maxWidth: 720,
-                }}
-              >
-                {data.description}
-              </div>
+              <OgWrappedDescription
+                text={data.description}
+                width={data.logoDataUrl ? 640 : 960}
+              />
             ) : null}
 
             {(data.sourceStars != null ||

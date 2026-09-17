@@ -104,7 +104,7 @@ export async function generateMetadata({
     const url = `${baseUrl}/${pathEntity}/${pathRepo}`;
     // Composed dark card. ?v= busts X/Telegram when only a dependency file changed
     // (Next’s content-hash on this route may not move).
-    const cardUrl = `${url}/opengraph-image?v=about2`;
+    const cardUrl = `${url}/opengraph-image?v=about4`;
 
     let ownerDisplayName = ownerName;
     if (ownerPubkey) {
@@ -141,7 +141,12 @@ export async function generateMetadata({
     const title = `${ownerDisplayName}/${decodedRepo}`;
 
     const repoMeta = await Promise.race([
-      fetchRepoAnnouncementMeta(resolvedParams.entity, decodedRepo, 1500),
+      fetchRepoAnnouncementMeta(
+        resolvedParams.entity,
+        decodedRepo,
+        1800,
+        ownerPubkey
+      ),
       new Promise<{ description: string | null; nostrPublicRead: boolean }>(
         (resolve) =>
           setTimeout(
@@ -227,7 +232,7 @@ export async function generateMetadata({
     const url = `${baseUrl}/${encodeURIComponent(
       resolvedParams.entity
     )}/${encodeURIComponent(decodedRepo)}`;
-    const cardUrl = `${url}/opengraph-image?v=about2`;
+    const cardUrl = `${url}/opengraph-image?v=about4`;
 
     return {
       title,

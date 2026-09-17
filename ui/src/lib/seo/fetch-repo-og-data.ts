@@ -579,14 +579,18 @@ export async function fetchRepoOgData(
   }
 
   const [announcement, owner] = await Promise.all([
-    fetchAnnouncementBits(ownerPubkey, repoName, Math.min(1100, remaining())),
+    fetchAnnouncementBits(
+      ownerPubkey,
+      repoName,
+      Math.max(1000, Math.min(1400, remaining()))
+    ),
     fetchOwnerProfile(ownerPubkey, Math.min(900, remaining())),
   ]);
 
   if (remaining() < 200) {
     let description = announcement.description;
-    if (description && description.length > 140) {
-      description = `${description.slice(0, 137)}…`;
+    if (description && description.length > 200) {
+      description = `${description.slice(0, 197)}…`;
     }
     return {
       repoName,
@@ -629,8 +633,8 @@ export async function fetchRepoOgData(
   ]);
 
   let description = announcement.description || githubMeta.description;
-  if (description && description.length > 140) {
-    description = `${description.slice(0, 137)}…`;
+  if (description && description.length > 200) {
+    description = `${description.slice(0, 197)}…`;
   }
 
   return {
