@@ -1,3 +1,4 @@
+import { GITTR_DOC_README_PATH } from "@/lib/gittr-repo-links";
 import { nostrGitArticleJsonLd, nostrGitFaqJsonLd } from "@/lib/seo/json-ld";
 import { JsonLd } from "@/lib/seo/json-ld-script";
 import {
@@ -43,7 +44,15 @@ export default function NostrGitPage() {
             gittr
           </Link>{" "}
           is web hosting for that: a forge UI, SSH/HTTPS git, Pages, a Nostr
-          apps catalog, and Lightning bounties.
+          apps catalog, and Lightning bounties. The{" "}
+          <Link
+            href={GITTR_DOC_README_PATH}
+            className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+          >
+            gittr README
+          </Link>{" "}
+          is the full map of that stack — platform pieces, clone hosts, and how
+          the protocol fits together.
         </p>
       </header>
 
@@ -141,7 +150,14 @@ export default function NostrGitPage() {
       </section>
 
       <p className="text-sm">
-        Longer cookbook:{" "}
+        Full platform map:{" "}
+        <Link
+          href={GITTR_DOC_README_PATH}
+          className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+        >
+          gittr README
+        </Link>
+        . Longer cookbook:{" "}
         <Link
           href="/help"
           className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"

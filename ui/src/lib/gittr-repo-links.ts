@@ -24,6 +24,17 @@ export function gittrRepoFile(
   )}&branch=${branch}`;
 }
 
+/** Same file as {@link gittrRepoFile}, origin-relative so in-app nav stays on this host. */
+export function gittrRepoFilePath(
+  repo: string,
+  file: string,
+  branch = "main"
+): string {
+  return `/${GITTR_OWNER_NPUB}/${repo}?file=${encodeURIComponent(
+    file
+  )}&branch=${branch}`;
+}
+
 export const GITTR_REPO_GITTR = gittrRepoBrowse("gittr");
 export const GITTR_REPO_GITNOSTR = gittrRepoBrowse("gitnostr");
 export const GITTR_REPO_HELPER_TOOLS = gittrRepoBrowse("gittr-helper-tools");
@@ -47,6 +58,8 @@ export const ZAPSTORE_ON_GITTR =
 
 export const ZAPSTORE_PUBLISH_DOCS = "https://zapstore.dev/docs/publish";
 
+export const GITTR_DOC_README = gittrRepoFile("gittr", "README.md");
+export const GITTR_DOC_README_PATH = gittrRepoFilePath("gittr", "README.md");
 export const GITTR_DOC_GITNOSTR_ARCHITECTURE = gittrRepoFile(
   "gitnostr",
   "docs/ARCHITECTURE.md"

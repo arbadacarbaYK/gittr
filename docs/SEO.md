@@ -100,7 +100,7 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 
 ## SEO strategy (practical)
 
-- **Index what matters:** Home, `/nostr-git` (what Nostr git is), explore, help, `/apps` and per-app pages, public repo pages, Pages directory — via sitemap + internal links (footer includes Nostr git / Repos / Apps). The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
+- **Index what matters:** Home, `/nostr-git` (what Nostr git is — links the gittr README for the full platform map), explore, help, `/apps` and per-app pages, public repo pages, Pages directory — via sitemap + internal links (footer includes Nostr git / Repos / Apps). The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
 - **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`, `/apps/mine`, `/repositories`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
 - **Keywords / on-page copy:** Prefer “nostr git”, “git on nostr”, “Nostr git hosting”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository”. Titles, H1s, and `/nostr-git` matter more than the keywords meta tag. Still avoid “github alternative” as the product identity.
 - **GitHub repo README:** Lead with “Nostr git hosting” in the first paragraph so snippets for the gittr and gittr-mcp repositories match the live site.
