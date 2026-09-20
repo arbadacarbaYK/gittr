@@ -16,4 +16,12 @@ describe("Your repositories card title", () => {
     expect(page).toContain("break-all sm:truncate");
     expect(page).toContain("w-full sm:w-auto sm:flex-1");
   });
+
+  it("uses a real href so right-click can open a repo in a new tab", () => {
+    expect(page).toContain("href={repoHref}");
+    expect(page).toContain("isModifiedPointerClick(e)");
+    expect(page).not.toMatch(
+      /<div\s+className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"/
+    );
+  });
 });

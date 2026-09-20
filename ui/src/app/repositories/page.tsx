@@ -61,6 +61,7 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
+import { isModifiedPointerClick } from "@/lib/utils/app-navigate";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -3821,18 +3822,16 @@ export default function RepositoriesPage() {
                       }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                        <div
-                          className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                        <a
+                          href={repoHref}
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-inherit no-underline"
                           onClick={(e: MouseEvent) => {
-                            // CRITICAL: Use window.location for immediate navigation (bypasses React completely)
-                            // This ensures navigation happens instantly, even during heavy re-renders
+                            // Keep Ctrl/Cmd/middle-click and “Open in new tab” on the real href.
+                            if (isModifiedPointerClick(e)) return;
+                            // Left-click: window.location bypasses React during heavy re-renders
                             e.preventDefault();
                             e.stopPropagation();
-
-                            // Set clicked state immediately for visual feedback
                             setClickedRepo(repoKey);
-
-                            // Navigate immediately using window.location (completely bypasses React)
                             window.location.href = repoHref;
                           }}
                         >
@@ -3933,7 +3932,7 @@ export default function RepositoriesPage() {
                               ) : null;
                             })()}
                           </div>
-                        </div>
+                        </a>
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 flex-shrink-0 w-full sm:w-auto">
                           {/* Push button for local repos - only visible to owner */}
                           {isLocal &&
