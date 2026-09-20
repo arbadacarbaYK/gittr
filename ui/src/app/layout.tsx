@@ -1,6 +1,9 @@
 // server component wrapper that exports metadata
 // and imports the client layout component
+import { websiteJsonLd } from "@/lib/seo/json-ld";
+import { JsonLd } from "@/lib/seo/json-ld-script";
 import { buildRootSiteMetadata } from "@/lib/seo/site-metadata";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 import { type Viewport } from "next";
 
@@ -26,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning data-theme="midnight">
       <head>
+        <JsonLd data={websiteJsonLd(getPublicSiteUrl())} />
         <meta name="gittr-build" content={DEV_CACHE_BUST} />
         {/* Keep in sync with ui/src/lib/ui/status-bar-inset.ts — must run before first paint. */}
         <script

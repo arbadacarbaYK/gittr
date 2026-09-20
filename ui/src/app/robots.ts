@@ -14,8 +14,24 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         // Explicit /new so card validators that cached the old Disallow: /new clear faster.
-        allow: ["/", "/new", "/new/"],
-        disallow: ["/api/", "/settings/", "/import", "/login", "/signup"],
+        allow: [
+          "/",
+          "/new",
+          "/new/",
+          "/apps",
+          "/help",
+          "/nostr-git",
+          "/llms.txt",
+        ],
+        disallow: [
+          "/api/",
+          "/settings/",
+          "/import",
+          "/login",
+          "/signup",
+          "/apps/mine",
+          "/repositories",
+        ],
       },
       // Meta AI training/index crawlers walked invented nips/nips/nips URL loops
       // (28 Aug 2026) and wedged Next. Do NOT list facebookexternalhit / FacebookBot

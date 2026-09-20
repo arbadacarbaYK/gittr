@@ -78,7 +78,7 @@ describe("mergeAnnouncementLinksWithLocal", () => {
       ]
     );
     const appRows = merged.filter((l) =>
-      String(l.url || "").includes("/apps?q=")
+      String(l.url || "").includes("/apps/")
     );
     expect(appRows).toHaveLength(1);
     expect(appRows[0]?.label).toBe("App (space.gittr.buhogo)");
@@ -174,9 +174,7 @@ describe("enrichRepoLinks", () => {
     });
     const appRows = links.filter((l) => /^App \(/i.test(String(l.label || "")));
     expect(appRows).toHaveLength(1);
-    expect(appRows[0]?.url).toBe(
-      "https://gittr.space/apps?q=space.gittr.buhogo"
-    );
+    expect(appRows[0]?.url).toBe("https://gittr.space/apps/space.gittr.buhogo");
   });
 
   it("keeps an existing App link when announcedAppId is cleared", () => {
@@ -210,7 +208,7 @@ describe("enrichRepoLinks", () => {
       siteOrigin: "https://gittr.space",
     });
     const appRows = links.filter((l) =>
-      String(l.url || "").includes("/apps?q=space.gittr.buhogo")
+      String(l.url || "").includes("/apps/space.gittr.buhogo")
     );
     expect(appRows).toHaveLength(1);
     expect(appRows[0]?.label).toBe("buho-go");

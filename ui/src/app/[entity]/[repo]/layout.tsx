@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
 import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
+import { softwareSourceCodeJsonLd } from "@/lib/seo/json-ld";
+import { JsonLd } from "@/lib/seo/json-ld-script";
 import { decodeOgOwnerPubkey } from "@/lib/seo/og-owner-pubkey";
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
 import {
@@ -192,6 +194,7 @@ export async function generateMetadata({
         : { index: false, follow: false },
       keywords: [
         "nostr git",
+        "git on nostr",
         "NIP-34",
         "repository",
         "git hosting",
@@ -280,6 +283,11 @@ export default async function RepoLayout({
   }
   await maybeRedirectVanityRepo(entity, decodedRepo);
 
+  const baseUrl = getPublicSiteUrl();
+  const repoUrl = `${baseUrl}/${encodeURIComponent(
+    entity
+  )}/${encodeURIComponent(decodedRepo)}`;
+
   // useSearchParams() in RepoLayoutClient needs a Suspense boundary or soft
   // client navigations (tab clicks) can hang with no URL change.
   return (
@@ -290,6 +298,13 @@ export default async function RepoLayout({
         </div>
       }
     >
+      <JsonLd
+        data={softwareSourceCodeJsonLd({
+          name: `${entity}/${decodedRepo}`,
+          description: buildRepoFallbackDescription(entity, decodedRepo),
+          url: repoUrl,
+        })}
+      />
       <RepoLayoutClient>{children}</RepoLayoutClient>
     </Suspense>
   );

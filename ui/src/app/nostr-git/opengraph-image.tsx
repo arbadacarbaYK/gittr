@@ -2,7 +2,7 @@ import { OG_SIZE, createGittrOgImage } from "@/lib/seo/create-og-image";
 
 export const runtime = "nodejs";
 
-export const alt = "gittr - Nostr git hosting";
+export const alt = "Nostr git hosting on gittr";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 

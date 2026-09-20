@@ -16,6 +16,10 @@
  */
 import { stripNonDocumentationWebLinks } from "../nostr/parse-nip34-repo-links";
 import { GITTR_STRAY_APP_IDS } from "../repo/gittr-android-app";
+import {
+  parseSoftwareAppPathId,
+  softwareAppHref,
+} from "../seo/software-app-path";
 
 export type EnrichableRepoLink = {
   type:
@@ -167,17 +171,15 @@ export function autoAppLinkLabel(
   return `App (${appId})`;
 }
 
-/** Auto Code-tab row from a NIP-82 announce (name → `/apps?q=id`). */
+/** Auto Code-tab row from a NIP-82 announce (name → `/apps/{id}`). */
 export function parseAutoAppLinkId(
   link: EnrichableRepoLink | undefined | null
 ): string | null {
   if (!link?.url) return null;
   try {
     const u = new URL(link.url.trim());
-    if (/\/apps\/?$/i.test(u.pathname)) {
-      const q = u.searchParams.get("q");
-      if (q?.trim()) return q.trim();
-    }
+    const fromPath = parseSoftwareAppPathId(u.pathname, u.search);
+    if (fromPath) return fromPath;
   } catch {
     /* fall through to legacy App (id) labels */
   }
@@ -188,7 +190,7 @@ export function parseAutoAppLinkId(
 /**
  * Drop leftover App sidebar rows: the retired `GITTR` id always, plus any
  * other auto App link that is not the current announced package id.
- * Does not remove hand-typed Settings links that are not App (`/apps?q=`).
+ * Does not remove hand-typed Settings links that are not App (`/apps/{id}`).
  */
 export function removeDroppedAutoAppLinks(
   links: EnrichableRepoLink[] | undefined | null,
@@ -390,7 +392,7 @@ export function enrichRepoLinks(
     const origin = siteOriginFallback(input.siteOrigin);
     additions.push({
       type: "other",
-      url: `${origin}/apps?q=${encodeURIComponent(appId)}`,
+      url: softwareAppHref(origin, appId),
       label: autoAppLinkLabel(appId, { name: input.announcedAppName }),
     });
   }
@@ -442,7 +444,7 @@ export function collapseAutoAppLinks(
         : null;
     out.push({
       type: "other",
-      url: `${origin}/apps?q=${encodeURIComponent(id)}`,
+      url: softwareAppHref(origin, id),
       label: autoAppLinkLabel(id, {
         name: nameForId,
         existingLabels: labelsById.get(key),

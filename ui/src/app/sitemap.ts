@@ -7,6 +7,11 @@ import {
   snapshotPathMap,
 } from "@/lib/seo/nostr-seo-repos-snapshot";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
+import { sitemapHubEntries } from "@/lib/seo/sitemap-hubs";
+import {
+  SOFTWARE_APP_SITEMAP_BUDGET,
+  fetchSoftwareAppSitemapEntries,
+} from "@/lib/seo/software-catalog-sitemap";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 import { type MetadataRoute } from "next";
@@ -32,44 +37,11 @@ function mergePathMaps(
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getPublicSiteUrl();
 
-  const staticPages: MetadataRoute.Sitemap = [
-    {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/explore`,
-      lastModified: new Date(),
-      changeFrequency: "hourly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/help`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/legal`,
-      lastModified: new Date(),
-      changeFrequency: "yearly",
-      priority: 0.3,
-    },
-    {
-      url: `${baseUrl}/pages`,
-      lastModified: new Date(),
-      changeFrequency: "hourly",
-      priority: 0.55,
-    },
-    {
-      url: `${baseUrl}/new`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-  ];
+  const staticPages = sitemapHubEntries(baseUrl);
+  const appPages = await fetchSoftwareAppSitemapEntries(
+    baseUrl,
+    SOFTWARE_APP_SITEMAP_BUDGET
+  );
 
   // Prefer daily disk snapshot (built by standalone systemd job). Live relay
   // fan-out only when the snap is missing/stale — keeps crawler hits off the
@@ -101,7 +73,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const pathToModified = mergePathMaps(fromSnapshot, fromNostr, fromFileMap);
 
-  const repoLines = [...pathToModified.keys()].slice(0, MAX_SITEMAP_URLS);
+  const reserved =
+    staticPages.length + appPages.length + 400; /* leftover for Pages URLs */
+  const repoCap = Math.max(0, MAX_SITEMAP_URLS - reserved);
+  const repoLines = [...pathToModified.keys()].slice(0, repoCap);
   const repoPages: MetadataRoute.Sitemap = repoLines.map((line) => {
     const slash = line.indexOf("/");
     const entity = line.slice(0, slash);
@@ -123,6 +98,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const gittrPagesEntries = await fetchGittrPagesSitemapEntries(pagesBase);
   const used = new Set<string>([
     ...staticPages.map((e) => e.url),
+    ...appPages.map((e) => e.url),
     ...repoPages.map((e) => e.url),
   ]);
   const room = Math.max(0, MAX_SITEMAP_URLS - used.size);
@@ -139,5 +115,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  return [...staticPages, ...repoPages, ...gittrPagesSitemap];
+  return [...staticPages, ...appPages, ...repoPages, ...gittrPagesSitemap];
 }

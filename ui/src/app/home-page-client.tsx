@@ -1139,15 +1139,22 @@ export default function HomePage({
                     )}
                   </>
                 ) : (
-                  "Welcome to gittr"
+                  "Nostr git hosting"
                 )}
               </h1>
               <p
                 className="mt-1 text-sm text-[var(--color-text-secondary)] max-w-2xl"
                 suppressHydrationWarning
               >
-                Import or create repos, announce them on Nostr, and discover
-                code across the network.
+                Host git on Nostr — mirror repos, run issues and PRs as signed
+                events, publish Pages, discover apps, and fund Lightning
+                bounties.{" "}
+                <Link
+                  href="/nostr-git"
+                  className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                >
+                  What is Nostr git?
+                </Link>
               </p>
             </div>
           </div>

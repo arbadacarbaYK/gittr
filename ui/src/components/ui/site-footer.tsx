@@ -37,7 +37,7 @@ export function SiteFooter() {
       </div>
       <nav
         className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-gray-400"
-        aria-label="Legal"
+        aria-label="Site"
       >
         <Link
           href="/legal"
@@ -51,6 +51,24 @@ export function SiteFooter() {
         </span>
         <Link href="/help" className="hover:underline">
           Help
+        </Link>
+        <span className="text-gray-600" aria-hidden>
+          ·
+        </span>
+        <Link href="/nostr-git" className="hover:underline">
+          Nostr git
+        </Link>
+        <span className="text-gray-600" aria-hidden>
+          ·
+        </span>
+        <Link href="/explore" className="hover:underline">
+          Repos
+        </Link>
+        <span className="text-gray-600" aria-hidden>
+          ·
+        </span>
+        <Link href="/apps" className="hover:underline">
+          Apps
         </Link>
       </nav>
     </footer>

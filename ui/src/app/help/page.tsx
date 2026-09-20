@@ -195,10 +195,16 @@ export default function HelpPage() {
           Help & Documentation
         </h1>
         <p className="text-gray-400 max-w-3xl">
-          Git collaboration on Nostr: mirror code from any forge, run issues and
+          Nostr git hosting on gittr: mirror code from any forge, run issues and
           pull requests with signed events, publish Pages, discover apps, and
           use Lightning bounties. Import from GitHub, GitLab, or Codeberg when
-          you want a backup — not because gittr is a copy of another site.
+          you want a backup — not because gittr is a copy of another site.{" "}
+          <Link
+            href="/nostr-git"
+            className="text-purple-400 hover:text-purple-300 underline"
+          >
+            What is Nostr git?
+          </Link>
         </p>
         <p className="text-gray-400 max-w-3xl mt-3 text-sm">
           <strong className="text-gray-300">NIPs &amp; event kinds:</strong>{" "}

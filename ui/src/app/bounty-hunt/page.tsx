@@ -262,8 +262,8 @@ export default function BountyHuntPage() {
           Bounty Hunt
         </h1>
         <p className="text-gray-400">
-          Find and claim bounties on open issues. Earn sats for solving
-          problems!
+          Lightning bounties on Nostr git issues. Find open gittr bounties and
+          earn sats when a pull request is merged.
         </p>
       </div>
 

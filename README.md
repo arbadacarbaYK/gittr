@@ -1,8 +1,8 @@
-# [gittr.space](http://gittr.space)
+# [gittr.space](https://gittr.space)
 
-Git hosting and forge UI on [Nostr](https://github.com/nostr-protocol/nips): decentralized and discoverable Nostr gits, apps, and pages — NIP-34 repos on GRASP relays, issues/PRs as signed events, optional Lightning bounties, static **Pages**, and an **apps** directory.
+**gittr** is Nostr git hosting: a web forge for git on Nostr (NIP-34). Live at [gittr.space](https://gittr.space) — mirror repositories onto relays, run issues and pull requests as signed events, publish static **Pages**, browse a Nostr **apps** catalog, and fund work with Lightning bounties.
 
-Live: [gittr.space](https://gittr.space) · [Apps](https://gittr.space/apps) · [Pages](https://pages.gittr.space) · [Relay](https://relay.gittr.space) · [Legal](https://gittr.space/legal) · [Nostr schemata (NIPs)](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md)
+What is Nostr git? [gittr.space/nostr-git](https://gittr.space/nostr-git) · [Apps](https://gittr.space/apps) · [Pages](https://pages.gittr.space) · [Relay](https://relay.gittr.space) · [Legal](https://gittr.space/legal) · [Nostr schemata (NIPs)](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md)
 
 Docs: [gittr-docu](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-docu.pages.gittr.space/) (`index.html` in this repo) · cookbook [gittr-snips](https://3un05jr4dnwh6njreq6uhzgv67st83jxi5lnpsbf8y3dkdq1qkgittr-snips.pages.gittr.space/)
 
@@ -48,7 +48,7 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.
 - **Home Recent Activity** — Latest public Nostr for repos, apps, pages, and (when the snapshot has them) issues/PRs/commits. Same list signed in or out. Clicking a PR or commit opens that page from the network (not only this browser’s local cache).
 
-Sitemap/SEO: dynamic from relays — [docs/SEO.md](docs/SEO.md).
+Sitemap/SEO: [docs/SEO.md](docs/SEO.md) — public hubs, per-repo and per-app URLs, JSON-LD, and the production repo index.
 
 ## Nostr git ecosystem (how gittr fits)
 

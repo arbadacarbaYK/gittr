@@ -2,6 +2,9 @@ import {
   hasAnyLeaderboardData,
   loadPlatformLeaderboardSnapshot,
 } from "@/lib/platform-leaderboard-snapshot";
+import { softwareApplicationJsonLd } from "@/lib/seo/json-ld";
+import { JsonLd } from "@/lib/seo/json-ld-script";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 import HomePageClient from "./home-page-client";
 
@@ -25,5 +28,10 @@ export default async function Page() {
         }
       : null;
 
-  return <HomePageClient initialLeaderboard={initialLeaderboard} />;
+  return (
+    <>
+      <JsonLd data={softwareApplicationJsonLd(getPublicSiteUrl())} />
+      <HomePageClient initialLeaderboard={initialLeaderboard} />
+    </>
+  );
 }

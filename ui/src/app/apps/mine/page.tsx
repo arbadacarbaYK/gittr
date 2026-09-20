@@ -1,10 +1,10 @@
 import { Suspense } from "react";
 
-import { buildPageSiteMetadata } from "@/lib/seo/site-metadata";
+import { buildNoindexPageMetadata } from "@/lib/seo/site-metadata";
 
 import { YourAppsClient } from "./YourAppsClient";
 
-export const metadata = buildPageSiteMetadata({
+export const metadata = buildNoindexPageMetadata({
   path: "/apps/mine",
   title: "Your Apps",
   description:

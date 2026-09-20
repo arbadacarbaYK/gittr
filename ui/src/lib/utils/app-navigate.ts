@@ -54,6 +54,7 @@ const RESERVED_TOP_SEGMENTS = new Set([
   "import",
   "profile",
   "bounty-hunt",
+  "nostr-git",
   "organizations",
   "projects",
   "sponsors",
@@ -77,7 +78,7 @@ export function isExploreHref(href: string): boolean {
  */
 export function isHeavyDirectoryPath(pathname: string): boolean {
   const path = canonicalPath(pathname || "");
-  return path === "/apps" || path === "/pages";
+  return path === "/apps" || path.startsWith("/apps/") || path === "/pages";
 }
 
 /**

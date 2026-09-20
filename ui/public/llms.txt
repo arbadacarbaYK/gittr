@@ -1,0 +1,31 @@
+# gittr
+
+> Nostr git hosting on https://gittr.space — repositories, issues, pull requests, Pages, apps, and Lightning bounties.
+
+gittr is a web forge for git on Nostr (NIP-34 / GRASP). Repo names, issues, and PRs are signed events on relays. Git objects live on clone hosts such as git.gittr.space.
+
+## Product
+
+- Home: https://gittr.space
+- What is Nostr git: https://gittr.space/nostr-git
+- Explore public repos: https://gittr.space/explore
+- Nostr apps catalog: https://gittr.space/apps
+- Published Pages: https://gittr.space/pages
+- Create or import a repo: https://gittr.space/new
+- Help: https://gittr.space/help
+- Lightning bounties: https://gittr.space/bounty-hunt
+- Legal: https://gittr.space/legal
+
+## Related hosts
+
+- Git SSH/HTTPS: https://git.gittr.space
+- Pages: https://pages.gittr.space
+- Relay: wss://relay.gittr.space
+- Docs hub (Pages): see Help → gittr-docu
+
+## Protocol
+
+- NIP-34 git collaboration (kinds 30617 / 30618, issues, PRs)
+- GRASP clone hosts
+- NIP-82 software / Zapstore-style apps
+- gittr Pages / nsite for static sites

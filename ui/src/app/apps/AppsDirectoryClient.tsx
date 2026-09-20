@@ -41,6 +41,7 @@ import {
   type GittrAndroidLatestOk,
   resolveOfficialGittrAppsApk,
 } from "@/lib/repo/gittr-android-latest";
+import { parseSoftwareAppPathId } from "@/lib/seo/software-app-path";
 import {
   REPO_LIST_PAGE_SIZE,
   clampVisibleCount,
@@ -180,7 +181,15 @@ function cardLabelsForApp(
   return out;
 }
 
-export function AppsDirectoryClient() {
+export function AppsDirectoryClient({
+  initialQuery = "",
+  initialHeadingName,
+  initialHeadingSummary,
+}: {
+  initialQuery?: string;
+  initialHeadingName?: string;
+  initialHeadingSummary?: string;
+} = {}) {
   const { subscribe, defaultRelays, pubkey } = useNostrContext();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -693,16 +702,18 @@ export function AppsDirectoryClient() {
     [releasesByApp, releasesByAppId]
   );
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [topicsFilterOpen, setTopicsFilterOpen] = useState(false);
   const [topicChipQuery, setTopicChipQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
 
   useEffect(() => {
-    const fromUrl = searchParams?.get("q")?.trim();
+    const fromQuery = searchParams?.get("q")?.trim();
+    const fromPath = parseSoftwareAppPathId(pathname || "");
+    const fromUrl = fromQuery || fromPath;
     if (fromUrl) setQuery(fromUrl);
-  }, [searchParams]);
+  }, [searchParams, pathname]);
 
   const filteredApps = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -746,6 +757,30 @@ export function AppsDirectoryClient() {
     activeTag ? releasesByApp : null,
     activeTag ? releasesByAppId : null,
     activeTag ? assetsById : null,
+  ]);
+
+  const headingApp = useMemo(() => {
+    const id = (parseSoftwareAppPathId(pathname || "") || query)
+      .trim()
+      .toLowerCase();
+    if (!id) return null;
+    const fromCatalog = apps.find((a) => a.appId.toLowerCase() === id);
+    if (fromCatalog) return fromCatalog;
+    if (initialHeadingName) {
+      return {
+        name: initialHeadingName,
+        summary: initialHeadingSummary,
+        appId: initialQuery || id,
+      };
+    }
+    return null;
+  }, [
+    apps,
+    pathname,
+    query,
+    initialHeadingName,
+    initialHeadingSummary,
+    initialQuery,
   ]);
 
   useEffect(() => {
@@ -893,13 +928,24 @@ export function AppsDirectoryClient() {
               NIP-82 apps
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
-              Apps on Nostr
+              {headingApp?.name || "Apps on Nostr"}
             </h1>
             <p className="mt-3 text-base leading-relaxed text-gray-400">
-              Installable software published to Nostr, newest announce first. No
-              login or browser extension required — listings load from public
-              relays (including{" "}
-              <code className="text-gray-500">relay.zapstore.dev</code>).
+              {headingApp ? (
+                <>
+                  {headingApp.summary ||
+                    `${headingApp.name} on the gittr Nostr apps catalog.`}{" "}
+                  Package id{" "}
+                  <code className="text-gray-500">{headingApp.appId}</code>.
+                </>
+              ) : (
+                <>
+                  Installable software published to Nostr git (NIP-82), newest
+                  announce first. No login or browser extension required —
+                  listings load from public relays (including{" "}
+                  <code className="text-gray-500">relay.zapstore.dev</code>).
+                </>
+              )}
               {pubkey ? (
                 <>
                   {" "}

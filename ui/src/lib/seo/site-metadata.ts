@@ -3,53 +3,31 @@ import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 
-/** Default site title (also used in Open Graph / Twitter). */
-export const SITE_TITLE_DEFAULT =
-  "gittr — Nostr git, issues, PRs & Lightning bounties";
+import {
+  SITE_DESCRIPTION_DEFAULT,
+  SITE_KEYWORDS,
+  SITE_TITLE_DEFAULT,
+} from "./site-copy";
 
-/** ~155 chars — good for Google snippets and social cards. */
-export const SITE_DESCRIPTION_DEFAULT =
-  "Mirror git repos to Nostr relays, run issues and pull requests with signed events, publish gittr Pages, discover Nostr apps, and fund work with Lightning bounties.";
+export {
+  APPS_DESCRIPTION,
+  BOUNTY_HUNT_DESCRIPTION,
+  EXPLORE_DESCRIPTION,
+  HELP_DESCRIPTION,
+  ISSUES_DESCRIPTION,
+  LAB_DESCRIPTION,
+  NEW_DESCRIPTION,
+  NOSTR_GIT_DESCRIPTION,
+  PAGES_DESCRIPTION,
+  PULLS_DESCRIPTION,
+  SITE_DESCRIPTION_DEFAULT,
+  SITE_KEYWORDS,
+  SITE_TITLE_DEFAULT,
+  buildRepoFallbackDescription,
+  buildSoftwareAppDescription,
+} from "./site-copy";
 
-/** Hub routes: keep these distinct from the homepage card so Telegram/X previews match the link. */
-export const APPS_DESCRIPTION =
-  "Browse NIP-82 / Zapstore-style apps on Nostr — installers announced from gittr repos, not a git hosting page.";
-
-export const PAGES_DESCRIPTION =
-  "Published static sites on Nostr (gittr Pages / nsite) — open each site on pages.gittr.space. Separate from git clone and the Apps catalog.";
-
-export const LAB_DESCRIPTION =
-  "Snapshot of an agent that maps ecosystem dependencies and their security, starting from gittr as the seed repo. Run local-agent yourself from the linked repo.";
-
-export const EXPLORE_DESCRIPTION =
-  "Explore public Nostr git repositories — browse announcements on relays (same list as Repos). Discover projects before you open Code, Issues, or zap the owner.";
-
-export const NEW_DESCRIPTION =
-  "Create a repository on Nostr git, or batch-import and mirror repos from GitHub, GitLab, Codeberg, and other foreign git sources onto gittr.";
-
-export const SITE_KEYWORDS = [
-  "nostr git",
-  "NIP-34",
-  "GRASP",
-  "git hosting",
-  "mirror repository",
-  "git collaboration",
-  "Lightning bounties",
-  "nostr pages",
-  "nostr apps",
-  "decentralized git",
-  "git over nostr",
-  "issue bounties",
-] as const;
-
-export function buildRepoFallbackDescription(
-  entity: string,
-  repo: string
-): string {
-  return `Repository ${entity}/${repo} on gittr — Nostr git with issues, pull requests, and optional Lightning bounties.`;
-}
-
-const OG_IMAGE_ALT = "gittr - Decentralized Git on Nostr";
+const OG_IMAGE_ALT = "gittr - Nostr git hosting";
 
 function absolutePath(siteUrl: string, path: string): string {
   const base = siteUrl.replace(/\/$/, "");
@@ -73,6 +51,7 @@ export function buildPageSiteMetadata(opts: {
    */
   imagePath?: string;
   imageAlt?: string;
+  robots?: Metadata["robots"];
 }): Metadata {
   const siteUrl = getPublicSiteUrl();
   const canonical = absolutePath(siteUrl, opts.path);
@@ -120,7 +99,19 @@ export function buildPageSiteMetadata(opts: {
     alternates: {
       canonical,
     },
+    ...(opts.robots ? { robots: opts.robots } : {}),
   };
+}
+
+export function buildNoindexPageMetadata(opts: {
+  path: string;
+  title: string;
+  description: string;
+}): Metadata {
+  return buildPageSiteMetadata({
+    ...opts,
+    robots: { index: false, follow: false },
+  });
 }
 
 export function buildRootSiteMetadata(): Metadata {

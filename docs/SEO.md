@@ -1,16 +1,19 @@
 # SEO & discoverability (gittr)
 
-How search engines and social previews find gittr content. Marketing copy was updated to describe **use cases** (mirror, collaborate, Pages, apps, bounties) instead of positioning as a “GitHub alternative,” while keeping technical terms like NIP-34 and GRASP for people who search for them.
+How search engines and social previews find gittr content. Marketing copy describes **use cases** (Nostr git hosting, mirror, collaborate, Pages, apps, bounties) and technical terms people search for (NIP-34, GRASP, git on Nostr). The daily **repo index snapshot** that fills `/sitemap.xml` at scale is built on the production host — do not overwrite it from a laptop.
 
 ## What controls SEO in the codebase
 
 | Surface | Location | Notes |
 | --- | --- | --- |
 | Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Root card via `buildRootSiteMetadata()`; per-route cards via `buildPageSiteMetadata({ path, title, description })` so X/Telegram do not reuse the homepage `og:url` |
-| Hub routes (`/pages`, `/apps`, `/explore`, `/new`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
-| Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
+| Hub routes (`/pages`, `/apps`, `/explore`, `/new`, `/legal`, `/help`, `/bounty-hunt`, `/nostr-git`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers). `/help` and `/bounty-hunt` are `"use client"` pages — metadata lives in `layout.tsx` so they do **not** inherit the homepage canonical. |
+| Route OG images | `ui/src/app/opengraph-image.tsx`, `apps/`, `pages/`, `explore/`, `help/`, `bounty-hunt/`, `nostr-git/`, `[entity]/[repo]/` (+ matching `twitter-image.tsx`) | Hub taglines via `create-og-image.tsx`; repo cards via `create-repo-og-image.tsx` |
+| Per-app title / description | `ui/src/app/apps/[id]/page.tsx` | Stable `/apps/{packageId}` URLs from the software catalog snapshot (legacy `/apps?q=` still filters). `/apps/mine` is `noindex`. |
+| JSON-LD | `ui/src/lib/seo/json-ld.ts` | `WebSite` + SearchAction on every page; `SoftwareApplication` on home; `SoftwareSourceCode` on repo layouts; `TechArticle` + FAQ on `/nostr-git`; per-app `SoftwareApplication` when the catalog knows the id. |
+| `llms.txt` | `ui/public/llms.txt` | Short product map for AI crawlers (`https://gittr.space/llms.txt`). |
 | Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` + `opengraph-image.tsx` | Composed **1200×630** dark card: name, owner, **About**, corner badge; stats as **GitHub icon + ★ count**, fork icon + count, **N + ★** for Nostr. Brand bottom-right (X uses bottom-left). Browsers on vanity paths (`/DrShift/buho-go`) **307** to `/{npub}/buho-go` so files/Push work. **Twitterbot / Telegram / Slack** stay on the vanity HTML so they get title + About without an empty 307 body; `og:url` is still the npub path. Vanity `opengraph-image` / `twitter-image` **307** from the image route itself (layout does not wrap those files) to the npub card so X does not wait on a cold vanity PNG. Bump `GITTR_OG_CARD_REV` / `?v=about4` when the PNG must invalidate. Bare `/DrShift` profile URLs are not rewritten. |
-| `robots.txt` | `ui/src/app/robots.ts` | Allows `/` and explicitly `/new` (create/import social cards); disallows `/api/`, `/login`, `/signup`, `/settings/`, `/import`. **`meta-externalagent` / `Meta-ExternalFetcher` (Meta AI training/index) are Disallow: /**. Do **not** Disallow `facebookexternalhit` (share cards). Do **not** turn on Cloudflare “Block AI Scrapers” — that also hits Claude/GPT. Volume cap is nginx `meta_ai` zone, not a UA 403. `force-dynamic` so validators don’t keep a stale Disallow forever. |
+| `robots.txt` | `ui/src/app/robots.ts` | Allows `/`, `/new`, `/apps`, `/help`, `/nostr-git`, `/llms.txt`; disallows `/api/`, `/login`, `/signup`, `/settings/`, `/import`, `/apps/mine`, `/repositories`. **`meta-externalagent` / `Meta-ExternalFetcher` (Meta AI training/index) are Disallow: /**. Do **not** Disallow `facebookexternalhit` (share cards). Do **not** turn on Cloudflare “Block AI Scrapers” — that also hits Claude/GPT. Volume cap is nginx `meta_ai` zone, not a UA 403. `force-dynamic` so validators don’t keep a stale Disallow forever. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |
 | PWA manifest | `ui/public/site.webmanifest` | Short description for install prompts |
 | Canonical / `metadataBase` | `NEXT_PUBLIC_SITE_URL` | Must be `https://your.domain` in production |
@@ -23,11 +26,14 @@ The sitemap **exists in code everywhere** (`ui/src/app/sitemap.ts`). It is **not
 
 When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
-1. Adds static URLs: `/`, `/explore`, `/help`, `/pages`
-2. Loads the **daily SEO snapshot** (`ui/data/nostr-seo-repos-snapshot.json`) when present — **including if it is older than 14 days**
-3. **Also** live-relay fan-out if that snapshot is missing or stale (or `SITEMAP_LIVE_NOSTR=1` for debugging) — results **merge** with disk, they do not replace it
-4. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
-5. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored; gittr-HTTP-push / manual supplement only)
+1. Adds static URLs: `/`, `/explore`, `/nostr-git`, `/apps`, `/help`, `/new`, `/pages`, `/bounty-hunt`, `/lab`, `/legal`
+2. Adds per-app URLs `/apps/{id}` from `ui/data/software-catalog-snapshot.json` (cap 2500; production file is written by the live catalog scrape — same “server-owned” rule as the repo snapshot)
+3. Loads the **daily SEO snapshot** (`ui/data/nostr-seo-repos-snapshot.json`) when present — **including if it is older than 14 days**
+4. **Also** live-relay fan-out if that snapshot is missing or stale (or `SITEMAP_LIVE_NOSTR=1` for debugging) — results **merge** with disk, they do not replace it
+5. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
+6. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored; gittr-HTTP-push / manual supplement only)
+
+Repo URLs keep most of the 45k budget; app URLs and Pages fill reserved slices so a large repo snapshot cannot drop `/apps/{id}` from the sitemap.
 
 ### Daily SEO repo index (recommended on production)
 
@@ -94,15 +100,16 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 
 ## SEO strategy (practical)
 
-- **Index what matters:** Home, explore, help, public repo pages, Pages directory — via sitemap + internal links. The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
-- **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
-- **Keywords:** Prefer “nostr git”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository” — still accurate, less likely to trip naive “fake GitHub” heuristics than “github alternative”.
+- **Index what matters:** Home, `/nostr-git` (what Nostr git is), explore, help, `/apps` and per-app pages, public repo pages, Pages directory — via sitemap + internal links (footer includes Nostr git / Repos / Apps). The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
+- **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`, `/apps/mine`, `/repositories`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
+- **Keywords / on-page copy:** Prefer “nostr git”, “git on nostr”, “Nostr git hosting”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository”. Titles, H1s, and `/nostr-git` matter more than the keywords meta tag. Still avoid “github alternative” as the product identity.
+- **GitHub repo README:** Lead with “Nostr git hosting” in the first paragraph so snippets for the gittr and gittr-mcp repositories match the live site.
 - **Import is a feature, not the headline:** README and meta mention importing from GitHub/GitLab/Codeberg under **mirror / backup**, not as the product identity.
 - **Reputation ≠ SEO:** Google Safe Browsing clean + good sitemap does not fix Sophos category or LinkedIn link wrappers; see IT reclassification for those.
 
 ## Social previews (X, Telegram, LinkedIn)
 
-- Homepage vs hubs: `/`, `/apps`, `/pages`, `/explore`, and `/new` each have their own **title**, **description**, and **OG image** (`buildPageSiteMetadata` + route `opengraph-image.tsx`). Do not reuse homepage copy for hub links. `/new` is **Create or import** — Nostr git create plus batch import/mirror from foreign forges (GitHub/GitLab/Codeberg).
+- Homepage vs hubs: `/`, `/apps`, `/pages`, `/explore`, `/help`, `/nostr-git`, `/bounty-hunt`, and `/new` each have their own **title**, **description**, and **OG image**. Do not reuse homepage copy for hub links. `/new` is **Create or import** — Nostr git create plus batch import/mirror from foreign forges (GitHub/GitLab/Codeberg).
 - Repo cards (`create-repo-og-image.tsx`): keep the **bottom-left corner empty** — X overlays the link name chip there. Brand (`gittr · nostr`) + `NIP-34` sit **bottom-right**.
 - **Canonical share URL** is always `/{entity}/{repo}` (no `?branch=` / `?file=` / tab path). Nested pages inherit the same `og:image`; Share/QR copies the root so social caches do not fork per deep link. File “Copy permalink” stays deep for collaborators.
 - `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.

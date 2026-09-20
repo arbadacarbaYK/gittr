@@ -45,6 +45,7 @@ describe("appNavigate Code path detection", () => {
 describe("isHeavyDirectoryPath", () => {
   it("treats /apps and /pages as heavy hubs", () => {
     expect(isHeavyDirectoryPath("/apps")).toBe(true);
+    expect(isHeavyDirectoryPath("/apps/space.gittr.app")).toBe(true);
     expect(isHeavyDirectoryPath("/pages")).toBe(true);
     expect(isHeavyDirectoryPath("/explore")).toBe(false);
     expect(isHeavyDirectoryPath(CODE_PATH)).toBe(false);

@@ -9,7 +9,7 @@ import { AppsDirectoryClient } from "./AppsDirectoryClient";
 
 export const metadata = buildPageSiteMetadata({
   path: "/apps",
-  title: "Apps",
+  title: "Apps — Nostr software catalog",
   description: APPS_DESCRIPTION,
   imagePath: "/apps/opengraph-image",
   imageAlt: "gittr Apps — NIP-82 software on Nostr",
