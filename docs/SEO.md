@@ -104,6 +104,7 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 - **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`, `/apps/mine`, `/repositories`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
 - **Keywords / on-page copy:** Prefer “nostr git”, “git on nostr”, “Nostr git hosting”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository”. Titles, H1s, and `/nostr-git` matter more than the keywords meta tag. Still avoid “github alternative” as the product identity.
 - **GitHub repo README:** Lead with “Nostr git hosting” in the first paragraph so snippets for the gittr and gittr-mcp repositories match the live site.
+- **gittr-blossom:** the blob host at `blossom.gittr.space` is published as [arbadacarbaYK/gittr-blossom](https://github.com/arbadacarbaYK/gittr-blossom). About text, homepage, and topics (`gittr`, `nostr-git`, `blossom`, `nip-34`, `nsite`, `pages`) say it belongs to gittr Nostr git. Do not commit `config.yml` from the server if it ever grows secrets; the public policy file is `config.gittr.example.yml`. Upstream history is not in that repo because an old upstream commit contained a credential file.
 - **Import is a feature, not the headline:** README and meta mention importing from GitHub/GitLab/Codeberg under **mirror / backup**, not as the product identity.
 - **Reputation ≠ SEO:** Google Safe Browsing clean + good sitemap does not fix Sophos category or LinkedIn link wrappers; see IT reclassification for those.
 
