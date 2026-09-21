@@ -6,8 +6,8 @@ gittr shows a **viewer-relative** trust badge next to Nostr identities when you 
 |--------|---------|
 | **In your network** | 1 hop (you follow them, or extension/oracle agrees) |
 | **N hops from you** | Connected through the follow graph within max hops |
-| **Outside your network** | Oracle/extension confirmed: no path within the search limit |
-| **Distance unknown** | Oracle/extension unreachable (e.g. 502) and not in your follow list — **not** the same as Outside |
+| **Outside your network** | Oracle reported no path within its search limit; not proof of no relationship |
+| **Distance unknown** | Provider unavailable, or extension returned no distance (including incomplete snapshots or mute exclusions) — **not** the same as Outside |
 | **Followers see: In their network** | Your own profile — preview of how people who follow you see you |
 | *(hidden)* | Logged out |
 
@@ -23,7 +23,7 @@ Logged-in `/apps` used to mount a TrustBadge on every card (~hundreds). Without 
 
 Load more is **not** enough on its own: search can show one card while a live NIP-82 scrape still flushes the full catalog. After the server snapshot lands, `/apps` skips that live 4000/12000 subscribe. While Zapstore is still paging (50 events per REQ), the hub refetches every 8s; afterwards every 150s. Leaving the hub pauses catalog `setState` so owner-name and chrome clicks are not ignored.
 
-Client `wot.ts` now: (1) coalesces in-flight requests for the same `(from,to)`, (2) caps concurrent oracle HTTP to 2, (3) opens a **60s circuit** after the first oracle failure so remaining badges return **Distance unknown** without more HTTP. Independent of NIP-46 / Amber bunker sockets.
+Client `wot.ts` now: (1) coalesces in-flight requests for the same `(from,to,max_hops)`, (2) caps concurrent oracle HTTP to 2, (3) opens a **60s circuit** after the first oracle failure so remaining badges return **Distance unknown** without more HTTP. Independent of NIP-46 / Amber bunker sockets.
 
 ## Public follow counts (profile legitimacy)
 
@@ -43,12 +43,18 @@ Code: `ui/src/lib/nostr/useProfileFollowCounts.ts`, helpers in `contact-list.ts`
 ## Data sources (priority)
 
 1. **Your kind-3 follow list** — direct follows (`hops: 1` → **In your network**). Uses the same local backup/session as the Follow button, plus a multi-event relay fetch (`limit: 20`, tags + JSON content). A successful Follow immediately refreshes the badge (no oracle wait).
-2. **[nostr-wot browser extension](https://nostr-wot.com/download)** — `window.nostr.wot.getDistance()` when installed
+2. **[nostr-wot browser extension](https://nostr-wot.com/download)** — `window.nostr.wot.getDistance(target)` when enabled and authorized for the site. The active extension identity must match your Gittr login; it is checked before and after the query. A successful `null` is shown as unknown without bypassing extension mute policy through the oracle.
 3. **[WoT Oracle](https://nostr-wot.com/docs/oracle)** (optional) — proxied via `GET /api/wot/distance`
 
-### Oracle reality check (2026-07)
+### Extension setup and oracle availability
 
-The public instance `wot-oracle.mappingbitcoin.com` is **documented** as the primary dev server (Mapping Bitcoin / Joel Acosta), not a guaranteed SLA service. Docs say *“for production use, consider self-hosting.”* As of July 2026 it often returns **502** (Cloudflare → dead origin). GitHub traction is tiny (~6–7 stars); the only listed production integrator is Mapping Bitcoin. NIP-07 WoT (`window.nostr.wot`) is still an **open NIPs issue ([#2236](https://github.com/nostr-protocol/nips/issues/2236))**, not a finalized NIP.
+The optional integration uses the [Nostr WoT extension](https://github.com/nostr-wot/nostr-wot-extension) browser API and the [WoT Oracle](https://github.com/nostr-wot/nostr-wot-oracle).
+
+In Nostr WoT 0.8.0, enable the experimental Web of Trust option, grant Gittr identity/public-key access, and sync the graph when using local mode. Installation alone does not expose `window.nostr.wot`. The API takes a target hex key or npub and returns a hop count or `null`; permission and availability failures reject. Gittr falls back to the oracle if the extension is absent, rejects, or uses a different identity. Direct follows still take priority, so these badges are relationship distances, not the extension's mute-aware trust scores.
+
+The public `wot-oracle.mappingbitcoin.com` endpoint is optional. Outages must remain unknown results, not evidence that someone is outside a network. Operators can configure their own instance below. Historical outages and GitHub star counts do not establish current availability or adoption.
+
+`window.nostr.wot` is an experimental API, not a finalized NIP. See the [browser API proposal](https://github.com/nostr-wot/nostr-wot-extension/blob/main/nips/wot/01-browser-wot-api.md), [scoring and data semantics](https://github.com/nostr-wot/nostr-wot-extension/blob/main/nips/wot/02-scoring-and-data.md), and [NIPs discussion #2236](https://github.com/nostr-protocol/nips/issues/2236).
 
 **gittr does not depend on the oracle** for core UX: if you Follow someone, the badge must show **In your network** from your kind-3 / local list even when the oracle is down. Multi-hop (“2 hops from you”) still needs a working oracle or extension local graph.
 
