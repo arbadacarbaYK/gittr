@@ -159,8 +159,12 @@ export function wotLabel(
 export function wotResultLabel(
   result: WoTDistanceResult | null | undefined
 ): string {
-  if (!result) return "Outside your network";
-  if (result.source === "unavailable") return "Distance unknown";
+  if (!result) return "Distance unknown";
+  if (
+    result.source === "unavailable" ||
+    (result.source === "extension" && result.hops === null)
+  )
+    return "Distance unknown";
   if (result.hops === null) return "Outside your network";
   if (result.hops === 0) return "";
   if (result.hops === 1) return "In your network";
@@ -172,6 +176,9 @@ export function wotResultTitle(
 ): string {
   if (!result || result.source === "unavailable") {
     return "Web of Trust distance unknown — trust oracle unreachable and this pubkey is not in your follow list. People you follow still show as In your network.";
+  }
+  if (result.source === "extension" && result.hops === null) {
+    return "No distance available from your extension’s current graph and mute settings. This does not prove there is no relationship.";
   }
   const label = wotResultLabel(result);
   return result.mutual ? `${label} (mutual follow)` : `${label} · Web of Trust`;
@@ -215,7 +222,8 @@ export async function fetchWoTDistanceFromExtension(
   targetHex: string
 ): Promise<WoTDistanceResult | null> {
   if (typeof window === "undefined") return null;
-  const wot = window.nostr?.wot;
+  const provider = window.nostr;
+  const wot = provider?.wot;
   if (!wot?.getDistance) return null;
 
   if (viewerHex === targetHex) {
@@ -230,15 +238,23 @@ export async function fetchWoTDistanceFromExtension(
   }
 
   try {
+    // WoT queries are rooted in the extension identity, not Gittr's login.
+    if (normalizeHexPubkey(await provider.getPublicKey()) !== viewerHex)
+      return null;
     const hops = await wot.getDistance(targetArg);
-    if (hops === null || hops === undefined) return null;
-    if (typeof hops !== "number" || !Number.isFinite(hops)) return null;
-    const rounded = Math.floor(hops);
-    if (rounded < 0) return null;
-    return {
-      hops: rounded,
-      source: rounded === 0 ? "self" : "extension",
-    };
+    // Discard results if the account/provider changed while the query ran.
+    if (
+      window.nostr !== provider ||
+      provider.wot !== wot ||
+      normalizeHexPubkey(await provider.getPublicKey()) !== viewerHex
+    )
+      return null;
+    // A successful null can reflect mutes or an incomplete snapshot. Do not
+    // override the provider's policy by retrying against the public oracle.
+    if (hops === null) return { hops: null, source: "extension" };
+    if (typeof hops !== "number" || !Number.isInteger(hops) || hops <= 0)
+      return null;
+    return { hops, source: "extension" };
   } catch {
     return null;
   }
@@ -253,7 +269,7 @@ export async function fetchWoTDistanceFromOracle(
     return { hops: 0, source: "self" };
   }
 
-  const key = cacheKey(viewerHex, targetHex);
+  const key = `${cacheKey(viewerHex, targetHex)}:${maxHops}`;
   const cached = distanceCache.get(key);
   if (cached && cached.expires > Date.now()) {
     return cached.value;
@@ -377,7 +393,7 @@ export async function resolveWoTDistance(opts: {
   if (fromFollows) return fromFollows;
 
   const fromExtension = await fetchWoTDistanceFromExtension(viewer, target);
-  if (fromExtension && fromExtension.hops != null && fromExtension.hops > 0) {
+  if (fromExtension) {
     return fromExtension;
   }
 
@@ -390,8 +406,6 @@ export async function resolveWoTDistance(opts: {
     // Oracle confirmed Outside, hops, or unavailable — all are results.
     return fromOracle;
   }
-
-  if (fromExtension) return fromExtension;
 
   // No follow, no extension, no oracle answer → treat as unknown, not Outside.
   return { hops: null, source: "unavailable" };
