@@ -13,6 +13,7 @@ import {
   GITTR_DOC_GITNOSTR_ARCHITECTURE,
   GITTR_DOC_GITNOSTR_SSH,
   GITTR_DOC_SSH_GIT,
+  GITTR_REPO_BLOSSOM,
   GITTR_REPO_GITNOSTR,
   GITTR_REPO_GITTR,
   GITTR_REPO_HELPER_TOOLS,
@@ -3504,6 +3505,18 @@ export default function HelpPage() {
                     gittr / nsite-gateway
                   </a>
                 </li>
+                <li>
+                  Blob storage:{" "}
+                  <a
+                    href={GITTR_REPO_BLOSSOM}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    gittr-blossom
+                  </a>{" "}
+                  at blossom.gittr.space
+                </li>
               </ul>
             </HelpTopic>
 
@@ -3958,6 +3971,15 @@ export default function HelpPage() {
                   className="text-purple-400 hover:text-purple-300"
                 >
                   gittr-helper-tools
+                </a>
+                ,{" "}
+                <a
+                  href={GITTR_REPO_BLOSSOM}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  gittr-blossom
                 </a>
                 , and the{" "}
                 <a

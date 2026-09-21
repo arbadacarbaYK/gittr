@@ -41,6 +41,8 @@ export const GITTR_REPO_HELPER_TOOLS = gittrRepoBrowse("gittr-helper-tools");
 export const GITTR_REPO_NSITE_GATEWAY = gittrRepoBrowse("nsite-gateway");
 export const GITTR_REPO_PYRAMID = gittrRepoBrowse("pyramid");
 export const GITTR_REPO_MCP = gittrRepoBrowse("gittr-mcp");
+/** Blossom server repo. Production branch is `master`, not `main`. */
+export const GITTR_REPO_BLOSSOM = gittrRepoBrowse("gittr-blossom", "master");
 
 /**
  * Pages nsite blob host. Third-party Apps/APKs never pin here.
