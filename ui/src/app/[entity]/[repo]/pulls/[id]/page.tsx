@@ -3155,9 +3155,8 @@ export default function PRDetailPage({
                     comment={`Zap for PR: ${pr.title}`}
                   />
                   <p className="text-xs text-gray-400 mt-2">
-                    This zap goes to the PR author. If this PR is merged and
-                    linked to an issue with a bounty, the bounty will be
-                    released to the PR author.
+                    This zap only sends sats to the PR author. It does not
+                    release a bounty.
                   </p>
                   {/* Show bounty info if PR is linked to an issue with a bounty withdraw link created */}
                   {linkedIssue?.bountyAmount &&
@@ -3173,9 +3172,10 @@ export default function PRDetailPage({
                           bounty withdraw link created.
                         </p>
                         <p className="text-xs text-yellow-300/80 mt-1">
-                          Merging this PR will automatically release the
-                          withdraw link to the PR author. Funds will be deducted
-                          when they claim it.
+                          Only someone who can merge this repo releases that
+                          withdraw link, and only by merging. A zap does not.
+                          Funds leave the bounty when the author claims the
+                          link.
                         </p>
                       </div>
                     )}
