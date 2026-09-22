@@ -5,6 +5,7 @@ import {
   getEntityDisplayName,
   getEntityPicture,
   ownerProfileHref,
+  personLabel,
 } from "./entity-resolver";
 
 describe("getEntityDisplayName identities hardening", () => {
@@ -70,6 +71,28 @@ describe("ownerProfileHref", () => {
 
   it("keeps npub and other non-hex ids as a path segment", () => {
     expect(ownerProfileHref("npub1abc")).toBe("/npub1abc");
+  });
+});
+
+describe("personLabel", () => {
+  const pubkey = "4c3c4b28ba5bbe4d70520b944a0735c3e82f4d4b59e9fb1ffc5663fd7ae8ea5d";
+
+  it("uses a Nostr name even when the pubkey case does not match the cache key", () => {
+    expect(
+      personLabel(pubkey.toUpperCase(), {
+        [pubkey]: { display_name: "Vision" },
+      })
+    ).toBe("Vision");
+  });
+
+  it("falls back to a short npub when the person has no published name", () => {
+    const label = personLabel(pubkey, {});
+    expect(label.startsWith("npub1")).toBe(true);
+    expect(label.startsWith("4c3c")).toBe(false);
+  });
+
+  it("leaves a GitHub login unchanged", () => {
+    expect(personLabel("octocat", {})).toBe("octocat");
   });
 });
 

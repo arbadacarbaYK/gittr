@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NostrPersonAvatar } from "@/components/ui/nostr-person-avatar";
 import { Button } from "@/components/ui/button";
 import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -33,7 +33,8 @@ import {
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
-  isDisplayableProfilePicture,
+  ownerProfileHref,
+  personLabel,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -995,7 +996,7 @@ export default function RepoPullsPage({
                       {item.date} by{" "}
                       <Link
                         className="hover:text-purple-500 flex items-center gap-1 group"
-                        href={`/${item.author}`}
+                        href={ownerProfileHref(item.author) || "#"}
                         title={(() => {
                           if (item.author && item.author.length === 64) {
                             try {
@@ -1008,35 +1009,12 @@ export default function RepoPullsPage({
                           return `pubkey: ${item.author}`;
                         })()}
                       >
-                        <Avatar className="h-4 w-4">
-                          {(() => {
-                            const meta = authorMetadata[item.author];
-                            const picture = meta?.picture;
-                            return isDisplayableProfilePicture(picture) ? (
-                              <AvatarImage src={picture} />
-                            ) : null;
-                          })()}
-                          <AvatarFallback className="bg-purple-600 text-white text-[10px]">
-                            {(() => {
-                              const meta = authorMetadata[item.author];
-                              const name =
-                                meta?.display_name ||
-                                meta?.name ||
-                                item.author.slice(0, 8);
-                              return name.slice(0, 2).toUpperCase();
-                            })()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>
-                          {(() => {
-                            const meta = authorMetadata[item.author];
-                            return (
-                              meta?.display_name ||
-                              meta?.name ||
-                              item.author.slice(0, 8) + "..."
-                            );
-                          })()}
-                        </span>
+                        <NostrPersonAvatar
+                          id={item.author}
+                          metadata={authorMetadata}
+                          className="h-4 w-4"
+                        />
+                        <span>{personLabel(item.author, authorMetadata)}</span>
                         {item.author &&
                           item.author.length === 64 &&
                           (() => {

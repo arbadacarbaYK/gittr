@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NostrPersonAvatar } from "@/components/ui/nostr-person-avatar";
 import { Badge } from "@/components/ui/badge";
 import { BountyButton } from "@/components/ui/bounty-button";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,8 @@ import {
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
-  isDisplayableProfilePicture,
+  ownerProfileHref,
+  personLabel,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -1900,17 +1901,10 @@ export default function IssueDetailPage({
               {issue.status === "open" ? "Opened" : "Closed"}{" "}
               {formatDateTime24h(issue.createdAt)} by{" "}
               <Link
-                href={`/${issue.author}`}
+                href={ownerProfileHref(issue.author) || "#"}
                 className="hover:text-purple-400 inline-flex items-center gap-1"
               >
-                {(() => {
-                  const meta = authorMetadata[issue.author];
-                  return (
-                    meta?.display_name ||
-                    meta?.name ||
-                    issue.author.slice(0, 8) + "..."
-                  );
-                })()}
+                {personLabel(issue.author, authorMetadata)}
               </Link>
             </span>
             <TrustBadge targetPubkey={issue.author} />
@@ -2006,18 +2000,15 @@ export default function IssueDetailPage({
                     comment: Comment & { depth: number; children: any[] },
                     allComments: Comment[]
                   ) => {
-                    const authorMeta = commentAuthorMetadata[comment.author];
                     const isGithub =
                       comment.source === "github" ||
                       isGithubCommentAuthor(comment.author);
                     const authorLabel = isGithub
                       ? `@${comment.author}`
-                      : authorMeta?.display_name ||
-                        authorMeta?.name ||
-                        comment.author.slice(0, 8) + "...";
+                      : personLabel(comment.author, commentAuthorMetadata);
                     const authorHref = isGithub
                       ? comment.url || githubProfileUrl(comment.author)
-                      : `/${comment.author}`;
+                      : ownerProfileHref(comment.author) || "#";
                     const indent = comment.depth * 32; // 32px per level
 
                     return (
@@ -2028,21 +2019,11 @@ export default function IssueDetailPage({
                       >
                         <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
                           <div className="flex items-start gap-3">
-                            <Avatar className="h-8 w-8 flex-shrink-0">
-                              {authorMeta?.picture &&
-                              isDisplayableProfilePicture(
-                                authorMeta.picture
-                              ) ? (
-                                <AvatarImage src={authorMeta.picture} />
-                              ) : null}
-                              <AvatarFallback className="bg-gray-700 text-white text-xs">
-                                {isGithub
-                                  ? comment.author.slice(0, 2).toUpperCase()
-                                  : authorMeta?.display_name ||
-                                    authorMeta?.name ||
-                                    comment.author.slice(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
+                            <NostrPersonAvatar
+                              id={comment.author}
+                              metadata={commentAuthorMetadata}
+                              className="h-8 w-8 flex-shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-2 flex-wrap">
                                 <a
@@ -2303,13 +2284,15 @@ export default function IssueDetailPage({
                                     ).includes(c.pubkey.toLowerCase())
                                 )
                                 .map((contributor) => {
-                                  const meta =
-                                    repoContributorMetadata[contributor.pubkey];
+                                  const labeled = personLabel(
+                                    contributor.pubkey,
+                                    repoContributorMetadata
+                                  );
                                   const displayName =
-                                    meta?.display_name ||
-                                    meta?.name ||
-                                    contributor.name ||
-                                    contributor.pubkey.slice(0, 8) + "...";
+                                    labeled.startsWith("npub") &&
+                                    contributor.name?.trim()
+                                      ? contributor.name.trim()
+                                      : labeled;
                                   const npub = (() => {
                                     try {
                                       return nip19.npubEncode(
@@ -2335,25 +2318,12 @@ export default function IssueDetailPage({
                                           : `pubkey: ${contributor.pubkey}`
                                       }
                                     >
-                                      <Avatar className="h-5 w-5 flex-shrink-0">
-                                        {(meta?.picture ||
-                                          contributor.picture) &&
-                                        (
-                                          meta?.picture || contributor.picture
-                                        )?.startsWith("http") ? (
-                                          <AvatarImage
-                                            src={
-                                              meta?.picture ||
-                                              contributor.picture
-                                            }
-                                          />
-                                        ) : null}
-                                        <AvatarFallback className="bg-gray-700 text-white text-[8px]">
-                                          {displayName
-                                            .slice(0, 2)
-                                            .toUpperCase()}
-                                        </AvatarFallback>
-                                      </Avatar>
+                                      <NostrPersonAvatar
+                                        id={contributor.pubkey}
+                                        metadata={repoContributorMetadata}
+                                        extraPicture={contributor.picture}
+                                        className="h-5 w-5 flex-shrink-0"
+                                      />
                                       <span className="text-purple-300 flex-1 text-left truncate">
                                         {displayName}
                                       </span>
@@ -2382,12 +2352,7 @@ export default function IssueDetailPage({
             {displayAssignees.length > 0 ? (
               <div className="space-y-2">
                 {displayAssignees.map((pubkey) => {
-                  const meta = assigneeMetadata[pubkey];
-                  const displayName =
-                    meta?.display_name ||
-                    meta?.name ||
-                    pubkey.slice(0, 8) + "...";
-                  const picture = meta?.picture;
+                  const displayName = personLabel(pubkey, assigneeMetadata);
                   const npub =
                     pubkey.length === 64
                       ? (() => {
@@ -2405,18 +2370,15 @@ export default function IssueDetailPage({
                       className="flex items-center justify-between"
                     >
                       <Link
-                        href={`/${pubkey}`}
+                        href={ownerProfileHref(pubkey) || "#"}
                         className="flex items-center gap-2 text-sm hover:text-purple-400 group"
                         title={npub ? `npub: ${npub}` : `pubkey: ${pubkey}`}
                       >
-                        <Avatar className="h-6 w-6 ring-1 ring-gray-500">
-                          {isDisplayableProfilePicture(picture) ? (
-                            <AvatarImage src={picture} />
-                          ) : null}
-                          <AvatarFallback className="bg-gray-700 text-white text-xs">
-                            {displayName.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <NostrPersonAvatar
+                          id={pubkey}
+                          metadata={assigneeMetadata}
+                          className="h-6 w-6 ring-1 ring-gray-500"
+                        />
                         <span>{displayName}</span>
                         {npub && (
                           <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono">

@@ -2571,6 +2571,13 @@ export default function EntityPage({
     if (resolvedParams.entity.startsWith("npub")) {
       return resolvedParams.entity.substring(0, 16) + "...";
     }
+    if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      try {
+        return `${nip19.npubEncode(resolvedParams.entity).substring(0, 16)}...`;
+      } catch {
+        /* keep the short hex below */
+      }
+    }
     return resolvedParams.entity.length === 8
       ? resolvedParams.entity
       : resolvedParams.entity.slice(0, 8);

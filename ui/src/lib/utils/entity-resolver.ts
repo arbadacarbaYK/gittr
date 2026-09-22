@@ -193,6 +193,23 @@ export function getEntityDisplayName(
 }
 
 /**
+ * Label for a person on issues and pull requests.
+ * A Nostr pubkey becomes their profile name, or a short npub when they have
+ * not published one. A GitHub login stays as written.
+ */
+export function personLabel(
+  id: string | null | undefined,
+  metadata: Record<string, any> = {}
+): string {
+  const raw = String(id || "").trim();
+  if (!raw) return "Unknown";
+  if (/^[0-9a-f]{64}$/i.test(raw)) {
+    return getEntityDisplayName(raw, metadata);
+  }
+  return raw;
+}
+
+/**
  * Kind-0 pictures may be https or an inline `data:image/…` (some Nostr-only
  * profiles ship an SVG badge). Reject `javascript:` and other non-image data.
  */

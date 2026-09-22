@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NostrPersonAvatar } from "@/components/ui/nostr-person-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
@@ -86,9 +86,10 @@ import {
   readRepoPullsFromLocalStorage,
 } from "@/lib/utils/entity-normalizer";
 import {
-  getEntityDisplayName,
   getRepoOwnerPubkey,
-  isDisplayableProfilePicture,
+  getUserMetadata,
+  ownerProfileHref,
+  personLabel,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
@@ -1243,13 +1244,7 @@ export default function PRDetailPage({
         .toString(36)
         .substr(2, 9)}`;
       // Get PR author name for commit message
-      const authorMeta = pr.author ? recipientMetadata[pr.author] : null;
-      const authorName =
-        authorMeta?.display_name ||
-        authorMeta?.name ||
-        (pr.author && pr.author.length === 64
-          ? pr.author.slice(0, 8) + "..."
-          : pr.author || "unknown");
+      const authorName = personLabel(pr.author, recipientMetadata);
       const commit: any = {
         id: commitId,
         message:
@@ -1475,13 +1470,7 @@ export default function PRDetailPage({
 
             if (!isContributor && !isOwner) {
               // Get PR author metadata for name
-              const prAuthorMeta = recipientMetadata[pr.author];
-              const prAuthorName =
-                prAuthorMeta?.display_name ||
-                prAuthorMeta?.name ||
-                (pr.author && pr.author.length === 64
-                  ? pr.author.slice(0, 8) + "..."
-                  : pr.author || "unknown");
+              const prAuthorName = personLabel(pr.author, recipientMetadata);
               const authorNpub =
                 pr.author && pr.author.length === 64
                   ? (() => {
@@ -1514,15 +1503,7 @@ export default function PRDetailPage({
               };
 
               saveStoredRepos(updatedRepos);
-              const logAuthorMeta = pr.author
-                ? recipientMetadata[pr.author]
-                : null;
-              const logAuthorName =
-                logAuthorMeta?.display_name ||
-                logAuthorMeta?.name ||
-                (pr.author && pr.author.length === 64
-                  ? pr.author.slice(0, 8) + "..."
-                  : pr.author || "unknown");
+              const logAuthorName = personLabel(pr.author, recipientMetadata);
               console.log(`✅ Added PR author ${logAuthorName} as contributor`);
             }
           }
@@ -2440,9 +2421,13 @@ export default function PRDetailPage({
                 } ${formatDateTime24h(pr.createdAt)}`}{" "}
             by{" "}
             <Link
-              href={`/${
-                pr.status === "merged" && pr.mergedBy ? pr.mergedBy : pr.author
-              }`}
+              href={
+                ownerProfileHref(
+                  pr.status === "merged" && pr.mergedBy
+                    ? pr.mergedBy
+                    : pr.author
+                ) || "#"
+              }
               className="hover:text-purple-400 flex items-center gap-1 group"
               title={(() => {
                 const pubkey =
@@ -2460,16 +2445,12 @@ export default function PRDetailPage({
                 return `pubkey: ${pubkey}`;
               })()}
             >
-              {(() => {
-                const pubkey =
-                  pr.status === "merged" && pr.mergedBy
-                    ? pr.mergedBy
-                    : pr.author;
-                const meta = recipientMetadata[pubkey];
-                return (
-                  meta?.display_name || meta?.name || pubkey.slice(0, 8) + "..."
-                );
-              })()}
+              {personLabel(
+                pr.status === "merged" && pr.mergedBy
+                  ? pr.mergedBy
+                  : pr.author,
+                recipientMetadata
+              )}
             </Link>
           </div>
         </div>
@@ -2600,28 +2581,17 @@ export default function PRDetailPage({
                   linkedIssue?.bountyWithdrawUrl) &&
                 (() => {
                   const authorMeta = pr.author
-                    ? recipientMetadata[pr.author]
+                    ? getUserMetadata(pr.author, recipientMetadata)
                     : null;
-                  const authorName =
-                    authorMeta?.display_name ||
-                    authorMeta?.name ||
-                    (pr.author && pr.author.length === 64
-                      ? pr.author.slice(0, 8) + "..."
-                      : pr.author || "unknown");
+                  const authorName = personLabel(pr.author, recipientMetadata);
                   const authorLightningAddress =
                     authorMeta?.lud16 || authorMeta?.lnurl || null;
 
                   // Get bounty creator metadata
-                  const bountyCreatorMeta = linkedIssue?.bountyCreator
-                    ? recipientMetadata[linkedIssue.bountyCreator]
-                    : null;
-                  const bountyCreatorName =
-                    bountyCreatorMeta?.display_name ||
-                    bountyCreatorMeta?.name ||
-                    (linkedIssue?.bountyCreator &&
-                    linkedIssue.bountyCreator.length === 64
-                      ? linkedIssue.bountyCreator.slice(0, 8) + "..."
-                      : linkedIssue?.bountyCreator || "unknown");
+                  const bountyCreatorName = personLabel(
+                    linkedIssue?.bountyCreator,
+                    recipientMetadata
+                  );
 
                   return (
                     <div className="p-4 bg-yellow-900/30 border-2 border-yellow-600 rounded-lg">
@@ -2704,18 +2674,7 @@ export default function PRDetailPage({
                   onChange={(e) => setMergeMessage(e.target.value)}
                   placeholder={`Merge pull request ${issueOrPrListRef(
                     pr
-                  )} from ${(() => {
-                    const authorMeta = pr?.author
-                      ? recipientMetadata[pr.author]
-                      : null;
-                    return (
-                      authorMeta?.display_name ||
-                      authorMeta?.name ||
-                      (pr?.author && pr.author.length === 64
-                        ? pr.author.slice(0, 8) + "..."
-                        : pr?.author || "unknown")
-                    );
-                  })()}\n\n${pr?.title || ""}`}
+                  )} from ${personLabel(pr?.author, recipientMetadata)}\n\n${pr?.title || ""}`}
                 />
               </div>
               <div className="flex gap-2">
@@ -2856,30 +2815,25 @@ export default function PRDetailPage({
                 </div>
               ) : (
                 comments.map((comment) => {
-                  const authorMeta = recipientMetadata[comment.author];
-                  const authorLabel =
-                    authorMeta?.display_name ||
-                    authorMeta?.name ||
-                    comment.author.slice(0, 8) + "...";
+                  const authorLabel = personLabel(
+                    comment.author,
+                    recipientMetadata
+                  );
                   return (
                     <div
                       key={comment.id}
                       className="border border-gray-700 rounded p-4 bg-gray-900/50"
                     >
                       <div className="flex items-start gap-3">
-                        <Avatar className="h-8 w-8 flex-shrink-0">
-                          {authorMeta?.picture &&
-                          isDisplayableProfilePicture(authorMeta.picture) ? (
-                            <AvatarImage src={authorMeta.picture} />
-                          ) : null}
-                          <AvatarFallback className="bg-gray-700 text-white text-xs">
-                            {authorLabel.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
+                        <NostrPersonAvatar
+                          id={comment.author}
+                          metadata={recipientMetadata}
+                          className="h-8 w-8 flex-shrink-0"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <Link
-                              href={`/${comment.author}`}
+                              href={ownerProfileHref(comment.author) || "#"}
                               className="font-semibold hover:text-purple-400"
                             >
                               {authorLabel}
@@ -3054,12 +3008,7 @@ export default function PRDetailPage({
               </h3>
               <div className="space-y-2">
                 {pr.contributors.map((pubkey, idx) => {
-                  const meta = recipientMetadata[pubkey];
-                  const displayName =
-                    meta?.display_name ||
-                    meta?.name ||
-                    pubkey.slice(0, 8) + "...";
-                  const picture = meta?.picture;
+                  const displayName = personLabel(pubkey, recipientMetadata);
                   const npub =
                     pubkey && pubkey.length === 64
                       ? (() => {
@@ -3070,7 +3019,6 @@ export default function PRDetailPage({
                           }
                         })()
                       : null;
-                  // Build tooltip with name, npub, and full pubkey for verification
                   const tooltipParts = [displayName];
                   if (npub) {
                     tooltipParts.push(`npub: ${npub}`);
@@ -3083,18 +3031,15 @@ export default function PRDetailPage({
                   return (
                     <Link
                       key={idx}
-                      href={`/${pubkey}`}
+                      href={ownerProfileHref(pubkey) || "#"}
                       className="flex items-center gap-2 hover:text-purple-400 group"
                       title={tooltip}
                     >
-                      <Avatar className="h-6 w-6 ring-1 ring-gray-500">
-                        {isDisplayableProfilePicture(picture) ? (
-                          <AvatarImage src={picture} />
-                        ) : null}
-                        <AvatarFallback className="bg-gray-700 text-white text-xs">
-                          {displayName.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <NostrPersonAvatar
+                        id={pubkey}
+                        metadata={recipientMetadata}
+                        className="h-6 w-6 ring-1 ring-gray-500"
+                      />
                       <span className="text-sm">{displayName}</span>
                       {npub && (
                         <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono">
