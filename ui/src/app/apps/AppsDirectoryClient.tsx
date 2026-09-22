@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  SOFTWARE_APP_CARD_ACTION_CLASS,
   SoftwareAppDirectoryCard,
   SoftwareAppSourceButtons,
 } from "@/components/apps/SoftwareAppDirectoryCard";
@@ -1181,6 +1182,7 @@ export function AppsDirectoryClient({
                                   size: "sm",
                                   variant: "default",
                                 }),
+                                SOFTWARE_APP_CARD_ACTION_CLASS,
                                 "shadow-sm"
                               )}
                               href={apkHref}
@@ -1199,6 +1201,7 @@ export function AppsDirectoryClient({
                                   size: "sm",
                                   variant: "outline",
                                 }),
+                                SOFTWARE_APP_CARD_ACTION_CLASS,
                                 "cursor-not-allowed opacity-60"
                               )}
                               title="Asset has no URL on this relay set; open in Zapstore or use a Blossom lookup by hash."
@@ -1213,6 +1216,7 @@ export function AppsDirectoryClient({
                                     size: "sm",
                                     variant: "outline",
                                   }),
+                                  SOFTWARE_APP_CARD_ACTION_CLASS,
                                   "cursor-default opacity-80"
                                 )}
                                 title="Kind 3063 asset events were not found on the catalog relay set. Try again later or open the publisher’s Blossom / Zapstore listing."
@@ -1226,6 +1230,7 @@ export function AppsDirectoryClient({
                                     size: "sm",
                                     variant: "outline",
                                   }),
+                                  SOFTWARE_APP_CARD_ACTION_CLASS,
                                   "cursor-wait opacity-80"
                                 )}
                               >
