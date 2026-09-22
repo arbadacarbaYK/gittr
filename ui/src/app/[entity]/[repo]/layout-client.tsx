@@ -26,6 +26,7 @@ import {
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { trimmedKind0String } from "@/lib/nostr/kind0-profile-fields";
 import { repoNostrQueryRelays } from "@/lib/nostr/nip34-discovery-relays";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
@@ -268,7 +269,7 @@ export default function RepoLayoutClient({
     const meta = rawOwnerMetadata?.[ownerPubkey] as
       | { banner?: string }
       | undefined;
-    const banner = meta?.banner?.trim();
+    const banner = trimmedKind0String(meta?.banner);
     return banner || null;
   }, [mounted, ownerPubkey, rawOwnerMetadata]);
   const publicReadRaw = repo?.publicRead;

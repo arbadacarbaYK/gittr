@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { trimmedKind0String } from "@/lib/nostr/kind0-profile-fields";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
   createInvoiceFromLnurlZapRequest,
@@ -88,7 +89,8 @@ export function ZapButton({
   const currentUserMetadata = useContributorMetadata(currentUserPubkeys);
 
   const hasProvidedRecipientWallet = !!(
-    providedMetadata?.lud16?.trim() || providedMetadata?.lnurl?.trim()
+    trimmedKind0String(providedMetadata?.lud16) ||
+    trimmedKind0String(providedMetadata?.lnurl)
   );
 
   // Fetch recipient's Lightning address from Nostr profile (only if not provided)
@@ -96,8 +98,8 @@ export function ZapButton({
     // If parent passed a usable receive hint (repo config / merged profile), use it
     if (hasProvidedRecipientWallet) {
       setRecipientMetadata({
-        lud16: providedMetadata?.lud16,
-        lnurl: providedMetadata?.lnurl,
+        lud16: trimmedKind0String(providedMetadata?.lud16) || undefined,
+        lnurl: trimmedKind0String(providedMetadata?.lnurl) || undefined,
       });
       return;
     }
@@ -139,8 +141,8 @@ export function ZapButton({
         if (events.length > 0) {
           const profile = JSON.parse(events[0].content || "{}");
           setRecipientMetadata({
-            lud16: profile.lud16,
-            lnurl: profile.lnurl,
+            lud16: trimmedKind0String(profile.lud16) || undefined,
+            lnurl: trimmedKind0String(profile.lnurl) || undefined,
           });
         }
       } catch (error) {
@@ -305,9 +307,8 @@ export function ZapButton({
           }
           try {
             const ludOr =
-              recipientMetadata?.lud16?.trim() ||
-              recipientMetadata?.lnurl?.trim() ||
-              "";
+              trimmedKind0String(recipientMetadata?.lud16) ||
+              trimmedKind0String(recipientMetadata?.lnurl);
             if (!ludOr) return null;
             const httpsPay = ludOr.includes("@")
               ? lightningAddressToLnurlpHttps(ludOr)

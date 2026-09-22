@@ -199,7 +199,8 @@ export function getEntityDisplayName(
 export function isDisplayableProfilePicture(
   url: string | null | undefined
 ): url is string {
-  const t = (url || "").trim();
+  if (typeof url !== "string") return false;
+  const t = url.trim();
   if (!t) return false;
   if (t.startsWith("https://") || t.startsWith("http://")) return true;
   if (/^data:image\/[a-z0-9.+-]+/i.test(t)) return true;

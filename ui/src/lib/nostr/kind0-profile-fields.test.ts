@@ -7,6 +7,7 @@ import {
   applyKind0NameFields,
   pickProfileDisplayName,
   profileHandleFromMetadata,
+  trimmedKind0String,
 } from "./kind0-profile-fields";
 
 describe("pickProfileDisplayName", () => {
@@ -67,6 +68,26 @@ describe("applyKind0NameFields", () => {
     });
     expect(next.display_name).toBe("BBakker");
     expect(next.name).toBe("BBakker");
+  });
+
+  it("drops non-string nip05 so cards can call trim without crashing", () => {
+    expect(trimmedKind0String(["user@example.com"])).toBe("");
+    expect(trimmedKind0String(1)).toBe("");
+    expect(trimmedKind0String(true)).toBe("");
+    expect(trimmedKind0String({ name: "user" })).toBe("");
+    expect(trimmedKind0String("  user@example.com  ")).toBe("user@example.com");
+
+    const next = applyKind0NameFields({
+      name: "Ada",
+      nip05: ["ada@example.com"] as unknown as string,
+      picture: 1 as unknown as string,
+      lud16: true as unknown as string,
+    });
+    expect(next.name).toBe("Ada");
+    expect(next.nip05).toBeUndefined();
+    expect(next.picture).toBeUndefined();
+    expect(next.lud16).toBeUndefined();
+    expect(() => trimmedKind0String(next.nip05)).not.toThrow();
   });
 });
 
@@ -147,6 +168,23 @@ describe("payment + social parsing sanity", () => {
       10
     );
     expect(olderBlanks.picture).toBe("https://old.example/a.jpg");
+  });
+
+  it("drops a cached non-string nip05 instead of leaving it for the apps cards", () => {
+    const existing = {
+      name: "Ada",
+      nip05: ["ada@example.com"],
+      created_at: 10,
+    } as Metadata;
+    const out = mergeKind0OntoExisting(
+      existing,
+      { name: "Ada", nip05: "ada@example.com" },
+      20
+    );
+    expect(out.nip05).toBe("ada@example.com");
+
+    const keptBad = mergeKind0OntoExisting(existing, { name: "Ada" }, 20);
+    expect(keptBad.nip05).toBeUndefined();
   });
 
   it("still takes name/picture from a clock-skewed (future) kind 0 onto an empty cache", () => {

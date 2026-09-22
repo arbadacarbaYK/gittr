@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ZapButton } from "@/components/ui/zap-button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { trimmedKind0String } from "@/lib/nostr/kind0-profile-fields";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { resolveRepoReceiveWallet } from "@/lib/payments/resolve-repo-wallet";
 import {
@@ -159,9 +160,9 @@ export function RepoZapButton({
 
   const hasEffectiveReceive = useMemo(() => {
     return !!(
-      effectiveReceive.lud16?.trim() ||
-      effectiveReceive.lnurl?.trim() ||
-      effectiveReceive.nwcRecv?.trim()
+      trimmedKind0String(effectiveReceive.lud16) ||
+      trimmedKind0String(effectiveReceive.lnurl) ||
+      trimmedKind0String(effectiveReceive.nwcRecv)
     );
   }, [effectiveReceive]);
 

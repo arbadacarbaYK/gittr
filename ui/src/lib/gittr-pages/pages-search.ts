@@ -1,4 +1,7 @@
-import { pickProfileDisplayName } from "../nostr/kind0-profile-fields";
+import {
+  pickProfileDisplayName,
+  trimmedKind0String,
+} from "../nostr/kind0-profile-fields";
 
 import {
   authorSearchTokens,
@@ -12,7 +15,7 @@ export type PagesSearchAuthorMeta = {
   name?: unknown;
   display_name?: unknown;
   displayName?: unknown;
-  nip05?: string | null;
+  nip05?: unknown;
 };
 
 /**
@@ -39,7 +42,7 @@ export function pagesSiteSearchHaystack(
       site.authorPubkeyHex || ""
     ) || "";
   const kind0Name = pickProfileDisplayName(extra?.authorMeta) || "";
-  const nip05 = (extra?.authorMeta?.nip05 || "").trim();
+  const nip05 = trimmedKind0String(extra?.authorMeta?.nip05);
   return [
     site.title,
     authorSearchTokens(site),

@@ -9,6 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  pickProfileDisplayName,
+  profileHandleFromMetadata,
+  trimmedKind0String,
+} from "@/lib/nostr/kind0-profile-fields";
+import {
   buildNip39IdentitiesEventUnsigned,
   parseNip39ITags,
 } from "@/lib/nostr/nip39-identities";
@@ -21,10 +26,6 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import {
-  pickProfileDisplayName,
-  profileHandleFromMetadata,
-} from "@/lib/nostr/kind0-profile-fields";
 import { getUserMetadata } from "@/lib/utils/entity-resolver";
 
 import {
@@ -403,8 +404,8 @@ export default function ProfilePage() {
       const newMetadata: Record<string, any> = {};
 
       // Get existing metadata to preserve fields that aren't being updated
-      const existingNip05 = metadata.nip05;
-      const existingLud16 = metadata.lud16;
+      const existingNip05 = trimmedKind0String(metadata.nip05);
+      const existingLud16 = trimmedKind0String(metadata.lud16);
 
       if (data.displayName && data.displayName.trim()) {
         newMetadata.display_name = data.displayName.trim();
@@ -418,9 +419,9 @@ export default function ProfilePage() {
       // CRITICAL: Preserve existing NIP-05 if form field is empty but metadata has it
       if (data.nip5 && data.nip5.trim()) {
         newMetadata.nip05 = data.nip5.trim();
-      } else if (existingNip05 && existingNip05.trim()) {
+      } else if (existingNip05) {
         // Preserve existing NIP-05 from metadata if form field is empty
-        newMetadata.nip05 = existingNip05.trim();
+        newMetadata.nip05 = existingNip05;
       }
       if (actualPicture && actualPicture.trim()) {
         newMetadata.picture = actualPicture.trim();
@@ -433,9 +434,9 @@ export default function ProfilePage() {
       // CRITICAL: Preserve existing LUD-16 if form field is empty but metadata has it
       if (data.lud16 && data.lud16.trim()) {
         newMetadata.lud16 = data.lud16.trim();
-      } else if (existingLud16 && existingLud16.trim()) {
+      } else if (existingLud16) {
         // Preserve existing LUD-16 from metadata if form field is empty
-        newMetadata.lud16 = existingLud16.trim();
+        newMetadata.lud16 = existingLud16;
       }
 
       // Kind 0 = profile metadata only (NIP-39 identities publish as kind 10011 below)

@@ -6,9 +6,30 @@
  * same card before falling back to npub.
  */
 
-function asTrimmedString(value: unknown): string {
+/** Kind-0 text that cards call `.trim()` on. Non-strings are dropped, not coerced. */
+const KIND0_TEXT_FIELDS = [
+  "nip05",
+  "picture",
+  "banner",
+  "website",
+  "about",
+  "lud16",
+  "lnurl",
+  "nwcRecv",
+] as const;
+
+/**
+ * NIP-01 says these fields are strings. Some clients publish a number, boolean,
+ * array, or object. `value?.trim()` only skips null/undefined, so a bad `nip05`
+ * used to white-screen `/apps` (`nip05.trim is not a function`).
+ */
+export function trimmedKind0String(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function asTrimmedString(value: unknown): string {
+  return trimmedKind0String(value);
 }
 
 export type Kind0NameSource = {
@@ -37,12 +58,23 @@ export function normalizeKind0NameFields(
 export function applyKind0NameFields<T extends Kind0NameSource>(
   raw: T
 ): T & { name?: string; display_name?: string } {
+  if (!raw || typeof raw !== "object") return raw;
   const names = normalizeKind0NameFields(raw);
-  return {
-    ...raw,
-    ...(names.name ? { name: names.name } : {}),
-    ...(names.display_name ? { display_name: names.display_name } : {}),
-  };
+  const next = { ...raw } as Record<string, unknown>;
+  for (const key of KIND0_TEXT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+    const value = next[key];
+    if (typeof value !== "string") {
+      delete next[key];
+      continue;
+    }
+    next[key] = value.trim();
+  }
+  if (names.name) next.name = names.name;
+  else if (typeof next.name !== "string") delete next.name;
+  if (names.display_name) next.display_name = names.display_name;
+  else if (typeof next.display_name !== "string") delete next.display_name;
+  return next as T & { name?: string; display_name?: string };
 }
 
 /**

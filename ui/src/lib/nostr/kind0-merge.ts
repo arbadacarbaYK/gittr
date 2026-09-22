@@ -164,5 +164,7 @@ export function mergeKind0OntoExisting(
     shouldReplacePayments
   );
 
-  return next;
+  // Existing cache rows can still hold a non-string nip05/lud16 from before
+  // sanitize-on-read. Drop those here so a merge cannot put them back on screen.
+  return applyKind0NameFields(next);
 }

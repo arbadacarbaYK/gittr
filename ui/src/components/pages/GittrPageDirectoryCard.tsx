@@ -17,7 +17,10 @@ import {
 } from "@/lib/gittr-pages/author-card-label";
 import { gittrRepoPathForPagesSite } from "@/lib/gittr-pages/pages-repo-path";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
-import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
+import {
+  pickProfileDisplayName,
+  trimmedKind0String,
+} from "@/lib/nostr/kind0-profile-fields";
 import type { Metadata } from "@/lib/nostr/useContributorMetadata";
 import { cn } from "@/lib/utils";
 import { isDisplayableProfilePicture } from "@/lib/utils/entity-resolver";
@@ -36,6 +39,7 @@ export function GittrPageDirectoryCard({
   const authorHref = cardAuthorProfileHref(site);
   const authorHex = authorPubkeyHexNormalized(site.authorPubkeyHex);
   const authorLabel = pickProfileDisplayName(authorMeta) || authorPrimary;
+  const authorNip05 = trimmedKind0String(authorMeta?.nip05);
   const host = siteHostname(site.siteUrl);
   const kindLbl = siteKindLabel(site.siteKind);
   const repoPath = gittrRepoPathForPagesSite(site);
@@ -89,12 +93,12 @@ export function GittrPageDirectoryCard({
                   <span className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline">
                     {authorLabel}
                   </span>
-                  {authorMeta?.nip05?.trim() ? (
+                  {authorNip05 ? (
                     <p
                       className="truncate text-[11px] text-gray-500"
-                      title={authorMeta.nip05}
+                      title={authorNip05}
                     >
-                      {authorMeta.nip05}
+                      {authorNip05}
                     </p>
                   ) : null}
                   {authorHex ? (

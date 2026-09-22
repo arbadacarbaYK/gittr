@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { DIRECTORY_TILE_ARTICLE_CLASS } from "@/components/ui/directory-tile-card";
 import { TrustBadge } from "@/components/ui/trust-badge";
-import { pickProfileDisplayName } from "@/lib/nostr/kind0-profile-fields";
+import {
+  pickProfileDisplayName,
+  trimmedKind0String,
+} from "@/lib/nostr/kind0-profile-fields";
 import { softwareAppCardLinks } from "@/lib/nostr/nip82-repository-links";
 import {
   type ParsedSoftwareApp,
@@ -81,6 +84,7 @@ export function SoftwareAppDirectoryCard({
 }) {
   const npubShort = shortNpub(app.pubkey);
   const authorLabel = pickProfileDisplayName(authorMeta) || npubShort;
+  const authorNip05 = trimmedKind0String(authorMeta?.nip05);
   const profileHref = ownerProfileHref(app.pubkey);
   const pills = labels && labels.length > 0 ? labels : topicLabelsForApp(app);
   const metaFor = (pk: string) =>
@@ -153,12 +157,12 @@ export function SoftwareAppDirectoryCard({
                 <span className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline">
                   {authorLabel}
                 </span>
-                {authorMeta?.nip05?.trim() ? (
+                {authorNip05 ? (
                   <p
                     className="truncate text-[11px] text-gray-500"
-                    title={authorMeta.nip05}
+                    title={authorNip05}
                   >
-                    {authorMeta.nip05}
+                    {authorNip05}
                   </p>
                 ) : null}
                 <div className="mt-1">

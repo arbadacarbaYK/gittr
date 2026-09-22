@@ -50,4 +50,17 @@ describe("pagesSiteSearchHaystack", () => {
       })
     ).toBe(true);
   });
+
+  it("ignores a non-string nip05 instead of throwing", () => {
+    expect(() =>
+      pagesSiteSearchHaystack(gitnostr, {
+        authorMeta: { nip05: ["not-a-string"] },
+      })
+    ).not.toThrow();
+    expect(
+      pagesSiteSearchHaystack(gitnostr, {
+        authorMeta: { nip05: "ada@example.com" },
+      })
+    ).toContain("ada@example.com");
+  });
 });

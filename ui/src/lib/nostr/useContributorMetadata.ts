@@ -6,6 +6,7 @@ import { mergeKind0OntoExisting as mergeKind0OntoExistingHelper } from "./kind0-
 import {
   applyKind0NameFields,
   pickProfileDisplayName,
+  trimmedKind0String,
 } from "./kind0-profile-fields";
 import {
   KIND_NIP39_IDENTITIES,
@@ -73,7 +74,22 @@ function hasUsableProfileName(meta?: Metadata | null): boolean {
 /** Lightning receive fields used for zaps / invoices. */
 function hasPaymentReceiveFields(meta?: Metadata | null): boolean {
   if (!meta) return false;
-  return !!(meta.lud16?.trim() || meta.lnurl?.trim() || meta.nwcRecv?.trim());
+  return !!(
+    trimmedKind0String(meta.lud16) ||
+    trimmedKind0String(meta.lnurl) ||
+    trimmedKind0String(meta.nwcRecv)
+  );
+}
+
+/** Cache rows predate string checks. Re-run kind-0 sanitize on every read. */
+function normalizeCachedProfile(value: Metadata): Metadata {
+  const entry = applyKind0NameFields({ ...value }) as Metadata & {
+    identities?: unknown;
+  };
+  if (entry.identities != null && !Array.isArray(entry.identities)) {
+    delete entry.identities;
+  }
+  return entry;
 }
 
 /**
@@ -148,11 +164,7 @@ function loadMetadataCache(): Record<string, Metadata> {
       // CRITICAL: Normalize all keys to lowercase for consistent lookup
       const normalized: Record<string, Metadata> = {};
       for (const [key, value] of Object.entries(parsed)) {
-        const entry = { ...value } as Metadata & { identities?: unknown };
-        if (entry.identities != null && !Array.isArray(entry.identities)) {
-          delete entry.identities;
-        }
-        normalized[key.toLowerCase()] = entry as Metadata;
+        normalized[key.toLowerCase()] = normalizeCachedProfile(value);
       }
       // Only log on first load or when cache size changes significantly
       if (
@@ -942,7 +954,7 @@ export function useContributorMetadata(pubkeys: string[]) {
           // CRITICAL: Normalize all keys to lowercase for consistent lookup
           const normalizedCache: Record<string, Metadata> = {};
           for (const [key, value] of Object.entries(newCache)) {
-            normalizedCache[key.toLowerCase()] = value;
+            normalizedCache[key.toLowerCase()] = normalizeCachedProfile(value);
           }
 
           // Only update if we actually get new data (prevent loops)
