@@ -14352,7 +14352,10 @@ export function RepoCodePage() {
           `/api/nostr/repo/tree-last-commits?${qs.toString()}`,
           { signal: ctrl.signal, cache: "no-store" }
         );
-        if (!res.ok || cancelled) return;
+        if (!res.ok || cancelled) {
+          if (!cancelled) startTransition(() => setTreeLastCommits({}));
+          return;
+        }
         const json = await res.json();
         if (cancelled) return;
         startTransition(() => {
@@ -14383,6 +14386,21 @@ export function RepoCodePage() {
     resolvedParams.entity,
     resolvedParams.repo,
   ]);
+
+  // Nostr-only repos that were never pushed here have no per-file git history.
+  // The header already shows the latest Nostr update; reuse that date on each row.
+  const repoActivityMs = useMemo(() => {
+    if (!mounted) return undefined;
+    return resolveRepoActivityDisplayMs(
+      repoData as {
+        createdAt?: number;
+        updatedAt?: number;
+        lastNostrEventCreatedAt?: number;
+      },
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+  }, [mounted, repoData, resolvedParams.entity, resolvedParams.repo]);
 
   // Hydrate branch/tag lists from the bridge for any repo we can identify —
   // including foreign npub mirrors that never had a local Push marker.
@@ -19230,6 +19248,10 @@ export function RepoCodePage() {
                 <ul className="divide-y dark:divide-lightgray">
                   {deferredItems.map((it) => {
                     const last = treeLastCommits[it.path];
+                    const rowDateMs = last?.timestamp
+                      ? last.timestamp * 1000
+                      : repoActivityMs;
+                    const dateIsRepoUpdate = !last?.timestamp && !!rowDateMs;
                     return (
                       <li
                         key={it.path}
@@ -19404,14 +19426,16 @@ export function RepoCodePage() {
                           <div
                             className="min-w-0 truncate whitespace-nowrap sm:col-span-2 sm:text-right sm:text-sm"
                             title={
-                              last?.timestamp
-                                ? formatDateTime24h(last.timestamp * 1000)
+                              rowDateMs
+                                ? dateIsRepoUpdate
+                                  ? `Latest update for this repository: ${formatDateTime24h(
+                                      rowDateMs
+                                    )}. A separate date for each file was not published.`
+                                  : formatDateTime24h(rowDateMs)
                                 : undefined
                             }
                           >
-                            {last?.timestamp
-                              ? formatRelativeShort(last.timestamp * 1000)
-                              : "—"}
+                            {rowDateMs ? formatRelativeShort(rowDateMs) : "—"}
                           </div>
                           <div className="flex shrink-0 items-center justify-end gap-2 whitespace-nowrap sm:col-span-2">
                             {isOwner && (

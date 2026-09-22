@@ -94,7 +94,7 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 **Huge trees** (thousands of files): the bridge may return `listing: "shallow"` (one directory level). Opening a folder GETs that path’s children.
 
-**File list dates:** `GET /api/nostr/repo/tree-last-commits` on the same tip/branch (text marker `>>>COMMIT<<<`, not `%x00`).
+**File list dates:** `GET /api/nostr/repo/tree-last-commits` on the gittr mirror (text marker `>>>COMMIT<<<`, not `%x00`). A Nostr-only repo that was never pushed here has no per-file history; each row then shows the same latest repository update already used in the file-list header (`lastNostrEventCreatedAt`, else local `updatedAt`). The commit-message column stays blank. Folder rows have no blob size.
 
 ## Loading one file or folder README
 
