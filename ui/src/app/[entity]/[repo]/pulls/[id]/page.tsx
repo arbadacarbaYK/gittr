@@ -3154,12 +3154,9 @@ export default function PRDetailPage({
                     amount={10}
                     comment={`Zap for PR: ${pr.title}`}
                   />
-                  <p className="text-xs text-gray-400 mt-2">
-                    This zap only sends sats to the PR author. It does not
-                    release a bounty.
-                  </p>
-                  {/* Show bounty info if PR is linked to an issue with a bounty withdraw link created */}
-                  {linkedIssue?.bountyAmount &&
+                  {/* Owner only: how a linked bounty is handled on merge */}
+                  {isOwner &&
+                    linkedIssue?.bountyAmount &&
                     (linkedIssue?.bountyWithdrawId ||
                       linkedIssue?.bountyWithdrawUrl) && (
                       <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/50 rounded">
@@ -3169,13 +3166,8 @@ export default function PRDetailPage({
                         <p className="text-xs text-yellow-200">
                           Issue {issueOrPrListRef(linkedIssue)} has a{" "}
                           <strong>{linkedIssue.bountyAmount} sats</strong>{" "}
-                          bounty withdraw link created.
-                        </p>
-                        <p className="text-xs text-yellow-300/80 mt-1">
-                          Only someone who can merge this repo releases that
-                          withdraw link, and only by merging. A zap does not.
-                          Funds leave the bounty when the author claims the
-                          link.
+                          bounty. Merging gives the author the withdraw link.
+                          The sats leave the bounty wallet when they claim it.
                         </p>
                       </div>
                     )}
@@ -3184,7 +3176,8 @@ export default function PRDetailPage({
             })()}
 
           {/* Bounty Info (if PR is linked to an issue with a bounty but author is not a valid Nostr pubkey) */}
-          {pr.status === "open" &&
+          {isOwner &&
+            pr.status === "open" &&
             linkedIssue?.bountyAmount &&
             (linkedIssue?.bountyWithdrawId || linkedIssue?.bountyWithdrawUrl) &&
             (() => {
