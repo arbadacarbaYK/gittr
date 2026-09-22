@@ -1,6 +1,7 @@
 "use client";
 
 import { buttonVariants } from "@/components/ui/button";
+import { DirectoryCardShareButton } from "@/components/ui/directory-card-share-button";
 import {
   DIRECTORY_TILE_ARTICLE_CLASS,
   DirectoryTileFallbackIcon,
@@ -52,9 +53,12 @@ export function GittrPageDirectoryCard({
         </DirectoryTileFallbackIcon>
       </div>
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
-          {site.title}
-        </h2>
+        <div className="flex items-start gap-2">
+          <h2 className="min-w-0 flex-1 line-clamp-2 text-lg font-semibold leading-snug text-white">
+            {site.title}
+          </h2>
+          <DirectoryCardShareButton title={site.title} url={site.siteUrl} />
+        </div>
         {host ? (
           <p className="mt-0.5 truncate font-mono text-xs text-gray-500">
             {host}

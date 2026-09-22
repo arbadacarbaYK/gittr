@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { DirectoryCardShareButton } from "@/components/ui/directory-card-share-button";
 import { DIRECTORY_TILE_ARTICLE_CLASS } from "@/components/ui/directory-tile-card";
 import { TrustBadge } from "@/components/ui/trust-badge";
 import {
@@ -15,6 +16,7 @@ import {
   platformHintToLabel,
 } from "@/lib/nostr/nip82-software";
 import type { Metadata } from "@/lib/nostr/useContributorMetadata";
+import { softwareAppPath } from "@/lib/seo/software-app-path";
 import { cn } from "@/lib/utils";
 import {
   isDisplayableProfilePicture,
@@ -119,9 +121,15 @@ export function SoftwareAppDirectoryCard({
         </div>
       </div>
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
-          {app.name}
-        </h2>
+        <div className="flex items-start gap-2">
+          <h2 className="min-w-0 flex-1 line-clamp-2 text-lg font-semibold leading-snug text-white">
+            {app.name}
+          </h2>
+          <DirectoryCardShareButton
+            title={app.name || app.appId}
+            url={app.appId ? softwareAppPath(app.appId) : ""}
+          />
+        </div>
         <p className="mt-0.5 truncate font-mono text-xs text-gray-500">
           {app.appId}
         </p>
