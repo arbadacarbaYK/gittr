@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   dropExploreSessionCatalogMemoryForTests,
+  flushExploreSessionCatalogWrites,
   hydrateExploreSessionCatalog,
   peekExploreSessionCatalog,
   resetExploreSessionCatalogForTests,
@@ -60,11 +61,47 @@ describe("explore session catalog", () => {
         repo: `live-${i}`,
       }))
     );
+    flushExploreSessionCatalogWrites();
     dropExploreSessionCatalogMemoryForTests();
     const fromLs = Array.from({ length: 8 }, (_, i) => ({
       entity: "npub1abc",
       repo: `live-${i}`,
     }));
     expect(hydrateExploreSessionCatalog(fromLs)).toHaveLength(50);
+  });
+
+  it("stores a short snapshot when the full catalog does not fit", () => {
+    const quota = new Map<string, string>();
+    let failedFull = false;
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => quota.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        if (!failedFull && value.length > 500) {
+          failedFull = true;
+          const error = new Error("quota");
+          error.name = "QuotaExceededError";
+          throw error;
+        }
+        quota.set(key, value);
+      },
+      removeItem: (key: string) => {
+        quota.delete(key);
+      },
+    });
+    resetExploreSessionCatalogForTests();
+    writeExploreSessionCatalog(
+      Array.from({ length: 30 }, (_, i) => ({
+        entity: "npub1abc",
+        repo: `fat-${i}`,
+        description: "d".repeat(80),
+      }))
+    );
+    flushExploreSessionCatalogWrites();
+    const saved = JSON.parse(
+      quota.get("gittr_explore_session_catalog") || "[]"
+    );
+    expect(saved.length).toBeGreaterThan(0);
+    expect(saved.length).toBeLessThanOrEqual(30);
+    expect(peekExploreSessionCatalog()).toHaveLength(30);
   });
 });

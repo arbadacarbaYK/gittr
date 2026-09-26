@@ -27,6 +27,11 @@ import {
   classifyOwnReposForFlush,
 } from "./repo-cache-flush";
 import { shouldDropFlatBasenameForNestedUpload } from "./select-display-file-tree";
+import {
+  QUOTA_KEEP_CAPS,
+  quotaKeepList,
+  setItemReplacingQuota,
+} from "./storage-quota-keep";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -836,6 +841,14 @@ const parseJsonArray = <T>(
   }
 };
 
+/** True after the last saveStoredRepos call persisted a shorter list than it was given. */
+let lastRepoSaveDroppedRows = false;
+
+/** Explore uses this to stop rewriting a catalog that does not fit. */
+export function didLastRepoSaveDropRows(): boolean {
+  return lastRepoSaveDroppedRows;
+}
+
 /** Keep gittr_repos small — file trees live under gittr_files__* keys. */
 export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
   const r = repo as StoredRepo & {
@@ -952,27 +965,6 @@ function slimReposForStorage(repos: StoredRepo[]): StoredRepo[] {
   return repos.map(slimRepoForStorage);
 }
 
-function rankReposForQuotaKeep(
-  repos: StoredRepo[],
-  preferOwnerPubkey?: string
-): StoredRepo[] {
-  const prefer = preferOwnerPubkey?.toLowerCase();
-  return [...repos].sort((a: any, b: any) => {
-    const score = (r: any) => {
-      const owner = String(r.ownerPubkey || "").toLowerCase();
-      const ownedBoost = prefer && owner && owner === prefer ? 1e16 : 0;
-      return (
-        ownedBoost +
-        (r.hasUnpushedEdits || r.status === "local" ? 1e15 : 0) +
-        (r.lastNostrEventCreatedAt
-          ? r.lastNostrEventCreatedAt * 1000
-          : r.updatedAt || r.createdAt || 0)
-      );
-    };
-    return score(b) - score(a);
-  });
-}
-
 export const loadStoredRepos = (): StoredRepo[] => {
   if (typeof window === "undefined") return [];
   const raw = parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
@@ -1052,6 +1044,7 @@ export const saveStoredRepos = (
   opts?: { quiet?: boolean; preferOwnerPubkey?: string }
 ): boolean => {
   if (typeof window === "undefined") return false;
+  lastRepoSaveDroppedRows = false;
   const quiet = opts?.quiet === true;
   const preferOwnerPubkey = opts?.preferOwnerPubkey;
   const toSave = slimReposForStorage(
@@ -1074,10 +1067,41 @@ export const saveStoredRepos = (
     }
   };
 
+  const tryReplace = (list: StoredRepo[]): boolean =>
+    setItemReplacingQuota(localStorage, "gittr_repos", JSON.stringify(list));
+
+  const writeCapped = (rows: StoredRepo[]): boolean => {
+    const pools = [rows, rows.map(ultraSlimRepoForCatalog)];
+    for (const [index, pool] of pools.entries()) {
+      for (const cap of QUOTA_KEEP_CAPS) {
+        const capped = dedupeStoredReposByOwnerAndRepoLabel(
+          quotaKeepList(pool, cap, preferOwnerPubkey)
+        );
+        if (capped.length >= rows.length) continue;
+        if (!tryReplace(capped)) continue;
+        lastRepoSaveDroppedRows = true;
+        console.warn(
+          index === 0
+            ? `⚠️ [Storage] Saved ${capped.length} of ${rows.length} repos locally. The rest stay in this tab.`
+            : `⚠️ [Storage] Saved ultra-slim gittr_repos (${capped.length}/${rows.length})`
+        );
+        if (index === 0 && !quiet && typeof window !== "undefined") {
+          setTimeout(() => {
+            alert(
+              `⚠️ Browser storage was full — kept ${capped.length} repos on this device.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
+            );
+          }, 100);
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+
   if (tryWrite(toSave)) return true;
 
-  console.error(
-    `❌ [Storage] Quota exceeded when saving repos. Attempting cleanup...`
+  console.warn(
+    `⚠️ [Storage] Browser storage is full for ${toSave.length} repos. Keeping a smaller local copy.`
   );
 
   // File trees / issue caches are usually the real hog — free them first.
@@ -1089,117 +1113,14 @@ export const saveStoredRepos = (
     return true;
   }
 
-  const now = Date.now();
-  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+  // A 30-day trim used to "succeed" while still writing thousands of rows.
+  // Explore then saved the full in-memory catalog again, so the same failure
+  // repeated on every relay event and froze navigation. Cap once instead.
+  if (writeCapped(toSave)) return true;
 
-  const cleaned30 = toSave.filter((r: any) => {
-    const lastActivity =
-      (r.lastNostrEventCreatedAt ? r.lastNostrEventCreatedAt * 1000 : 0) ||
-      r.updatedAt ||
-      r.lastModifiedAt ||
-      r.createdAt ||
-      0;
-    return (
-      lastActivity > thirtyDaysAgo || r.hasUnpushedEdits || r.status === "local"
-    );
-  });
-  if (cleaned30.length < toSave.length) {
-    console.log(
-      `🧹 [Storage] Cleaned up ${
-        toSave.length - cleaned30.length
-      } old repos (older than 30 days)`
-    );
-    const cleanedDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned30);
-    if (tryWrite(cleanedDeduped)) {
-      if (!quiet && typeof window !== "undefined") {
-        setTimeout(() => {
-          alert(
-            `⚠️ localStorage is getting full. Cleaned up old repos. ${cleanedDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-          );
-        }, 100);
-      }
-      return true;
-    }
-
-    const cleaned7 = cleaned30.filter((r: any) => {
-      const lastActivity =
-        (r.lastNostrEventCreatedAt ? r.lastNostrEventCreatedAt * 1000 : 0) ||
-        r.updatedAt ||
-        r.lastModifiedAt ||
-        r.createdAt ||
-        0;
-      return (
-        lastActivity > sevenDaysAgo ||
-        r.hasUnpushedEdits ||
-        r.status === "local"
-      );
-    });
-    if (cleaned7.length < cleaned30.length) {
-      const aggDeduped = dedupeStoredReposByOwnerAndRepoLabel(cleaned7);
-      if (tryWrite(aggDeduped)) {
-        if (!quiet && typeof window !== "undefined") {
-          setTimeout(() => {
-            alert(
-              `⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-            );
-          }, 100);
-        }
-        return true;
-      }
-    }
-  }
-
-  // Sweep remaining fat caches again, then progressive caps (Explore can keep
-  // the full list in memory even when we only persist a subset).
   const evicted = evictAllRepoFileCaches(500);
-  if (evicted > 0 && tryWrite(toSave)) {
-    console.log(
-      `✅ [Storage] Saved ${toSave.length} repos after evicting ${evicted} cache key(s)`
-    );
+  if (evicted > 0 && (tryWrite(toSave) || writeCapped(toSave))) {
     return true;
-  }
-
-  const ranked = rankReposForQuotaKeep(toSave, preferOwnerPubkey);
-  const capSizes = [2000, 1200, 800, 500, 350, 250, 150];
-  for (const cap of capSizes) {
-    if (cap >= ranked.length) continue;
-    const capped = ranked.slice(0, cap);
-    if (tryWrite(capped)) {
-      console.warn(
-        `⚠️ [Storage] Saved capped gittr_repos (${capped.length}/${toSave.length}) after quota reclaim`
-      );
-      if (!quiet && typeof window !== "undefined") {
-        setTimeout(() => {
-          alert(
-            `⚠️ Browser storage was full — kept the ${capped.length} most recent repos locally.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
-          );
-        }, 100);
-      }
-      return true;
-    }
-  }
-
-  // Last resort: ultra-slim catalog rows (drop clone/relays/langs bulk).
-  const ultra = rankReposForQuotaKeep(
-    toSave.map(ultraSlimRepoForCatalog),
-    preferOwnerPubkey
-  );
-  if (tryWrite(ultra)) {
-    console.warn(
-      `⚠️ [Storage] Saved ultra-slim gittr_repos (${ultra.length} rows) after quota reclaim`
-    );
-    return true;
-  }
-  for (const cap of [1500, 800, 400, 200, 100]) {
-    if (cap >= ultra.length) continue;
-    const capped = ultra.slice(0, cap);
-    if (tryWrite(capped)) {
-      console.warn(
-        `⚠️ [Storage] Saved ultra-slim capped gittr_repos (${capped.length}/${toSave.length})`
-      );
-      return true;
-    }
   }
 
   console.error(

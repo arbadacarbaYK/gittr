@@ -60,7 +60,11 @@ import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones"
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { resolveRepoDisplayIcon } from "@/lib/repos/resolve-repo-display-icon";
-import { loadStoredRepos, saveStoredRepos } from "@/lib/repos/storage";
+import {
+  didLastRepoSaveDropRows,
+  loadStoredRepos,
+  saveStoredRepos,
+} from "@/lib/repos/storage";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -342,6 +346,8 @@ function ExplorePageContent() {
   );
   const catalogUiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leavingExploreRef = useRef(false);
+  /** Full catalog did not fit in localStorage — stop rewriting it on every event. */
+  const localCatalogPersistBlockedRef = useRef(false);
 
   useEffect(() => {
     leavingExploreRef.current = false;
@@ -702,10 +708,22 @@ function ExplorePageContent() {
         }
       };
       const flushPersist = () => {
-        if (!exploreCatalogRef.current) return false;
-        return saveStoredRepos(exploreCatalogRef.current as any, {
+        if (localCatalogPersistBlockedRef.current) return false;
+        const list = exploreCatalogRef.current;
+        if (!list) return false;
+        const saved = saveStoredRepos(list as any, {
           quiet: true,
+          preferOwnerPubkey: pubkey || undefined,
         });
+        // A partial save used to return success, then the next relay event
+        // wrote the full in-memory catalog again and the quota loop never stopped.
+        if (!saved || didLastRepoSaveDropRows()) {
+          localCatalogPersistBlockedRef.current = true;
+          console.warn(
+            `[Explore] Browser storage is full — keeping ${list.length} repos in this tab only.`
+          );
+        }
+        return saved;
       };
 
       if (opts?.immediate) {
@@ -731,7 +749,7 @@ function ExplorePageContent() {
       }, 600);
       return true;
     },
-    [applyReposToUi]
+    [applyReposToUi, pubkey]
   );
 
   const loadRepos = useCallback(() => {
