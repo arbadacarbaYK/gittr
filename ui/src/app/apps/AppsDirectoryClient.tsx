@@ -57,7 +57,7 @@ import {
 
 import { ChevronDown, Download, Loader2, Package, Search } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 function CardSkeleton() {
@@ -192,7 +192,6 @@ export function AppsDirectoryClient({
   initialHeadingSummary?: string;
 } = {}) {
   const { subscribe, defaultRelays, pubkey } = useNostrContext();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
@@ -710,11 +709,13 @@ export function AppsDirectoryClient({
   const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
 
   useEffect(() => {
-    const fromQuery = searchParams?.get("q")?.trim();
+    const fromQuery = new URLSearchParams(window.location.search)
+      .get("q")
+      ?.trim();
     const fromPath = parseSoftwareAppPathId(pathname || "");
     const fromUrl = fromQuery || fromPath;
     if (fromUrl) setQuery(fromUrl);
-  }, [searchParams, pathname]);
+  }, [pathname]);
 
   const filteredApps = useMemo(() => {
     const q = query.trim().toLowerCase();

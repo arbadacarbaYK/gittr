@@ -1,5 +1,5 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
-import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
+import { shouldUseFastDocumentMetadata } from "@/lib/seo/is-rsc-client-navigation";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import {
   normalizeSocialImageUrl,
@@ -23,8 +23,8 @@ export async function generateMetadata({
   const baseUrl = getPublicSiteUrl();
   const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}`;
 
-  // Soft profile navigations must not wait on Nostr kind-0 (same stall as repo tabs).
-  if (await isRscClientNavigation()) {
+  // Browser clicks and soft navigations must not wait on Nostr kind-0.
+  if (await shouldUseFastDocumentMetadata()) {
     return {
       title: resolvedParams.entity,
       description: `Profile for ${resolvedParams.entity} on gittr - Decentralized Git on Nostr`,

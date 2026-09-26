@@ -34,11 +34,14 @@ describe("appNavigate Code path detection", () => {
     expect(isRepoCodePath(`${CODE_PATH}/issues`)).toBe(false);
   });
 
-  it("never forces hard navigate for browse (Amber warm stays click-only)", () => {
+  it("loads a different page in the browser, and keeps same-page updates soft", () => {
     expect(
       shouldHardNavigate("/npub1a/cargo-limit/issues", "/npub1a/cargo-limit")
-    ).toBe(false);
-    expect(shouldHardNavigate("/explore", "/")).toBe(false);
+    ).toBe(true);
+    expect(shouldHardNavigate("/explore", "/")).toBe(true);
+    expect(shouldHardNavigate("/pages", "/apps")).toBe(true);
+    expect(shouldHardNavigate("/explore?q=git", "/explore")).toBe(false);
+    expect(shouldHardNavigate("/apps", "/apps")).toBe(false);
   });
 });
 

@@ -1,5 +1,3 @@
-import { Suspense } from "react";
-
 import {
   APPS_DESCRIPTION,
   buildPageSiteMetadata,
@@ -16,9 +14,5 @@ export const metadata = buildPageSiteMetadata({
 });
 
 export default function AppsPage() {
-  return (
-    <Suspense fallback={null}>
-      <AppsDirectoryClient />
-    </Suspense>
-  );
+  return <AppsDirectoryClient />;
 }

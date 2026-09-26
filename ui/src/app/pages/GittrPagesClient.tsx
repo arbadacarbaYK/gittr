@@ -36,6 +36,8 @@ type ApiPayload = {
 
 type GittrPagesClientProps = {
   pagesBase: string;
+  /** First screen from the server, so the cards are in the first HTML. */
+  initialPayload?: ApiPayload | null;
 };
 
 function CardSkeleton() {
@@ -53,12 +55,16 @@ function CardSkeleton() {
   );
 }
 
-export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
-  const [loading, setLoading] = useState(true);
+export function GittrPagesClient({
+  pagesBase,
+  initialPayload = null,
+}: GittrPagesClientProps) {
+  const seeded = (initialPayload?.sites?.length ?? 0) > 0;
+  const [loading, setLoading] = useState(!seeded);
   const [hydrating, setHydrating] = useState(false);
   const [hydrateFailed, setHydrateFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<ApiPayload | null>(null);
+  const [payload, setPayload] = useState<ApiPayload | null>(initialPayload);
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(REPO_LIST_PAGE_SIZE);
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -66,7 +72,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
   useEffect(() => {
     let cancelled = false;
     let fullTimer: ReturnType<typeof setTimeout> | undefined;
-    setLoading(true);
+    if (!(refreshNonce === 0 && seeded)) setLoading(true);
     setError(null);
     setHydrateFailed(false);
     setVisibleCount(REPO_LIST_PAGE_SIZE);

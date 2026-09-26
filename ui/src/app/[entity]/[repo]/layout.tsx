@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
-import { isRscClientNavigation } from "@/lib/seo/is-rsc-client-navigation";
+import { shouldUseFastDocumentMetadata } from "@/lib/seo/is-rsc-client-navigation";
 import { softwareSourceCodeJsonLd } from "@/lib/seo/json-ld";
 import { JsonLd } from "@/lib/seo/json-ld-script";
 import { decodeOgOwnerPubkey } from "@/lib/seo/og-owner-pubkey";
@@ -60,9 +60,9 @@ export async function generateMetadata({
     const baseUrl = getPublicSiteUrl();
     const decodedRepo = decodeRepoParam(resolvedParams.repo);
 
-    // Soft client navigations (Code ↔ ToDo ↔ Issues) must not open RelayPools
-    // or hit SQLite — that stalled RSC ~2–8s and triggered hard location.assign.
-    if (await isRscClientNavigation()) {
+    // Browser clicks and soft tab changes must not open RelayPools or SQLite.
+    // That lookup held the next page blank for seconds.
+    if (await shouldUseFastDocumentMetadata()) {
       if (devMeta) {
         console.log(
           "[Metadata] RSC soft-nav fast path:",

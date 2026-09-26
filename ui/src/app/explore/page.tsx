@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import {
@@ -80,7 +73,6 @@ import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-ur
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import type { OnEvent } from "nostr-relaypool";
 import { nip19 } from "nostr-tools";
 
@@ -333,10 +325,16 @@ function ExplorePageContent() {
     ExploreHomepagePin[]
   >(() => readStoredHomepagePins());
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
-  const searchParams = useSearchParams();
-  const qRaw = searchParams?.get("q") || "";
+  // Read ?q= / ?user= after paint. useSearchParams() suspended this whole
+  // page, so the HTML was only a black "Loading..." until the bundle ran.
+  const [qRaw, setQRaw] = useState("");
+  const [userFilter, setUserFilter] = useState<string | null>(null);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setQRaw(sp.get("q") || "");
+    setUserFilter(sp.get("user"));
+  }, []);
   const q = qRaw.toLowerCase();
-  const userFilter = searchParams?.get("user") || null;
   const openRepoInNewTab = !!(qRaw.trim() || userFilter);
   const { defaultRelays, subscribe, pubkey } = useNostrContext();
   // Session catalog: grows with every Nostr event even when localStorage quota
@@ -2751,13 +2749,5 @@ function ExplorePageContent() {
 }
 
 export default function ExplorePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-black text-white p-8">Loading...</div>
-      }
-    >
-      <ExplorePageContent />
-    </Suspense>
-  );
+  return <ExplorePageContent />;
 }

@@ -9,6 +9,31 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
+describe("shouldUseFastDocumentMetadata", () => {
+  beforeEach(() => {
+    headerStore.clear();
+  });
+
+  it("is fast for a normal browser document", async () => {
+    headerStore.set(
+      "user-agent",
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
+    );
+    const { shouldUseFastDocumentMetadata } = await import(
+      "./is-rsc-client-navigation"
+    );
+    expect(await shouldUseFastDocumentMetadata()).toBe(true);
+  });
+
+  it("waits for a link-preview crawler", async () => {
+    headerStore.set("user-agent", "Twitterbot/1.0");
+    const { shouldUseFastDocumentMetadata } = await import(
+      "./is-rsc-client-navigation"
+    );
+    expect(await shouldUseFastDocumentMetadata()).toBe(false);
+  });
+});
+
 describe("isRscClientNavigation", () => {
   beforeEach(() => {
     headerStore.clear();

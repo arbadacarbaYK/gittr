@@ -60,7 +60,6 @@ const HeaderConfig = {
     {
       title: "Pages",
       href: "/pages",
-      openInNewTab: true,
     },
     {
       title: "Apps",

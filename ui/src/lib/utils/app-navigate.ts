@@ -1,22 +1,15 @@
 /**
- * Soft client navigation by default. Hard full-document loads were used as a
- * blunt fix when Code-tab hydrate starved clicks — that made *every* chrome
- * click feel like a 10s tab spinner after RemoteSigner remount warm.
+ * A click that changes the page uses the browser's own navigation.
+ *
+ * `router.push` waits until the page you are leaving finishes its relay
+ * work. That is the dead click, then a blank slot, then the next page
+ * still loading its cards. The browser load paints the next HTML as soon
+ * as it arrives. Same-page updates (a file query, a search on the same
+ * path) stay on `router.push`.
  *
  * Amber signing stays on Push/Star/Watch via ensureRpcHealthy at click time.
- * Browse must not hard-reload or await bunker warm.
- *
- * Soft RSC for repo tabs also must stay fast: generateMetadata skips Nostr on
- * Flight requests (isRscClientNavigation).
- *
- * Chrome clicks (`router.push`) are **urgent** — not wrapped in
- * `startTransition`. Explore/Home/Issues live catalogs, Code hydrate, Apps
- * catalog flushes, and profile 30617 / follow-count storms starve concurrent
- * transitions, so the address bar, header, and `/apps` owner-name links look
- * dead until React is idle. Leaving `/apps`, `/pages`, or a profile `/{npub}`
- * pauses that work and uses the 1.2s hard fallback (same as Home from Code).
- * Urgent push lets the click land immediately; hard `location.assign` remains
- * last-resort.
+ * Document titles for a normal browser skip the relay lookup
+ * (`shouldUseFastDocumentMetadata`); link-preview crawlers still wait.
  */
 
 function normalizePath(href: string): string {
@@ -288,14 +281,18 @@ export function shouldApplySoftNavHardFallback(
 }
 
 /**
- * Hard nav is reserved for rare stuck soft transitions — not for every leave
- * from Code/Explore (that remounted the whole app + bunker warm).
+ * True when this click opens a different page. Same path (query-only)
+ * stays a soft update so a file or search box does not reload the document.
  */
 export function shouldHardNavigate(
-  _href: string,
-  _pathname?: string | null
+  href: string,
+  pathname?: string | null
 ): boolean {
-  return false;
+  const current =
+    pathname ||
+    (typeof window !== "undefined" ? window.location.pathname : "");
+  if (!current) return false;
+  return canonicalPath(href) !== canonicalPath(current);
 }
 
 type NavEvent = {
@@ -313,6 +310,8 @@ export function appNavigate(
 ): void {
   if (typeof window === "undefined") return;
   if (shouldHardNavigate(href, pathname)) {
+    dispatchPauseHeavyCatalog(pathname);
+    event?.preventDefault();
     window.location.assign(href);
     return;
   }
