@@ -7,6 +7,10 @@ import {
 } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { filterGatewaySitesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 
+import { readFile, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+
 export type GatewayStatusSitesOk = {
   pagesBase: string;
   statusUrl: string;
@@ -23,8 +27,18 @@ export type GatewayStatusSitesErr = {
   status: number;
 };
 
-const TTL_MS = 15_000;
-let cache: { expires: number; payload: GatewayStatusSitesOk } | null = null;
+/** How long a copy is "fresh" before the next request refreshes it in the background. */
+const FRESH_MS = 5 * 60_000;
+/** Disk copy survives a process restart so the first visitor is not stuck on a cold download. */
+const DISK_MAX_AGE_MS = 30 * 60_000;
+const DISK_PATH = join(tmpdir(), "gittr-pages-directory.json");
+
+type MemoryCache = { expires: number; payload: GatewayStatusSitesOk };
+
+let memory: MemoryCache | null = null;
+let inflight: Promise<GatewayStatusSitesOk | GatewayStatusSitesErr> | null =
+  null;
+let diskRead: Promise<GatewayStatusSitesOk | null> | null = null;
 
 export function gittrPagesGatewayBase(): string {
   return (
@@ -38,24 +52,88 @@ function pagesBase(): string {
 
 /** Test hook */
 export function resetGatewayStatusSitesCacheForTests(): void {
-  cache = null;
+  memory = null;
+  inflight = null;
+  diskRead = null;
+}
+
+function remember(payload: GatewayStatusSitesOk): void {
+  memory = { expires: Date.now() + FRESH_MS, payload };
+  void writeFile(
+    DISK_PATH,
+    JSON.stringify({ savedAt: Date.now(), payload })
+  ).catch(() => {
+    /* a full disk must not break the directory */
+  });
+}
+
+async function readDiskCache(): Promise<GatewayStatusSitesOk | null> {
+  try {
+    const raw = await readFile(DISK_PATH, "utf8");
+    const parsed = JSON.parse(raw) as {
+      savedAt?: number;
+      payload?: GatewayStatusSitesOk;
+    };
+    if (
+      !parsed?.payload?.sites ||
+      typeof parsed.savedAt !== "number" ||
+      Date.now() - parsed.savedAt > DISK_MAX_AGE_MS
+    ) {
+      return null;
+    }
+    return parsed.payload;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Parsed, blocklisted, browsable directory. Cached ~15 seconds so `/pages`
- * first paint and later Load-more / profile checks do not re-download
- * ~2000 gateway rows on every request, but Push Manifest shows up on the
- * next profile / Links pass.
+ * Parsed, blocklisted, browsable directory.
+ * The gateway file is a few megabytes and can take well over ten seconds
+ * to build. Visitors get the last good copy immediately; a refresh runs
+ * behind that response. `fresh` (right after Push Manifest) waits for a
+ * new download.
  */
 export async function loadGatewayStatusSites(opts?: {
   fresh?: boolean;
 }): Promise<GatewayStatusSitesOk | GatewayStatusSitesErr> {
-  const now = Date.now();
   const fresh = opts?.fresh === true;
-  if (!fresh && cache && cache.expires > now) {
-    return cache.payload;
+  const now = Date.now();
+  if (!fresh && memory && memory.expires > now) {
+    return memory.payload;
   }
 
+  if (!fresh && !memory) {
+    if (!diskRead) diskRead = readDiskCache();
+    const fromDisk = await diskRead;
+    diskRead = null;
+    if (fromDisk) {
+      memory = { expires: 0, payload: fromDisk };
+    }
+  }
+
+  if (!fresh && memory) {
+    void startDirectoryRefresh();
+    return memory.payload;
+  }
+
+  return startDirectoryRefresh();
+}
+
+function startDirectoryRefresh(): Promise<
+  GatewayStatusSitesOk | GatewayStatusSitesErr
+> {
+  if (!inflight) {
+    inflight = fetchDirectory().finally(() => {
+      inflight = null;
+    });
+  }
+  return inflight;
+}
+
+async function fetchDirectory(): Promise<
+  GatewayStatusSitesOk | GatewayStatusSitesErr
+> {
   const base = pagesBase();
   const statusUrl = `${base}/status`;
   const manifestsUrl = `${base}/status/manifests.json`;
@@ -126,9 +204,10 @@ export async function loadGatewayStatusSites(opts?: {
       };
     }
 
-    cache = { expires: now + TTL_MS, payload };
+    remember(payload);
     return payload;
   } catch (e: unknown) {
+    if (memory) return memory.payload;
     const message = e instanceof Error ? e.message : String(e);
     return { error: message, statusUrl, manifestsUrl, status: 500 };
   }

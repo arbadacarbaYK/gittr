@@ -65,6 +65,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
 
   useEffect(() => {
     let cancelled = false;
+    let fullTimer: ReturnType<typeof setTimeout> | undefined;
     setLoading(true);
     setError(null);
     setHydrateFailed(false);
@@ -75,7 +76,35 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
       setPayload(data);
     };
 
-    // First page only so cards can paint without waiting on ~2000 rows.
+    const hydrateRest = async () => {
+      if (cancelled) return;
+      setHydrating(true);
+      try {
+        const rest = await fetch(
+          `/api/gittr-pages/status-sites?sort=updated${
+            refreshNonce > 0 ? "&fresh=1" : ""
+          }`
+        );
+        const full = (await rest.json()) as ApiPayload & { error?: string };
+        if (!rest.ok) {
+          console.warn(
+            "[pages] Full directory hydrate failed:",
+            full.error || rest.status
+          );
+          if (!cancelled) setHydrateFailed(true);
+          return;
+        }
+        apply(full);
+      } catch (hydrateErr) {
+        console.warn("[pages] Full directory hydrate failed:", hydrateErr);
+        if (!cancelled) setHydrateFailed(true);
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    };
+
+    // First page only. The full directory is a few megabytes — pull it
+    // after the cards are on screen so search can use it without blocking open.
     const fresh = refreshNonce > 0 ? "&fresh=1" : "";
     fetch(
       `/api/gittr-pages/status-sites?limit=${REPO_LIST_PAGE_SIZE}&sort=updated${fresh}`
@@ -86,39 +115,11 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
           throw new Error(data.error || `Request failed (${res.status})`);
         }
         apply(data);
-        if (!cancelled) {
-          setLoading(false);
-        }
-        if (data.hasMore === false) {
-          return;
-        }
-        if (!cancelled) {
-          setHydrating(true);
-        }
-        try {
-          const rest = await fetch(
-            `/api/gittr-pages/status-sites?sort=updated${
-              refreshNonce > 0 ? "&fresh=1" : ""
-            }`
-          );
-          const full = (await rest.json()) as ApiPayload & { error?: string };
-          if (!rest.ok) {
-            console.warn(
-              "[pages] Full directory hydrate failed:",
-              full.error || rest.status
-            );
-            if (!cancelled) setHydrateFailed(true);
-            return;
-          }
-          apply(full);
-        } catch (hydrateErr) {
-          console.warn("[pages] Full directory hydrate failed:", hydrateErr);
-          if (!cancelled) setHydrateFailed(true);
-        } finally {
-          if (!cancelled) {
-            setHydrating(false);
-          }
-        }
+        if (!cancelled) setLoading(false);
+        if (data.hasMore === false || cancelled) return;
+        fullTimer = setTimeout(() => {
+          void hydrateRest();
+        }, 1200);
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -126,13 +127,11 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         }
       })
       .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-          setHydrating(false);
-        }
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
+      if (fullTimer) clearTimeout(fullTimer);
     };
   }, [refreshNonce]);
 
