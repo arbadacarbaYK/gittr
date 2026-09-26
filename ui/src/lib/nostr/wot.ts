@@ -19,7 +19,7 @@ export type WoTDistanceSource =
   | "unavailable";
 
 export type WoTDistanceResult = {
-  /** null = no path (Outside) OR unknown when source is "unavailable" */
+  /** null = no path (Outside), or unknown when source is "unavailable" or the extension returned null */
   hops: number | null;
   mutual?: boolean;
   source: WoTDistanceSource;
@@ -48,7 +48,7 @@ const distanceCache = new Map<
   string,
   { value: WoTDistanceResult | null; expires: number }
 >();
-/** Coalesce duplicate (from,to) fetches while in flight. */
+/** Coalesce duplicate (from,to,max_hops) fetches while in flight. */
 const oracleInFlight = new Map<string, Promise<WoTDistanceResult | null>>();
 let oracleDownUntil = 0;
 let oracleActiveCount = 0;

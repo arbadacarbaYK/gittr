@@ -69,7 +69,9 @@ export function TrustBadge({
   if (!label) return null;
 
   const hops = result?.hops ?? null;
-  const unavailable = result?.source === "unavailable";
+  const unavailable =
+    result?.source === "unavailable" ||
+    (result?.source === "extension" && result.hops === null);
   const title = wotResultTitle(result);
 
   return (

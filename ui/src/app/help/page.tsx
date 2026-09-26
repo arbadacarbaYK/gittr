@@ -3134,10 +3134,11 @@ export default function HelpPage() {
                 away they are — not a global score. Labels:{" "}
                 <strong>In your network</strong>,{" "}
                 <strong>N hops from you</strong>,{" "}
-                <strong>Outside your network</strong>, or{" "}
-                <strong>Distance unknown</strong> if the lookup is down. Logged
-                out, the hop badge is hidden. Your own profile does not show
-                hops to yourself.
+                <strong>Outside your network</strong> when the oracle finds no
+                path, or <strong>Distance unknown</strong> when the lookup is
+                down or the WoT extension has no distance (a mute or an
+                incomplete graph). Logged out, the hop badge is hidden. Your own
+                profile does not show hops to yourself.
               </p>
               <p className="mt-2 text-sm text-gray-400">
                 Direct follows come from your kind-3 contact list. Multi-hop
