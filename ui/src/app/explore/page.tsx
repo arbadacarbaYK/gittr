@@ -1314,7 +1314,7 @@ function ExplorePageContent() {
           }
 
           // GRASP-01: Parse clone, relays, topics, and contributors from event.tags
-          // Tags are stored as: ["clone", "https://gittr.space"] or ["relays", "wss://relay.example.com"]
+          // Clone may be ["clone", url] or ["clone", url1, url2, ...].
           // Contributors are stored as: ["p", pubkey, weight, role]
           const cloneTags: string[] = [];
           const relaysTags: string[] = [];
@@ -1331,8 +1331,12 @@ function ExplorePageContent() {
                 const tagName = tag[0];
                 const tagValue = tag[1];
 
-                if (tagName === "clone" && tagValue) {
-                  cloneTags.push(tagValue);
+                if (tagName === "clone") {
+                  // One clone tag can list several git servers. Keeping only
+                  // the first made file view give up when that host was empty.
+                  for (const v of nip34TagValuesFromRow(tag)) {
+                    if (v && !cloneTags.includes(v)) cloneTags.push(v);
+                  }
                 } else if (tagName === "relays" && tagValue) {
                   // CRITICAL: Handle both formats per NIP-34 spec:
                   // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
