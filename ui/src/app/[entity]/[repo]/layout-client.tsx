@@ -1727,9 +1727,21 @@ export default function RepoLayoutClient({
                   className="text-[var(--color-link)] hover:underline font-semibold"
                   href={ownerProfileHref}
                   suppressHydrationWarning
-                  onClick={(e) =>
-                    appNavigate(ownerProfileHref, router, pathname, e)
-                  }
+                  onClick={(e) => {
+                    // Code-tab fetches starve a soft navigation, so this name
+                    // sat for ~8s and then reloaded. Open the profile now.
+                    if (
+                      e.metaKey ||
+                      e.ctrlKey ||
+                      e.shiftKey ||
+                      e.altKey ||
+                      e.button !== 0
+                    ) {
+                      return;
+                    }
+                    e.preventDefault();
+                    window.location.assign(ownerProfileHref);
+                  }}
                 >
                   {ownerDisplayName}
                 </a>

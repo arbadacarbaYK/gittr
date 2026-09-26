@@ -4,6 +4,9 @@ import { assertSafeGitHubApiEndpoint } from "@/lib/security/safe-remote-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
+/** Unix ms. Shared by this Node process so a limit burst does not refetch. */
+let githubRateLimitUntilMs = 0;
+
 /**
  * Server-side proxy for GitHub API requests
  * Uses platform OAuth token from environment if available
@@ -49,6 +52,17 @@ export default async function handler(
   // SECURITY: Platform token should ONLY have 'public_repo' scope, NOT 'repo' scope
   const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
 
+  // One 403 storm was enough to keep the repo page busy. While GitHub says
+  // the token is exhausted, answer locally instead of calling them again.
+  if (Date.now() < githubRateLimitUntilMs) {
+    res.setHeader("Cache-Control", "private, max-age=30");
+    return res.status(403).json({
+      message: "API rate limit exceeded",
+      documentation_url:
+        "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting",
+    });
+  }
+
   try {
     const url = `https://api.github.com${endpointCheck.path}`;
 
@@ -90,10 +104,25 @@ export default async function handler(
     }
 
     if (!response.ok) {
-      console.error(
-        `❌ [GitHub Proxy] GitHub API returned error ${response.status}:`,
-        data.substring(0, 200)
-      );
+      const rateLimited =
+        response.status === 403 && /rate limit/i.test(data.slice(0, 500));
+      if (rateLimited) {
+        const resetSec = Number(rateLimitReset || 0);
+        const resetMs =
+          resetSec > Date.now() / 1000 ? resetSec * 1000 : Date.now() + 60_000;
+        if (Date.now() >= githubRateLimitUntilMs) {
+          console.warn(
+            "[GitHub Proxy] Rate limit hit — pausing GitHub calls until",
+            new Date(resetMs).toISOString()
+          );
+        }
+        githubRateLimitUntilMs = Math.max(githubRateLimitUntilMs, resetMs);
+      } else {
+        console.error(
+          `❌ [GitHub Proxy] GitHub API returned error ${response.status}:`,
+          data.substring(0, 200)
+        );
+      }
     }
 
     return res.status(response.status).send(data);

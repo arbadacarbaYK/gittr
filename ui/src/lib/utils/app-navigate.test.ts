@@ -206,6 +206,13 @@ describe("softNavHardFallbackMs", () => {
     );
   });
 
+  it("recovers the owner name on a Code tab in about a second, not eight", () => {
+    const owner = CODE_PATH.split("/").filter(Boolean)[0];
+    expect(softNavHardFallbackMs(`/${owner}`, CODE_PATH)).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+  });
+
   it("keeps the long stall window for other routes (avoid remount freeze)", () => {
     expect(softNavHardFallbackMs("/explore", CODE_PATH)).toBe(
       SOFT_NAV_HARD_FALLBACK_MS

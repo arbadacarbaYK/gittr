@@ -251,6 +251,15 @@ export function softNavHardFallbackMs(
   ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
   }
+  // Owner name on a Code tab is `/{npub}`. Soft push stays starved while the
+  // file list is still working, so the click sat ~8s and then felt like 10s.
+  if (
+    isRepoCodePath(currentPathname) &&
+    isProfileEntityPath(href) &&
+    canonicalPath(href) !== canonicalPath(currentPathname)
+  ) {
+    return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;
+  }
   return SOFT_NAV_HARD_FALLBACK_MS;
 }
 
