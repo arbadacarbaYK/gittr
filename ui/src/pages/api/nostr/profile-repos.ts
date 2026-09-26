@@ -23,6 +23,30 @@ export type { ProfileRepoRow };
 const PROFILE_REPOS_ANNOUNCE_LIMIT = 2000;
 const PROFILE_REPOS_STATE_LIMIT = 500;
 const PROFILE_REPOS_SUBSCRIBE_MS = 15_000;
+/** Complete scans only. A repo page used to start this relay walk many times at once. */
+const PROFILE_REPOS_OK_TTL_MS = 20_000;
+const PROFILE_REPOS_CACHE_MAX = 80;
+
+type ProfileReposScan = {
+  repos: ProfileRepoRow[];
+  finishedByTimeout: boolean;
+};
+
+const profileReposOkCache = new Map<
+  string,
+  { at: number; repos: ProfileRepoRow[] }
+>();
+const profileReposInflight = new Map<string, Promise<ProfileReposScan>>();
+
+function rememberProfileRepos(ownerHex: string, repos: ProfileRepoRow[]) {
+  profileReposOkCache.delete(ownerHex);
+  profileReposOkCache.set(ownerHex, { at: Date.now(), repos });
+  while (profileReposOkCache.size > PROFILE_REPOS_CACHE_MAX) {
+    const oldest = profileReposOkCache.keys().next().value;
+    if (!oldest) break;
+    profileReposOkCache.delete(oldest);
+  }
+}
 
 async function resolveOwnerHex(
   input: string
@@ -63,8 +87,43 @@ export default async function handler(
   }
   const ownerHex = resolved.hex;
 
+  const cached = profileReposOkCache.get(ownerHex);
+  if (cached && Date.now() - cached.at < PROFILE_REPOS_OK_TTL_MS) {
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=20, stale-while-revalidate=40"
+    );
+    return res.status(200).json({ repos: cached.repos });
+  }
+
+  let scan = profileReposInflight.get(ownerHex);
+  if (!scan) {
+    scan = loadProfileRepos(ownerHex).finally(() => {
+      profileReposInflight.delete(ownerHex);
+    });
+    profileReposInflight.set(ownerHex, scan);
+  }
+
   try {
-    const byKey: ProfileRepoAccumulator = new Map();
+    const result = await scan;
+    if (!result.finishedByTimeout) rememberProfileRepos(ownerHex, result.repos);
+    res.setHeader(
+      "Cache-Control",
+      result.finishedByTimeout
+        ? "private, no-store"
+        : "public, max-age=60, stale-while-revalidate=120"
+    );
+    return res.status(200).json({ repos: result.repos });
+  } catch (e) {
+    console.error("[profile-repos]", e);
+    return res
+      .status(500)
+      .json({ error: "Failed to load profile repositories" });
+  }
+}
+
+async function loadProfileRepos(ownerHex: string): Promise<ProfileReposScan> {
+  const byKey: ProfileRepoAccumulator = new Map();
 
     let finishedByTimeout = false;
     let eventCount = 0;
@@ -144,17 +203,5 @@ export default async function handler(
 
     // A truncated scan (history flood on one relay, discovery relays still
     // opening) must not be cached as "this person only has 4 repos".
-    res.setHeader(
-      "Cache-Control",
-      finishedByTimeout
-        ? "private, no-store"
-        : "public, max-age=60, stale-while-revalidate=120"
-    );
-    return res.status(200).json({ repos });
-  } catch (e) {
-    console.error("[profile-repos]", e);
-    return res
-      .status(500)
-      .json({ error: "Failed to load profile repositories" });
-  }
+    return { repos, finishedByTimeout };
 }

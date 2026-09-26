@@ -16,10 +16,47 @@ const hintsCache = new Map<
   string,
   { at: number; value: ProfileRepoCloneHints | null }
 >();
+/** One profile-repos response covers every repo of that owner. */
+const ownerRowsCache = new Map<
+  string,
+  { at: number; rows: Record<string, unknown>[] }
+>();
+const ownerRowsInflight = new Map<string, Promise<Record<string, unknown>[]>>();
 
 /** Test hook — production callers should not need this. */
 export function clearProfileRepoHintsCache(): void {
   hintsCache.clear();
+  ownerRowsCache.clear();
+  ownerRowsInflight.clear();
+}
+
+async function loadOwnerRepoRows(
+  pk: string
+): Promise<Record<string, unknown>[]> {
+  const cached = ownerRowsCache.get(pk);
+  if (cached && Date.now() - cached.at < HINTS_TTL_MS) return cached.rows;
+  const pending = ownerRowsInflight.get(pk);
+  if (pending) return pending;
+
+  const job = (async () => {
+    const res = await fetch(
+      `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pk)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) throw new Error("profile-repos failed");
+    const data = (await res.json()) as { repos?: unknown[] };
+    const rows = Array.isArray(data?.repos)
+      ? data.repos.filter(
+          (r): r is Record<string, unknown> => !!r && typeof r === "object"
+        )
+      : [];
+    ownerRowsCache.set(pk, { at: Date.now(), rows });
+    return rows;
+  })().finally(() => {
+    ownerRowsInflight.delete(pk);
+  });
+  ownerRowsInflight.set(pk, job);
+  return job;
 }
 
 function repoNameMatches(
@@ -70,13 +107,7 @@ export async function fetchRepoCloneHintsFromProfile(
   }
 
   try {
-    const res = await fetch(
-      `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(pk)}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { repos?: unknown[] };
-    const rows = Array.isArray(data?.repos) ? data.repos : [];
+    const rows = await loadOwnerRepoRows(pk);
     const match = rows.find(
       (r): r is Record<string, unknown> =>
         !!r &&

@@ -83,6 +83,35 @@ describe("fetchRepoCloneHintsFromProfile", () => {
     expect(hints?.publicRead).toBe(false);
   });
 
+  it("shares one in-flight lookup when Star and Code ask together", async () => {
+    let release: (value: unknown) => void = () => {};
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      gate.then(() => ({
+        ok: true,
+        json: async () => ({
+          repos: [
+            { repo: "LiE", clone: ["https://example.com/LiE.git"] },
+            { repo: "Other", clone: ["https://example.com/Other.git"] },
+          ],
+        }),
+      }))
+    );
+    const pk =
+      "5e13bab588e1f3618bcc76499a7db1704aa0bb44a3cee46867f68a35a0667d7d";
+    const both = Promise.all([
+      fetchRepoCloneHintsFromProfile(pk, "LiE"),
+      fetchRepoCloneHintsFromProfile(pk, "Other"),
+    ]);
+    release(undefined);
+    const [lie, other] = await both;
+    expect(lie?.clone).toEqual(["https://example.com/LiE.git"]);
+    expect(other?.clone).toEqual(["https://example.com/Other.git"]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses a short-lived cache so Star/Settings/Code share one lookup", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
