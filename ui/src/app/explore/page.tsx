@@ -38,6 +38,7 @@ import {
   mergeExploreSeedIntoCatalog,
   shouldFetchExploreSeed,
 } from "@/lib/nostr/explore-seed-catalog";
+import { exploreRepoMatchKey } from "@/lib/nostr/explore-repo-index";
 import {
   hydrateExploreSessionCatalog,
   peekExploreSessionCatalog,
@@ -65,6 +66,7 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { quotaKeepList } from "@/lib/repos/storage-quota-keep";
 import { REPO_LIST_PAGE_SIZE } from "@/lib/ui/list-pagination";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -711,7 +713,19 @@ function ExplorePageContent() {
         if (localCatalogPersistBlockedRef.current) return false;
         const list = exploreCatalogRef.current;
         if (!list) return false;
-        const saved = saveStoredRepos(list as any, {
+        // The open tab keeps the full public list in memory. The browser
+        // only stores a short slice, so opening a repository does not parse
+        // thousands of rows on every read.
+        const EXPLORE_LOCAL_PERSIST_CAP = 400;
+        const toSave =
+          list.length > EXPLORE_LOCAL_PERSIST_CAP
+            ? quotaKeepList(
+                list as any,
+                EXPLORE_LOCAL_PERSIST_CAP,
+                pubkey || undefined
+              )
+            : list;
+        const saved = saveStoredRepos(toSave as any, {
           quiet: true,
           preferOwnerPubkey: pubkey || undefined,
         });
@@ -740,7 +754,7 @@ function ExplorePageContent() {
       }
 
       if (catalogUiTimerRef.current) clearTimeout(catalogUiTimerRef.current);
-      catalogUiTimerRef.current = setTimeout(flushUi, 120);
+      catalogUiTimerRef.current = setTimeout(flushUi, 300);
 
       if (catalogPersistTimerRef.current)
         clearTimeout(catalogPersistTimerRef.current);
@@ -1024,6 +1038,35 @@ function ExplorePageContent() {
     } catch {
       deletedReposList = [];
     }
+
+    const repoByKey = new Map<string, any>();
+    let indexedList: any[] | null = null;
+    const ownerHexFromRow = (row: any): string => {
+      if (row?.ownerPubkey && /^[0-9a-f]{64}$/i.test(row.ownerPubkey)) {
+        return String(row.ownerPubkey).toLowerCase();
+      }
+      if (typeof row?.entity === "string" && row.entity.startsWith("npub")) {
+        try {
+          const decoded = nip19.decode(row.entity);
+          if (decoded.type === "npub") {
+            return String(decoded.data).toLowerCase();
+          }
+        } catch {
+          /* row stays unmatched until a later event stores ownerPubkey */
+        }
+      }
+      return "";
+    };
+    const reindexCatalog = (list: any[]) => {
+      repoByKey.clear();
+      for (const row of list) {
+        const owner = ownerHexFromRow(row);
+        const label = row?.repo || row?.slug || row?.name || "";
+        const key = owner ? exploreRepoMatchKey(owner, String(label)) : "";
+        if (key && !repoByKey.has(key)) repoByKey.set(key, row);
+      }
+      indexedList = list;
+    };
 
     const envRelays = defaultRelays || [];
     const alreadyHasCatalog = shouldHideExploreSyncForCatalog(existingRepos);
@@ -1423,6 +1466,7 @@ function ExplorePageContent() {
 
           // Session catalog (grows past localStorage quota)
           const existingRepos = readExploreCatalog();
+          if (indexedList !== existingRepos) reindexCatalog(existingRepos);
 
           // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
           const deletedRepos = deletedReposList;
@@ -1508,49 +1552,14 @@ function ExplorePageContent() {
             }
           }
 
-          // Check if this repo already exists (match by ownerPubkey first, then entity)
-          // CRITICAL: Use ownerPubkey as primary key for matching to avoid duplicates
-          // CRITICAL: Normalize repo names to handle variations (bitcoin_meetup_calendar vs bitcoin-meetup-calendar)
-          const existingIndex = existingRepos.findIndex((r: any) => {
-            // Normalize existing repo names for comparison
-            const rRepoNormalized = normalizeRepoName(r.repo || r.slug || "");
-            const rSlugNormalized = normalizeRepoName(r.slug || "");
-
-            // Match by ownerPubkey first (most reliable - works across all entity formats)
-            if (
-              r.ownerPubkey &&
-              r.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()
-            ) {
-              return (
-                rRepoNormalized === normalizedRepoName ||
-                rSlugNormalized === normalizedRepoName
-              );
-            }
-            // Match by entity (npub format or full pubkey)
-            if (r.entity === entity || r.entity === event.pubkey) {
-              return (
-                rRepoNormalized === normalizedRepoName ||
-                rSlugNormalized === normalizedRepoName
-              );
-            }
-            // Also check if existing entity is npub for same pubkey
-            if (r.entity && r.entity.startsWith("npub")) {
-              try {
-                const rDecoded = nip19.decode(r.entity);
-                if (
-                  rDecoded.type === "npub" &&
-                  (rDecoded.data as string).toLowerCase() ===
-                    event.pubkey.toLowerCase()
-                ) {
-                  return (
-                    rRepoNormalized === normalizedRepoName ||
-                    rSlugNormalized === normalizedRepoName
-                  );
-                }
-              } catch {}
-            }
-            return false;
-          });
+          // Match by owner + name in a map. Walking every row and decoding
+          // its npub used to block the tab for the whole relay burst.
+          const matchKey = exploreRepoMatchKey(
+            event.pubkey,
+            repoData.repositoryName || ""
+          );
+          const matched = matchKey ? repoByKey.get(matchKey) : undefined;
+          const existingIndex = matched ? existingRepos.indexOf(matched) : -1;
 
           // entityDisplayName will be set from metadata later, use npub as fallback
           const entityDisplayName = entity;
@@ -1710,6 +1719,7 @@ function ExplorePageContent() {
           if (shouldHideAnnounceForUnusableClones(rawCloneUrls)) {
             if (existingIndex >= 0) {
               existingRepos.splice(existingIndex, 1);
+              if (matchKey) repoByKey.delete(matchKey);
             }
             return;
           }
@@ -1887,6 +1897,7 @@ function ExplorePageContent() {
                 : {}),
             };
             existingRepos[existingIndex] = updatedRepo;
+            if (matchKey) repoByKey.set(matchKey, updatedRepo);
             exploreDebug(
               "🔄 [Explore] Updated existing repo with newer Nostr version:",
               {
@@ -1913,6 +1924,7 @@ function ExplorePageContent() {
               earliestUniqueCommit: repoData.earliestUniqueCommit,
             };
             existingRepos.push(newRepo);
+            if (matchKey) repoByKey.set(matchKey, newRepo);
           }
 
           // Persist best-effort; always refresh UI from session catalog
@@ -2074,44 +2086,35 @@ function ExplorePageContent() {
     const deletedRepos = JSON.parse(
       localStorage.getItem("gittr_deleted_repos") || "[]"
     ) as Array<{ entity: string; repo: string; deletedAt: number }>;
-
-    // Helper function to check if repo is deleted (robust matching)
-    const isRepoDeleted = (r: any): boolean => {
-      const repo = r.repo || r.slug || "";
-      const entity = r.entity || "";
-
-      // Check direct match by entity (npub format)
-      const repoKey = `${entity}/${repo}`.toLowerCase();
-      if (
-        deletedRepos.some(
-          (d) => `${d.entity}/${d.repo}`.toLowerCase() === repoKey
-        )
-      )
-        return true;
-
-      // Check by ownerPubkey (most reliable - handles npub entity mismatches)
-      if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
-        const ownerPubkey = r.ownerPubkey.toLowerCase();
-        // Check if deleted entity is npub for same pubkey
-        if (
-          deletedRepos.some((d) => {
-            if (d.entity.startsWith("npub")) {
-              try {
-                const dDecoded = nip19.decode(d.entity);
-                if (
-                  dDecoded.type === "npub" &&
-                  (dDecoded.data as string).toLowerCase() === ownerPubkey
-                ) {
-                  return d.repo.toLowerCase() === repo.toLowerCase();
-                }
-              } catch {}
-            }
-            return false;
-          })
-        )
-          return true;
+    const deletedKeys = new Set(
+      deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
+    );
+    const deletedByOwner = new Map<string, Set<string>>();
+    for (const d of deletedRepos) {
+      if (!d.entity?.startsWith("npub")) continue;
+      try {
+        const decoded = nip19.decode(d.entity);
+        if (decoded.type !== "npub") continue;
+        const hex = String(decoded.data).toLowerCase();
+        let names = deletedByOwner.get(hex);
+        if (!names) {
+          names = new Set();
+          deletedByOwner.set(hex, names);
+        }
+        names.add(d.repo.toLowerCase());
+      } catch {
+        /* ignore a bad tombstone */
       }
+    }
 
+    const isRepoDeleted = (r: any): boolean => {
+      const repo = String(r.repo || r.slug || "").toLowerCase();
+      const entity = r.entity || "";
+      if (deletedKeys.has(`${entity}/${repo}`.toLowerCase())) return true;
+      if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
+        const names = deletedByOwner.get(String(r.ownerPubkey).toLowerCase());
+        if (names?.has(repo)) return true;
+      }
       return false;
     };
 
@@ -2485,8 +2488,7 @@ function ExplorePageContent() {
         !isLoadingRepos &&
         typeof window !== "undefined" &&
         (() => {
-          const repoCount =
-            exploreCatalogRef.current?.length ?? loadStoredRepos().length;
+          const repoCount = exploreCatalogRef.current?.length ?? repos.length;
           return (
             <div className="mb-4 p-4 border border-purple-500/50 rounded bg-[#171B21]">
               <div className="flex items-center gap-2 text-purple-400">

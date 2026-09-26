@@ -965,10 +965,23 @@ function slimReposForStorage(repos: StoredRepo[]): StoredRepo[] {
   return repos.map(slimRepoForStorage);
 }
 
+/** Skip JSON.parse when the same gittr_repos blob is read again this tab. */
+let storedReposCacheRaw: string | null | undefined;
+let storedReposCacheList: StoredRepo[] | null = null;
+
+function rememberStoredReposCache(raw: string | null, list: StoredRepo[]) {
+  storedReposCacheRaw = raw;
+  storedReposCacheList = list;
+}
+
 export const loadStoredRepos = (): StoredRepo[] => {
   if (typeof window === "undefined") return [];
-  const raw = parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
-  const deduped = dedupeStoredReposByOwnerAndRepoLabel(raw);
+  const raw = localStorage.getItem("gittr_repos");
+  if (storedReposCacheList && raw === storedReposCacheRaw) {
+    return storedReposCacheList;
+  }
+  const parsed = parseJsonArray(raw, isStoredRepo);
+  const deduped = dedupeStoredReposByOwnerAndRepoLabel(parsed);
   const slimmed = slimReposForStorage(deduped);
   const hadEmbeddedFiles = deduped.some(
     (r) =>
@@ -976,17 +989,19 @@ export const loadStoredRepos = (): StoredRepo[] => {
       (Array.isArray((r as { issues?: unknown[] }).issues) &&
         (r as { issues?: unknown[] }).issues!.length > 0)
   );
-  if (deduped.length < raw.length || hadEmbeddedFiles) {
+  let cacheRaw = raw;
+  if (deduped.length < parsed.length || hadEmbeddedFiles) {
     try {
-      localStorage.setItem("gittr_repos", JSON.stringify(slimmed));
+      cacheRaw = JSON.stringify(slimmed);
+      localStorage.setItem("gittr_repos", cacheRaw);
       if (hadEmbeddedFiles) {
         console.log(
           `🧹 [Storage] Stripped embedded file/issue lists from gittr_repos (${slimmed.length} repos)`
         );
-      } else if (deduped.length < raw.length) {
+      } else if (deduped.length < parsed.length) {
         console.warn(
           `[Storage] Removed ${
-            raw.length - deduped.length
+            parsed.length - deduped.length
           } duplicate gittr_repos rows (same owner + repo name)`
         );
       }
@@ -994,6 +1009,7 @@ export const loadStoredRepos = (): StoredRepo[] => {
       /* quota or private mode — still return slimmed view for this read */
     }
   }
+  rememberStoredReposCache(cacheRaw, slimmed);
   return slimmed;
 };
 
@@ -1059,16 +1075,24 @@ export const saveStoredRepos = (
   }
 
   const tryWrite = (list: StoredRepo[]): boolean => {
+    const payload = JSON.stringify(list);
     try {
-      localStorage.setItem("gittr_repos", JSON.stringify(list));
+      localStorage.setItem("gittr_repos", payload);
+      rememberStoredReposCache(payload, list);
       return true;
     } catch {
       return false;
     }
   };
 
-  const tryReplace = (list: StoredRepo[]): boolean =>
-    setItemReplacingQuota(localStorage, "gittr_repos", JSON.stringify(list));
+  const tryReplace = (list: StoredRepo[]): boolean => {
+    const payload = JSON.stringify(list);
+    if (!setItemReplacingQuota(localStorage, "gittr_repos", payload)) {
+      return false;
+    }
+    rememberStoredReposCache(payload, list);
+    return true;
+  };
 
   const writeCapped = (rows: StoredRepo[]): boolean => {
     const pools = [rows, rows.map(ultraSlimRepoForCatalog)];

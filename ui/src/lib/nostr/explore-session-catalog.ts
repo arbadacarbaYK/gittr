@@ -24,6 +24,8 @@ let sessionFullWriteBlocked = false;
 let pagehideHooked = false;
 
 const SESSION_WRITE_MS = 500;
+/** Disk copy stays short. The open tab still keeps the full list in memory. */
+const SESSION_PERSIST_CAP = 400;
 
 function slimSessionRow(row: ExploreCatalogRow): ExploreCatalogRow {
   const description =
@@ -69,19 +71,37 @@ function readSessionStorageCatalog(): ExploreCatalogRow[] | null {
   }
 }
 
+function sessionRecency(row: ExploreCatalogRow): number {
+  const sec = row.lastNostrEventCreatedAt;
+  if (typeof sec === "number" && sec > 0) return sec * 1000;
+  const ms = row.updatedAt ?? row.createdAt;
+  return typeof ms === "number" ? ms : 0;
+}
+
+function persistableSessionRows(list: ExploreCatalogRow[]): ExploreCatalogRow[] {
+  const ranked =
+    list.length > SESSION_PERSIST_CAP
+      ? [...list].sort((a, b) => sessionRecency(b) - sessionRecency(a))
+      : list;
+  return ranked.slice(0, SESSION_PERSIST_CAP).map(slimSessionRow);
+}
+
 function writeSessionStorageCatalog(list: ExploreCatalogRow[]): void {
   if (typeof sessionStorage === "undefined") return;
+  const slim = persistableSessionRows(list);
   if (!sessionFullWriteBlocked) {
     try {
-      sessionStorage.setItem(EXPLORE_SESSION_STORAGE_KEY, JSON.stringify(list));
+      sessionStorage.setItem(EXPLORE_SESSION_STORAGE_KEY, JSON.stringify(slim));
       return;
     } catch {
       sessionFullWriteBlocked = true;
     }
   }
   try {
-    const slim = list.slice(0, 400).map(slimSessionRow);
-    sessionStorage.setItem(EXPLORE_SESSION_STORAGE_KEY, JSON.stringify(slim));
+    sessionStorage.setItem(
+      EXPLORE_SESSION_STORAGE_KEY,
+      JSON.stringify(slim.slice(0, 40))
+    );
   } catch {
     /* quota — memory catalog still wins for this document */
   }
