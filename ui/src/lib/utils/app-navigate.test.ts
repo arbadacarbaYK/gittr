@@ -194,6 +194,18 @@ describe("softNavHardFallbackMs", () => {
     );
   });
 
+  it("recovers a profile or repo click from Home in about a second", () => {
+    expect(softNavHardFallbackMs("/npub1abc", "/")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/npub1abc/somerepo", "/")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+    expect(softNavHardFallbackMs("/explore", "/")).toBe(
+      SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS
+    );
+  });
+
   it("keeps the long stall window for other routes (avoid remount freeze)", () => {
     expect(softNavHardFallbackMs("/explore", CODE_PATH)).toBe(
       SOFT_NAV_HARD_FALLBACK_MS

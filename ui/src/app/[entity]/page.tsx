@@ -2216,12 +2216,10 @@ export default function EntityPage({
         console.log(
           `[Profile] profile-repos API: ${mapped.length} announcement(s)`
         );
-        // Cards are up; keep a short "+" while the live scan catches stragglers.
-        setTimeout(() => {
-          if (profileHexLiveRef.current === hex) {
-            setNetworkReposLoading(false);
-          }
-        }, 4000);
+        // Cards are up. The live scan can still add rows without a loading line.
+        if (profileHexLiveRef.current === hex) {
+          setNetworkReposLoading(false);
+        }
       } catch (e) {
         console.warn("[Profile] profile-repos fetch failed:", e);
       } finally {

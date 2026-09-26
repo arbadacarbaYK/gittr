@@ -93,7 +93,49 @@ function resolveOwnerHex(entity: string, repo: string): string | null {
   return null;
 }
 
-export function upsertIssue(entity: string, repo: string, event: any): void {
+type UpsertOpts = { notify?: boolean };
+
+function dispatchListUpdated(kind: "issues" | "prs"): void {
+  window.dispatchEvent(
+    new Event(kind === "issues" ? "gittr:issue-updated" : "gittr:pr-updated")
+  );
+}
+
+/** One paint per burst — a warm used to dispatch on every relay event and freeze the page. */
+function createBurstNotifier() {
+  let timer = 0;
+  let issues = false;
+  let prs = false;
+  return {
+    note(kind: "issues" | "prs") {
+      if (kind === "issues") issues = true;
+      else prs = true;
+      if (timer) return;
+      timer = window.setTimeout(() => {
+        timer = 0;
+        if (issues) {
+          issues = false;
+          dispatchListUpdated("issues");
+        }
+        if (prs) {
+          prs = false;
+          dispatchListUpdated("prs");
+        }
+      }, 500);
+    },
+    cancel() {
+      if (timer) window.clearTimeout(timer);
+      timer = 0;
+    },
+  };
+}
+
+export function upsertIssue(
+  entity: string,
+  repo: string,
+  event: any,
+  opts?: UpsertOpts
+): void {
   const key = getRepoStorageKey("gittr_issues", entity, repo);
   const existing = [...(readRepoIssuesFromLocalStorage(entity, repo) as any[])];
   const idx = existing.findIndex((i) => i.id === event.id);
@@ -127,10 +169,15 @@ export function upsertIssue(entity: string, repo: string, event: any): void {
   if (idx >= 0) existing[idx] = row;
   else existing.push(row);
   localStorage.setItem(key, JSON.stringify(existing));
-  window.dispatchEvent(new Event("gittr:issue-updated"));
+  if (opts?.notify !== false) dispatchListUpdated("issues");
 }
 
-export function upsertPr(entity: string, repo: string, event: any): void {
+export function upsertPr(
+  entity: string,
+  repo: string,
+  event: any,
+  opts?: UpsertOpts
+): void {
   const key = getRepoStorageKey("gittr_prs", entity, repo);
   const existing = [...(readRepoPullsFromLocalStorage(entity, repo) as any[])];
   const idx = existing.findIndex((pr) => pr.id === event.id);
@@ -169,14 +216,15 @@ export function upsertPr(entity: string, repo: string, event: any): void {
   if (idx >= 0) existing[idx] = row;
   else existing.push(row);
   localStorage.setItem(key, JSON.stringify(existing));
-  window.dispatchEvent(new Event("gittr:pr-updated"));
+  if (opts?.notify !== false) dispatchListUpdated("prs");
 }
 
 function applyStatus(
   entity: string,
   repo: string,
   kind: "issues" | "prs",
-  event: any
+  event: any,
+  opts?: UpsertOpts
 ): void {
   const rootTag = event.tags.find(
     (t: string[]) => t[0] === "e" && t[3] === "root"
@@ -224,9 +272,7 @@ function applyStatus(
       : {}),
   };
   localStorage.setItem(key, JSON.stringify(rows));
-  window.dispatchEvent(
-    new Event(kind === "issues" ? "gittr:issue-updated" : "gittr:pr-updated")
-  );
+  if (opts?.notify !== false) dispatchListUpdated(kind);
 }
 
 /**
@@ -280,6 +326,7 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
 
   const unsubs: Array<() => void> = [];
   let cancelled = false;
+  const burst = createBurstNotifier();
 
   // Same filter shape as /issues and /pulls pages (per-repo), chunked so
   // relays that cap filter-array size still accept the request.
@@ -310,9 +357,11 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
         if (!target) return;
         try {
           if (event.kind === KIND_ISSUE) {
-            upsertIssue(target.entity, target.repo, event);
+            upsertIssue(target.entity, target.repo, event, { notify: false });
+            burst.note("issues");
           } else {
-            upsertPr(target.entity, target.repo, event);
+            upsertPr(target.entity, target.repo, event, { notify: false });
+            burst.note("prs");
           }
         } catch {
           /* ignore */
@@ -426,6 +475,7 @@ export function startWarmAllReposIssuePrFromNostr(opts: {
 
   return () => {
     cancelled = true;
+    burst.cancel();
     window.clearTimeout(statusTimer);
     for (const u of unsubs) {
       try {
@@ -455,6 +505,7 @@ export function startWarmRepoIssuePrFromNostr(opts: {
   const ownerHex = resolveOwnerHex(entity, repo);
   const unsubs: Array<() => void> = [];
   let cancelled = false;
+  const burst = createBurstNotifier();
 
   const issueFilters: any[] = [
     { kinds: [KIND_ISSUE], "#repo": [entity, repo] },
@@ -478,7 +529,8 @@ export function startWarmRepoIssuePrFromNostr(opts: {
       if (cancelled || event.kind !== KIND_ISSUE) return;
       if (!eventBelongsToRepo(event, entity, repo, ownerHex)) return;
       try {
-        upsertIssue(entity, repo, event);
+        upsertIssue(entity, repo, event, { notify: false });
+        burst.note("issues");
       } catch {
         /* ignore */
       }
@@ -490,7 +542,8 @@ export function startWarmRepoIssuePrFromNostr(opts: {
       if (cancelled || event.kind !== KIND_PULL_REQUEST) return;
       if (!eventBelongsToRepo(event, entity, repo, ownerHex)) return;
       try {
-        upsertPr(entity, repo, event);
+        upsertPr(entity, repo, event, { notify: false });
+        burst.note("prs");
       } catch {
         /* ignore */
       }
@@ -525,7 +578,8 @@ export function startWarmRepoIssuePrFromNostr(opts: {
           (event: any) => {
             if (cancelled) return;
             try {
-              applyStatus(entity, repo, "issues", event);
+              applyStatus(entity, repo, "issues", event, { notify: false });
+              burst.note("issues");
             } catch {
               /* ignore */
             }
@@ -552,7 +606,8 @@ export function startWarmRepoIssuePrFromNostr(opts: {
           (event: any) => {
             if (cancelled) return;
             try {
-              applyStatus(entity, repo, "prs", event);
+              applyStatus(entity, repo, "prs", event, { notify: false });
+              burst.note("prs");
             } catch {
               /* ignore */
             }
@@ -564,6 +619,7 @@ export function startWarmRepoIssuePrFromNostr(opts: {
 
   return () => {
     cancelled = true;
+    burst.cancel();
     window.clearTimeout(statusTimer);
     for (const u of unsubs) {
       try {

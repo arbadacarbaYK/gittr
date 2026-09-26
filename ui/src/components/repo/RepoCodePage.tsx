@@ -1102,7 +1102,7 @@ export function RepoCodePage() {
     const timer = window.setTimeout(() => {
       setFetchStatuses((prev) => finalizePendingFetchStatuses(prev));
       setFetchingFilesFromGit({ source: null, message: "" });
-    }, 12000);
+    }, 2500);
     return () => window.clearTimeout(timer);
   }, [safeFiles.length, fetchStatuses, finalizePendingFetchStatuses]);
 
@@ -19039,7 +19039,7 @@ export function RepoCodePage() {
                 </div>
               </div>
             </div>
-            {mounted && fetchingFilesFromGit.source && (
+            {mounted && fetchingFilesFromGit.source && safeFiles.length === 0 && (
               <div className="rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray bg-[#171B21] p-4">
                 <div className="flex items-center gap-3 text-sm text-gray-300">
                   <div className="animate-spin h-4 w-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -19095,13 +19095,13 @@ export function RepoCodePage() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400">
-                          {stillFetching
-                            ? "⟳ Fetching from sources..."
-                            : hasFiles && hasSuccess
+                          {hasFiles && hasSuccess
                             ? "✓ Files found"
+                            : stillFetching
+                            ? "⟳ Fetching from sources..."
                             : "File sources"}
                         </span>
-                        {stillFetching && (
+                        {stillFetching && !hasFiles && (
                           <RefreshCw className="h-3 w-3 text-blue-400 animate-spin" />
                         )}
                       </div>
@@ -19118,7 +19118,7 @@ export function RepoCodePage() {
                                 {failedCount}✗
                               </span>
                             )}
-                            {fetchingCount > 0 && (
+                            {fetchingCount > 0 && !hasFiles && (
                               <span className="text-blue-400 ml-1">
                                 {fetchingCount}⟳
                               </span>

@@ -238,7 +238,8 @@ export function softNavHardFallbackMs(
   // click look ignored while the catalog was still flushing.
   if (
     (isHeavyDirectoryPath(currentPathname) ||
-      isProfileEntityPath(currentPathname)) &&
+      isProfileEntityPath(currentPathname) ||
+      isLiveCatalogPath(currentPathname)) &&
     canonicalPath(href) !== canonicalPath(currentPathname)
   ) {
     return SOFT_NAV_HARD_FALLBACK_FROM_CODE_HOME_MS;

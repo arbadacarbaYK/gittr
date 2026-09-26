@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ComponentProps,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -63,8 +64,57 @@ import {
   getStatusBadgeStyle,
 } from "@/lib/utils/repo-status";
 
-import Link from "next/link";
+import NextLink from "next/link";
 import { nip19 } from "nostr-tools";
+
+/** Homepage links must not prefetch profile/repo trees — that preload is what made the page feel stuck. */
+function Link(props: ComponentProps<typeof NextLink>) {
+  return <NextLink prefetch={false} {...props} />;
+}
+
+function profileHrefFromPubkey(pubkey: string): string {
+  if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+    try {
+      return `/${nip19.npubEncode(pubkey)}`;
+    } catch {
+      return `/${pubkey}`;
+    }
+  }
+  return pubkey ? `/${pubkey}` : "#";
+}
+
+/**
+ * Real navigation off the homepage. Next Link soft-nav was starved by catalog
+ * work, so Most Active names looked dead. A normal anchor still works if this
+ * handler never runs.
+ */
+function leaveHome(
+  event: {
+    preventDefault: () => void;
+    metaKey?: boolean;
+    ctrlKey?: boolean;
+    shiftKey?: boolean;
+    altKey?: boolean;
+    button?: number;
+  },
+  href: string
+) {
+  if (!href || href === "#") {
+    event.preventDefault();
+    return;
+  }
+  if (
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey ||
+    (event.button != null && event.button !== 0)
+  ) {
+    return;
+  }
+  event.preventDefault();
+  window.location.assign(href);
+}
 
 type Repo = {
   slug: string;
@@ -96,13 +146,6 @@ function formatLeaderboardUserLabel(raw: string, meta?: Metadata): string {
     return githubHandle;
   }
   return raw.replace(/\s*\(mirrored user from github\)\s*/gi, "").trim() || raw;
-}
-
-/** Full load into Code — soft Link + replaceState during README hydrate bounced home. */
-function goToRepoCode(event: { preventDefault: () => void }, href: string) {
-  event.preventDefault();
-  if (!href) return;
-  window.location.assign(href);
 }
 
 export type HomeInitialLeaderboard = {
@@ -408,15 +451,10 @@ export default function HomePage({
         };
         if (cancelled || gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
-        const missingTopUsers =
-          (data.topRepos?.length ?? 0) > 0 &&
-          (data.topUsers?.length ?? 0) === 0;
-        const hasBoth =
-          (data.topRepos?.length ?? 0) > 0 && (data.topUsers?.length ?? 0) > 0;
-        if ((data.refreshing || missingTopUsers) && !hasBoth) {
-          pollTimer = setTimeout(poll, 2500);
-        } else if (data.refreshing && hasBoth) {
-          pollTimer = setTimeout(poll, 10000);
+        // The API serves a finished disk snapshot. Polling while users were
+        // empty refreshed every 2.5s forever and starved clicks on this page.
+        if (data.refreshing) {
+          pollTimer = setTimeout(poll, 10_000);
         }
       } catch (err) {
         console.warn("⚠️ [Home] Platform leaderboard fetch failed:", err);
@@ -652,13 +690,27 @@ export default function HomePage({
       }
     };
 
-    handleActivity();
+    // Local bounty scans walk every repo's issue keys. Do that after first paint
+    // so Most Active clicks are not waiting on localStorage.
+    let idleId: number | undefined;
+    let startId: number | undefined;
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(() => handleActivity(), {
+        timeout: 1200,
+      });
+    } else {
+      startId = window.setTimeout(handleActivity, 1);
+    }
     window.addEventListener("gittr:activity-recorded", handleActivity);
     window.addEventListener("ngit:activity-recorded", handleActivity); // Also listen for old event name
     window.addEventListener("ngit:pr-updated", handleActivity);
     window.addEventListener("ngit:issue-updated", handleActivity);
 
     return () => {
+      if (idleId != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (startId != null) window.clearTimeout(startId);
       window.removeEventListener("gittr:activity-recorded", handleActivity);
       window.removeEventListener("ngit:activity-recorded", handleActivity);
       window.removeEventListener("ngit:pr-updated", handleActivity);
@@ -1098,7 +1150,11 @@ export default function HomePage({
               )}
             >
               {profileHref ? (
-                <Link href={profileHref} className="block h-full w-full">
+                <a
+                  href={profileHref}
+                  onClick={(e) => leaveHome(e, profileHref)}
+                  className="block h-full w-full"
+                >
                   <img
                     src={avatarSrc}
                     alt={welcomeName || "You"}
@@ -1107,7 +1163,7 @@ export default function HomePage({
                     referrerPolicy="no-referrer"
                     suppressHydrationWarning
                   />
-                </Link>
+                </a>
               ) : (
                 <img
                   src={avatarSrc}
@@ -1128,12 +1184,13 @@ export default function HomePage({
                   <>
                     Welcome,{" "}
                     {profileHref ? (
-                      <Link
+                      <a
                         href={profileHref}
+                        onClick={(e) => leaveHome(e, profileHref)}
                         className="text-[var(--color-accent-primary)] hover:underline"
                       >
                         {welcomeName}
-                      </Link>
+                      </a>
                     ) : (
                       welcomeName
                     )}
@@ -1266,7 +1323,7 @@ export default function HomePage({
                     <a
                       key={repo.repoId}
                       href={href}
-                      onClick={(e) => goToRepoCode(e, href)}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1298,28 +1355,12 @@ export default function HomePage({
             <div className="space-y-2 flex-1">
               {topUsers.length > 0 ? (
                 topUsers.slice(0, 5).map((user, idx) => {
-                  // Convert hex pubkey to npub format for profile link
-                  let href = `/${user.pubkey}`;
-                  if (user.pubkey && /^[0-9a-f]{64}$/i.test(user.pubkey)) {
-                    try {
-                      const npub = nip19.npubEncode(user.pubkey);
-                      href = `/${npub}`;
-                    } catch (error) {
-                      console.error(
-                        "⚠️ [Home] Failed to encode npub for user:",
-                        {
-                          pubkey: user.pubkey,
-                          error,
-                        }
-                      );
-                      // Fallback to hex pubkey if encoding fails
-                      href = `/${user.pubkey}`;
-                    }
-                  }
+                  const href = profileHrefFromPubkey(user.pubkey);
                   return (
-                    <Link
+                    <a
                       key={user.pubkey}
                       href={href}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1330,7 +1371,7 @@ export default function HomePage({
                           {user.activityCount}
                         </span>
                       </div>
-                    </Link>
+                    </a>
                   );
                 })
               ) : (
@@ -1364,9 +1405,10 @@ export default function HomePage({
                     })}`
                   );
                   return (
-                    <Link
+                    <a
                       key={bounty.issueId}
                       href={href}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1382,7 +1424,7 @@ export default function HomePage({
                           {bounty.bountyAmount.toLocaleString()} sats
                         </div>
                       </div>
-                    </Link>
+                    </a>
                   );
                 })
               ) : (
@@ -1404,11 +1446,12 @@ export default function HomePage({
               </h3>
               <div className="space-y-2">
                 {topDevs.slice(0, 5).map((dev, idx) => {
-                  // Use full pubkey for profile link (more reliable than 8-char prefix)
+                  const href = profileHrefFromPubkey(dev.pubkey);
                   return (
-                    <Link
+                    <a
                       key={dev.pubkey}
-                      href={`/${dev.pubkey}`}
+                      href={href}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1419,7 +1462,7 @@ export default function HomePage({
                           {dev.prMergedCount} PRs
                         </span>
                       </div>
-                    </Link>
+                    </a>
                   );
                 })}
               </div>
@@ -1434,11 +1477,12 @@ export default function HomePage({
               </h3>
               <div className="space-y-2">
                 {topBountyTakers.slice(0, 5).map((hunter, idx) => {
-                  // Use full pubkey for profile link (more reliable than 8-char prefix)
+                  const href = profileHrefFromPubkey(hunter.pubkey);
                   return (
-                    <Link
+                    <a
                       key={hunter.pubkey}
-                      href={`/${hunter.pubkey}`}
+                      href={href}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1449,7 +1493,7 @@ export default function HomePage({
                           {hunter.bountyClaimedCount}
                         </span>
                       </div>
-                    </Link>
+                    </a>
                   );
                 })}
               </div>
@@ -1605,9 +1649,10 @@ export default function HomePage({
                     })}`
                   );
                   return (
-                    <Link
+                    <a
                       key={bounty.issueId}
                       href={href}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1628,7 +1673,7 @@ export default function HomePage({
                           Pending payment
                         </div>
                       )}
-                    </Link>
+                    </a>
                   );
                 })}
               </div>
@@ -1727,9 +1772,10 @@ export default function HomePage({
                         const bountyAmount = activity.metadata?.bountyAmount;
 
                         return (
-                          <Link
+                          <a
                             key={activity.id}
                             href={href}
+                            onClick={(e) => leaveHome(e, href)}
                             className="block rounded p-1.5 -m-1.5 hover:bg-[var(--color-bg-secondary)] transition-colors"
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -1750,7 +1796,7 @@ export default function HomePage({
                                 </div>
                               )}
                             </div>
-                          </Link>
+                          </a>
                         );
                       })}
                     </div>
@@ -1825,16 +1871,7 @@ export default function HomePage({
                     <a
                       key={activity.id}
                       href={href || undefined}
-                      onClick={(e) => {
-                        if (!href) {
-                          e.preventDefault();
-                          return;
-                        }
-                        // Hard nav — soft Link into heavy repo trees was throwing
-                        // "Cannot read properties of undefined (reading 'call')".
-                        e.preventDefault();
-                        window.location.assign(href);
-                      }}
+                      onClick={(e) => leaveHome(e, href)}
                       className="block rounded p-3 border border-[var(--color-border)] transition-colors hover:bg-[var(--color-bg-secondary)]"
                     >
                       <div className="flex items-start gap-2">
@@ -1984,7 +2021,7 @@ export default function HomePage({
                     <li key={`${entity}-${repo}`} className="py-3">
                       <a
                         href={href}
-                        onClick={(e) => goToRepoCode(e, href)}
+                        onClick={(e) => leaveHome(e, href)}
                         className="flex items-center gap-3 sm:gap-4 rounded p-2 -m-2 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors"
                       >
                         {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}

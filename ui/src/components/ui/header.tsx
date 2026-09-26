@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -131,6 +131,10 @@ export function Header() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [openIssueTotal, setOpenIssueTotal] = useState(0);
   const [openPrTotal, setOpenPrTotal] = useState(0);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+  const warmCleanupRef = useRef<(() => void) | null>(null);
+  const warmForPubkeyRef = useRef<string | null>(null);
 
   // Only render client-side content after hydration
   useEffect(() => {
@@ -205,9 +209,30 @@ export function Header() {
   // cache (Nostr + GitHub) when opened; without a matching warm here, the
   // header stayed at "visited repos only". Warm all manageable repos on
   // login (throttled per pubkey; mark only after a warm actually starts).
+  // Home stays out of this: the relay burst was starving Most Active clicks.
   useEffect(() => {
-    if (!mounted || !isLoggedIn || !pubkey) return;
-    if (!subscribe || !defaultRelays?.length) return;
+    if (
+      !mounted ||
+      !isLoggedIn ||
+      !pubkey ||
+      !subscribe ||
+      !defaultRelays?.length
+    ) {
+      warmCleanupRef.current?.();
+      warmCleanupRef.current = null;
+      warmForPubkeyRef.current = null;
+      return;
+    }
+    if ((pathname || "/") === "/") {
+      warmCleanupRef.current?.();
+      warmCleanupRef.current = null;
+      return;
+    }
+    if (warmCleanupRef.current && warmForPubkeyRef.current === pubkey) return;
+    if (warmCleanupRef.current) {
+      warmCleanupRef.current();
+      warmCleanupRef.current = null;
+    }
     const warmKey = `gittr_global_issue_pr_warm:${pubkey.slice(0, 16)}`;
     try {
       const last = Number(sessionStorage.getItem(warmKey) || 0);
@@ -217,9 +242,9 @@ export function Header() {
       /* warm anyway */
     }
     let cancelled = false;
-    let warmCleanup: (() => void) | undefined;
     const startWarm = () => {
       if (cancelled) return;
+      if ((pathnameRef.current || "/") === "/") return;
       const manageable = loadStoredRepos()
         .filter((repo) => repoAllowsUserToManagePRsAndIssues(repo, pubkey))
         .map((repo) => {
@@ -245,11 +270,12 @@ export function Header() {
         })
         .filter((r) => r.entity && r.repo);
       if (!manageable.length) return;
-      warmCleanup = startWarmAllReposIssuePrFromNostr({
+      warmCleanupRef.current = startWarmAllReposIssuePrFromNostr({
         repos: manageable,
         subscribe,
         relays: getAllRelays(defaultRelays),
       });
+      warmForPubkeyRef.current = pubkey;
       try {
         sessionStorage.setItem(warmKey, String(Date.now()));
       } catch {
@@ -260,9 +286,9 @@ export function Header() {
     let idleId: number | undefined;
     let timeoutId: number | undefined;
     if (typeof window.requestIdleCallback === "function") {
-      idleId = window.requestIdleCallback(() => startWarm(), { timeout: 2500 });
+      idleId = window.requestIdleCallback(() => startWarm(), { timeout: 8000 });
     } else {
-      timeoutId = window.setTimeout(startWarm, 400);
+      timeoutId = window.setTimeout(startWarm, 8000);
     }
     return () => {
       cancelled = true;
@@ -270,9 +296,8 @@ export function Header() {
         window.cancelIdleCallback(idleId);
       }
       if (timeoutId != null) window.clearTimeout(timeoutId);
-      warmCleanup?.();
     };
-  }, [mounted, isLoggedIn, pubkey, subscribe, defaultRelays]);
+  }, [mounted, isLoggedIn, pubkey, subscribe, defaultRelays, pathname]);
 
   const navItems = useMemo(
     () =>

@@ -327,13 +327,6 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             Loading from gateway…
           </div>
         )}
-        {!loading && hydrating ? (
-          <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Loading the rest of the directory…
-          </div>
-        ) : null}
-
         {error && (
           <div
             className="mb-6 rounded-xl border border-red-900/40 px-4 py-3 text-sm text-red-100"

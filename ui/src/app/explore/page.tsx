@@ -32,13 +32,13 @@ import {
   readStoredHomepagePins,
   writeStoredHomepagePins,
 } from "@/lib/nostr/explore-homepage-pins";
+import { exploreRepoMatchKey } from "@/lib/nostr/explore-repo-index";
 import {
   EXPLORE_SEED_CACHE_CAP,
   EXPLORE_SEED_FETCH_LIMIT,
   mergeExploreSeedIntoCatalog,
   shouldFetchExploreSeed,
 } from "@/lib/nostr/explore-seed-catalog";
-import { exploreRepoMatchKey } from "@/lib/nostr/explore-repo-index";
 import {
   hydrateExploreSessionCatalog,
   peekExploreSessionCatalog,
@@ -2486,6 +2486,7 @@ function ExplorePageContent() {
       )}
       {syncing &&
         !isLoadingRepos &&
+        repos.length === 0 &&
         typeof window !== "undefined" &&
         (() => {
           const repoCount = exploreCatalogRef.current?.length ?? repos.length;
