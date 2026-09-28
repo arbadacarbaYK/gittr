@@ -9,9 +9,47 @@ import {
   getSessionUriRelays,
   nip46PrimaryEncryption,
   nip46ShouldDualPublish,
+  planBunkerDialWaves,
   preferUriOpenRelays,
   recoverUriRelaysFromPossiblyExpanded,
 } from "./remoteSigner";
+
+describe("planBunkerDialWaves", () => {
+  it("dials the bunker URI first and leaves Amber defaults for the retry", () => {
+    const waves = planBunkerDialWaves([
+      "wss://relay.example.com",
+      "wss://other.example.com",
+    ]);
+    expect(waves.first).toEqual([
+      "wss://relay.example.com",
+      "wss://other.example.com",
+    ]);
+    expect(waves.retry[0]).toBe("wss://nostr.oxtr.dev");
+    expect(waves.first.some((u) => waves.retry.includes(u))).toBe(false);
+  });
+
+  it("caps a long URI list so Push does not wait on every host", () => {
+    const waves = planBunkerDialWaves([
+      "wss://a.example",
+      "wss://b.example",
+      "wss://c.example",
+      "wss://d.example",
+      "wss://e.example",
+    ]);
+    expect(waves.first).toHaveLength(4);
+    expect(waves.first).not.toContain("wss://e.example");
+  });
+
+  it("starts from Amber defaults when the session has no URI relays", () => {
+    const waves = planBunkerDialWaves([]);
+    expect(waves.first).toEqual([
+      "wss://nostr.oxtr.dev",
+      "wss://theforest.nostr1.com",
+      "wss://relay.primal.net",
+    ]);
+    expect(waves.retry.length).toBeGreaterThan(0);
+  });
+});
 
 describe("expandBunkerRelays", () => {
   it("keeps URI relays first and appends Amber defaults", () => {

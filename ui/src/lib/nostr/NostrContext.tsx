@@ -330,9 +330,16 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setRemoteSignerInitialized(true);
     // Hydrate + await short URI-first bunker warm in this parent effect, before
     // child file-fetch HTTP storms steal browser WebSocket slots.
-    void remoteSignerRef.current.ensureBootstrapped().catch((error) => {
+    const manager = remoteSignerRef.current;
+    void manager.ensureBootstrapped().catch((error) => {
       console.error("[NostrContext] Failed to bootstrap remote signer:", error);
     });
+    return () => {
+      manager.releaseOnUnmount();
+      if (remoteSignerRef.current === manager) {
+        remoteSignerRef.current = null;
+      }
+    };
   }, [addRelay, removeRelay]);
 
   // Bootstrap remote signer from storage and restore pubkey if session exists

@@ -210,8 +210,14 @@ function relayUrlsMatch(a: string, b: string): boolean {
 const BUNKER_RELAY_OPEN_BUDGET_MS = 15000;
 /** First OPEN socket is enough to unblock Push; keepalive fills the rest. */
 const BUNKER_PROCEED_WHEN_OPEN = 1;
-/** URI-first dial concurrency — parallel-8 under file-fetch storms leaves all CLOSED. */
-const BUNKER_URI_DIAL_CONCURRENCY = 2;
+/**
+ * One bunker socket at a time. Opening several at once (especially while the
+ * Code tab is subscribed to a dozen relays) makes the browser close every
+ * dial immediately — Push then sees status 3 on all of them.
+ */
+const BUNKER_URI_DIAL_CONCURRENCY = 1;
+/** Per-relay budget for a Push dial. Stop at the first OPEN; do not wait out 8 hosts. */
+const BUNKER_SERIAL_RELAY_BUDGET_MS = 6000;
 /** Max time bootstrap waits for the first bunker OPEN (page must still load). */
 const BUNKER_BOOTSTRAP_WARM_BUDGET_MS = 10000;
 /** Publish/subscribe on every OPEN URI relay, not a 1–2 host subset. */
@@ -280,6 +286,29 @@ function looksLikeSignedNostrEvent(result: unknown): boolean {
     typeof ev.sig === "string" &&
     /^[0-9a-f]{128}$/i.test(ev.sig)
   );
+}
+
+/**
+ * Push dial plan. Wave 1 is the bunker URI (what Amber is actually listening
+ * on), capped so a long URI list cannot burn the whole click. Wave 2 is the
+ * Amber-friendly defaults that were not in wave 1 — one more quiet pass after
+ * the browser has finished closing the failed sockets.
+ */
+export function planBunkerDialWaves(uriRelays: string[]): {
+  first: string[];
+  retry: string[];
+} {
+  const uri = uniqueNormalizedRelays(uriRelays)
+    .filter((u) => !isGraspServer(u))
+    .slice(0, 4);
+  const defaults = uniqueNormalizedRelays(NIP46_SIGNER_DEFAULT_RELAYS).filter(
+    (u) => !isGraspServer(u)
+  );
+  const first = uri.length > 0 ? uri : defaults.slice(0, 3);
+  const seen = new Set(first);
+  const rest = defaults.filter((u) => !seen.has(u));
+  const retry = rest.length > 0 ? rest.slice(0, 3) : defaults.slice(0, 3);
+  return { first, retry };
 }
 
 function uniqueNormalizedRelays(urls: string[]): string[] {
@@ -938,6 +967,10 @@ export class RemoteSignerManager {
   private lastHiddenKeepaliveAt = 0;
   /** Shared dial so background warm and Push cannot resetDirectPool mid-flight. */
   private bunkerDialInFlight: Promise<string[]> | null = null;
+  /** Set when NostrProvider unmounts so a leftover instance stops dialing. */
+  private released = false;
+  /** True when the in-flight dial will not try Amber defaults after the URI wave. */
+  private bunkerDialUriOnly = false;
   /** Last direct-pool publish targets — used for sign_event timeout diagnostics. */
   private lastPublishMeta?: {
     method: string;
@@ -1181,13 +1214,16 @@ export class RemoteSignerManager {
       this.notifyState("idle");
       // Fire-and-forget URI-first warm — never await on browse/nav remount.
       // Push/Star/Watch still call ensureRpcHealthy at click before sign_event.
+      // URI-only, one socket at a time. A second full warm here used to
+      // resetDirectPool and dial every bunker host in parallel while the Code
+      // tab was still subscribing — every socket landed CLOSED before Push.
       void this.warmBunkerTransportQuietly({
         budgetMs: BUNKER_BOOTSTRAP_WARM_BUDGET_MS,
         uriFirstOnly: true,
       })
         .catch(() => undefined)
         .finally(() => {
-          this.scheduleBackgroundBunkerWarm();
+          this.startBunkerKeepalive();
         });
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
@@ -1613,6 +1649,19 @@ export class RemoteSignerManager {
   }
 
   /**
+   * Provider unmounted (hydration recovery can mount a second signer).
+   * Stop this instance's sockets without clearing the saved Amber session.
+   */
+  releaseOnUnmount() {
+    this.released = true;
+    this.stopBunkerKeepalive();
+    this.detachBunkerTransportRecovery();
+    this.bunkerWarmInFlight = null;
+    this.bunkerDialInFlight = null;
+    this.resetDirectPool();
+  }
+
+  /**
    * Sign event through remote signer (NIP-46 sign_event).
    */
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
@@ -1788,21 +1837,6 @@ export class RemoteSignerManager {
     try {
       let open = await this.ensureBunkerSocketsOpen(session);
       if (open.length === 0) {
-        // One quiet retry after a longer breathe — Star often hits this under load.
-        console.warn(
-          "[RemoteSigner] Bunker warm empty — quiet retry after freeing main-pool slots"
-        );
-        this.claimBunkerHostsForDirectPool(dialTargets);
-        await waitForGitSourceHttpIdle(5000);
-        if (suspendedMainPool.length === 0) {
-          suspendedMainPool = this.suspendMainPoolForBunkerDial();
-        }
-        await this.waitForMainPoolIdle();
-        await new Promise((r) => setTimeout(r, 1200));
-        this.resetDirectPool();
-        open = await this.ensureBunkerSocketsOpen(session);
-      }
-      if (open.length === 0) {
         const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
         console.error(
           "[RemoteSigner] Bunker relay statuses after warm-up:",
@@ -1855,10 +1889,9 @@ export class RemoteSignerManager {
    * the first dial (not only after failure).
    *
    * Dial order (critical under file-fetch/HTTP storms):
-   * 1. URI relays first at low concurrency
-   * 2. Parallel expand only if URI dial failed
-   * 3. Reset + retry only when nothing is CONNECTING
-   * 4. Forced signer defaults last
+   * 1. Amber URI relays, one socket at a time, stop at the first OPEN
+   * 2. If that misses, Amber defaults one at a time (never all 8 at once)
+   * 3. Wait out CONNECTING; do not resetDirectPool under a live dial
    *
    * Expansion is ephemeral for dialing only — never persisted into uriRelays /
    * session.relays. Returned URLs prefer Amber URI relays when those are OPEN.
@@ -1868,11 +1901,20 @@ export class RemoteSignerManager {
     opts?: { quiet?: boolean; uriFirstOnly?: boolean; budgetMs?: number }
   ): Promise<string[]> {
     if (this.bunkerDialInFlight) {
-      return this.bunkerDialInFlight;
+      const joined = this.bunkerDialInFlight;
+      const joinedUriOnly = this.bunkerDialUriOnly;
+      const existing = await joined;
+      // A page-load URI warm that found nothing must not satisfy Push.
+      // Push needs the defaults wave too.
+      if (existing.length > 0 || !!opts?.uriFirstOnly || !joinedUriOnly) {
+        return existing;
+      }
+      if (this.bunkerDialInFlight) return this.bunkerDialInFlight;
     }
 
     const quiet = !!opts?.quiet;
     const uriFirstOnly = !!opts?.uriFirstOnly;
+    this.bunkerDialUriOnly = uriFirstOnly;
     const softWarn = (...args: unknown[]) => {
       if (quiet) {
         if (typeof console.debug === "function") console.debug(...args);
@@ -1919,107 +1961,91 @@ export class RemoteSignerManager {
       );
       if (open.length > 0) return open;
 
-      // URI-first: dial Amber's bunker URI relays at low concurrency before
-      // blasting expandBunkerRelays (parallel-8 under HTTP storms → all CLOSED).
-      if (uriRelays.length > 0) {
-        open = preferOpen(
-          await this.dialRelaysWithConcurrency(
-            uriRelays,
-            BUNKER_URI_DIAL_CONCURRENCY,
-            opts?.budgetMs ?? BUNKER_RELAY_OPEN_BUDGET_MS
-          )
-        );
-        if (open.length > 0) {
-          console.log("[RemoteSigner] URI-first bunker dial ready", {
-            open: open.map((u) => normalizeRelayUrl(u)),
-          });
-          return open;
-        }
+      const waves = planBunkerDialWaves(uriRelays);
+      // Page-load warm must stay short so Push is not stuck behind it.
+      const firstWave = uriFirstOnly ? waves.first.slice(0, 2) : waves.first;
+      const dialBudget = uriFirstOnly
+        ? Math.min(opts?.budgetMs ?? 4000, 4000)
+        : Math.min(
+            opts?.budgetMs ?? BUNKER_SERIAL_RELAY_BUDGET_MS,
+            BUNKER_SERIAL_RELAY_BUDGET_MS
+          );
+
+      // One socket at a time. A parallel dial of every URI + default host
+      // while the Code tab holds other relay sockets ends with all of them
+      // CLOSED (readyState 3) and Amber never sees the push.
+      open = preferOpen(
+        await this.dialRelaysWithConcurrency(
+          firstWave,
+          BUNKER_URI_DIAL_CONCURRENCY,
+          dialBudget
+        )
+      );
+      if (open.length > 0) {
+        console.log("[RemoteSigner] Serial bunker dial ready", {
+          open: open.map((u) => normalizeRelayUrl(u)),
+          wave: "uri",
+        });
+        return open;
       }
 
       if (uriFirstOnly) {
         softWarn(
           "[RemoteSigner] URI-first warm found no OPEN sockets yet",
-          await this.snapshotDirectRelayStatuses(uriRelays)
+          await this.snapshotDirectRelayStatuses(firstWave)
         );
         return open;
       }
 
-      // NIP-46 must use directPool only. Do NOT addRelay bunker URLs into the
-      // app relaypool — duplicate sockets to the same hosts starve Amber transport.
-      open = await this.ensureDirectTransport(session, undefined, { quiet });
-      if (open.length === 0) {
-        const dialTargets = this.buildBunkerTransportTargets(session);
-        const snap = await this.snapshotDirectRelayStatuses(dialTargets);
-        const anyConnecting = Object.values(snap).some((s) => s === 0);
-        if (anyConnecting) {
-          softWarn(
-            "[RemoteSigner] Bunker sockets still CONNECTING — waiting instead of resetDirectPool",
-            snap
-          );
-          await new Promise((r) => setTimeout(r, 8000));
-          open = preferOpen(await this.listDirectOpenRelays(dialTargets));
-          if (open.length > 0) return open;
-        } else {
-          softWarn(
-            "[RemoteSigner] No bunker relays open after warm-up; resetting direct pool and retrying"
-          );
-          this.freeMainPoolBunkerCollisions(expanded);
-          await this.waitForMainPoolBunkerSlotsClear();
-          // Brief pause so the browser can free slots after HTTP/file-fetch storm.
-          await new Promise((r) => setTimeout(r, 400));
-          this.resetDirectPool();
-          // After reset, prefer URI serial again before parallel expand.
-          if (uriRelays.length > 0) {
-            open = preferOpen(
-              await this.dialRelaysWithConcurrency(
-                uriRelays,
-                BUNKER_URI_DIAL_CONCURRENCY,
-                BUNKER_RELAY_OPEN_BUDGET_MS
-              )
-            );
-          }
-          if (open.length === 0) {
-            open = await this.ensureDirectTransport(session, undefined, {
-              quiet,
-            });
-          }
-        }
-      }
-      if (open.length === 0) {
-        const forced = [
-          ...NIP46_SIGNER_DEFAULT_RELAYS,
-          ...NIP46_PAIRING_RELAY_FALLBACKS,
-        ].filter((u) => u.startsWith("wss://") && !isGraspServer(u));
-        const snap = await this.snapshotDirectRelayStatuses(
-          this.buildBunkerTransportTargets(session)
+      const snap = await this.snapshotDirectRelayStatuses(firstWave);
+      const anyConnecting = Object.values(snap).some((s) => s === 0);
+      if (anyConnecting) {
+        softWarn(
+          "[RemoteSigner] Bunker sockets still CONNECTING — waiting instead of resetDirectPool",
+          snap
         );
-        const stillConnecting = Object.values(snap).some((s) => s === 0);
-        if (stillConnecting) {
-          softWarn(
-            "[RemoteSigner] Defaults skipped — in-flight bunker sockets still CONNECTING",
-            snap
-          );
-          await new Promise((r) => setTimeout(r, 8000));
-          open = preferOpen(
-            await this.listDirectOpenRelays(
-              this.buildBunkerTransportTargets(session)
-            )
-          );
-        } else {
-          softWarn(
-            "[RemoteSigner] Still no bunker sockets — dialing signer default relays (not persisted)",
-            forced
-          );
-          // Do NOT overwrite uriRelays / session.relays with defaults.
-          this.claimBunkerHostsForDirectPool([...uriRelays, ...forced]);
-          await this.waitForMainPoolBunkerSlotsClear();
-          await new Promise((r) => setTimeout(r, 400));
-          this.resetDirectPool();
-          // Pass forced list so this attempt actually dials defaults (not only URI).
-          open = await this.ensureDirectTransport(session, forced, { quiet });
-        }
+        await new Promise((r) => setTimeout(r, 4000));
+        open = preferOpen(
+          await this.listDirectOpenRelays(
+            this.buildBunkerTransportTargets(session)
+          )
+        );
+        if (open.length > 0) return open;
       }
+
+      if (this.released) return open;
+
+      // One quiet retry of Amber defaults that were not in the first wave.
+      // Drop CLOSED cache entries first — nostr-tools ensureRelay returns them
+      // forever and never opens a new socket. Do not reset the pool while a
+      // socket is still CONNECTING, and do not dial all 8 hosts at once.
+      softWarn(
+        "[RemoteSigner] No bunker relays open after serial dial; retrying Amber defaults one at a time",
+        snap
+      );
+      for (const url of waves.retry) this.dropDirectRelay(url);
+      await this.waitForMainPoolBunkerSlotsClear();
+      await new Promise((r) => setTimeout(r, 1000));
+      open = preferOpen(
+        await this.dialRelaysWithConcurrency(
+          waves.retry,
+          BUNKER_URI_DIAL_CONCURRENCY,
+          dialBudget
+        )
+      );
+      if (open.length > 0) {
+        console.log("[RemoteSigner] Serial bunker dial ready", {
+          open: open.map((u) => normalizeRelayUrl(u)),
+          wave: "defaults",
+        });
+        return open;
+      }
+      softWarn(
+        "[RemoteSigner] No OPEN bunker sockets",
+        await this.snapshotDirectRelayStatuses(
+          this.buildBunkerTransportTargets(session)
+        )
+      );
       return open;
     })().finally(() => {
       this.bunkerDialInFlight = null;
@@ -2169,6 +2195,7 @@ export class RemoteSignerManager {
     budgetMs = BUNKER_RELAY_OPEN_BUDGET_MS
   ): Promise<boolean> {
     const started = Date.now();
+    if (this.released) return false;
     const remaining = () => Math.max(0, budgetMs - (Date.now() - started));
 
     const waitOpen = async (relay: any): Promise<boolean> => {
@@ -2201,6 +2228,7 @@ export class RemoteSignerManager {
         // Do not spend the whole OPEN budget on Promise.race — if ensureRelay
         // is still CONNECTING after this, keep waiting the remainder.
         const firstWait = Math.min(8000, Math.max(remaining(), 800));
+        const dialStarted = Date.now();
         try {
           relay = await Promise.race([
             this.directPool.ensureRelay(url),
@@ -2212,16 +2240,21 @@ export class RemoteSignerManager {
             ),
           ]);
           if (await waitOpen(relay)) return true;
-          // ensureRelay may have returned a still-CLOSED cache miss; drop and retry.
+          // ensureRelay returns a cached CLOSED relay immediately and never
+          // reconnects. A sub-100ms CLOSED result is that cache, not a dial.
+          const elapsed = Date.now() - dialStarted;
           if (
             relay &&
             !bunkerRelayShouldKeepWaiting(relay.status) &&
             !bunkerRelayIsOpen(relay.status)
           ) {
             console.warn(
-              `[RemoteSigner] ensureRelay returned CLOSED for ${url} (status=${relay.status})`
+              `[RemoteSigner] ensureRelay returned CLOSED for ${normalizeRelayUrl(url)} in ${elapsed}ms (status=${relay.status})`
             );
             this.dropDirectRelay(url);
+            if (elapsed < 100 && this.getDirectRelayFromPool(url)) {
+              this.resetDirectPool();
+            }
           }
         } catch (error) {
           // Race lost — ensureRelay may still be connecting in _conn. Wait it out.
@@ -2447,7 +2480,10 @@ export class RemoteSignerManager {
   private scheduleBackgroundBunkerWarm() {
     if (typeof window === "undefined" || !this.session?.userPubkey) return;
     this.attachBunkerTransportRecovery();
-    void this.warmBunkerTransportQuietly();
+    void this.warmBunkerTransportQuietly({
+      uriFirstOnly: true,
+      budgetMs: BUNKER_SERIAL_RELAY_BUDGET_MS,
+    });
     this.startBunkerKeepalive();
   }
 
@@ -2516,7 +2552,10 @@ export class RemoteSignerManager {
         }
         this.lastHiddenKeepaliveAt = now;
       }
-      void this.warmBunkerTransportQuietly();
+      void this.warmBunkerTransportQuietly({
+        uriFirstOnly: true,
+        budgetMs: BUNKER_SERIAL_RELAY_BUDGET_MS,
+      });
     }, BUNKER_KEEPALIVE_MS);
   }
 
@@ -2531,6 +2570,7 @@ export class RemoteSignerManager {
     budgetMs?: number;
     uriFirstOnly?: boolean;
   }) {
+    if (this.released) return;
     const session = this.session;
     if (!session?.userPubkey) return;
     // Do not unsub/resub bunker listen while Push is waiting on Amber.
@@ -2686,39 +2726,13 @@ export class RemoteSignerManager {
     );
 
     if (toDial.length > 0) {
-      const openUrls = [...(await this.listDirectOpenRelays(targets))];
-      const overallMs = BUNKER_RELAY_OPEN_BUDGET_MS + 1500;
-      await new Promise<void>((resolve) => {
-        let pending = toDial.length;
-        let finished = false;
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          resolve();
-        };
-        const timer = setTimeout(finish, overallMs);
-        const preferredOpenCount = () =>
-          openUrls.filter((u) =>
-            preferredNorm.size === 0
-              ? true
-              : preferredNorm.has(normalizeRelayUrl(u))
-          ).length;
-        const onOneDone = () => {
-          pending -= 1;
-          if (preferredOpenCount() >= wantPreferred || pending <= 0) {
-            clearTimeout(timer);
-            finish();
-          }
-        };
-        for (const url of toDial) {
-          void this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS).then(
-            (ok) => {
-              if (ok) openUrls.push(url);
-              onOneDone();
-            }
-          );
-        }
-      });
+      // Serial. The previous all-at-once dial left every host CLOSED (status 3)
+      // on repo pages that already had a Nostr subscribe open.
+      await this.dialRelaysWithConcurrency(
+        toDial,
+        BUNKER_URI_DIAL_CONCURRENCY,
+        BUNKER_SERIAL_RELAY_BUDGET_MS
+      );
     }
 
     const allOpen = await this.listDirectOpenRelays(targets);
