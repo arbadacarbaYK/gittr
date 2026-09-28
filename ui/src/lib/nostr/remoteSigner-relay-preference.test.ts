@@ -28,7 +28,7 @@ describe("planBunkerDialWaves", () => {
     expect(waves.first.some((u) => waves.retry.includes(u))).toBe(false);
   });
 
-  it("caps a long URI list so Push does not wait on every host", () => {
+  it("keeps a fifth URI relay instead of stopping after the first four", () => {
     const waves = planBunkerDialWaves([
       "wss://a.example",
       "wss://b.example",
@@ -36,18 +36,40 @@ describe("planBunkerDialWaves", () => {
       "wss://d.example",
       "wss://e.example",
     ]);
-    expect(waves.first).toHaveLength(4);
-    expect(waves.first).not.toContain("wss://e.example");
+    expect(waves.first).toContain("wss://e.example");
+  });
+
+  it("still dials Damus when the first URI hosts are the Amber defaults", () => {
+    const waves = planBunkerDialWaves([
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://theforest.nostr1.com",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.damus.io",
+      "wss://relay.azzamo.net",
+      "wss://purplepag.es",
+    ]);
+    expect(waves.first).toEqual([
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://theforest.nostr1.com",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.damus.io",
+      "wss://relay.azzamo.net",
+      "wss://purplepag.es",
+    ]);
+    expect(waves.retry).toEqual([]);
   });
 
   it("starts from Amber defaults when the session has no URI relays", () => {
     const waves = planBunkerDialWaves([]);
-    expect(waves.first).toEqual([
+    expect(waves.first.slice(0, 3)).toEqual([
       "wss://nostr.oxtr.dev",
       "wss://theforest.nostr1.com",
       "wss://relay.primal.net",
     ]);
-    expect(waves.retry.length).toBeGreaterThan(0);
+    expect(waves.first).toContain("wss://nos.lol");
+    expect(waves.retry).toContain("wss://relay.damus.io");
   });
 });
 

@@ -289,10 +289,11 @@ function looksLikeSignedNostrEvent(result: unknown): boolean {
 }
 
 /**
- * Push dial plan. Wave 1 is the bunker URI (what Amber is actually listening
- * on), capped so a long URI list cannot burn the whole click. Wave 2 is the
- * Amber-friendly defaults that were not in wave 1 — one more quiet pass after
- * the browser has finished closing the failed sockets.
+ * Push dial plan. Wave 1 is the bunker URI Amber is listening on. Keep the
+ * whole URI (up to 7): a second repo page often finds the first few hosts
+ * already CLOSED from the previous push, and the tail (Damus and the rest)
+ * must still be tried. Wave 2 is only relays not already in wave 1 — never
+ * the same CLOSED hosts again.
  */
 export function planBunkerDialWaves(uriRelays: string[]): {
   first: string[];
@@ -300,14 +301,14 @@ export function planBunkerDialWaves(uriRelays: string[]): {
 } {
   const uri = uniqueNormalizedRelays(uriRelays)
     .filter((u) => !isGraspServer(u))
-    .slice(0, 4);
-  const defaults = uniqueNormalizedRelays(NIP46_SIGNER_DEFAULT_RELAYS).filter(
-    (u) => !isGraspServer(u)
-  );
-  const first = uri.length > 0 ? uri : defaults.slice(0, 3);
+    .slice(0, 7);
+  const defaults = uniqueNormalizedRelays([
+    ...NIP46_SIGNER_DEFAULT_RELAYS,
+    ...NIP46_PAIRING_RELAY_FALLBACKS,
+  ]).filter((u) => !isGraspServer(u));
+  const first = uri.length > 0 ? uri : defaults.slice(0, 4);
   const seen = new Set(first);
-  const rest = defaults.filter((u) => !seen.has(u));
-  const retry = rest.length > 0 ? rest.slice(0, 3) : defaults.slice(0, 3);
+  const retry = defaults.filter((u) => !seen.has(u)).slice(0, 3);
   return { first, retry };
 }
 
@@ -1961,6 +1962,14 @@ export class RemoteSignerManager {
       );
       if (open.length > 0) return open;
 
+      // Page-load warm leaves CLOSED cache entries. A later repo (pyramid
+      // after gitnostr) then redials those dead sockets and never reaches
+      // the rest of the bunker URI. One fresh pool, then walk the full list.
+      if (!uriFirstOnly) {
+        this.resetDirectPool();
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
       const waves = planBunkerDialWaves(uriRelays);
       // Page-load warm must stay short so Push is not stuck behind it.
       const firstWave = uriFirstOnly ? waves.first.slice(0, 2) : waves.first;
@@ -2013,9 +2022,9 @@ export class RemoteSignerManager {
         if (open.length > 0) return open;
       }
 
-      if (this.released) return open;
+      if (this.released || waves.retry.length === 0) return open;
 
-      // One quiet retry of Amber defaults that were not in the first wave.
+      // One quiet retry of relays we have not already dialed.
       // Drop CLOSED cache entries first — nostr-tools ensureRelay returns them
       // forever and never opens a new socket. Do not reset the pool while a
       // socket is still CONNECTING, and do not dial all 8 hosts at once.
@@ -2252,9 +2261,6 @@ export class RemoteSignerManager {
               `[RemoteSigner] ensureRelay returned CLOSED for ${normalizeRelayUrl(url)} in ${elapsed}ms (status=${relay.status})`
             );
             this.dropDirectRelay(url);
-            if (elapsed < 100 && this.getDirectRelayFromPool(url)) {
-              this.resetDirectPool();
-            }
           }
         } catch (error) {
           // Race lost — ensureRelay may still be connecting in _conn. Wait it out.
