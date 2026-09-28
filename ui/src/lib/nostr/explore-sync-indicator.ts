@@ -16,3 +16,16 @@ export function shouldHideExploreSyncForCatalog(
 ): boolean {
   return liveExploreNostrCount(repos) >= EXPLORE_LIVE_SAMPLE_TO_HIDE_SYNC;
 }
+
+/**
+ * Keep the relay sweep visible when this visit opened with ?q= or ?user=.
+ * A full catalog of unrelated names used to hide sync immediately, so a
+ * search from Home said "nothing found" before seed or relays could match.
+ */
+export function shouldKeepExploreSyncIndicator(opts: {
+  alreadyHasCatalog: boolean;
+  hasSearch: boolean;
+}): boolean {
+  if (opts.hasSearch) return true;
+  return !opts.alreadyHasCatalog;
+}

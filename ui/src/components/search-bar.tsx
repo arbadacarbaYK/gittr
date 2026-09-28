@@ -3,6 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef } from "react";
 
 import { Input } from "@/components/ui/input";
+import {
+  holdExploreAddress,
+  publishExploreSearch,
+} from "@/lib/nostr/explore-search";
 import { cn } from "@/lib/utils";
 import { appNavigate } from "@/lib/utils/app-navigate";
 
@@ -40,8 +44,14 @@ function SearchBarInner({ className }: { className?: string }) {
       const qs = sp.toString();
       const href = qs ? `/explore?${qs}` : "/explore";
       // Same-page query change must not hard-reload — that wiped the in-memory
-      // catalog so search only saw localStorage leftovers.
+      // catalog so search only saw localStorage leftovers. router.replace does
+      // not remount Explore, so tell the open page directly.
       if (pathname === "/explore") {
+        publishExploreSearch({
+          q: params.q?.trim() || "",
+          user: params.user?.trim() || null,
+        });
+        holdExploreAddress(href);
         router.replace(href, { scroll: false });
         return;
       }
@@ -54,6 +64,8 @@ function SearchBarInner({ className }: { className?: string }) {
     if (pathname !== "/explore") return;
     suppressSyncRef.current = true;
     if (ref.current) ref.current.value = "";
+    publishExploreSearch({ q: "", user: null });
+    holdExploreAddress("/explore");
     router.replace("/explore", { scroll: false });
   }, [pathname, router]);
 

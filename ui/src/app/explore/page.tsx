@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import {
@@ -27,6 +34,12 @@ import {
 } from "@/lib/nostr/explore-homepage-pins";
 import { exploreRepoMatchKey } from "@/lib/nostr/explore-repo-index";
 import {
+  EXPLORE_SEARCH_CHANGED,
+  type ExploreSearchState,
+  exploreSearchAwaitingCatalog,
+  parseExploreSearch,
+} from "@/lib/nostr/explore-search";
+import {
   EXPLORE_SEED_CACHE_CAP,
   EXPLORE_SEED_FETCH_LIMIT,
   mergeExploreSeedIntoCatalog,
@@ -37,7 +50,10 @@ import {
   peekExploreSessionCatalog,
   writeExploreSessionCatalog,
 } from "@/lib/nostr/explore-session-catalog";
-import { shouldHideExploreSyncForCatalog } from "@/lib/nostr/explore-sync-indicator";
+import {
+  shouldHideExploreSyncForCatalog,
+  shouldKeepExploreSyncIndicator,
+} from "@/lib/nostr/explore-sync-indicator";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   nostrTimestampToMs,
@@ -325,15 +341,41 @@ function ExplorePageContent() {
     ExploreHomepagePin[]
   >(() => readStoredHomepagePins());
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
-  // Read ?q= / ?user= after paint. useSearchParams() suspended this whole
-  // page, so the HTML was only a black "Loading..." until the bundle ran.
+  // ?q= / ?user= live here, not in useSearchParams() — that hook suspended this
+  // whole page (black "Loading..." until the bundle ran). Start empty so the
+  // server HTML matches; the layout effect below applies the real address
+  // before paint, and the header search event updates an already-open page.
   const [qRaw, setQRaw] = useState("");
   const [userFilter, setUserFilter] = useState<string | null>(null);
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    setQRaw(sp.get("q") || "");
-    setUserFilter(sp.get("user"));
+  const [seedPassDone, setSeedPassDone] = useState(false);
+  const applyExploreSearch = useCallback((next: ExploreSearchState) => {
+    const qNext = (next.q || "").trim();
+    const userNext = (next.user || "").trim() || null;
+    setQRaw((prev) => (prev === qNext ? prev : qNext));
+    setUserFilter((prev) => (prev === userNext ? prev : userNext));
   }, []);
+  useLayoutEffect(() => {
+    applyExploreSearch(parseExploreSearch(window.location.search));
+    const onSearchEvent = (event: Event) => {
+      const detail = (event as CustomEvent<ExploreSearchState>).detail;
+      if (detail && typeof detail.q === "string") {
+        applyExploreSearch(detail);
+        return;
+      }
+      applyExploreSearch(parseExploreSearch(window.location.search));
+    };
+    const onLocation = () => {
+      applyExploreSearch(parseExploreSearch(window.location.search));
+    };
+    window.addEventListener(EXPLORE_SEARCH_CHANGED, onSearchEvent);
+    window.addEventListener("popstate", onLocation);
+    window.addEventListener("pageshow", onLocation);
+    return () => {
+      window.removeEventListener(EXPLORE_SEARCH_CHANGED, onSearchEvent);
+      window.removeEventListener("popstate", onLocation);
+      window.removeEventListener("pageshow", onLocation);
+    };
+  }, [applyExploreSearch]);
   const q = qRaw.toLowerCase();
   const openRepoInNewTab = !!(qRaw.trim() || userFilter);
   const { defaultRelays, subscribe, pubkey } = useNostrContext();
@@ -899,6 +941,7 @@ function ExplorePageContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
+    setSeedPassDone(false);
 
     const mergeSeed = (
       seed: Array<{
@@ -937,10 +980,10 @@ function ExplorePageContent() {
     };
 
     (async () => {
-      const existing = readExploreCatalog() as any[];
-      if (!shouldFetchExploreSeed(existing)) return;
-
       try {
+        const existing = readExploreCatalog() as any[];
+        if (!shouldFetchExploreSeed(existing)) return;
+
         const [seedRes, recentRes] = await Promise.all([
           fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
             () => null
@@ -989,6 +1032,8 @@ function ExplorePageContent() {
         mergeSeed([...(seedJson?.repos || []), ...(recentJson?.repos || [])]);
       } catch (e) {
         console.warn("[Explore] seed fetch failed:", e);
+      } finally {
+        if (!cancelled) setSeedPassDone(true);
       }
     })();
 
@@ -1068,7 +1113,13 @@ function ExplorePageContent() {
 
     const envRelays = defaultRelays || [];
     const alreadyHasCatalog = shouldHideExploreSyncForCatalog(existingRepos);
-    setSyncing(!alreadyHasCatalog);
+    const arrivalSearch = parseExploreSearch(window.location.search);
+    setSyncing(
+      shouldKeepExploreSyncIndicator({
+        alreadyHasCatalog,
+        hasSearch: Boolean(arrivalSearch.q || arrivalSearch.user),
+      })
+    );
 
     // Query GRASP / NIP-34 discovery hosts first — don't wait for relays tags,
     // and don't open Damus/wine in the same REQ (that starves discovery).
@@ -2402,6 +2453,14 @@ function ExplorePageContent() {
   }, [filteredRepos]);
 
   const visibleExploreRepos = displayableRepos.slice(0, visibleRepoCount);
+  const searchActive = Boolean(q || userFilter);
+  const awaitingSearch = exploreSearchAwaitingCatalog({
+    searchActive,
+    matchCount: filteredRepos.length,
+    loadingRepos: isLoadingRepos,
+    syncing,
+    seedPassDone,
+  });
 
   // Render repo cards directly (like homepage) - React will handle updates efficiently
   // Don't use useMemo here as it can cause issues with constant re-renders blocking clicks
@@ -2696,7 +2755,19 @@ function ExplorePageContent() {
             }
           />
         )}
+        {!isLoadingRepos && awaitingSearch && (
+          <div className="col-span-2 p-8 text-center text-gray-400">
+            <p>
+              {repos.length === 0
+                ? "Looking up repositories on Nostr relays…"
+                : `Still looking for “${
+                    qRaw.trim() || userFilter
+                  }”… ${repos.length.toLocaleString()} repos loaded so far.`}
+            </p>
+          </div>
+        )}
         {!isLoadingRepos &&
+          !awaitingSearch &&
           !syncing &&
           filteredRepos.length === 0 &&
           repos.length === 0 && (
@@ -2711,10 +2782,11 @@ function ExplorePageContent() {
             </div>
           )}
         {!isLoadingRepos &&
+          !awaitingSearch &&
           !syncing &&
           filteredRepos.length === 0 &&
           repos.length > 0 &&
-          (q || userFilter) && (
+          searchActive && (
             <div className="col-span-2 p-8 text-center text-gray-400">
               {userFilter ? (
                 <p>No public repositories found for this user.</p>
@@ -2725,22 +2797,11 @@ function ExplorePageContent() {
           )}
         {!isLoadingRepos &&
           syncing &&
+          !searchActive &&
           filteredRepos.length === 0 &&
           repos.length === 0 && (
             <div className="col-span-2 p-8 text-center text-gray-400">
               <p>Looking up repositories on Nostr relays…</p>
-            </div>
-          )}
-        {!isLoadingRepos &&
-          syncing &&
-          filteredRepos.length === 0 &&
-          repos.length > 0 &&
-          (q || userFilter) && (
-            <div className="col-span-2 p-8 text-center text-gray-400">
-              <p>
-                Still syncing… {repos.length} repos loaded so far
-                {q ? ` (no match for “${qRaw.trim()}” yet)` : ""}.
-              </p>
             </div>
           )}
       </div>
