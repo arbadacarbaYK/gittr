@@ -189,6 +189,7 @@ import {
   folderReadmeLoadPath,
 } from "@/lib/repos/repo-page-chrome";
 import { sanitizeRepoNavPath } from "@/lib/repos/repo-path-sanity";
+import { readProfileOpenHandoff } from "@/lib/repos/profile-open-handoff";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
@@ -287,6 +288,7 @@ import {
 import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
 import {
   KNOWN_GRASP_DOMAINS,
+  clonesAreForeignGraspOnly,
   isGraspDomainForPushing,
 } from "@/lib/utils/grasp-servers";
 import {
@@ -374,6 +376,34 @@ function bridgeFileMissKey(ownerPubkey: string, repo: string): string {
   return `${ownerPubkey.toLowerCase()}/${String(repo)
     .replace(/\.git$/i, "")
     .toLowerCase()}`;
+}
+
+/** Profile click or announcement clone[] is only ngit/shakespeare/etc. */
+function routeUsesForeignGraspOnly(
+  entity: string,
+  repo: string,
+  extraClones: unknown
+): boolean {
+  const handed = readProfileOpenHandoff(entity, repo)?.clone ?? [];
+  const extra = Array.isArray(extraClones)
+    ? extraClones.filter((u): u is string => typeof u === "string")
+    : [];
+  return clonesAreForeignGraspOnly([...handed, ...extra]);
+}
+
+function pushUniqueCloneUrls(target: string[], urls: unknown): void {
+  if (!Array.isArray(urls)) return;
+  for (const url of urls) {
+    if (
+      typeof url === "string" &&
+      url &&
+      !url.includes("localhost") &&
+      !url.includes("127.0.0.1") &&
+      !target.includes(url)
+    ) {
+      target.push(url);
+    }
+  }
 }
 
 /** Merge IndexedDB/local `loadRepoFiles` into a repo row from `loadStoredRepos` (files are stored separately). */
@@ -1972,6 +2002,15 @@ export function RepoCodePage() {
     }
     if (hasBridgeFiles) return;
     if (bridgeFetchInProgressRef.current) return;
+    if (
+      routeUsesForeignGraspOnly(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        repoDataRef.current?.clone
+      )
+    ) {
+      return;
+    }
     bridgeFetchInProgressRef.current = true;
 
     (async () => {
@@ -4282,7 +4321,16 @@ export function RepoCodePage() {
       };
       // Bridge refs for branch/tag counts — foreign npub repos often have a bare
       // mirror without a local Push marker; still hydrate so the UI is not "0 branches".
-      if (ownerPubkey) {
+      // Foreign GRASP-only clones are not on this disk; the 404 was part of the
+      // slow open from a profile card.
+      if (
+        ownerPubkey &&
+        !routeUsesForeignGraspOnly(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          (repo as { clone?: string[] }).clone
+        )
+      ) {
         (async () => {
           try {
             const actualRepoName =
@@ -6188,20 +6236,88 @@ export function RepoCodePage() {
         initialCloneUrls.push(...initialRepoData.clone);
       }
 
+      const handed = readProfileOpenHandoff(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      if (handed?.clone?.length) {
+        pushUniqueCloneUrls(initialCloneUrls, handed.clone);
+        console.log(
+          `✅ [File Fetch] Profile handoff: ${handed.clone.length} clone URL(s) — not waiting on another relay scan`
+        );
+      }
+      if (typeof window !== "undefined") {
+        try {
+          const stored = loadStoredRepos();
+          const storedMatch = findRepoByEntityAndName<StoredRepo>(
+            stored,
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          pushUniqueCloneUrls(initialCloneUrls, storedMatch?.clone);
+        } catch {
+          /* the later localStorage pass logs a real failure */
+        }
+      }
+
       // Server relay query when browser Nostr is slow (e.g. LiE on friendly-machines).
+      // Skip the wait when the profile card or this browser already has clone URLs.
+      // profile-repos can sit on relays for many seconds; that was the timelapse.
       if (
         ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
         typeof window !== "undefined"
       ) {
+        const hintsPromise = resolveLiveRepoAnnouncement({
+          ownerPubkey,
+          repoName: resolvedParams.repo,
+          entity: resolvedParams.entity,
+          persist: true,
+          broadcast: true,
+        });
+        if (initialCloneUrls.length > 0) {
+          console.log(
+            `✅ [File Fetch] ${initialCloneUrls.length} clone URL(s) already known — listing files without waiting for profile-repos`
+          );
+          void hintsPromise
+            .then((hints) => {
+              if (!hints) return;
+              if (hints.clone.length > 0) {
+                nip34AnnouncementCloneStatusRef.current = "present";
+              }
+              if (hints.sourceUrl) {
+                applyEffectiveSourceUrl(hints.sourceUrl);
+              }
+              setRepoData((prev: any) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  clone: mergeAnnouncementClonesPreferringEvent(
+                    prev.clone,
+                    hints.clone,
+                    resolvedParams.entity,
+                    resolvedParams.repo
+                  ),
+                  announcementClone: mergeAnnouncementTagClones(
+                    prev.announcementClone,
+                    hints.clone
+                  ),
+                  sourceUrl: hints.sourceUrl || prev.sourceUrl,
+                  lastNostrEventId:
+                    hints.lastNostrEventId || prev.lastNostrEventId,
+                  syncedFromNostr: true,
+                };
+              });
+            })
+            .catch((e) => {
+              console.warn(
+                "⚠️ [File Fetch] profile-repos clone hydrate failed:",
+                e
+              );
+            });
+        } else {
         try {
-          const hints = await resolveLiveRepoAnnouncement({
-            ownerPubkey,
-            repoName: resolvedParams.repo,
-            entity: resolvedParams.entity,
-            persist: true,
-            broadcast: true,
-          });
+          const hints = await hintsPromise;
           if (hints) {
             if (hints.clone.length > 0) {
               nip34AnnouncementCloneStatusRef.current = "present";
@@ -6263,6 +6379,7 @@ export function RepoCodePage() {
             "⚠️ [File Fetch] profile-repos clone hydrate failed:",
             e
           );
+        }
         }
       }
 
@@ -10840,6 +10957,14 @@ export function RepoCodePage() {
               );
               return;
             }
+            if (
+              routeUsesForeignGraspOnly(paramsEntity, paramsRepo, bridgeClone)
+            ) {
+              console.info(
+                "ℹ️ [File Fetch] Skipping git-nostr-bridge — foreign GRASP is read from the remote"
+              );
+              return;
+            }
             // CRITICAL: Use defaultBranch from repo data if available, otherwise try to get it from sourceUrl
             let branch = currentData?.defaultBranch;
 
@@ -14330,6 +14455,20 @@ export function RepoCodePage() {
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return;
     const repoName = decodedRepo || resolvedParams.repo;
     if (!repoName) return;
+    if (
+      routeUsesForeignGraspOnly(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        (repoData as { clone?: string[] } | null)?.clone
+      )
+    ) {
+      startTransition(() => {
+        setTreeLastCommits((prev) =>
+          Object.keys(prev).length === 0 ? prev : {}
+        );
+      });
+      return;
+    }
     const branch =
       String(
         (repoData as { filesBranch?: string } | null)?.filesBranch || ""
@@ -14353,7 +14492,13 @@ export function RepoCodePage() {
           { signal: ctrl.signal, cache: "no-store" }
         );
         if (!res.ok || cancelled) {
-          if (!cancelled) startTransition(() => setTreeLastCommits({}));
+          if (!cancelled) {
+            startTransition(() => {
+              setTreeLastCommits((prev) =>
+                Object.keys(prev).length === 0 ? prev : {}
+              );
+            });
+          }
           return;
         }
         const json = await res.json();
@@ -14366,7 +14511,13 @@ export function RepoCodePage() {
           );
         });
       } catch {
-        if (!cancelled) startTransition(() => setTreeLastCommits({}));
+        if (!cancelled) {
+          startTransition(() => {
+            setTreeLastCommits((prev) =>
+              Object.keys(prev).length === 0 ? prev : {}
+            );
+          });
+        }
       }
     })();
     return () => {
@@ -14440,6 +14591,15 @@ export function RepoCodePage() {
       decodedRepo ||
       resolvedParams.repo;
     if (!repoName) return;
+    if (
+      routeUsesForeignGraspOnly(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        (repoData as { clone?: string[] } | null)?.clone
+      )
+    ) {
+      return;
+    }
 
     let cancelled = false;
     (async () => {

@@ -1505,6 +1505,34 @@ async function fetchFromNostrGit(
     isGittrBridgeHost: isGittrBridgeHostFn,
   } = require("@/lib/utils/grasp-servers");
   try {
+    // Foreign GRASP is not on this host's disk. A bridge 404 used to sit in
+    // front of every open (profile → repo felt like a slow timelapse).
+    const normalizedForeign = normalizeGraspHttpsCloneUrl(cloneUrl || "");
+    const foreignGraspDirect =
+      (normalizedForeign.startsWith("https://") ||
+        normalizedForeign.startsWith("http://")) &&
+      isGraspServerFn(normalizedForeign) &&
+      !isGittrBridgeHostFn(normalizedForeign);
+    if (foreignGraspDirect) {
+      console.log(
+        `⏭️ [Git Source] Foreign GRASP — listing the remote tree directly (skip local bridge)`
+      );
+      const remoteFiles = await fetchGraspViaRepoFilesApi(
+        normalizedForeign,
+        branch
+      );
+      if (remoteFiles?.files?.length) {
+        return remoteFiles;
+      }
+      console.warn(
+        `⚠️ [Git Source] Foreign GRASP remote listing empty — not probing the local bridge: ${normalizedForeign.substring(
+          0,
+          72
+        )}…`
+      );
+      return null;
+    }
+
     // Try git-nostr-bridge API first (if bridge has cloned the repo)
     // Format: /api/nostr/repo/files?ownerPubkey={pubkey}&repo={repo}&branch={branch}
     // CRITICAL: Bridge stores repos by event publisher's pubkey, not the npub from clone URL

@@ -78,6 +78,7 @@ import {
   toProfileRepoCard,
   unionProfileRepoCatalog,
 } from "@/lib/repos/merge-profile-repos";
+import { stashProfileOpenHandoff } from "@/lib/repos/profile-open-handoff";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { enrichReposWithForgeForkMeta } from "@/lib/repos/repo-github-hub";
 import { type UserStats } from "@/lib/stats";
@@ -3749,6 +3750,25 @@ export default function EntityPage({
                   href={href}
                   onClick={(e) => {
                     e.preventDefault();
+                    const hrefEntity = href.split("/").filter(Boolean)[0] || "";
+                    const clone = Array.isArray(repo.clone)
+                      ? repo.clone.filter(
+                          (u: unknown): u is string => typeof u === "string"
+                        )
+                      : [];
+                    stashProfileOpenHandoff({
+                      entity: hrefEntity,
+                      repo: String(repoForUrl || ""),
+                      ownerPubkey:
+                        typeof repo.ownerPubkey === "string"
+                          ? repo.ownerPubkey
+                          : undefined,
+                      clone,
+                      sourceUrl:
+                        typeof repo.sourceUrl === "string"
+                          ? repo.sourceUrl
+                          : undefined,
+                    });
                     window.location.href = href;
                   }}
                   className={`border rounded-lg p-4 hover:bg-gray-800/50 transition-all cursor-pointer ${roleColor}`}

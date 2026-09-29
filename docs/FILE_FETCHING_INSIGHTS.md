@@ -86,7 +86,7 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
    - GitHub in the URL list is preflighted up to 20s; success returns immediately.
    - With Amber / NIP-46 paired, HTTP concurrency is **2**.
 6. **Per URL** (`parseGitSource`):
-   - **GRASP** (`nostr-git`): bridge `GET /api/nostr/repo/files` → if empty, `GET /api/git/repo-files?sourceUrl=` → optional `POST /api/nostr/repo/clone` (~12s) + bridge retry.
+   - **GRASP** (`nostr-git`): if the clone host is **not** `git.gittr.space`, go straight to `GET /api/git/repo-files?sourceUrl=` (a bridge 404 used to sit in front of every foreign open). If the clone host **is** this deployment’s bridge: `GET /api/nostr/repo/files` → if empty, `repo-files` → optional `POST /api/nostr/repo/clone`.
    - **Self-hosted** (including a non-GRASP host with `/npub1…/repo`): **`repo-files` only**.
    - **Forge** (GitHub / GitLab / Codeberg): `repo-files` (server shallow clone); GitHub REST is fallback.
    - **`htree://`**: skipped here — see [Iris Hashtree](#iris-hashtree-htree) below.
@@ -94,7 +94,9 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 **Huge trees** (thousands of files): the bridge may return `listing: "shallow"` (one directory level). Opening a folder GETs that path’s children.
 
-**File list dates:** `GET /api/nostr/repo/tree-last-commits` on the gittr mirror (text marker `>>>COMMIT<<<`, not `%x00`). A Nostr-only repo that was never pushed here has no per-file history; each row then shows the same latest repository update already used in the file-list header (`lastNostrEventCreatedAt`, else local `updatedAt`). The commit-message column stays blank. Folder rows have no blob size.
+**File list dates:** `GET /api/nostr/repo/tree-last-commits` on the gittr mirror (text marker `>>>COMMIT<<<`, not `%x00`). A Nostr-only repo that was never pushed here has no per-file history; each row then shows the same latest repository update already used in the file-list header (`lastNostrEventCreatedAt`, else local `updatedAt`). The commit-message column stays blank. Folder rows have no blob size. When every `clone[]` host is a foreign GRASP (ngit, Shakespeare, …), the Code tab does **not** call `tree-last-commits` or `refs` — those 404s were a render storm after the tree had already arrived.
+
+**Opening from a profile card:** the click stores that card’s `clone[]` in `sessionStorage` (`gittr:profile-open-v1`). The Code tab starts the file race from those URLs immediately. It does not wait for another `/api/nostr/profile-repos` relay scan (that scan can take many seconds) or for browser EOSE. Direct URL opens with no handoff still use profile-repos, then relays.
 
 ## Loading one file or folder README
 

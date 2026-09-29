@@ -203,6 +203,25 @@ export function isGraspServer(url: string): boolean {
 }
 
 /**
+ * Every usable URL is a GRASP git host other than this deployment's bridge.
+ * Those trees are not on git.gittr.space — asking the local bridge first only 404s.
+ */
+export function clonesAreForeignGraspOnly(urls: readonly string[]): boolean {
+  const usable = urls.filter((raw) => {
+    if (typeof raw !== "string") return false;
+    const url = raw.trim();
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    if (lower.includes("localhost") || lower.includes("127.0.0.1")) {
+      return false;
+    }
+    return true;
+  });
+  if (usable.length === 0) return false;
+  return usable.every((url) => isGraspServer(url) && !isGittrBridgeHost(url));
+}
+
+/**
  * True when the URL path is a GRASP-shaped clone (`/grasp/…` or `/grasp` relay).
  * Used so we do not treat those hosts as "prefer non-GRASP" publisher remotes.
  */
