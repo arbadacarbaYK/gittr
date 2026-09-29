@@ -22,6 +22,7 @@ import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { blossomMediaFallbackUrls } from "@/lib/nostr/blossom-media-fallback";
+import { writeStoredHomepagePins } from "@/lib/nostr/explore-homepage-pins";
 import { useBlossomMediaSrc } from "@/lib/nostr/useBlossomMediaSrc";
 import {
   type Metadata,
@@ -852,6 +853,21 @@ export default function HomePage({
     mapPlatformRecentToRepo,
     isValidRecentRepoCard,
   ]);
+
+  // Explore’s first paint is this same list. Write it before the click so
+  // /explore does not sit on “Loading repositories…” while it re-reads the cache.
+  useEffect(() => {
+    if (!displayRecentRepos.length) return;
+    writeStoredHomepagePins(
+      displayRecentRepos.map((r) => ({
+        entity: String(r.entity || ""),
+        repo: String(r.repo || r.name || ""),
+        ownerPubkey: r.ownerPubkey,
+        lastActivity: r.createdAt,
+        description: r.description,
+      }))
+    );
+  }, [displayRecentRepos]);
 
   const recentRepoOwnerPubkeys = useMemo(() => {
     return displayRecentRepos
@@ -1912,12 +1928,13 @@ export default function HomePage({
               <h2 className="font-semibold text-[var(--color-text-primary)]">
                 Recent repositories
               </h2>
-              <Link
+              <a
                 href="/explore"
+                onClick={(e) => leaveHome(e, "/explore")}
                 className="text-sm text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
               >
                 See all repos
-              </Link>
+              </a>
             </div>
             {displayRecentRepos.length === 0 ? (
               <div className="text-[var(--color-text-secondary)]">
@@ -2113,11 +2130,15 @@ export default function HomePage({
                     Create repository
                   </Button>
                 </Link>
-                <Link href="/explore">
-                  <Button className="w-full" variant="outline">
-                    Explore repositories
-                  </Button>
-                </Link>
+                <a
+                  href="/explore"
+                  onClick={(e) => leaveHome(e, "/explore")}
+                  className={cn(
+                    buttonVariants({ variant: "outline", className: "w-full" })
+                  )}
+                >
+                  Explore repositories
+                </a>
                 <a
                   className={cn(
                     buttonVariants({ variant: "outline", className: "w-full" })

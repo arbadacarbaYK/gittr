@@ -330,16 +330,13 @@ type Repo = {
 };
 
 function ExplorePageContent() {
-  const sessionStart = peekExploreSessionCatalog() as Repo[] | null;
-  const [repos, setRepos] = useState<Repo[]>(() => sessionStart || []);
-  const [isLoadingRepos, setIsLoadingRepos] = useState(
-    !(sessionStart && sessionStart.length > 0)
-  );
+  const [repos, setRepos] = useState<Repo[]>([]);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [homepageRecentPins, setHomepageRecentPins] = useState<
     ExploreHomepagePin[]
-  >(() => readStoredHomepagePins());
+  >([]);
   const [visibleRepoCount, setVisibleRepoCount] = useState(REPO_LIST_PAGE_SIZE);
   // ?q= / ?user= live here, not in useSearchParams() — that hook suspended this
   // whole page (black "Loading..." until the bundle ran). Start empty so the
@@ -355,6 +352,17 @@ function ExplorePageContent() {
     setUserFilter((prev) => (prev === userNext ? prev : userNext));
   }, []);
   useLayoutEffect(() => {
+    const session = peekExploreSessionCatalog() as Repo[] | null;
+    if (session && session.length > 0) {
+      exploreCatalogRef.current = session;
+      applyReposToUi(session);
+      setIsLoadingRepos(false);
+    }
+    const pins = readStoredHomepagePins();
+    if (pins.length > 0) {
+      setHomepageRecentPins(pins);
+      setIsLoadingRepos(false);
+    }
     applyExploreSearch(parseExploreSearch(window.location.search));
     const onSearchEvent = (event: Event) => {
       const detail = (event as CustomEvent<ExploreSearchState>).detail;
@@ -382,7 +390,7 @@ function ExplorePageContent() {
   // Session catalog: grows with every Nostr event even when localStorage quota
   // blocks persist. Never reset this from a failed save + loadRepos() loop.
   // Module-level peek survives leaving /explore (the page used to remount empty).
-  const exploreCatalogRef = useRef<Repo[] | null>(sessionStart);
+  const exploreCatalogRef = useRef<Repo[] | null>(null);
   const catalogPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -809,7 +817,8 @@ function ExplorePageContent() {
   const loadRepos = useCallback(() => {
     const alreadyHas =
       (exploreCatalogRef.current?.length || 0) > 0 ||
-      (peekExploreSessionCatalog()?.length || 0) > 0;
+      (peekExploreSessionCatalog()?.length || 0) > 0 ||
+      readStoredHomepagePins().length > 0;
     if (!alreadyHas) setIsLoadingRepos(true);
     try {
       const rawRepos = localStorage.getItem("gittr_repos");
@@ -869,7 +878,11 @@ function ExplorePageContent() {
   }, [applyReposToUi]);
 
   useEffect(() => {
-    loadRepos();
+    // Let the homepage list paint first. Parsing gittr_repos here used to
+    // freeze the new page before any cards appeared.
+    const paintTimer = window.setTimeout(() => {
+      loadRepos();
+    }, 0);
 
     const handleRepoUpdate = () => {
       loadRepos();
@@ -880,6 +893,7 @@ function ExplorePageContent() {
     window.addEventListener("gittr:repo-imported", handleRepoUpdate);
 
     return () => {
+      window.clearTimeout(paintTimer);
       window.removeEventListener("storage", handleRepoUpdate);
       window.removeEventListener("gittr:repo-created", handleRepoUpdate);
       window.removeEventListener("gittr:repo-imported", handleRepoUpdate);
@@ -2569,8 +2583,7 @@ function ExplorePageContent() {
         })()}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-        {!isLoadingRepos &&
-          visibleExploreRepos
+        {visibleExploreRepos
             .map((r) => {
               // Use entity/repo structure if available, otherwise parse from slug
               const entity = r.entity!;
@@ -2745,7 +2758,7 @@ function ExplorePageContent() {
               );
             })
             .filter(Boolean)}
-        {!isLoadingRepos && (
+        {visibleExploreRepos.length > 0 && (
           <LoadMoreButton
             visibleCount={visibleExploreRepos.length}
             totalCount={displayableRepos.length}
