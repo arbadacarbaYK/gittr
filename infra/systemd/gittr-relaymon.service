@@ -1,0 +1,18 @@
+[Unit]
+Description=gittr NIP-66 relay monitor (relay.gittr.space)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ngit/relaymon
+Environment=RELAYMON_KEY_FILE=/opt/ngit/relaymon/monitor.key
+Environment=RELAYMON_TARGET=wss://relay.gittr.space
+Environment=RELAYMON_FREQUENCY=3600
+Environment=RELAYMON_PUBLISH_RELAYS=wss://relaypag.es,wss://monitorlizard.nostr1.com,wss://nos.lol,wss://relay.primal.net,wss://relay.gittr.space,wss://purplepag.es,wss://relay.nostr.watch
+ExecStart=/usr/bin/node /opt/ngit/relaymon/gittr-relaymon.mjs
+Nice=10
+TimeoutStartSec=3min
+
+[Install]
+WantedBy=multi-user.target
