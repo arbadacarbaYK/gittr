@@ -1597,8 +1597,12 @@ export default function EntityPage({
 
         setUserRepos((prev) => {
           const catalog = networkProfileReposRef.current;
-          if (catalog.length === 0) return prev;
-          const next = enrichNetworkProfileRepos(catalog, deduplicatedRepos);
+          // Saved rows are only a stand-in. Once the relay catalog arrives,
+          // enrichNetworkProfileRepos drops cache-only repos.
+          const next =
+            catalog.length > 0
+              ? enrichNetworkProfileRepos(catalog, deduplicatedRepos)
+              : deduplicatedRepos;
           if (
             prev.length === next.length &&
             prev.every(

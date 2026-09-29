@@ -1006,6 +1006,17 @@ function ExplorePageContent() {
         ]);
         if (cancelled) return;
 
+        // Parsing the 3000-row seed on the click path froze the tab. Yield so
+        // a repo open still leaves, then apply the full catalog.
+        await new Promise<void>((resolve) => {
+          if (typeof window.requestIdleCallback === "function") {
+            window.requestIdleCallback(() => resolve(), { timeout: 800 });
+          } else {
+            window.setTimeout(resolve, 0);
+          }
+        });
+        if (cancelled) return;
+
         const seedJson = seedRes?.ok
           ? ((await seedRes.json()) as {
               ok?: boolean;

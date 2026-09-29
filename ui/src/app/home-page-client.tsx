@@ -632,14 +632,15 @@ export default function HomePage({
   // Backfill activities on first load (if not already done)
   useEffect(() => {
     try {
-      // Check if activities exist - if not, force backfill even if flag is set
-      const activities = JSON.parse(
-        localStorage.getItem("gittr_activities") || "[]"
-      );
+      // Length only — parsing the multi‑MB history here blocked the live
+      // leaderboard from replacing the saved snapshot, and froze clicks.
+      const activitiesRaw = localStorage.getItem("gittr_activities");
+      const activitiesEmpty =
+        !activitiesRaw || activitiesRaw === "[]" || activitiesRaw.length < 3;
       const backfilled = localStorage.getItem("ngit_activities_backfilled");
 
       // If no activities exist, force a backfill (even if flag was set before)
-      if (activities.length === 0 || !backfilled) {
+      if (activitiesEmpty || !backfilled) {
         console.log("Backfilling activities...");
         try {
           backfillActivities();
@@ -691,16 +692,17 @@ export default function HomePage({
       }
     };
 
-    // Local bounty scans walk every repo's issue keys. Do that after first paint
-    // so Most Active clicks are not waiting on localStorage.
+    // Local bounty scans walk every repo's issue keys. Wait until the browser is
+    // idle so the live leaderboard can replace the saved snapshot first, and so
+    // a click is not stuck behind that scan.
     let idleId: number | undefined;
     let startId: number | undefined;
     if (typeof window.requestIdleCallback === "function") {
       idleId = window.requestIdleCallback(() => handleActivity(), {
-        timeout: 1200,
+        timeout: 8000,
       });
     } else {
-      startId = window.setTimeout(handleActivity, 1);
+      startId = window.setTimeout(handleActivity, 1500);
     }
     window.addEventListener("gittr:activity-recorded", handleActivity);
     window.addEventListener("ngit:activity-recorded", handleActivity); // Also listen for old event name

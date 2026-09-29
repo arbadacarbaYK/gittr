@@ -34,6 +34,24 @@ import {
   resolveEntityToPubkey,
 } from "./utils/entity-resolver";
 
+/** Repeat reads of the same issue/PR blob must not parse it again this tab. */
+const storedJsonArrayCache = new Map<string, { raw: string; value: any[] }>();
+
+function readStoredJsonArray(key: string): any[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const hit = storedJsonArrayCache.get(key);
+    if (hit && hit.raw === raw) return hit.value;
+    const parsed = JSON.parse(raw);
+    const value = Array.isArray(parsed) ? parsed : [];
+    storedJsonArrayCache.set(key, { raw, value });
+    return value;
+  } catch {
+    return [];
+  }
+}
+
 /** Re-export for callers that imported from stats. */
 export { normalizeNip34RepoIdentifier } from "./nostr/clone-url-quality";
 export {
@@ -445,7 +463,7 @@ export function getLatestBounties(
     }
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
-    const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+    const issues = readStoredJsonArray(issueKey);
 
     issues.forEach((issue: any) => {
       if (issue.status === "open" && issue.bountyAmount && issue.bountyStatus) {
@@ -499,7 +517,7 @@ export function getOpenBounties(count = 5): Array<{
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
-    const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+    const issues = readStoredJsonArray(issueKey);
 
     issues.forEach((issue: any) => {
       // Only include open issues with paid bounties (available to claim)
@@ -572,7 +590,7 @@ export function getOwnBountyStats(ownerPubkey: string | null): {
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
-    const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+    const issues = readStoredJsonArray(issueKey);
 
     issues.forEach((issue: any) => {
       if (issue.bountyAmount && issue.bountyStatus) {
@@ -795,7 +813,7 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
 
     // Get PRs
     const prKey = `gittr_prs__${entity}__${repoName}`;
-    const prs = JSON.parse(localStorage.getItem(prKey) || "[]");
+    const prs = readStoredJsonArray(prKey);
     prs.forEach((pr: any) => {
       if (pr.status === "open") {
         allPRs.push({
@@ -812,7 +830,7 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
 
     // Get Issues
     const issueKey = `gittr_issues__${entity}__${repoName}`;
-    const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+    const issues = readStoredJsonArray(issueKey);
     issues.forEach((issue: any) => {
       if (issue.status === "open") {
         allIssues.push({
@@ -993,7 +1011,7 @@ export function getPlatformBountyStats(): {
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
-    const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
+    const issues = readStoredJsonArray(issueKey);
 
     issues.forEach((issue: any) => {
       if (issue.bountyAmount && issue.bountyStatus) {

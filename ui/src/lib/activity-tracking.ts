@@ -81,7 +81,10 @@ export function recordActivity(
     // Keep last 10000 activities
     const recent = filtered.slice(-10000);
 
-    localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(recent));
+    const raw = JSON.stringify(recent);
+    localStorage.setItem(ACTIVITY_STORAGE_KEY, raw);
+    activitiesCacheRaw = raw;
+    activitiesCacheList = recent;
 
     // Dispatch event for real-time updates
     window.dispatchEvent(
@@ -92,6 +95,10 @@ export function recordActivity(
   }
 }
 
+/** Same blob read again this tab must not JSON.parse a multi‑MB history. */
+let activitiesCacheRaw: string | null | undefined;
+let activitiesCacheList: Activity[] | null = null;
+
 /**
  * Get all activities
  */
@@ -99,7 +106,13 @@ export function getActivities(): Activity[] {
   try {
     const stored = localStorage.getItem(ACTIVITY_STORAGE_KEY);
     if (!stored) return [];
-    return JSON.parse(stored) as Activity[];
+    if (activitiesCacheList && stored === activitiesCacheRaw) {
+      return activitiesCacheList;
+    }
+    const parsed = JSON.parse(stored) as Activity[];
+    activitiesCacheRaw = stored;
+    activitiesCacheList = Array.isArray(parsed) ? parsed : [];
+    return activitiesCacheList;
   } catch {
     return [];
   }
