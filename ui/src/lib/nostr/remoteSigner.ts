@@ -134,25 +134,68 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
 
 /**
  * Extra NIP-46 relays when the bunker URI list is thin.
- * Damus last-resort only — browsers often fail wss://relay.damus.io under Cloudflare.
- * Do not put nos.lol/Damus ahead of AmberSettings defaults (oxtr / theforest / primal).
+ * Damus is last-resort only — browsers often fail wss://relay.damus.io.
  */
 const NIP46_PAIRING_RELAY_FALLBACKS = ["wss://relay.damus.io"];
 
 /**
- * Amber bunker default relays (AmberSettings order): oxtr, theforest, primal.
- * nos.lol is optional after those. Must overlap QR pairing when user has no prior session.
- * Never include gittr Pyramid / GRASP hosts here.
+ * Relays Amber ships as its own defaults, then relays that show as connected
+ * on a current Amber (outbox / "active relays"). Dial these before a stale
+ * bunker URI (primal, oxtr, damus, azzamo) whose sockets are already closed.
  */
-const NIP46_SIGNER_DEFAULT_RELAYS = [
-  "wss://nostr.oxtr.dev",
+const AMBER_LIVE_RELAYS = [
+  "wss://relay.gittr.space",
+  "wss://bucket.coracle.social",
+  "wss://relay.ditto.pub",
   "wss://theforest.nostr1.com",
-  "wss://relay.primal.net",
   "wss://nos.lol",
+  "wss://purplepag.es",
+  "wss://directory.yabu.me",
+  "wss://profiles.nostr1.com",
+  "wss://user.kindpag.es",
+];
+
+/** Tried first on Push. These are the relays Amber shows as connected. */
+const AMBER_DIAL_FIRST = [
+  "wss://relay.gittr.space",
+  "wss://bucket.coracle.social",
+  "wss://relay.ditto.pub",
+  "wss://theforest.nostr1.com",
+  "wss://nos.lol",
+];
+
+/** Old bunker URI hosts that close in the browser. Not used for the first dial. */
+const STALE_BUNKER_RELAYS = new Set([
+  "wss://relay.primal.net",
+  "wss://nostr.oxtr.dev",
+  "wss://relay.damus.io",
+  "wss://relay.azzamo.net",
+]);
+
+/** Amber's built-in relay defaults (not the user's active-relay list). */
+const NIP46_SIGNER_DEFAULT_RELAYS = [
+  "wss://purplepag.es",
+  "wss://directory.yabu.me",
+  "wss://profiles.nostr1.com",
+  "wss://user.kindpag.es",
 ];
 
 const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
+
+/** Pyramid relay. It accepts ephemeral kind 24133. Amber often has it open. */
+export const GITTR_BUNKER_RELAY = "wss://relay.gittr.space";
+
+/**
+ * Signer sockets may use relay.gittr.space. Other GRASP hostnames are git
+ * servers and are not bunker relays. git.gittr.space is not a Nostr relay.
+ */
+export function bunkerMayUseRelay(url: string): boolean {
+  const normalized = normalizeRelayUrl(url);
+  if (!normalized.startsWith("wss://")) return false;
+  if (normalized === GITTR_BUNKER_RELAY) return true;
+  return !isGraspServer(normalized);
+}
 
 /** WebSocket readyState 1 = OPEN. */
 export function bunkerRelayIsOpen(status: number | undefined): boolean {
@@ -231,8 +274,8 @@ const BUNKER_KEEPALIVE_HIDDEN_MS = 180000;
 /** After the tab was hidden this long, force a reconnect on visibility. */
 const BUNKER_VISIBILITY_STALE_MS = 60_000;
 /**
- * Relays embedded in nostrconnect QR — must NOT include GRASP/git relays (they reject kind 24133).
- * Use signer-friendly WSS relays that overlap Amber's bunker defaults.
+ * Relays embedded in nostrconnect QR. Git-only hosts are left out.
+ * relay.gittr.space is kept: it accepts kind 24133.
  */
 export function getNip46PairingRelays(appRelays: string[], max = 5): string[] {
   const merged: string[] = [];
@@ -241,21 +284,21 @@ export function getNip46PairingRelays(appRelays: string[], max = 5): string[] {
     if (
       normalized.startsWith("wss://") &&
       !merged.includes(normalized) &&
-      !isGraspServer(normalized)
+      bunkerMayUseRelay(normalized)
     ) {
       merged.push(normalized);
     }
   };
   NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
   NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
-  appRelays.filter((r) => !isGraspServer(r)).forEach(add);
+  appRelays.filter((r) => bunkerMayUseRelay(r)).forEach(add);
   return merged.slice(0, max);
 }
 
 /**
  * Merge URI/session bunker relays with Amber-friendly defaults for dialing.
  * Does not mutate the session — expansion is ephemeral connectivity only.
- * GRASP/gittr Pyramid hosts are excluded (they reject kind 24133).
+ * Git-only hosts are excluded. relay.gittr.space is kept when the session lists it.
  */
 export function expandBunkerRelays(relays: string[]): string[] {
   const merged: string[] = [];
@@ -264,7 +307,7 @@ export function expandBunkerRelays(relays: string[]): string[] {
     if (
       normalized.startsWith("wss://") &&
       !merged.includes(normalized) &&
-      !isGraspServer(normalized)
+      bunkerMayUseRelay(normalized)
     ) {
       merged.push(normalized);
     }
@@ -299,17 +342,37 @@ export function planBunkerDialWaves(uriRelays: string[]): {
   first: string[];
   retry: string[];
 } {
-  const uri = uniqueNormalizedRelays(uriRelays)
-    .filter((u) => !isGraspServer(u))
+  const uri = uniqueNormalizedRelays([...AMBER_DIAL_FIRST, ...uriRelays])
+    .filter((u) => bunkerMayUseRelay(u) && !STALE_BUNKER_RELAYS.has(u))
     .slice(0, 7);
   const defaults = uniqueNormalizedRelays([
     ...NIP46_SIGNER_DEFAULT_RELAYS,
     ...NIP46_PAIRING_RELAY_FALLBACKS,
-  ]).filter((u) => !isGraspServer(u));
+  ]).filter((u) => bunkerMayUseRelay(u));
   const first = uri.length > 0 ? uri : defaults.slice(0, 4);
   const seen = new Set(first);
   const retry = defaults.filter((u) => !seen.has(u)).slice(0, 3);
   return { first, retry };
+}
+
+/**
+ * Second chance after the first dial left every socket CLOSED.
+ * Skip hosts the first wave already tried, and skip oxtr.
+ */
+export function bunkerRescueRelays(uriRelays: string[]): string[] {
+  const already = new Set(planBunkerDialWaves(uriRelays).first);
+  return uniqueNormalizedRelays([
+    ...AMBER_LIVE_RELAYS,
+    ...NIP46_SIGNER_DEFAULT_RELAYS,
+    ...uriRelays,
+  ])
+    .filter(
+      (u) =>
+        bunkerMayUseRelay(u) &&
+        !already.has(u) &&
+        !STALE_BUNKER_RELAYS.has(u)
+    )
+    .slice(0, 4);
 }
 
 function uniqueNormalizedRelays(urls: string[]): string[] {
@@ -328,7 +391,7 @@ function relayUrlSet(urls: string[]): Set<string> {
   return new Set(
     (urls || [])
       .map(normalizeRelayUrl)
-      .filter((u) => u.startsWith("wss://") && !isGraspServer(u))
+      .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u))
   );
 }
 
@@ -342,7 +405,7 @@ export function recoverUriRelaysFromPossiblyExpanded(
 ): string[] {
   const normalized = (relays || [])
     .map(normalizeRelayUrl)
-    .filter((u) => u.startsWith("wss://") && !isGraspServer(u));
+    .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u));
   if (normalized.length === 0) return [];
   const storedSet = new Set(normalized);
   for (let len = 1; len <= normalized.length; len++) {
@@ -367,7 +430,7 @@ export function getSessionUriRelays(session: {
   if (session.uriRelays && session.uriRelays.length > 0) {
     return session.uriRelays
       .map(normalizeRelayUrl)
-      .filter((u) => u.startsWith("wss://") && !isGraspServer(u));
+      .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u));
   }
   return recoverUriRelaysFromPossiblyExpanded(session.relays || []);
 }
@@ -906,7 +969,7 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
     } else {
       parsed.uriRelays = parsed.uriRelays
         .map(normalizeRelayUrl)
-        .filter((u) => u.startsWith("wss://") && !isGraspServer(u));
+        .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u));
     }
     // Keep `relays` aligned with URI authority — dial expansion stays ephemeral.
     if (parsed.uriRelays.length > 0) {
@@ -1393,7 +1456,7 @@ export class RemoteSignerManager {
       relays: config.relays.map(normalizeRelayUrl),
       uriRelays: config.relays
         .map(normalizeRelayUrl)
-        .filter((u) => u.startsWith("wss://") && !isGraspServer(u)),
+        .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u)),
       clientSecretKey: "",
       clientPubkey: "",
       userPubkey: "",
@@ -1838,6 +1901,29 @@ export class RemoteSignerManager {
     try {
       let open = await this.ensureBunkerSocketsOpen(session);
       if (open.length === 0) {
+        console.warn(
+          "[RemoteSigner] First bunker dial closed every relay — freeing page sockets and trying fast relays"
+        );
+        const allUrls = (this.deps.getRelayStatuses?.() || []).map(
+          ([url]) => url
+        );
+        for (const url of allUrls) {
+          try {
+            this.deps.removeRelay?.(url);
+          } catch {
+            /* ignore */
+          }
+        }
+        for (const url of allUrls) {
+          if (!suspendedMainPool.includes(url)) suspendedMainPool.push(url);
+        }
+        await this.waitForMainPoolIdle(4000);
+        await new Promise((r) => setTimeout(r, 500));
+        this.resetDirectPool();
+        const rescue = bunkerRescueRelays(getSessionUriRelays(session));
+        open = await this.dialRelaysWithConcurrency(rescue, 1, 12000);
+      }
+      if (open.length === 0) {
         const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
         console.error(
           "[RemoteSigner] Bunker relay statuses after warm-up:",
@@ -2258,7 +2344,9 @@ export class RemoteSignerManager {
             !bunkerRelayIsOpen(relay.status)
           ) {
             console.warn(
-              `[RemoteSigner] ensureRelay returned CLOSED for ${normalizeRelayUrl(url)} in ${elapsed}ms (status=${relay.status})`
+              `[RemoteSigner] ensureRelay returned CLOSED for ${normalizeRelayUrl(
+                url
+              )} in ${elapsed}ms (status=${relay.status})`
             );
             this.dropDirectRelay(url);
           }
@@ -2338,7 +2426,7 @@ export class RemoteSignerManager {
     budgetMs: number
   ): Promise<string[]> {
     const targets = uniqueNormalizedRelays(relays).filter(
-      (u) => u.startsWith("wss://") && !isGraspServer(u)
+      (u) => u.startsWith("wss://") && bunkerMayUseRelay(u)
     );
     if (targets.length === 0) return [];
     const open: string[] = [];

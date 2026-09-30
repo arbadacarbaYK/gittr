@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GITTR_BUNKER_RELAY,
   bunkerPublishIsThin,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
+  bunkerRescueRelays,
   expandBunkerRelays,
   getSessionUriRelays,
   nip46PrimaryEncryption,
@@ -15,20 +17,25 @@ import {
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
-  it("dials the bunker URI first and leaves Amber defaults for the retry", () => {
+  it("tries Amber's connected relays before the stored bunker URI", () => {
     const waves = planBunkerDialWaves([
       "wss://relay.example.com",
       "wss://other.example.com",
     ]);
-    expect(waves.first).toEqual([
-      "wss://relay.example.com",
-      "wss://other.example.com",
+    expect(waves.first.slice(0, 5)).toEqual([
+      GITTR_BUNKER_RELAY,
+      "wss://bucket.coracle.social",
+      "wss://relay.ditto.pub",
+      "wss://theforest.nostr1.com",
+      "wss://nos.lol",
     ]);
-    expect(waves.retry[0]).toBe("wss://nostr.oxtr.dev");
+    expect(waves.first).toContain("wss://relay.example.com");
+    expect(waves.first).toContain("wss://other.example.com");
+    expect(waves.retry[0]).toBe("wss://purplepag.es");
     expect(waves.first.some((u) => waves.retry.includes(u))).toBe(false);
   });
 
-  it("keeps a fifth URI relay instead of stopping after the first four", () => {
+  it("keeps the first stored relays after Amber's connected relays", () => {
     const waves = planBunkerDialWaves([
       "wss://a.example",
       "wss://b.example",
@@ -36,10 +43,12 @@ describe("planBunkerDialWaves", () => {
       "wss://d.example",
       "wss://e.example",
     ]);
-    expect(waves.first).toContain("wss://e.example");
+    expect(waves.first).toContain("wss://a.example");
+    expect(waves.first).toContain("wss://b.example");
+    expect(waves.first[0]).toBe(GITTR_BUNKER_RELAY);
   });
 
-  it("still dials Damus when the first URI hosts are the Amber defaults", () => {
+  it("dials relay.gittr.space before the stale bunker hosts", () => {
     const waves = planBunkerDialWaves([
       "wss://relay.primal.net",
       "wss://nos.lol",
@@ -49,27 +58,53 @@ describe("planBunkerDialWaves", () => {
       "wss://relay.azzamo.net",
       "wss://purplepag.es",
     ]);
-    expect(waves.first).toEqual([
-      "wss://relay.primal.net",
-      "wss://nos.lol",
-      "wss://theforest.nostr1.com",
-      "wss://nostr.oxtr.dev",
-      "wss://relay.damus.io",
-      "wss://relay.azzamo.net",
-      "wss://purplepag.es",
-    ]);
-    expect(waves.retry).toEqual([]);
-  });
-
-  it("starts from Amber defaults when the session has no URI relays", () => {
-    const waves = planBunkerDialWaves([]);
     expect(waves.first.slice(0, 3)).toEqual([
-      "wss://nostr.oxtr.dev",
-      "wss://theforest.nostr1.com",
-      "wss://relay.primal.net",
+      GITTR_BUNKER_RELAY,
+      "wss://bucket.coracle.social",
+      "wss://relay.ditto.pub",
     ]);
     expect(waves.first).toContain("wss://nos.lol");
-    expect(waves.retry).toContain("wss://relay.damus.io");
+    expect(waves.first).toContain("wss://theforest.nostr1.com");
+    expect(waves.first).toContain("wss://purplepag.es");
+    expect(waves.first).not.toContain("wss://relay.damus.io");
+    expect(waves.first).not.toContain("wss://nostr.oxtr.dev");
+    expect(waves.first).not.toContain("wss://relay.primal.net");
+  });
+
+  it("starts from Amber's connected relays when the session has no URI relays", () => {
+    const waves = planBunkerDialWaves([]);
+    expect(waves.first).toEqual([
+      GITTR_BUNKER_RELAY,
+      "wss://bucket.coracle.social",
+      "wss://relay.ditto.pub",
+      "wss://theforest.nostr1.com",
+      "wss://nos.lol",
+    ]);
+    expect(waves.retry.slice(0, 3)).toEqual([
+      "wss://purplepag.es",
+      "wss://directory.yabu.me",
+      "wss://profiles.nostr1.com",
+    ]);
+  });
+});
+
+describe("bunkerRescueRelays", () => {
+  it("tries Amber defaults that the first wave did not already dial", () => {
+    expect(
+      bunkerRescueRelays([
+        "wss://relay.primal.net",
+        "wss://nos.lol",
+        "wss://theforest.nostr1.com",
+        "wss://nostr.oxtr.dev",
+        "wss://relay.damus.io",
+        "wss://relay.azzamo.net",
+        "wss://purplepag.es",
+      ])
+    ).toEqual([
+      "wss://directory.yabu.me",
+      "wss://profiles.nostr1.com",
+      "wss://user.kindpag.es",
+    ]);
   });
 });
 
@@ -77,32 +112,33 @@ describe("expandBunkerRelays", () => {
   it("keeps URI relays first and appends Amber defaults", () => {
     const expanded = expandBunkerRelays(["wss://relay.primal.net/"]);
     expect(expanded[0]).toBe("wss://relay.primal.net");
-    expect(expanded).toContain("wss://nos.lol");
-    expect(expanded).toContain("wss://theforest.nostr1.com");
-    expect(expanded).toContain("wss://nostr.oxtr.dev");
+    expect(expanded).toContain("wss://purplepag.es");
+    expect(expanded).toContain("wss://directory.yabu.me");
+    expect(expanded).toContain("wss://profiles.nostr1.com");
+    expect(expanded).toContain("wss://user.kindpag.es");
     expect(expanded[expanded.length - 1]).toBe("wss://relay.damus.io");
   });
 
-  it("orders AmberSettings defaults before nos.lol and Damus", () => {
+  it("orders current Amber defaults before Damus", () => {
     const expanded = expandBunkerRelays([]);
-    expect(expanded.slice(0, 3)).toEqual([
-      "wss://nostr.oxtr.dev",
-      "wss://theforest.nostr1.com",
-      "wss://relay.primal.net",
+    expect(expanded.slice(0, 4)).toEqual([
+      "wss://purplepag.es",
+      "wss://directory.yabu.me",
+      "wss://profiles.nostr1.com",
+      "wss://user.kindpag.es",
     ]);
-    expect(expanded.indexOf("wss://nos.lol")).toBeGreaterThan(
-      expanded.indexOf("wss://relay.primal.net")
-    );
     expect(expanded[expanded.length - 1]).toBe("wss://relay.damus.io");
-    expect(expanded).not.toContain("wss://relay.gittr.space");
+    expect(expanded).not.toContain(GITTR_BUNKER_RELAY);
   });
 
-  it("excludes GRASP / gittr Pyramid hosts", () => {
+  it("keeps relay.gittr.space and drops the git-only host", () => {
     const expanded = expandBunkerRelays([
       "wss://relay.primal.net",
       "wss://relay.gittr.space",
+      "wss://git.gittr.space",
     ]);
-    expect(expanded).not.toContain("wss://relay.gittr.space");
+    expect(expanded).toContain(GITTR_BUNKER_RELAY);
+    expect(expanded).not.toContain("wss://git.gittr.space");
     expect(expanded[0]).toBe("wss://relay.primal.net");
   });
 
@@ -199,6 +235,14 @@ describe("getSessionUriRelays", () => {
         relays: ["wss://nos.lol", "wss://relay.damus.io"],
       })
     ).toEqual(["wss://relay.primal.net"]);
+  });
+
+  it("keeps relay.gittr.space on the Amber session", () => {
+    expect(
+      getSessionUriRelays({
+        uriRelays: ["wss://relay.gittr.space/", "wss://nos.lol"],
+      })
+    ).toEqual([GITTR_BUNKER_RELAY, "wss://nos.lol"]);
   });
 
   it("recovers from expanded relays when uriRelays missing", () => {
