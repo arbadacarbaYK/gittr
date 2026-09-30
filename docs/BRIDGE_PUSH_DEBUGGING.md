@@ -1,5 +1,13 @@
 # Bridge Push Debugging Guide
 
+## Public repo card with no files (fixed Oct 2026)
+
+**Symptom**: A repo appears on the profile and on Nostr (kind 30617) with clone URLs, and kind 30618 says `main` with an empty commit id. The Code tab is empty. `POST /api/nostr/repo/push` returned 409 “Refusing to push empty repository snapshot”.
+
+**Cause**: The browser had file names but not file contents. Push still published the announcement, the server refused the empty upload, and the site then published a branch pointer with no commit.
+
+**Fix**: If the file list has no bytes, stop before publishing anything. If the git server has no commit after the upload, do not publish kind 30618. The 409 refusal of an empty snapshot stays — that guard prevents wiping a repo.
+
 ## Ghost file tree / content 404 (fixed Aug 2026)
 
 **Symptom**: Sidebar shows dozens of files; opening any file 404s on `/api/nostr/repo/file-content`. Git Server shows `git.gittr.space/...` even when the project is a GitHub import. Console: `GRASP repo not cloned yet`, `Clone API failed: 404`, `No sourceUrl, forkedFrom, or clone URL found`.

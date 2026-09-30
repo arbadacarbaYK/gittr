@@ -45,6 +45,12 @@ import {
   publishWithConfirmation,
   storeRepoEventId,
 } from "./publish-with-confirmation";
+import {
+  EMPTY_STATE_BLOCKED_MESSAGE,
+  FILE_BYTES_MISSING_MESSAGE,
+  blockEmptyRepositoryState,
+  blockPushWhenFileBytesMissing,
+} from "./push-empty-guard";
 import type { RemoteSignerManager } from "./remoteSigner";
 import {
   shouldAnnounceUpstreamTip,
@@ -1907,10 +1913,7 @@ export async function pushRepoToNostr(
         }
       );
       onProgress?.(
-        "⚠️ No files with content to push to bridge - files should be in localStorage from import/create"
-      );
-      onProgress?.(
-        "💡 If files are missing, re-import the repository to load all files into localStorage"
+        "⚠️ File names are loaded, but the file contents are not. Push will stop before publishing."
       );
     } else if (filesForBridge.length > 0) {
       onProgress?.(
@@ -1923,6 +1926,31 @@ export async function pushRepoToNostr(
         repoSourceUrl: repo.sourceUrl,
       });
       onProgress?.("❌ No files found in repository - cannot push empty repo");
+    }
+
+    if (
+      blockPushWhenFileBytesMissing({
+        deferToBridgeSourceClone,
+        filesWithContent: filesForBridge.length,
+        namedFileCount: Math.max(bridgeFilesMap.size, baseFiles.length),
+      })
+    ) {
+      console.error(
+        `❌ [Push Repo] Refusing to publish: file names without contents`,
+        {
+          bridgeFilesMapSize: bridgeFilesMap.size,
+          baseFilesLength: baseFiles.length,
+        }
+      );
+      onProgress?.(`❌ ${FILE_BYTES_MISSING_MESSAGE}`);
+      setRepoStatus(repoSlug, entity, "local");
+      return {
+        success: false,
+        confirmed: false,
+        error: FILE_BYTES_MISSING_MESSAGE,
+        filesForBridge,
+        excludedFromPush,
+      };
     }
 
     // Step 6: Create repository event with ALL current state
@@ -2660,8 +2688,7 @@ export async function pushRepoToNostr(
       // Step 7.5: Push files to bridge and get commit SHAs (non-blocking)
       // CRITICAL: We're NOT waiting for relay confirmation - we proceed as soon as first event is published
       // We're waiting for the bridge to process files and return commit SHAs for the state event
-      // However, the state event CAN be published with empty commits - bridge will update it later
-      // So we don't block the second signature on bridge push completion
+      // A kind 30618 with an empty commit id is not published. That blank branch is a public repo with no files.
       let refs: Array<{ ref: string; commit: string }> = [];
 
       if (deferToBridgeSourceClone) {
@@ -3228,22 +3255,15 @@ export async function pushRepoToNostr(
                   `✅ Got ${retryRefsWithCommits} refs with commit SHAs after retry!`
                 );
               } else {
-                onProgress?.("❌ CRITICAL: Still no commit SHAs after retry");
                 onProgress?.(
-                  "❌ State event will be published but ngit clients may not recognize it yet"
-                );
-                onProgress?.(
-                  "💡 Bridge may need more time - you may need to push again later"
+                  "❌ Still no commit on the git server after retry"
                 );
               }
             }
           }
         } catch (retryError) {
           console.warn(`⚠️ [Push Repo] Retry refs fetch failed:`, retryError);
-          onProgress?.(
-            "❌ CRITICAL: Cannot get commit SHAs - state event will have empty commits"
-          );
-          onProgress?.("❌ other clients will NOT recognize this state event");
+          onProgress?.("❌ Could not read a commit from the git server");
         }
       } else {
         onProgress?.(
@@ -3251,11 +3271,26 @@ export async function pushRepoToNostr(
         );
       }
 
-      // Publish state event (even with empty commits if bridge push is still running)
-      // CRITICAL: This is REQUIRED per NIP-34 - ngit clients need this to recognize "Nostr state"
-      // NOTE: This will trigger a second NIP-07 signature prompt - both events are required
-      // NOTE: The bridge doesn't update the state event - it returns refs that we use to publish it
-      // If published with empty commits, other clients might not recognize it until republished with commit SHAs
+      const refsReadyToPublish = refs.filter(
+        (r) => r.commit && r.commit.length > 0
+      ).length;
+      if (blockEmptyRepositoryState(refsReadyToPublish)) {
+        console.error(
+          `❌ [Push Repo] Refusing kind 30618 with no commit SHA for ${actualRepositoryName}`
+        );
+        onProgress?.(`❌ ${EMPTY_STATE_BLOCKED_MESSAGE}`);
+        setRepoStatus(repoSlug, entity, "local");
+        return {
+          success: false,
+          confirmed: false,
+          eventId: result.eventId,
+          error: EMPTY_STATE_BLOCKED_MESSAGE,
+          filesForBridge,
+          excludedFromPush,
+        };
+      }
+
+      // Kind 30618 must name a real commit. A blank refs/heads/main tag is a public repo with no files.
       onProgress?.(
         "📤 Signing state event (kind 30618) - required for ngit clients..."
       );
