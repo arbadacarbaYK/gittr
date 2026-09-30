@@ -22,6 +22,7 @@ import {
   isBunkerMainPoolBlocked,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
+import { shouldAbortSilentSignEvent } from "./bunker-sign-wait";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 
 type PublishFn = (event: any, relays: string[]) => void;
@@ -112,9 +113,9 @@ const SIGN_LISTEN_REFRESH_MS = 8000;
 /** If no inbound 24133 after publish, republish the same request once. */
 const SIGN_REPUBLISH_IF_SILENT_MS = 10000;
 /**
- * `acked: true` only means the relay took the envelope — Amber may still be
- * asleep. If we never see any inbound 24133, abort early instead of sitting
- * on the full 120s interactive timeout (Delete / Push felt "stuck").
+ * If the relay never accepted the envelope and Amber stays silent, fail
+ * around 20s. If a relay said OK, keep the full sign timeout: the phone
+ * can still be showing Approve, and a late reply must not be thrown away.
  */
 const SIGN_SILENT_ABORT_MS = 20000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
@@ -3408,6 +3409,9 @@ export class RemoteSignerManager {
     return new Promise((resolve, reject) => {
       let listenRefresh: ReturnType<typeof setInterval> | null = null;
       let republishedOnce = false;
+      let signPublishSettled = false;
+      let signPublishAcked = false;
+      let loggedAckedWait = false;
       const waitStarted = Date.now();
       if (method === "sign_event") this.inboundDuringWait = 0;
       const finishListen = () => {
@@ -3464,23 +3468,44 @@ export class RemoteSignerManager {
               }
             }
           }
-          // Phone never decrypted / never woke — fail fast (keep full 120s only
-          // when inbound 24133 traffic shows Amber is talking).
-          if (this.inboundDuringWait === 0 && waited >= SIGN_SILENT_ABORT_MS) {
+          // Fail fast only when no relay accepted the request. An OK means
+          // Amber may still be showing Approve — deleting the waiter drops
+          // the signature when it arrives a few seconds later.
+          const abortSilent = shouldAbortSilentSignEvent({
+            inboundCount: this.inboundDuringWait,
+            waitedMs: waited,
+            publishSettled: signPublishSettled,
+            publishAcked: signPublishAcked,
+            silentAbortMs: SIGN_SILENT_ABORT_MS,
+          });
+          if (
+            !abortSilent &&
+            !loggedAckedWait &&
+            signPublishAcked &&
+            this.inboundDuringWait === 0 &&
+            waited >= SIGN_SILENT_ABORT_MS
+          ) {
+            loggedAckedWait = true;
+            console.log(
+              "[RemoteSigner] Relay accepted the signing request — still waiting for you to approve it in Amber",
+              { waitedMs: waited }
+            );
+          }
+          if (abortSilent) {
             finishListen();
             this.pending.delete(id);
             clearTimeout(timeout);
             console.warn(
-              "[RemoteSigner] Aborting silent sign_event — no inbound 24133",
+              "[RemoteSigner] Aborting silent sign_event — no relay accepted it",
               {
                 waitedMs: waited,
-                lastAcked: this.lastPublishMeta?.acked,
+                lastAcked: signPublishAcked,
                 publishedUrls: this.lastPublishMeta?.urls || [],
               }
             );
             reject(
               new Error(
-                "Amber did not wake for signing (no reply on bunker relays). Unlock Amber, confirm bunker is online, then try Delete/Push again."
+                "The signing request never reached a relay. Unlock Amber, keep it online, then try Push again."
               )
             );
           }
@@ -3542,6 +3567,10 @@ export class RemoteSignerManager {
               uriRelays,
             };
           }
+          if (method === "sign_event" && published.acked) {
+            signPublishSettled = true;
+            signPublishAcked = true;
+          }
           const overlap = bunkerRelayPublishOverlap(published.urls, uriRelays);
           console.log("[RemoteSigner] Published via direct pool", {
             eventId: requestEvent.id,
@@ -3585,6 +3614,7 @@ export class RemoteSignerManager {
                   acked: published.acked,
                   uriRelays,
                 };
+                if (published.acked) signPublishAcked = true;
                 console.log(
                   "[RemoteSigner] sign_event republished to remaining Amber URI relays",
                   {
@@ -3626,6 +3656,7 @@ export class RemoteSignerManager {
                 dualEvent,
                 6000
               );
+              if (okFallback.acked) signPublishAcked = true;
               console.log("[RemoteSigner] Published fallback via direct pool", {
                 eventId: dualEvent.id,
                 method,
@@ -3639,6 +3670,9 @@ export class RemoteSignerManager {
                 fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
               );
             }
+          }
+          if (method === "sign_event") {
+            signPublishSettled = true;
           }
         } catch (error) {
           clearTimeout(timeout);

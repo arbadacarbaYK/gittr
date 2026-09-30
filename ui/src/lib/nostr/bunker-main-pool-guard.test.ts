@@ -67,7 +67,7 @@ describe("bunker-main-pool-guard", () => {
     ).toEqual(["wss://relay.primal.net/", "WSS://NOS.LOL"]);
   });
 
-  it("collects CONNECTING and OPEN main-pool sockets, not CLOSED", () => {
+  it("collects CONNECTING, OPEN, and CLOSING sockets, not CLOSED", () => {
     expect(
       collectActiveMainPoolUrls([
         ["wss://relay.gittr.space", 1],
@@ -75,6 +75,10 @@ describe("bunker-main-pool-guard", () => {
         ["wss://relay.damus.io", 3],
         ["wss://relay.primal.net", 2],
       ])
-    ).toEqual(["wss://relay.gittr.space", "wss://nos.lol"]);
+    ).toEqual([
+      "wss://relay.gittr.space",
+      "wss://nos.lol",
+      "wss://relay.primal.net",
+    ]);
   });
 });

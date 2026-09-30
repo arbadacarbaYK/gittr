@@ -31,14 +31,15 @@ export function listBunkerMainPoolBlockedHosts(): string[] {
 }
 
 /**
- * Main-pool sockets that are still using a browser slot (CONNECTING or OPEN).
- * CLOSED (3) entries do not need to be closed before an Amber bunker dial.
+ * Main-pool sockets that are still using a browser slot.
+ * CONNECTING (0), OPEN (1), and CLOSING (2) all hold a slot.
+ * CLOSED (3) entries do not.
  */
 export function collectActiveMainPoolUrls(
   statuses: Array<[string, number]>
 ): string[] {
   return statuses
-    .filter(([, status]) => status === 0 || status === 1)
+    .filter(([, status]) => status === 0 || status === 1 || status === 2)
     .map(([url]) => url);
 }
 
