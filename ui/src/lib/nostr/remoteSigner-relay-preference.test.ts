@@ -17,25 +17,21 @@ import {
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
-  it("tries Amber's connected relays before the stored bunker URI", () => {
+  it("dials the saved bunker relays before any extra Amber relays", () => {
     const waves = planBunkerDialWaves([
       "wss://relay.example.com",
       "wss://other.example.com",
     ]);
-    expect(waves.first.slice(0, 5)).toEqual([
-      GITTR_BUNKER_RELAY,
-      "wss://bucket.coracle.social",
-      "wss://relay.ditto.pub",
-      "wss://theforest.nostr1.com",
-      "wss://nos.lol",
+    expect(waves.first.slice(0, 2)).toEqual([
+      "wss://relay.example.com",
+      "wss://other.example.com",
     ]);
-    expect(waves.first).toContain("wss://relay.example.com");
-    expect(waves.first).toContain("wss://other.example.com");
+    expect(waves.first).toContain(GITTR_BUNKER_RELAY);
     expect(waves.retry[0]).toBe("wss://purplepag.es");
     expect(waves.first.some((u) => waves.retry.includes(u))).toBe(false);
   });
 
-  it("keeps the first stored relays after Amber's connected relays", () => {
+  it("keeps the saved relays first even when the list is long", () => {
     const waves = planBunkerDialWaves([
       "wss://a.example",
       "wss://b.example",
@@ -43,12 +39,12 @@ describe("planBunkerDialWaves", () => {
       "wss://d.example",
       "wss://e.example",
     ]);
-    expect(waves.first).toContain("wss://a.example");
-    expect(waves.first).toContain("wss://b.example");
-    expect(waves.first[0]).toBe(GITTR_BUNKER_RELAY);
+    expect(waves.first[0]).toBe("wss://a.example");
+    expect(waves.first[1]).toBe("wss://b.example");
+    expect(waves.first).toContain("wss://e.example");
   });
 
-  it("dials relay.gittr.space before the stale bunker hosts", () => {
+  it("skips closed bunker hosts and keeps the saved relays that still connect", () => {
     const waves = planBunkerDialWaves([
       "wss://relay.primal.net",
       "wss://nos.lol",
@@ -59,13 +55,11 @@ describe("planBunkerDialWaves", () => {
       "wss://purplepag.es",
     ]);
     expect(waves.first.slice(0, 3)).toEqual([
-      GITTR_BUNKER_RELAY,
-      "wss://bucket.coracle.social",
-      "wss://relay.ditto.pub",
+      "wss://nos.lol",
+      "wss://theforest.nostr1.com",
+      "wss://purplepag.es",
     ]);
-    expect(waves.first).toContain("wss://nos.lol");
-    expect(waves.first).toContain("wss://theforest.nostr1.com");
-    expect(waves.first).toContain("wss://purplepag.es");
+    expect(waves.first).toContain(GITTR_BUNKER_RELAY);
     expect(waves.first).not.toContain("wss://relay.damus.io");
     expect(waves.first).not.toContain("wss://nostr.oxtr.dev");
     expect(waves.first).not.toContain("wss://relay.primal.net");
@@ -301,7 +295,7 @@ describe("bunkerRelayPublishOverlap", () => {
 describe("nip46 encryption preference", () => {
   it("sends NIP-04 first for sign_event so Amber can decrypt the prompt", () => {
     expect(nip46PrimaryEncryption("sign_event")).toBe("nip04");
-    expect(nip46ShouldDualPublish("sign_event")).toBe(true);
+    expect(nip46ShouldDualPublish("sign_event")).toBe(false);
   });
 
   it("uses the same Amber wrap for encrypt/decrypt RPC", () => {

@@ -110,8 +110,6 @@ const SIGN_EVENT_TIMEOUT_MS = 120000;
 const CONNECT_TIMEOUT_MS = 25000;
 /** While waiting for Amber, re-sub if bunker sockets drop. */
 const SIGN_LISTEN_REFRESH_MS = 8000;
-/** If no inbound 24133 after publish, republish the same request once. */
-const SIGN_REPUBLISH_IF_SILENT_MS = 10000;
 /**
  * If the relay never accepted the envelope and Amber stays silent, fail
  * around 20s. If a relay said OK, keep the full sign timeout: the phone
@@ -333,24 +331,29 @@ function looksLikeSignedNostrEvent(result: unknown): boolean {
 }
 
 /**
- * Push dial plan. Wave 1 is the bunker URI Amber is listening on. Keep the
- * whole URI (up to 7): a second repo page often finds the first few hosts
- * already CLOSED from the previous push, and the tail (Damus and the rest)
- * must still be tried. Wave 2 is only relays not already in wave 1 — never
- * the same CLOSED hosts again.
+ * Push dial plan. Wave 1 is the bunker link's own relays (the ones that
+ * already work), skipping hosts that only ever close in the browser.
+ * Relays Amber shows as connected are appended after that, not in front,
+ * so the first OPEN socket is one the saved session already uses.
+ * Wave 2 is only relays not already in wave 1.
  */
 export function planBunkerDialWaves(uriRelays: string[]): {
   first: string[];
   retry: string[];
 } {
-  const uri = uniqueNormalizedRelays([...AMBER_DIAL_FIRST, ...uriRelays])
-    .filter((u) => bunkerMayUseRelay(u) && !STALE_BUNKER_RELAYS.has(u))
-    .slice(0, 7);
+  const uri = uniqueNormalizedRelays(uriRelays).filter(
+    (u) => bunkerMayUseRelay(u) && !STALE_BUNKER_RELAYS.has(u)
+  );
+  const liveAfterUri = AMBER_DIAL_FIRST.filter(
+    (u) => bunkerMayUseRelay(u) && !uri.includes(u)
+  );
   const defaults = uniqueNormalizedRelays([
     ...NIP46_SIGNER_DEFAULT_RELAYS,
     ...NIP46_PAIRING_RELAY_FALLBACKS,
   ]).filter((u) => bunkerMayUseRelay(u));
-  const first = uri.length > 0 ? uri : defaults.slice(0, 4);
+  const first = uniqueNormalizedRelays(
+    uri.length > 0 ? [...uri, ...liveAfterUri] : AMBER_DIAL_FIRST
+  ).slice(0, 7);
   const seen = new Set(first);
   const retry = defaults.filter((u) => !seen.has(u)).slice(0, 3);
   return { first, retry };
@@ -512,12 +515,15 @@ export function nip46PrimaryEncryption(method: string): "nip04" | "nip44" {
   return "nip44";
 }
 
-/** Dual-publish the other encryption so older Amber and newer bunkers both see it. */
+/**
+ * Dual-publish the other encryption for connect only.
+ * sign_event stays NIP-04 once: a second envelope is a second Amber prompt
+ * for the same event, and the page was dropping the signature anyway.
+ */
 export function nip46ShouldDualPublish(method: string): boolean {
   return (
     method === "connect" ||
     method === "get_public_key" ||
-    method === "sign_event" ||
     method === "nip04_encrypt" ||
     method === "nip04_decrypt" ||
     method === "nip44_encrypt" ||
@@ -1198,10 +1204,10 @@ export class RemoteSignerManager {
       const allOpen = await this.listDirectOpenRelays(dialTargets);
       const preferredOpen = preferUriOpenRelays(allOpen, uriRelays);
 
-      // Known identity + open Amber URI bunker sockets → skip blocking reconnect.
-      // Prefer URI/signer relays; do not treat fallback-only OPEN as enough to skip.
-      // signEvent() will wake Amber; mark healthy only after a successful RPC.
-      if (cachedPubkey && preferredOpen.length > 0) {
+      // A cached identity must not wait on reconnect `connect`. Amber often
+      // ignores that probe (no popup) for the full timeout, and the two
+      // encrypted copies of it only delay the real sign_event.
+      if (cachedPubkey) {
         console.log(
           "[RemoteSigner] Transport open with cached identity — skipping connect probe; sign_event will wake Amber",
           {
@@ -1962,7 +1968,10 @@ export class RemoteSignerManager {
    * the session is paired (see bunker-main-pool-guard).
    */
   private claimBunkerHostsForDirectPool(relays: string[]) {
-    const hosts = expandBunkerRelays(relays);
+    const hosts = uniqueNormalizedRelays([
+      ...expandBunkerRelays(relays),
+      ...AMBER_LIVE_RELAYS,
+    ]);
     setBunkerMainPoolBlockedHosts(hosts);
     this.freeMainPoolBunkerCollisions(hosts);
   }
@@ -2771,6 +2780,16 @@ export class RemoteSignerManager {
         uriRelays,
         reused: preferredAlready.length,
       });
+      if (this.pending.size === 0) {
+        try {
+          await this.startSubscription(session, preferredOpen);
+        } catch (error) {
+          console.warn(
+            "[RemoteSigner] Failed to refresh subscription on reused bunker socket:",
+            error
+          );
+        }
+      }
       return preferredOpen;
     }
 
@@ -3408,7 +3427,6 @@ export class RemoteSignerManager {
     const shouldDualPublish = !!dualEvent;
     return new Promise((resolve, reject) => {
       let listenRefresh: ReturnType<typeof setInterval> | null = null;
-      let republishedOnce = false;
       let signPublishSettled = false;
       let signPublishAcked = false;
       let loggedAckedWait = false;
@@ -3445,29 +3463,8 @@ export class RemoteSignerManager {
           }
           void this.refreshSignEventListenPath(session).catch(() => undefined);
           const waited = Date.now() - waitStarted;
-          if (
-            !republishedOnce &&
-            this.inboundDuringWait === 0 &&
-            waited >= SIGN_REPUBLISH_IF_SILENT_MS
-          ) {
-            republishedOnce = true;
-            const urls = this.lastPublishMeta?.urls || [];
-            if (urls.length > 0) {
-              const envelopes =
-                this.lastSignEventEnvelopes.length > 0
-                  ? this.lastSignEventEnvelopes
-                  : [requestEvent];
-              console.warn(
-                "[RemoteSigner] No inbound 24133 after publish — republishing sign_event once",
-                { envelopes: envelopes.length }
-              );
-              for (const ev of envelopes) {
-                void this.publishDirectConfirmed(urls, ev, 4000).catch(
-                  () => undefined
-                );
-              }
-            }
-          }
+          // Do not publish the same sign_event again. A second copy makes Amber
+          // prompt twice, and the page was still failing after both approvals.
           // Fail fast only when no relay accepted the request. An OK means
           // Amber may still be showing Approve — deleting the waiter drops
           // the signature when it arrives a few seconds later.
@@ -3582,54 +3579,6 @@ export class RemoteSignerManager {
             hasUriOverlap: overlap.hasOverlap,
             uriOnly: overlap.uriOnly,
           });
-          if (method === "sign_event" && overlap.uriOnly.length > 0) {
-            const extra = overlap.uriOnly;
-            await Promise.all(
-              extra.map((url) =>
-                this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS)
-              )
-            );
-            const extraOpen = await this.listDirectOpenRelays(extra);
-            if (extraOpen.length > 0) {
-              try {
-                await this.startSubscription(
-                  session,
-                  uniqueNormalizedRelays([...published.urls, ...extraOpen])
-                );
-                const extraPub = await this.publishDirectConfirmed(
-                  extraOpen,
-                  requestEvent,
-                  4000
-                );
-                published = {
-                  urls: uniqueNormalizedRelays([
-                    ...published.urls,
-                    ...extraPub.urls,
-                  ]),
-                  acked: published.acked || extraPub.acked,
-                };
-                this.lastPublishMeta = {
-                  method,
-                  urls: published.urls,
-                  acked: published.acked,
-                  uriRelays,
-                };
-                if (published.acked) signPublishAcked = true;
-                console.log(
-                  "[RemoteSigner] sign_event republished to remaining Amber URI relays",
-                  {
-                    extra: extraOpen,
-                    all: published.urls,
-                  }
-                );
-              } catch (extraErr) {
-                console.warn(
-                  "[RemoteSigner] Could not fan-out sign_event to remaining Amber relays",
-                  extraErr instanceof Error ? extraErr.message : extraErr
-                );
-              }
-            }
-          }
           if (
             method === "sign_event" &&
             uriRelays.length > 0 &&
