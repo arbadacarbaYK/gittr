@@ -67,6 +67,34 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     expect(gte(resolutionFloor(resolved![1]!), [0, 35, 4])).toBe(true);
   });
 
+  it("pins brace-expansion off CVE-2026-102276 / 102277 / 102278", () => {
+    // Yarn can only force one version of a package name. minimatch still
+    // needs 1.x, 2.x, and 5.x, so the floor lives in yarn.lock, not resolutions.
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = [
+      ...lock.matchAll(
+        /^brace-expansion@([^\n:]+):\n  version "(\d+\.\d+\.\d+)"/gm
+      ),
+    ];
+    const byRange = Object.fromEntries(resolved.map((m) => [m[1], m[2]]));
+    expect(byRange["^1.1.7"]).toBe("1.1.21");
+    expect(byRange["^2.0.2"]).toBe("2.1.7");
+    expect(byRange["^5.0.8"]).toBe("5.0.12");
+  });
+
+  it("pins dompurify at the GHSA-p98j-92pf-mc4p floor", () => {
+    expect(gte(resolutionFloor(resolutions.dompurify), [3, 4, 16])).toBe(
+      true
+    );
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^dompurify@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [3, 4, 16])).toBe(true);
+  });
+
   it("keeps next at the GHSA-vcvr-r3jv-pc5j ImageResponse floor", () => {
     const declared = pkg.dependencies?.next;
     expect(declared).toBeTruthy();
