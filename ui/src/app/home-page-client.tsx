@@ -326,16 +326,11 @@ export default function HomePage({
         }
       }
       if (Array.isArray(data.recentRepos)) {
+        // Fallback only. Do not write this 3h snapshot over the live recent
+        // list in sessionStorage — that is what a normal reload painted until
+        // a hard refresh skipped the browser cache.
         if (data.recentRepos.length > 0) {
           setPlatformRecentRepos(data.recentRepos);
-          try {
-            sessionStorage.setItem(
-              "gittr_cached_recentRepos",
-              JSON.stringify(data.recentRepos)
-            );
-          } catch {
-            /* ignore */
-          }
         }
         if (!refreshing || data.recentRepos.length > 0) {
           setLbRecentReposReady(true);
@@ -485,15 +480,26 @@ export default function HomePage({
     const load = async () => {
       try {
         const res = await fetch("/api/stats/recent-repos", {
-          signal: AbortSignal.timeout(6_000),
+          cache: "no-store",
+          // A cold relay query can take ~20s. Aborting at 6s left the saved
+          // list on screen; a hard refresh then hit the warmed server cache.
+          signal: AbortSignal.timeout(25_000),
         });
         if (!res.ok || cancelled) {
           if (!cancelled) setLiveRecentReposLoading(false);
           return;
         }
         const data = (await res.json()) as { repos?: PlatformRecentRepo[] };
-        if (Array.isArray(data.repos)) {
+        if (Array.isArray(data.repos) && data.repos.length > 0 && !cancelled) {
           setLiveRecentRepos(data.repos);
+          try {
+            sessionStorage.setItem(
+              "gittr_cached_recentRepos",
+              JSON.stringify(data.repos)
+            );
+          } catch {
+            /* ignore */
+          }
         }
       } catch (e) {
         console.warn("[Home] recent-repos fetch failed:", e);
@@ -502,12 +508,21 @@ export default function HomePage({
       }
     };
 
+    const onShow = () => {
+      if (document.visibilityState === "hidden") return;
+      void load();
+    };
+
     void load();
     timer = setInterval(load, 45_000);
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onShow);
 
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onShow);
     };
   }, []);
 

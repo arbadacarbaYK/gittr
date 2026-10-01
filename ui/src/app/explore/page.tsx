@@ -907,7 +907,9 @@ function ExplorePageContent() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/stats/recent-repos");
+        const res = await fetch("/api/stats/recent-repos", {
+          cache: "no-store",
+        });
         if (!res.ok || cancelled) return;
         const json = (await res.json()) as {
           repos?: Array<
@@ -1002,7 +1004,9 @@ function ExplorePageContent() {
           fetch(`/api/explore/seed?limit=${EXPLORE_SEED_FETCH_LIMIT}`).catch(
             () => null
           ),
-          fetch("/api/stats/recent-repos").catch(() => null),
+          fetch("/api/stats/recent-repos", { cache: "no-store" }).catch(
+            () => null
+          ),
         ]);
         if (cancelled) return;
 

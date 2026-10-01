@@ -105,7 +105,7 @@ The **Recent repositories** strip is **not** taken from the 3h leaderboard snaps
 
 - **`GET /api/stats/recent-repos`** — queries **`PROFILE_REPOS_RELAYS`** for kind **30617** announcements, sorts by announcement `created_at`, returns up to 12 repos. Homepage **Recent repositories** and Explore’s **first 12 cards** use this same list (Explore does not rank the SEO snapshot as “newest”). Relays include ngit / Shakespeare / NostrHub, not only the slim stats set.
 - Soft-deleted repos (`content`/`tags` with `deleted:true`, see `repo-deleted.ts`) are excluded — a delete republish must not appear as a “new” recent repo. Explore also hides those; leftover SEO rows without a live tombstone are not “deleted showing by accident,” they are a different catalog.
-- **Server cache ~45s** (`Cache-Control` + in-memory) so the homepage can poll without hammering relays.
+- **Server memory cache ~45s** so the homepage can poll without hammering relays. The response is `Cache-Control: private, no-store` and the page fetches with `cache: "no-store"` and waits up to **25s** (a cold relay query is slower than 6s; aborting early left the saved list up until a hard refresh hit the warmed cache). Coming back to the tab (`pageshow` / visible) refetches. The saved `gittr_cached_recentRepos` row is that live list for instant paint, not the 3h leaderboard snapshot.
 - The UI shows this list for **both logged-in and logged-out** users (do not substitute the visitor’s localStorage sync — that caused mismatched homepage lists).
 - Warm after deploy: `curl -sS https://YOUR_DOMAIN/api/stats/recent-repos | head` (first call can take several seconds while relays respond).
 

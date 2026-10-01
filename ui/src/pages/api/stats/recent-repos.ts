@@ -26,10 +26,9 @@ export default async function handler(
 
   const now = Date.now();
   if (cache && now - cache.at < CACHE_MS) {
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60"
-    );
+    // Browser must not keep this JSON. A normal reload was painting that
+    // copy until a hard refresh. The 45s cache above is process memory only.
+    res.setHeader("Cache-Control", "private, no-store");
     return res.status(200).json({ repos: cache.repos, cached: true });
   }
 
@@ -43,10 +42,7 @@ export default async function handler(
     }
     const repos = await inflight;
     cache = { at: Date.now(), repos };
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60"
-    );
+    res.setHeader("Cache-Control", "private, no-store");
     return res.status(200).json({ repos, cached: false });
   } catch (e) {
     console.error("[recent-repos]", e);
