@@ -530,6 +530,9 @@ function startZapstoreBackfill(): void {
         maxPages: Math.min(8, remaining),
       });
       fetched += page.pages || 1;
+      // Let page requests through. A tight Zapstore walk pegs this process
+      // and the homepage, sign-in, and repo clicks all wait.
+      await new Promise((resolve) => setTimeout(resolve, 50));
       if (page.apps.length > 0) {
         persistCatalog(
           mergeCatalogResponse(globalCache?.catalog, {
@@ -639,11 +642,14 @@ export default async function handler(
         ? authorRaw.toLowerCase()
         : null;
     const summary = req.query.summary === "1" || req.query.summary === "true";
-    const catalog = author
-      ? await fetchCatalogFromRelays(CATALOG_RELAYS, author)
-      : await getGlobalCatalog();
+    // Homepage only needs the newest names. Do not start a relay scrape or
+    // Zapstore backfill here — that walk pegs the process and every other
+    // page waits, including sign-in and repo opens.
     if (summary && !author) {
-      const apps = sortSoftwareAppsByCreatedAt(catalog.apps)
+      await ensureDiskCatalog();
+      const apps = sortSoftwareAppsByCreatedAt(
+        globalCache?.catalog.apps || []
+      )
         .slice(0, 12)
         .map((a) => ({
           pubkey: a.pubkey,
@@ -662,6 +668,9 @@ export default async function handler(
       }
       return res.status(200).json({ apps, summary: true });
     }
+    const catalog = author
+      ? await fetchCatalogFromRelays(CATALOG_RELAYS, author)
+      : await getGlobalCatalog();
     if (catalog.apps.length > 0) {
       res.setHeader(
         "Cache-Control",
