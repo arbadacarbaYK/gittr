@@ -641,8 +641,17 @@ export function omitDeletedSoftwareApps(
     | undefined,
   deletedAddressKeys?: Iterable<string>
 ): ParsedSoftwareApp[] {
+  // Build these once. Doing it per app turned a saved catalog into a
+  // multi-second freeze, and the homepage waited out that freeze.
+  const authors = deletedAuthorsMap(deletedEventAuthors);
+  const addrs =
+    deletedAddressKeys instanceof Set
+      ? deletedAddressKeys
+      : new Set(
+          [...(deletedAddressKeys || [])].map((a) => String(a).toLowerCase())
+        );
   return (apps || []).filter(
-    (app) => !softwareAppIsDeleted(app, deletedEventAuthors, deletedAddressKeys)
+    (app) => !softwareAppIsDeleted(app, authors, addrs)
   );
 }
 
