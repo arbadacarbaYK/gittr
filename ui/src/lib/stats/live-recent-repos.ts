@@ -87,7 +87,7 @@ export function getLiveRecentReposFromNostr(
       }
     };
 
-    const filters = [{ kinds: [KIND_REPOSITORY_NIP34], limit: 800 }];
+    const filters = [{ kinds: [KIND_REPOSITORY_NIP34], limit: 40 }];
 
     const finish = () => {
       if (resolved) return;

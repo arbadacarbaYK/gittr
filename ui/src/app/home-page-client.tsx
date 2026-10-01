@@ -481,9 +481,7 @@ export default function HomePage({
       try {
         const res = await fetch("/api/stats/recent-repos", {
           cache: "no-store",
-          // A cold relay query can take ~20s. Aborting at 6s left the saved
-          // list on screen; a hard refresh then hit the warmed server cache.
-          signal: AbortSignal.timeout(25_000),
+          signal: AbortSignal.timeout(8_000),
         });
         if (!res.ok || cancelled) {
           if (!cancelled) setLiveRecentReposLoading(false);
@@ -508,21 +506,12 @@ export default function HomePage({
       }
     };
 
-    const onShow = () => {
-      if (document.visibilityState === "hidden") return;
-      void load();
-    };
-
     void load();
     timer = setInterval(load, 45_000);
-    window.addEventListener("pageshow", onShow);
-    document.addEventListener("visibilitychange", onShow);
 
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);
-      window.removeEventListener("pageshow", onShow);
-      document.removeEventListener("visibilitychange", onShow);
     };
   }, []);
 
@@ -558,10 +547,15 @@ export default function HomePage({
         console.warn("[Home] pages status-sites failed:", e);
       }
     };
-    void loadApps();
-    void loadPages();
+    // After sign-in and profile pictures. Starting these with the page was
+    // filling the browser's six connections, so the picture waited out a timeout.
+    const startId = window.setTimeout(() => {
+      void loadApps();
+      void loadPages();
+    }, 2500);
     return () => {
       cancelled = true;
+      window.clearTimeout(startId);
     };
   }, []);
 
