@@ -9,6 +9,11 @@ import { normalizeSiteUrl } from "@/lib/utils/public-site-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
+const fileBodyCache = new Map<
+  string,
+  { at: number; status: number; body: unknown }
+>();
+
 async function jsonFromGitHttpBody(
   response: Response,
   filePath: string,
@@ -141,6 +146,28 @@ export default async function handler(
     : typeof filePath === "string"
     ? filePath
     : "";
+
+  const fileCacheKey = !userToken
+    ? `${String(sourceUrl)}\n${branchName}\n${filePathStr}`
+    : "";
+  if (fileCacheKey) {
+    const hit = fileBodyCache.get(fileCacheKey);
+    if (hit && Date.now() - hit.at < 30_000) {
+      return res.status(hit.status).json(hit.body);
+    }
+    const origJson = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      const status = res.statusCode || 200;
+      if (status < 500) {
+        fileBodyCache.set(fileCacheKey, { at: Date.now(), status, body });
+        if (fileBodyCache.size > 150) {
+          const oldest = fileBodyCache.keys().next().value;
+          if (oldest) fileBodyCache.delete(oldest);
+        }
+      }
+      return origJson(body);
+    }) as typeof res.json;
+  }
 
   const respondFromShallowClone = async (): Promise<boolean> => {
     const rateLimitResult = await rateLimiters.gitFetch(req as any);

@@ -265,6 +265,17 @@ export default async function handler(
     return res.status(access.status).json({ error: access.error });
   }
 
+  const branchStr: string = Array.isArray(branch)
+    ? branch[0] || "main"
+    : typeof branch === "string"
+    ? branch
+    : "main";
+  const cacheKey = `${repoPath}:${branchStr}:path=${treePath}:sizes=${includeSizes}`;
+  const cached = filesCache.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   try {
     console.log("🔍 Checking repository path:", repoPath);
     console.log("🔍 Repository directory exists:", existsSync(reposDir));
@@ -309,17 +320,6 @@ export default async function handler(
     } catch (refError: any) {
       console.warn("⚠️ Could not check refs:", refError.message);
       // Continue anyway - might still have files
-    }
-
-    const branchStr: string = Array.isArray(branch)
-      ? branch[0] || "main"
-      : typeof branch === "string"
-      ? branch
-      : "main";
-    const cacheKey = `${repoPath}:${branchStr}:path=${treePath}:sizes=${includeSizes}`;
-    const cached = filesCache.get(cacheKey);
-    if (cached) {
-      return res.status(200).json(cached);
     }
 
     // Resolve a branch that actually exists (main/master → HEAD for foreign mirrors)

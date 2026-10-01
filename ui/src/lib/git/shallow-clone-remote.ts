@@ -71,7 +71,25 @@ function sanitizeCloneDepth(depth: number | undefined): number {
   return Math.min(n, 200);
 }
 
+let shallowClonesRunning = 0;
+
 async function cloneShallowToTempDir(
+  sourceUrl: string,
+  branch: string,
+  depth = 1
+): Promise<string | null> {
+  // One full clone at a time. A busy repo page was starting several at once
+  // and the homepage could not get a turn on this process.
+  if (shallowClonesRunning >= 1) return null;
+  shallowClonesRunning++;
+  try {
+    return await cloneShallowToTempDirUnlocked(sourceUrl, branch, depth);
+  } finally {
+    shallowClonesRunning--;
+  }
+}
+
+async function cloneShallowToTempDirUnlocked(
   sourceUrl: string,
   branch: string,
   depth = 1

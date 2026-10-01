@@ -12,6 +12,8 @@ type Data = {
   message?: string;
 };
 
+const headsCache = new Map<string, { at: number; hasRefs: boolean }>();
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
@@ -42,8 +44,18 @@ export default async function handler(
     return res.status(400).json({ message: "invalid or blocked remote URL" });
   }
 
+  const cached = headsCache.get(url);
+  if (cached && Date.now() - cached.at < 60_000) {
+    return res.status(200).json({ ok: true, hasRefs: cached.hasRefs });
+  }
+
   try {
     const hasRefs = await remoteHasGitRefs(url);
+    headsCache.set(url, { at: Date.now(), hasRefs });
+    if (headsCache.size > 200) {
+      const oldest = headsCache.keys().next().value;
+      if (oldest) headsCache.delete(oldest);
+    }
     return res.status(200).json({ ok: true, hasRefs });
   } catch (e: any) {
     console.error("[clone-heads] error:", e);

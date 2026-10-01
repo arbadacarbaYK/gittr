@@ -25,6 +25,9 @@ const PROFILE_REPOS_STATE_LIMIT = 500;
 const PROFILE_REPOS_SUBSCRIBE_MS = 15_000;
 /** Complete scans only. A repo page used to start this relay walk many times at once. */
 const PROFILE_REPOS_OK_TTL_MS = 20_000;
+/** A timed-out scan is still shown, so the next click does not start another walk. */
+const PROFILE_REPOS_TIMEOUT_TTL_MS = 60_000;
+const PROFILE_REPOS_STALE_TTL_MS = 5 * 60_000;
 const PROFILE_REPOS_CACHE_MAX = 80;
 
 type ProfileReposScan = {
@@ -32,15 +35,24 @@ type ProfileReposScan = {
   finishedByTimeout: boolean;
 };
 
-const profileReposOkCache = new Map<
-  string,
-  { at: number; repos: ProfileRepoRow[] }
->();
-const profileReposInflight = new Map<string, Promise<ProfileReposScan>>();
+type ProfileReposCacheEntry = {
+  at: number;
+  repos: ProfileRepoRow[];
+  complete: boolean;
+};
 
-function rememberProfileRepos(ownerHex: string, repos: ProfileRepoRow[]) {
+const profileReposOkCache = new Map<string, ProfileReposCacheEntry>();
+const profileReposInflight = new Map<string, Promise<ProfileReposScan>>();
+/** Relay walks run one at a time so a crawl cannot pin the whole site. */
+let profileReposScanTail: Promise<unknown> = Promise.resolve();
+
+function rememberProfileRepos(
+  ownerHex: string,
+  repos: ProfileRepoRow[],
+  complete: boolean
+) {
   profileReposOkCache.delete(ownerHex);
-  profileReposOkCache.set(ownerHex, { at: Date.now(), repos });
+  profileReposOkCache.set(ownerHex, { at: Date.now(), repos, complete });
   while (profileReposOkCache.size > PROFILE_REPOS_CACHE_MAX) {
     const oldest = profileReposOkCache.keys().next().value;
     if (!oldest) break;
@@ -68,6 +80,28 @@ async function resolveOwnerHex(
   return { error: "ownerPubkey must be hex or npub" };
 }
 
+function startProfileReposScan(ownerHex: string): Promise<ProfileReposScan> {
+  const existing = profileReposInflight.get(ownerHex);
+  if (existing) return existing;
+  const job = profileReposScanTail
+    .catch(() => undefined)
+    .then(() => loadProfileRepos(ownerHex))
+    .then((result) => {
+      rememberProfileRepos(
+        ownerHex,
+        result.repos,
+        !result.finishedByTimeout && result.repos.length > 0
+      );
+      return result;
+    })
+    .finally(() => {
+      profileReposInflight.delete(ownerHex);
+    });
+  profileReposScanTail = job;
+  profileReposInflight.set(ownerHex, job);
+  return job;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<{ repos: ProfileRepoRow[] } | { error: string }>
@@ -88,31 +122,23 @@ export default async function handler(
   const ownerHex = resolved.hex;
 
   const cached = profileReposOkCache.get(ownerHex);
-  if (cached && Date.now() - cached.at < PROFILE_REPOS_OK_TTL_MS) {
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=20, stale-while-revalidate=40"
-    );
+  const age = cached ? Date.now() - cached.at : Number.POSITIVE_INFINITY;
+  const usable =
+    !!cached &&
+    age < (cached.complete ? PROFILE_REPOS_STALE_TTL_MS : PROFILE_REPOS_TIMEOUT_TTL_MS);
+  const fresh = !!cached?.complete && age < PROFILE_REPOS_OK_TTL_MS;
+
+  res.setHeader("Cache-Control", "private, no-store");
+  if (usable && fresh && cached) {
+    return res.status(200).json({ repos: cached.repos });
+  }
+  if (usable && cached) {
+    void startProfileReposScan(ownerHex);
     return res.status(200).json({ repos: cached.repos });
   }
 
-  let scan = profileReposInflight.get(ownerHex);
-  if (!scan) {
-    scan = loadProfileRepos(ownerHex).finally(() => {
-      profileReposInflight.delete(ownerHex);
-    });
-    profileReposInflight.set(ownerHex, scan);
-  }
-
   try {
-    const result = await scan;
-    if (!result.finishedByTimeout) rememberProfileRepos(ownerHex, result.repos);
-    res.setHeader(
-      "Cache-Control",
-      result.finishedByTimeout
-        ? "private, no-store"
-        : "public, max-age=60, stale-while-revalidate=120"
-    );
+    const result = await startProfileReposScan(ownerHex);
     return res.status(200).json({ repos: result.repos });
   } catch (e) {
     console.error("[profile-repos]", e);
