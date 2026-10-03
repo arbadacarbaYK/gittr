@@ -513,6 +513,38 @@ export default function RepoLayoutClient({
     ]
   );
 
+  const repoTabHref = useCallback(
+    (link: string, name: string) => {
+      if (link === "settings") {
+        // About gear opens /settings with no query. ?branch= on this tab
+        // left the Code page mounted (file fetch + bunker sockets dying)
+        // while the address bar said settings.
+        const href = getRepoLink("settings", false);
+        const q = href.indexOf("?");
+        return q === -1 ? href : href.slice(0, q);
+      }
+      return getRepoLink(link, name === "Code");
+    },
+    [getRepoLink]
+  );
+
+  const openRepoTab = useCallback(
+    (
+      link: string,
+      name: string,
+      event?: { preventDefault: () => void } | null
+    ) => {
+      const href = repoTabHref(link, name);
+      if (link === "settings") {
+        event?.preventDefault();
+        window.location.assign(href);
+        return;
+      }
+      appNavigate(href, router, pathname, event);
+    },
+    [pathname, repoTabHref, router]
+  );
+
   /** Code URL with zap modal flag (append correctly when ?branch= is already present). */
   const getZapLink = useCallback(() => {
     const base = getRepoLink("", false);
@@ -2009,15 +2041,18 @@ export default function RepoLayoutClient({
                   className="flex-shrink-0"
                 >
                   <a
-                    href={getRepoLink(item.link || "", item.name === "Code")}
+                    href={repoTabHref(item.link || "", item.name)}
                     onClick={(e) => {
-                      const href = getRepoLink(
-                        item.link || "",
-                        item.name === "Code"
-                      );
-                      // Soft client nav — hard location.assign was freezing the
-                      // tab ~10s on every leave from Code (full remount + bunker).
-                      appNavigate(href, router, pathname, e);
+                      if (
+                        e.metaKey ||
+                        e.ctrlKey ||
+                        e.shiftKey ||
+                        e.altKey ||
+                        e.button !== 0
+                      ) {
+                        return;
+                      }
+                      openRepoTab(item.link || "", item.name, e);
                     }}
                     className={clsx(
                       "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
@@ -2079,10 +2114,13 @@ export default function RepoLayoutClient({
                       }
                     )}
                     onSelect={() => {
-                      const href = getRepoLink(
-                        item.link || "",
-                        item.name === "Code"
-                      );
+                      const href = repoTabHref(item.link || "", item.name);
+                      if (item.link === "settings") {
+                        // Radix closes the menu in this tick and swallows a
+                        // synchronous navigation, which left you on Code.
+                        window.setTimeout(() => window.location.assign(href), 0);
+                        return;
+                      }
                       appNavigate(href, router, pathname);
                     }}
                   >

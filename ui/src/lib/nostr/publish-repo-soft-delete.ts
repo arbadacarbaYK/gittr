@@ -87,9 +87,10 @@ export async function publishRepoSoftDelete(opts: {
   );
   unsigned.id = getEventHash(unsigned);
 
-  // Amber: remoteSigner already fail-fasts ~20s on silent 24133; keep outer race
-  // a bit above that. NIP-07 / nsec can wait longer for a real prompt.
-  const signBudgetMs = signer.source === "remote" ? 28000 : 120000;
+  // Push dials every bunker relay, then waits up to 120s for Amber.
+  // A 28s cap aborted that dial before the request was published, so Delete
+  // reported that it could not open the bunker relays.
+  const signBudgetMs = signer.source === "remote" ? 180000 : 120000;
   const deletionEvent = await signWithTimeout(
     signer.signEvent(unsigned),
     signer.source === "remote"

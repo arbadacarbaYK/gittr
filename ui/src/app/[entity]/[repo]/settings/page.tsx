@@ -89,6 +89,20 @@ interface Milestone {
   dueDate?: number;
 }
 
+function urlEntityIsCurrentUser(
+  entity: string | undefined,
+  pubkey: string | null | undefined
+): boolean {
+  if (!entity || !pubkey) return false;
+  const hex = pubkey.toLowerCase();
+  if (entity.toLowerCase() === hex) return true;
+  try {
+    return entity === nip19.npubEncode(pubkey);
+  } catch {
+    return false;
+  }
+}
+
 function utf8ToBase64Json(obj: unknown): string {
   const json = JSON.stringify(obj);
   const bytes = new TextEncoder().encode(json);
@@ -133,63 +147,68 @@ export default function RepoSettingsPage() {
 
   const [isOwnerUser, setIsOwnerUser] = useState(false);
   const [loadingOwnerCheck, setLoadingOwnerCheck] = useState(true);
+  // State updates from the owner effect are not visible to the redirect effect
+  // in the same flush. Reading these refs avoids bouncing the owner to Code
+  // on the tick their pubkey arrives (login starts null, then fills in).
+  const isOwnerRef = useRef(false);
+  const checkedPubkeyRef = useRef<string | null>(null);
 
   // CRITICAL: Settings page is owner-only - check access on mount
   useEffect(() => {
+    const entityMatchesCurrentUser = urlEntityIsCurrentUser(entity, pubkey);
+    let owner = false;
     try {
       if (!pubkey) {
-        setIsOwnerUser(false);
-        return;
-      }
-
-      const repos = loadStoredRepos();
-      const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-
-      const entityMatchesCurrentUser = (() => {
-        const hex = pubkey.toLowerCase();
-        if (entity?.toLowerCase() === hex) return true;
-        try {
-          const npub = nip19.npubEncode(pubkey);
-          return entity === npub;
-        } catch {
-          return false;
-        }
-      })();
-
-      if (repoData) {
-        const repoOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
-        const userIsOwner = isOwner(
-          pubkey,
-          repoData.contributors,
-          repoOwnerPubkey
-        );
-        const canManage = canManageSettings(
-          repoData.contributors?.find(
-            (c: StoredContributor) =>
-              c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
-          ) || null
-        );
-
-        setIsOwnerUser(userIsOwner || canManage || entityMatchesCurrentUser);
+        owner = false;
       } else {
-        // No local row yet (e.g. delete+recreate before My Repos sync) — still
-        // allow Settings when the URL entity is the signed-in user (same rule
-        // as the About gear on the Code tab).
-        setIsOwnerUser(entityMatchesCurrentUser);
+        const repos = loadStoredRepos();
+        const repoData = findRepoByEntityAndName<StoredRepo>(
+          repos,
+          entity,
+          repo
+        );
+
+        if (repoData) {
+          const repoOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
+          const userIsOwner = isOwner(
+            pubkey,
+            repoData.contributors,
+            repoOwnerPubkey,
+            entity
+          );
+          const canManage = canManageSettings(
+            repoData.contributors?.find(
+              (c: StoredContributor) =>
+                c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
+            ) || null
+          );
+
+          owner = userIsOwner || canManage || entityMatchesCurrentUser;
+        } else {
+          // No local row yet (e.g. delete+recreate before My Repos sync) — still
+          // allow Settings when the URL entity is the signed-in user (same rule
+          // as the About gear on the Code tab).
+          owner = entityMatchesCurrentUser;
+        }
       }
     } catch {
-      setIsOwnerUser(false);
-    } finally {
-      setLoadingOwnerCheck(false);
+      owner = entityMatchesCurrentUser;
     }
+    isOwnerRef.current = owner;
+    checkedPubkeyRef.current = pubkey ? pubkey.toLowerCase() : null;
+    setIsOwnerUser(owner);
+    setLoadingOwnerCheck(false);
   }, [entity, repo, pubkey]);
 
-  // Redirect non-owners away from settings
+  // Redirect non-owners away from settings. Only after this pubkey has been
+  // checked — otherwise the first login tick looks like "logged in, not owner"
+  // and router.push opens the Code page while the address bar still says settings.
   useEffect(() => {
-    if (!loadingOwnerCheck && !isOwnerUser && pubkey) {
-      // User is logged in but not owner - redirect to repo page
-      router.push(`/${entity}/${repo}`);
-    }
+    if (!pubkey || loadingOwnerCheck) return;
+    if (checkedPubkeyRef.current !== pubkey.toLowerCase()) return;
+    if (isOwnerRef.current || isOwnerUser) return;
+    if (urlEntityIsCurrentUser(entity, pubkey)) return;
+    router.replace(`/${entity}/${repo}`);
   }, [loadingOwnerCheck, isOwnerUser, entity, repo, pubkey, router]);
 
   const [description, setDescription] = useState("");
@@ -868,6 +887,19 @@ export default function RepoSettingsPage() {
       return;
     }
     const { signer } = signingCreds;
+
+    // Same warm as Push. Delete used to sign immediately, and the 28s cap
+    // aborted the dial of every bunker relay before Amber saw the request.
+    if (signer.source === "remote") {
+      try {
+        await remoteSigner?.ensureRpcHealthy?.();
+      } catch (warmErr) {
+        const warmMsg =
+          warmErr instanceof Error ? warmErr.message : String(warmErr);
+        alert(warmMsg);
+        return;
+      }
+    }
 
     try {
       setDeleting(true);

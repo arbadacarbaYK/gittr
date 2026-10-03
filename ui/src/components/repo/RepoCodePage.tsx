@@ -243,6 +243,7 @@ import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
+import { isRepoCodePath } from "@/lib/utils/app-navigate";
 import { pushAppUrl, replaceAppUrl } from "@/lib/utils/app-history";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -3448,6 +3449,15 @@ export function RepoCodePage() {
   ]);
 
   useEffect(() => {
+    // Settings (and other tabs) must not run the Code file loader. A
+    // ?branch= visit was hydrating this page under /settings and closing
+    // Amber's bunker sockets before Delete could sign.
+    if (
+      typeof window !== "undefined" &&
+      !isRepoCodePath(window.location.pathname)
+    ) {
+      return;
+    }
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     if (repoProcessedRef.current === repoKey) {
       return;
@@ -5775,6 +5785,12 @@ export function RepoCodePage() {
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing
   // Use a ref to track if we've already attempted to fetch for this repo
   useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      !isRepoCodePath(window.location.pathname)
+    ) {
+      return;
+    }
     // We just need ownerPubkey which we can get from resolvedOwnerPubkey or ownerPubkeyForLink
     const currentRepoData = repoDataRef.current;
 
@@ -18224,6 +18240,15 @@ export function RepoCodePage() {
       return false;
     });
   }, [fetchStatuses]);
+
+  // This component is the Code route. If the address is /settings (or any
+  // other tab), do not paint the file browser on top of that page.
+  if (
+    typeof window !== "undefined" &&
+    !isRepoCodePath(window.location.pathname)
+  ) {
+    return null;
+  }
 
   const shouldShowCorruptionScreen = false;
   if (shouldShowCorruptionScreen && isCorruptedRepo) {
