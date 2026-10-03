@@ -945,10 +945,17 @@ export default function ImportPage() {
     }
 
     if (pushAfter) {
+      const many = selection.size > 1;
       const ok = window.confirm(
-        `Import ${selection.size} selected repo(s), then Push each new one to Nostr?\n\n` +
-          `You may need to approve several signatures (nsec, browser extension, or remote signer) and pay push authorization if your wallet requires it. This can take a while.\n\n` +
-          `Continue?`
+        many
+          ? `Import ${selection.size} repositories and publish each new one to Nostr?\n\n` +
+              `This generates a lot of signing requests — usually two per repo (the announcement, then the git copy). ${selection.size} repos can mean about ${
+                selection.size * 2
+              } prompts. Stay on this page and approve each one. Do not close the tab.\n\n` +
+              `Continue?`
+          : `Import this repository and publish it to Nostr?\n\n` +
+              `You’ll be asked to sign — usually twice. Stay on this page until it finishes.\n\n` +
+              `Continue?`
       );
       if (!ok) return;
     }
@@ -1807,10 +1814,11 @@ export default function ImportPage() {
             nothing goes to Nostr until you push.
           </li>
           <li>
-            Optional: tick <strong>Also Push selected to Nostr</strong> before
-            importing. That runs real Push (NIP-34) for each newly imported repo
-            — expect multiple signature approvals. Single-repo URL auto-import
-            never pushes automatically.
+            Optional, next to the import buttons:{" "}
+            <strong>Also push to Nostr</strong>. A batch asks you to sign each
+            repo separately — usually twice per repo — so a long list means a
+            lot of signing prompts. Leave the tab open. Single-repo URL
+            auto-import never pushes automatically.
           </li>
           <li>
             You can select <strong>several</strong> repos and import them in{" "}
@@ -1941,7 +1949,8 @@ export default function ImportPage() {
             </div>
           </div>
 
-          <label className="flex items-start gap-2 rounded-lg border border-[#383B42] bg-[#0E1116] p-3 text-sm text-gray-200 cursor-pointer">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+          <label className="flex flex-1 items-start gap-2 rounded-lg border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-gray-200 cursor-pointer">
             <input
               type="checkbox"
               className="mt-1"
@@ -1951,16 +1960,18 @@ export default function ImportPage() {
             />
             <span>
               <span className="font-semibold text-white">
-                Also Push selected to Nostr
+                Also push to Nostr
               </span>
-              <span className="block text-xs text-gray-400 mt-0.5">
-                After local import, publish each newly imported repo (NIP-34).
-                Off by default. You may need to approve several signatures.
+              <span className="block text-xs text-amber-100/80 mt-0.5">
+                Off by default. A batch generates a lot of signing requests —
+                usually two per repo (announcement, then the git copy). Ten
+                repos can mean about twenty prompts. Leave this tab open until
+                every one is approved.
               </span>
             </span>
           </label>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 lg:shrink-0">
             <button
               className="flex-1 border border-[#383B42] bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50"
               onClick={() => void importSelected()}
@@ -2036,9 +2047,9 @@ export default function ImportPage() {
                         <li>You should be logged in with your Nostr key</li>
                         {pushSelectedAfterImport ? (
                           <li>
-                            <strong>Also Push selected to Nostr</strong> is on —
-                            each newly imported repo will be published (multiple
-                            signatures / possible payment).
+                            <strong>Also push to Nostr</strong> is on. This will
+                            generate a lot of signing requests — usually two per
+                            repository. Stay on this page until they finish.
                           </li>
                         ) : null}
                       </ul>
@@ -2083,6 +2094,7 @@ export default function ImportPage() {
                 </div>
               </div>
             )}
+          </div>
           </div>
         </div>
       )}

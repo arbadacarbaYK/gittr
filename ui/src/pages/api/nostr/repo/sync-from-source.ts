@@ -244,6 +244,22 @@ export default async function handler(
   try {
     await mkdir(dirname(repoPath), { recursive: true });
 
+    // A Nostr announcement creates an empty bare repo before this copy runs.
+    // Fetching into that empty shell often leaves zero branches ("no files").
+    // Throw it away and clone the forge fresh.
+    if (existsSync(repoPath)) {
+      const existingRefs = await listRefs(repoPath);
+      const hasHeads = existingRefs.some((r) =>
+        r.ref.startsWith("refs/heads/")
+      );
+      if (!hasHeads) {
+        console.log(
+          `🔄 [SyncFromSource] Replacing empty bare repo before clone: ${repoPath}`
+        );
+        await rm(repoPath, { recursive: true, force: true });
+      }
+    }
+
     if (!existsSync(repoPath)) {
       console.log(`🔄 [SyncFromSource] Cloning ${cloneUrl} → ${repoPath}`);
       await execAsync(

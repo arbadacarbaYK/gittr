@@ -819,6 +819,11 @@ export default function HelpPage() {
                       One click — you land on the repo. The README is the Code
                       tab, not a second Import button below the form.
                     </li>
+                    <li>
+                      Optional, next to Import: <strong>Also push to Nostr</strong>.
+                      That publishes this one repo (usually two signature
+                      prompts). Off by default.
+                    </li>
                   </ul>
                 </HelpSubTopic>
 
@@ -856,8 +861,10 @@ export default function HelpPage() {
                       Import only runs when you confirm selected (or Import All)
                     </li>
                     <li>
-                      Optional: <strong>Also Push selected to Nostr</strong> on
-                      the bulk page; otherwise use{" "}
+                      Optional, next to the import buttons:{" "}
+                      <strong>Also push to Nostr</strong>. A batch asks for a
+                      signature on every repo (usually two each), so a long list
+                      means a lot of prompts. Otherwise use{" "}
                       <strong>Push to Nostr</strong> per repo later
                     </li>
                   </ul>

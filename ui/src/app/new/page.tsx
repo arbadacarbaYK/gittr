@@ -3,7 +3,13 @@
 import { Suspense, useEffect, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { clearDeletedRepoTombstones } from "@/lib/repos/deleted-repo-tombstones";
 import { githubParentForkedFrom } from "@/lib/repos/fork-attribution";
 import {
@@ -55,7 +61,9 @@ function NewRepoPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { name: userName, isLoggedIn } = useSession();
-  const { pubkey } = useNostrContext();
+  const { pubkey, subscribe, defaultRelays, publish, remoteSigner } =
+    useNostrContext();
+  const [pushAfterImport, setPushAfterImport] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -298,6 +306,23 @@ function NewRepoPageContent() {
     const importCandidates = resolveImportCandidates();
 
     if (importCandidates.length > 0) {
+      if (pushAfterImport && (!publish || !subscribe || !defaultRelays?.length)) {
+        setStatus(
+          "Cannot push after import yet. Wait until Nostr is connected, or leave “Also push to Nostr” off and push from the repo page."
+        );
+        return;
+      }
+      if (pushAfterImport) {
+        const ok = window.confirm(
+          "Import this repository and publish it to Nostr?\n\n" +
+            "You’ll be asked to sign — usually twice (the announcement, then the git copy). Stay on this page until it finishes.\n\n" +
+            "If you skip this, the files stay in this browser until you push from the repo page."
+        );
+        if (!ok) {
+          setStatus("");
+          return;
+        }
+      }
       setImporting(true);
       let leftForRepo = false;
       try {
@@ -527,7 +552,62 @@ function NewRepoPageContent() {
             // Dispatch event to update repositories page
             window.dispatchEvent(new CustomEvent("gittr:repo-created"));
 
-            // Local only — publish via Push to Nostr on the repo page.
+            if (pushAfterImport) {
+              try {
+                setStatus("Imported. Publishing to Nostr…");
+                const signer = await resolveNostrSigner({ remoteSigner });
+                if (!signer || !pubkey) {
+                  setStatus(
+                    `Saved in this browser. Push skipped: ${NO_SIGNING_METHOD_MESSAGE} Open /${entity}/${importedRepoSlug} and use Push to Nostr.`
+                  );
+                  return;
+                }
+                const paymentAuth = await ensurePushPaymentAuthorization({
+                  entity,
+                  repo: importedRepoSlug,
+                  ownerPubkey: pubkey.toLowerCase(),
+                  payerPubkey: pubkey,
+                  privateKey: signer.privateKey || undefined,
+                  signer: signer.signEvent,
+                });
+                if (!paymentAuth.ok) {
+                  setStatus(
+                    `Saved in this browser. Push stopped: ${
+                      paymentAuth.error || "payment authorization failed"
+                    }. Open /${entity}/${importedRepoSlug} and use Push to Nostr.`
+                  );
+                  return;
+                }
+                const pushResult = await pushRepoToNostr({
+                  repoSlug: importedRepoSlug,
+                  entity,
+                  publish: publish!,
+                  subscribe: subscribe!,
+                  defaultRelays: defaultRelays || [],
+                  privateKey: signer.privateKey,
+                  pubkey,
+                  remoteSigner,
+                  onProgress: (message) => {
+                    setStatus(message);
+                  },
+                });
+                if (!pushResult.success) {
+                  setStatus(
+                    `Saved in this browser. Nostr push did not finish: ${
+                      pushResult.error || "push failed"
+                    }. Open /${entity}/${importedRepoSlug} and use Push to Nostr again.`
+                  );
+                  return;
+                }
+              } catch (pushErr: any) {
+                setStatus(
+                  `Saved in this browser. Nostr push did not finish: ${
+                    pushErr?.message || pushErr
+                  }. Open /${entity}/${importedRepoSlug} and use Push to Nostr again.`
+                );
+                return;
+              }
+            }
           } catch (storageErr: any) {
             console.error(
               "❌ [New Repo] Failed to save imported repo:",
@@ -951,17 +1031,42 @@ function NewRepoPageContent() {
           </code>
           . For many GitHub repos, use Option 3 below.
         </p>
-        <button
-          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={submit}
-          disabled={!url.trim() || importing}
-        >
-          {importing
-            ? "Importing…"
-            : url.trim()
-            ? "Import & Create"
-            : "Enter URL to import"}
-        </button>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+          <button
+            className="border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={submit}
+            disabled={!url.trim() || importing}
+          >
+            {importing
+              ? pushAfterImport
+                ? "Importing and publishing…"
+                : "Importing…"
+              : url.trim()
+              ? pushAfterImport
+                ? "Import & push to Nostr"
+                : "Import & Create"
+              : "Enter URL to import"}
+          </button>
+          <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={pushAfterImport}
+              onChange={(e) => setPushAfterImport(e.target.checked)}
+              disabled={importing}
+            />
+            <span>
+              <span className="font-semibold text-white">
+                Also push to Nostr
+              </span>
+              <span className="block text-xs text-gray-400 mt-0.5">
+                One repo, usually two signature prompts. Off by default — without
+                it the files stay in this browser until you push from the repo
+                page.
+              </span>
+            </span>
+          </label>
+        </div>
         {status && (
           <div className="mt-3 text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap">
             {status}

@@ -365,7 +365,7 @@ curl -sI https://your.domain | head -1
 - Open the site, log in (NIP-07, Amber/NIP-46, or nsec), import or create a repo.
 - **Settings → Security** must match the login: remote signer is not NIP-07 (`window.nostr` is the Amber adapter). Encryption on that page is for a stored nsec or Account payment secrets, not the phone key.
 - Footer → **Legal** (`/legal`) — non-commercial Nostr client disclaimer; blacklist contact `info@gittr.space`. No personal operator details.
-- Bulk `/import` is local-only by default; optional **Also Push selected to Nostr** publishes each newly imported repo (NIP-34). Single-repo URL auto-import never auto-pushes.
+- Bulk `/import` and single `/new` Option 1 are local-only by default. Optional **Also push to Nostr** (next to the import button) publishes each newly imported repo (NIP-34). A batch is usually two signature prompts per repo — warn the user before a long list. Single-repo URL auto-import never auto-pushes. If the announcement lands before the git copy, the Code tab can still show files from the GitHub `source` while **Nostr Backups** say **no files** (empty bare repo on `git.gittr.space`). The next Push replaces that empty mirror with a fresh clone of the forge.
 - `git ls-remote git@your.domain:<npub-or-hex>/<repo>.git` (with your key).
 - Push from UI once; check bridge logs for repository events.
 
