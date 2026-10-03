@@ -1737,6 +1737,11 @@ export default function ImportPage() {
                 remoteSigner,
                 onProgress: (message) => {
                   console.log(`[Import Push ${item.repoSlug}] ${message}`);
+                  setStatus(
+                    `${statusLine}. ${i + 1}/${newlyImported.length} ${
+                      item.repoSlug
+                    }: ${message}`
+                  );
                 },
               });
 

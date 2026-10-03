@@ -8,6 +8,9 @@ export type SyncFromSourceResult = {
   refs?: Array<{ ref: string; commit: string }>;
   error?: string;
   details?: string;
+  status?: number;
+  /** Seconds to wait when status is 429. */
+  retryAfterSeconds?: number;
 };
 
 /**
@@ -52,13 +55,18 @@ export async function syncBridgeFromSource(opts: {
   const json = (await res.json().catch(() => ({}))) as SyncFromSourceResult & {
     error?: string;
     details?: string;
+    retry_after?: number;
+    retryAfter?: number;
   };
   if (!res.ok) {
+    const retryRaw = Number(json.retry_after ?? json.retryAfter);
     return {
       success: false,
       error: json.error || `HTTP ${res.status}`,
       details: json.details,
+      status: res.status,
+      retryAfterSeconds: Number.isFinite(retryRaw) ? retryRaw : undefined,
     };
   }
-  return { ...json, success: true };
+  return { ...json, success: true, status: res.status };
 }

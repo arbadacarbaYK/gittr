@@ -2694,7 +2694,10 @@ export async function pushRepoToNostr(
       if (deferToBridgeSourceClone) {
         onProgress?.("⏳ Syncing bridge bare mirror to forge tip…");
         try {
-          const syncResult = await syncBridgeFromSource({
+          // A batch publishes one card per repo, then copies GitHub. The server
+          // allows 5 copies per minute per person. Without a wait, every repo
+          // after that keeps an empty shell and the Code tab still reads GitHub.
+          let syncResult = await syncBridgeFromSource({
             ownerPubkey: pubkey,
             repo: actualRepositoryName,
             sourceUrl: upstreamSourceUrl,
@@ -2703,6 +2706,29 @@ export async function pushRepoToNostr(
             signer: getBridgeSigner()!,
             authEvent: repoEvent,
           });
+          for (
+            let waited = 0;
+            syncResult.status === 429 && waited < 8;
+            waited++
+          ) {
+            const seconds = Math.min(
+              90,
+              Math.max(5, syncResult.retryAfterSeconds || 60)
+            );
+            onProgress?.(
+              `⏳ Copy limit reached — waiting ${seconds}s, then copying this repo…`
+            );
+            await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+            syncResult = await syncBridgeFromSource({
+              ownerPubkey: pubkey,
+              repo: actualRepositoryName,
+              sourceUrl: upstreamSourceUrl,
+              branch: repo.defaultBranch || "main",
+              pubkey,
+              signer: getBridgeSigner()!,
+              authEvent: repoEvent,
+            });
+          }
           if (
             syncResult.success &&
             Array.isArray(syncResult.refs) &&
