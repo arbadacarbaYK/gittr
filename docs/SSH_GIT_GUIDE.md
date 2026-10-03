@@ -301,9 +301,9 @@ This check runs on the **server** (SSH user `git-nostr`), not on your laptop. Ad
 
 Cause: bare repo owned by **root** while SSH git runs as **git-nostr**. Operators: `chown -R git-nostr:git-nostr` under `git-nostr-repositories`. `git-nostr-ssh` also sets `safe.directory=*`; new clones/init chown after create.
 
-### Copy clone URL / `https://git.gittr.space/npub1…/…` 404
+### Copy Nostr backup / `https://git.gittr.space/npub1…/…` 404
 
-NIP-34-style clone URLs use **npub**. On disk the bridge stores **hex** and should expose **`npub → hex` symlinks**. A 404 usually means the symlink is missing — not that clients should switch to hex. Operators: `migrate-npub-symlinks` / bridge ensure on announce. “Copy clone URL” prefers GitHub/`source` when present.
+NIP-34-style clone URLs use **npub**. On disk the bridge stores **hex** and should expose **`npub → hex` symlinks**. A 404 usually means the symlink is missing — not that clients should switch to hex. Operators: `migrate-npub-symlinks` / bridge ensure on announce. “Copy Nostr backup” prefers GitHub/`source` when present.
 
 ### "Permission denied (publickey)"
 - Ensure your SSH key is added in Settings → SSH Keys

@@ -5267,7 +5267,7 @@ export function RepoCodePage() {
         resolvedParams.repo,
         normalized
       );
-      // Keep sidebar Git Server + owner refetch label in sync with the source tag.
+      // Keep sidebar Source + owner refetch label in sync with the source tag.
       setRepoData((prev: any) => {
         if (!prev) return prev;
         if (prev.sourceUrl === normalized) return prev;
@@ -18572,7 +18572,7 @@ export function RepoCodePage() {
                         await navigator.clipboard.writeText(
                           `git clone ${cloneUrl}`
                         );
-                        showToast("Clone URL copied!", "success");
+                        showToast("Nostr backup copied!", "success");
                       } catch (err) {
                         const { showToast } = await import(
                           "@/components/ui/toast"
@@ -18581,7 +18581,7 @@ export function RepoCodePage() {
                       }
                     }}
                   >
-                    Copy clone URL
+                    Copy Nostr backup
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={async () => {
@@ -18652,7 +18652,7 @@ export function RepoCodePage() {
                         const { showToast } = await import(
                           "@/components/ui/toast"
                         );
-                        showToast("Clone SSH URL copied!", "success");
+                        showToast("Nostr backup (SSH) copied!", "success");
                       } catch (err) {
                         const { showToast } = await import(
                           "@/components/ui/toast"
@@ -18661,7 +18661,7 @@ export function RepoCodePage() {
                       }
                     }}
                   >
-                    Copy clone SSH URL
+                    Copy Nostr backup (SSH)
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -20686,7 +20686,7 @@ export function RepoCodePage() {
             </div>
           ) : null}
 
-          {/* Source URL / Git Server Info — source tag, or best HTTPS clone when native Nostr */}
+          {/* Source — source tag, or best HTTPS clone when native Nostr */}
           {mounted && gitServerSidebar ? (
             isNextUi ? (
               <div
@@ -20698,7 +20698,7 @@ export function RepoCodePage() {
                   onClick={() => setGitServerExpanded(!gitServerExpanded)}
                   className="flex w-full items-center justify-between text-xs text-gray-400 hover:text-gray-300 mb-1"
                 >
-                  <span>Git Server</span>
+                  <span>Source</span>
                   {gitServerExpanded ? (
                     <ChevronUp className="h-3 w-3" />
                   ) : (
@@ -20728,7 +20728,7 @@ export function RepoCodePage() {
                 className="pt-2 border-t border-gray-700"
                 suppressHydrationWarning
               >
-                <p className="text-xs text-gray-400 mb-1">Git Server</p>
+                <p className="text-xs text-gray-400 mb-1">Source</p>
                 <a
                   href={gitServerSidebar.href}
                   target="_blank"
@@ -20755,7 +20755,7 @@ export function RepoCodePage() {
                 onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
                 className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
               >
-                <span>Clone URL</span>
+                <span>Nostr Backups</span>
                 {cloneUrlsExpanded ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -21164,7 +21164,7 @@ export function RepoCodePage() {
                             <p className="text-sm text-gray-400 mb-2">
                               No foreign git source is linked (GitHub/GitLab/…).
                               If this was imported, link the original URL so
-                              Refetch and the sidebar Git Server work again.
+                              Refetch and the sidebar Source work again.
                             </p>
                             <Button
                               size="sm"

@@ -46,7 +46,7 @@ Clone URL is the announcement’s `clone[]` plus forge `source`. **has files** m
 
 ## Clone URL sidebar (Aug 2026)
 
-"Clone URL" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. The **has files** badge is only for hosts this visit actually loaded a tree from (so `git clone` should work). Skipped extra GRASP stay unbadged. Do not special-case `git.gittr.space`.
+"Nostr Backups" keeps forge `source` plus every host on `GRASP_SERVERS_FOR_PUSHING`. The **has files** badge is only for hosts this visit actually loaded a tree from (so `git clone` should work). Skipped extra GRASP stay unbadged. Do not special-case `git.gittr.space`.
 
 ## Refetch then Push rewrote GitHub tip (fixed Aug 2026)
 

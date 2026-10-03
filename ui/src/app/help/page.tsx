@@ -1675,8 +1675,8 @@ export default function HelpPage() {
                 <code className="bg-gray-800 px-1 rounded">clone[]</code> /
                 <code className="bg-gray-800 px-1 rounded">source</code> URLs
                 (forge first, then GRASP mirrors). File timestamps on the Code
-                list come from the selected tip/branch on that mirror. Clone URL
-                chips should list every pushable GRASP host from the event (not
+                list come from the selected tip/branch on that mirror. Nostr
+                Backups should list every pushable GRASP host from the event (not
                 only git.gittr.space). After a clean Push with a forge{" "}
                 <code className="bg-gray-800 px-1 rounded">source</code>, the
                 tip should match the forge — not a new empty “Push from gittr”

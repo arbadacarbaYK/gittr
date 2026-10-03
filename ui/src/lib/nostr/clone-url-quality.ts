@@ -284,7 +284,7 @@ export function rewriteHexPathGitHostCloneUrl(
 }
 
 /**
- * Pick what "Copy clone URL" should put on the clipboard for humans.
+ * Pick what "Copy Nostr backup" should put on the clipboard for humans.
  * Prefer real forge HTTPS (GitHub/…), then NIP-34 HTTPS (usually npub path),
  * then SSH. Do **not** rewrite announce URLs to hex — other clients expect npub.
  */

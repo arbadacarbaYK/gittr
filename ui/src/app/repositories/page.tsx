@@ -3719,7 +3719,7 @@ export default function RepositoriesPage() {
                   <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
                     <span>
                       {needsCloneRepublish.length} repo(s) need a republish —
-                      clone URL is only a bare host, localhost, or similar:{" "}
+                      Nostr backup is only a bare host, localhost, or similar:{" "}
                       <strong className="font-medium text-amber-50">
                         {formatCloneRepublishRepoNames(needsCloneRepublish)}
                       </strong>

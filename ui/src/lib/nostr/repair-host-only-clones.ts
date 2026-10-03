@@ -42,7 +42,7 @@ export function cloneListNeedsHostOnlyRepair(
 export const CLONE_REPUBLISH_BADGE_LABEL = "Please republish";
 
 export const CLONE_REPUBLISH_BADGE_TITLE =
-  "Clone URL is only a bare host, localhost, or other unusable address. Push to Nostr again so gitworkshop and others can load files.";
+  "Nostr backup is only a bare host, localhost, or other unusable address. Push to Nostr again so gitworkshop and others can load files.";
 
 export { formatCloneRepublishRepoNames } from "./format-clone-republish-repo-names";
 
