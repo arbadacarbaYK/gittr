@@ -12,6 +12,94 @@ const normalize = (url: string) => url.trim().toLowerCase().replace(/\/+$/, "");
 
 const blockedHosts = new Set<string>();
 
+/**
+ * Cold load used to dial the Code tab's relays in the same tick as Amber.
+ * Every bunker socket then landed CLOSED and Push failed until a later retry.
+ * While this depth is > 0, the main pool must not open new sockets.
+ */
+let pauseDepth = 0;
+let coldStartHold = false;
+let coldTimer: ReturnType<typeof setTimeout> | null = null;
+let deferredMainPoolRelays: string[] = [];
+const unpausedListeners = new Set<() => void>();
+
+export function isMainPoolPausedForBunker(): boolean {
+  return pauseDepth > 0;
+}
+
+export function pushMainPoolBunkerPause(): void {
+  pauseDepth += 1;
+}
+
+export function popMainPoolBunkerPause(): void {
+  if (pauseDepth === 0) return;
+  pauseDepth -= 1;
+  if (pauseDepth === 0) {
+    for (const listener of [...unpausedListeners]) {
+      try {
+        listener();
+      } catch {
+        /* a listener must not strand the pool */
+      }
+    }
+  }
+}
+
+/** Remember page relays and keep the main pool from dialing until Amber warms. */
+export function holdMainPoolForColdBunkerStart(relays: string[]): void {
+  deferredMainPoolRelays = [...relays];
+  if (coldStartHold) return;
+  coldStartHold = true;
+  pushMainPoolBunkerPause();
+  if (coldTimer) clearTimeout(coldTimer);
+  const timer = setTimeout(() => {
+    console.warn(
+      "[RemoteSigner] Amber bunker warm held the relay list too long — opening page relays anyway"
+    );
+    releaseColdBunkerStartHold();
+  }, 12000);
+  coldTimer = timer;
+  if (typeof timer === "object" && timer && "unref" in timer) {
+    timer.unref();
+  }
+  console.log(
+    "[RemoteSigner] Holding page relays until Amber's first bunker socket can open",
+    { relays: deferredMainPoolRelays.length }
+  );
+}
+
+export function releaseColdBunkerStartHold(): void {
+  if (coldTimer) {
+    clearTimeout(coldTimer);
+    coldTimer = null;
+  }
+  if (!coldStartHold) return;
+  coldStartHold = false;
+  popMainPoolBunkerPause();
+}
+
+export function consumeDeferredMainPoolRelays(): string[] {
+  const urls = deferredMainPoolRelays;
+  deferredMainPoolRelays = [];
+  return urls;
+}
+
+export function onMainPoolUnpaused(listener: () => void): () => void {
+  unpausedListeners.add(listener);
+  return () => {
+    unpausedListeners.delete(listener);
+  };
+}
+
+export function resetMainPoolBunkerPauseForTests(): void {
+  pauseDepth = 0;
+  coldStartHold = false;
+  if (coldTimer) clearTimeout(coldTimer);
+  coldTimer = null;
+  deferredMainPoolRelays = [];
+  unpausedListeners.clear();
+}
+
 export function setBunkerMainPoolBlockedHosts(urls: string[] | null): void {
   blockedHosts.clear();
   if (!urls?.length) return;

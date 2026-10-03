@@ -20,6 +20,9 @@ import { isGraspServer } from "../utils/grasp-servers";
 import {
   collectActiveMainPoolUrls,
   isBunkerMainPoolBlocked,
+  popMainPoolBunkerPause,
+  pushMainPoolBunkerPause,
+  releaseColdBunkerStartHold,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
 import { shouldAbortSilentSignEvent } from "./bunker-sign-wait";
@@ -1958,7 +1961,10 @@ export class RemoteSignerManager {
     const dialTargets = this.buildBunkerTransportTargets(session);
     const alreadyOpen = await this.listDirectOpenRelays(dialTargets);
     let suspendedMainPool: string[] = [];
+    let pausedMainPool = false;
     if (alreadyOpen.length === 0) {
+      pausedMainPool = true;
+      pushMainPoolBunkerPause();
       this.claimBunkerHostsForDirectPool(
         getSessionUriRelays(session).length > 0
           ? getSessionUriRelays(session)
@@ -1973,7 +1979,14 @@ export class RemoteSignerManager {
       });
       suspendedMainPool = this.suspendMainPoolForBunkerDial();
       await this.waitForMainPoolIdle();
-      await new Promise((r) => setTimeout(r, 600));
+      // removeRelay drops the pool entry before the browser releases the
+      // handshake. 21 aborted sockets need longer than 600ms or the next
+      // bunker dial lands CLOSED again.
+      const settleMs = Math.min(
+        3000,
+        500 + suspendedMainPool.length * 100
+      );
+      await new Promise((r) => setTimeout(r, settleMs));
     }
     try {
       let open = await this.ensureBunkerSocketsOpen(session);
@@ -1995,9 +2008,15 @@ export class RemoteSignerManager {
           if (!suspendedMainPool.includes(url)) suspendedMainPool.push(url);
         }
         await this.waitForMainPoolIdle(4000);
-        await new Promise((r) => setTimeout(r, 500));
-        this.resetDirectPool();
-        const rescue = bunkerRescueRelays(getSessionUriRelays(session));
+        const rescueSettleMs = Math.min(2500, 800 + allUrls.length * 60);
+        await new Promise((r) => setTimeout(r, rescueSettleMs));
+        // Do not replace the pool here. A new SimplePool makes every relay
+        // look "missing" and drops a socket that is still finishing.
+        const rescue = uniqueNormalizedRelays([
+          "wss://nos.lol",
+          GITTR_BUNKER_RELAY,
+          ...bunkerRescueRelays(getSessionUriRelays(session)),
+        ]).slice(0, 4);
         open = await this.dialRelaysWithConcurrency(rescue, 1, 12000);
       }
       if (open.length === 0) {
@@ -2028,6 +2047,7 @@ export class RemoteSignerManager {
       this.applyNip07Adapter();
       this.startBunkerKeepalive();
     } finally {
+      if (pausedMainPool) popMainPoolBunkerPause();
       this.resumeMainPoolAfterBunkerDial(suspendedMainPool);
     }
   }
@@ -2192,7 +2212,16 @@ export class RemoteSignerManager {
 
       const waves = planBunkerDialWaves(uriRelays);
       // Page-load warm must stay short so Push is not stuck behind it.
-      const firstWave = uriFirstOnly ? waves.first.slice(0, 2) : waves.first;
+      // Dial a relay that actually opens in this browser first. The saved
+      // bunker list often starts with hosts that only ever close (primal,
+      // oxtr, damus) and that used up the only quiet window after a reload.
+      const firstWave = uriFirstOnly
+        ? uniqueNormalizedRelays([
+            "wss://nos.lol",
+            GITTR_BUNKER_RELAY,
+            ...waves.first,
+          ]).slice(0, 2)
+        : waves.first;
       const dialBudget = uriFirstOnly
         ? Math.min(opts?.budgetMs ?? 4000, 4000)
         : Math.min(
@@ -2853,6 +2882,9 @@ export class RemoteSignerManager {
         }
       } finally {
         this.bunkerWarmInFlight = null;
+        // Cold load held the page relay list. Release even when no socket
+        // opened so the Code tab is not stuck waiting on Amber.
+        releaseColdBunkerStartHold();
       }
     })();
     return this.bunkerWarmInFlight;
@@ -2870,6 +2902,7 @@ export class RemoteSignerManager {
   ): Promise<string[]> {
     this.signerDialBusy = true;
     let suspended: string[] = [];
+    let pausedForCover = false;
     try {
       if (this.bunkerDialInFlight) {
         try {
@@ -2888,6 +2921,8 @@ export class RemoteSignerManager {
       );
       const missing = order.filter((u) => !have.has(u));
       if (missing.length > 0) {
+        pausedForCover = true;
+        pushMainPoolBunkerPause();
         console.log(
           "[RemoteSigner] Opening every Amber bunker relay before the signing request",
           {
@@ -2938,6 +2973,7 @@ export class RemoteSignerManager {
       return open;
     } finally {
       this.signerDialBusy = false;
+      if (pausedForCover) popMainPoolBunkerPause();
       this.resumeMainPoolAfterBunkerDial(suspended);
     }
   }

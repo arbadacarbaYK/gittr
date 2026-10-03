@@ -30,8 +30,12 @@ import {
 
 import {
   collectBlockedRelayPoolUrls,
+  consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
+  holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
+  isMainPoolPausedForBunker,
+  onMainPoolUnpaused,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
 import { WEB_STORAGE_KEYS } from "./localStorage";
@@ -72,6 +76,50 @@ function filterMainPoolRelays(relays: string[]): string[] {
     kept.push(url);
   }
   return kept;
+}
+
+/**
+ * Code-tab subscribe must wait out the cold bunker hold. An empty relay list
+ * would look like "no announcement" and never retry.
+ */
+function subscribeWhenMainPoolFree(
+  filters: (Filter & { relay?: string; noCache?: boolean })[],
+  relays: string[],
+  onEvent: OnEvent,
+  maxDelayms?: number,
+  onEose?: OnEose,
+  options: SubscriptionOptions = {}
+): () => void {
+  let cancelled = false;
+  let unsub: (() => void) | undefined;
+  const started = Date.now();
+  const tryStart = () => {
+    if (cancelled) return;
+    if (isMainPoolPausedForBunker() && Date.now() - started < 15000) {
+      window.setTimeout(tryStart, 100);
+      return;
+    }
+    const safeRelays = filterMainPoolRelays(relays);
+    if (safeRelays.length === 0) return;
+    const safeMaxDelayMs = onEose ? undefined : maxDelayms;
+    unsub = relayPool.subscribe(
+      filters,
+      safeRelays,
+      onEvent,
+      safeMaxDelayMs,
+      onEose,
+      options
+    );
+  };
+  tryStart();
+  return () => {
+    cancelled = true;
+    try {
+      unsub?.();
+    } catch {
+      /* ignore */
+    }
+  };
 }
 
 declare global {
@@ -119,6 +167,12 @@ function createMainRelayPool(): RelayPool {
       /* fall back to full default relay list */
     }
     initialRelays = filterPrivateNetworkRelaysForPublicSite(initialRelays);
+    // A saved Amber session must get the first WebSocket. Starting the default
+    // list here used to race the bunker dial on every full reload after deploy.
+    if (loadStoredRemoteSignerSession()?.userPubkey) {
+      holdMainPoolForColdBunkerStart(initialRelays);
+      initialRelays = [];
+    }
   }
   // SSR / `next build` must not auto-reconnect — abandoned pools spam damus/wine
   // and climb MemoryHigh on the public frontend. Browser keeps reconnect.
@@ -189,6 +243,9 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const addRelay = useCallback((url: string) => {
     try {
+      if (isMainPoolPausedForBunker()) {
+        return null;
+      }
       if (isBunkerMainPoolBlocked(url)) {
         // Amber/NIP-46 owns these hosts on directPool — do not steal browser slots.
         return null;
@@ -250,20 +307,14 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       // nostr-relaypool disallows using maxDelayMs and onEose together.
       // Strip Amber bunker hosts — subscribe → addOrGetRelay bypasses addRelay
       // and would re-steal sockets right after freeMainPoolBunkerCollisions.
-      const safeRelays = filterMainPoolRelays(relays);
-      if (safeRelays.length === 0) {
-        return () => {};
-      }
-      const safeMaxDelayMs = onEose ? undefined : maxDelayms;
-      const unsub = relayPool.subscribe(
+      return subscribeWhenMainPoolFree(
         filters,
-        safeRelays,
+        relays,
         onEvent,
-        safeMaxDelayMs,
+        maxDelayms,
         onEose,
         options
       );
-      return unsub;
     },
     []
   );
@@ -284,6 +335,14 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [remoteSignerInitialized, setRemoteSignerInitialized] = useState(false);
   const [signerReady, setSignerReady] = useState(false);
 
+  // Page relays were withheld at pool creation so Amber can dial first.
+  useEffect(() => {
+    return onMainPoolUnpaused(() => {
+      const urls = consumeDeferredMainPoolRelays();
+      for (const url of urls) addRelay(url);
+    });
+  }, [addRelay]);
+
   // Initialize remote signer manager with dependencies
   useEffect(() => {
     if (remoteSignerRef.current) return; // Already initialized
@@ -303,16 +362,11 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       options?: any
     ) => {
       // Keep behavior aligned with main subscribe wrapper (strip bunker + LAN).
-      const safeRelays = filterMainPoolRelays(relays);
-      if (safeRelays.length === 0) {
-        return () => {};
-      }
-      const safeMaxDelayMs = onEose ? undefined : maxDelayms;
-      return relayPool.subscribe(
+      return subscribeWhenMainPoolFree(
         filters,
-        safeRelays,
+        relays,
         onEvent,
-        safeMaxDelayMs,
+        maxDelayms,
         onEose,
         options
       );

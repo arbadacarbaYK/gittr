@@ -3,15 +3,24 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   collectActiveMainPoolUrls,
   collectBlockedRelayPoolUrls,
+  consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
+  holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
+  isMainPoolPausedForBunker,
   listBunkerMainPoolBlockedHosts,
+  onMainPoolUnpaused,
+  popMainPoolBunkerPause,
+  pushMainPoolBunkerPause,
+  releaseColdBunkerStartHold,
+  resetMainPoolBunkerPauseForTests,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
 
 describe("bunker-main-pool-guard", () => {
   beforeEach(() => {
     setBunkerMainPoolBlockedHosts(null);
+    resetMainPoolBunkerPauseForTests();
   });
 
   it("blocks normalized bunker hosts while set", () => {
@@ -80,5 +89,28 @@ describe("bunker-main-pool-guard", () => {
       "wss://nos.lol",
       "wss://relay.primal.net",
     ]);
+  });
+
+  it("holds page relays until the cold bunker warm releases them", () => {
+    const seen: string[] = [];
+    const stop = onMainPoolUnpaused(() => {
+      seen.push(...consumeDeferredMainPoolRelays());
+    });
+    holdMainPoolForColdBunkerStart([
+      "wss://relay.gittr.space",
+      "wss://git.shakespeare.diy",
+    ]);
+    expect(isMainPoolPausedForBunker()).toBe(true);
+    pushMainPoolBunkerPause();
+    releaseColdBunkerStartHold();
+    expect(isMainPoolPausedForBunker()).toBe(true);
+    expect(seen).toEqual([]);
+    popMainPoolBunkerPause();
+    expect(isMainPoolPausedForBunker()).toBe(false);
+    expect(seen).toEqual([
+      "wss://relay.gittr.space",
+      "wss://git.shakespeare.diy",
+    ]);
+    stop();
   });
 });
