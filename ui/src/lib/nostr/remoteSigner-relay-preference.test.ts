@@ -12,8 +12,11 @@ import {
   nip46PrimaryEncryption,
   nip46ShouldDualPublish,
   planBunkerDialWaves,
+  planSignEventDialOrder,
   preferUriOpenRelays,
   recoverUriRelaysFromPossiblyExpanded,
+  signRequestLeftTheBrowser,
+  signTimeoutUserMessage,
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
@@ -79,6 +82,76 @@ describe("planBunkerDialWaves", () => {
       "wss://directory.yabu.me",
       "wss://profiles.nostr1.com",
     ]);
+  });
+});
+
+describe("planSignEventDialOrder", () => {
+  it("keeps every bunker URI relay, with Amber's live relays first and stale hosts last", () => {
+    const order = planSignEventDialOrder([
+      "wss://relay.primal.net",
+      "wss://theforest.nostr1.com",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://bucket.coracle.social",
+      "wss://relay.gittr.space",
+    ]);
+    expect(order).toEqual([
+      GITTR_BUNKER_RELAY,
+      "wss://bucket.coracle.social",
+      "wss://theforest.nostr1.com",
+      "wss://nos.lol",
+      "wss://relay.primal.net",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.damus.io",
+    ]);
+  });
+});
+
+describe("sign timeout copy", () => {
+  const uri = [
+    "wss://relay.gittr.space",
+    "wss://nos.lol",
+    "wss://theforest.nostr1.com",
+    "wss://relay.primal.net",
+    "wss://nostr.oxtr.dev",
+    "wss://relay.damus.io",
+    "wss://bucket.coracle.social",
+  ];
+
+  it("treats a full dial as the phone when Amber stays quiet", () => {
+    expect(signRequestLeftTheBrowser(uri, uri)).toBe(true);
+    expect(signRequestLeftTheBrowser(["wss://relay.gittr.space"], uri)).toBe(
+      false
+    );
+    const msg = signTimeoutUserMessage({
+      publishedUrls: uri,
+      uriRelays: uri,
+      attemptedUrls: uri,
+    });
+    expect(msg).toContain("all 7 bunker relays");
+    expect(msg).toContain("Orbot");
+    expect(msg).toContain("already delivered");
+  });
+
+  it("still blames the phone when every relay was tried and only some opened", () => {
+    const msg = signTimeoutUserMessage({
+      publishedUrls: ["wss://relay.gittr.space", "wss://nos.lol"],
+      uriRelays: uri,
+      attemptedUrls: uri,
+    });
+    expect(msg).toContain("2 of 7");
+    expect(msg).toContain("Orbot");
+  });
+
+  it("says the miss is gittr when only one relay was tried", () => {
+    const msg = signTimeoutUserMessage({
+      publishedUrls: ["wss://nostr.oxtr.dev"],
+      uriRelays: uri,
+      attemptedUrls: ["wss://nostr.oxtr.dev"],
+    });
+    expect(msg).toContain("only delivered the signing request to 1 of 7");
+    expect(msg).not.toContain("Orbot");
   });
 });
 

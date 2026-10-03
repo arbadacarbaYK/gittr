@@ -250,7 +250,11 @@ function relayUrlsMatch(a: string, b: string): boolean {
  * OPEN so Push is not blocked waiting for all URI hosts.
  */
 const BUNKER_RELAY_OPEN_BUDGET_MS = 15000;
-/** First OPEN socket is enough to unblock Push; keepalive fills the rest. */
+/**
+ * Page-load / bootstrap only. One OPEN socket unblocks the page.
+ * sign_event must not stop here — Amber is often listening on a different
+ * bunker relay than the first one this browser opens (Orbot/Tor on the phone).
+ */
 const BUNKER_PROCEED_WHEN_OPEN = 1;
 /**
  * One bunker socket at a time. Opening several at once (especially while the
@@ -260,6 +264,11 @@ const BUNKER_PROCEED_WHEN_OPEN = 1;
 const BUNKER_URI_DIAL_CONCURRENCY = 1;
 /** Per-relay budget for a Push dial. Stop at the first OPEN; do not wait out 8 hosts. */
 const BUNKER_SERIAL_RELAY_BUDGET_MS = 6000;
+/**
+ * Per-relay budget when covering every Amber URI relay before one sign_event.
+ * Live relays usually open in under a second; a dead host must not eat 15s.
+ */
+const BUNKER_SIGN_RELAY_BUDGET_MS = 4000;
 /** Max time bootstrap waits for the first bunker OPEN (page must still load). */
 const BUNKER_BOOTSTRAP_WARM_BUDGET_MS = 10000;
 /** Publish/subscribe on every OPEN URI relay, not a 1–2 host subset. */
@@ -360,6 +369,38 @@ export function planBunkerDialWaves(uriRelays: string[]): {
 }
 
 /**
+ * Order for the one sign_event publish. Every relay in the bunker link is
+ * included — including hosts the fast page-load dial skips (primal, oxtr,
+ * damus, azzamo). Amber's own relay screen is often exactly that list.
+ * Relays Amber shows as connected go first so a clearnet phone gets the
+ * prompt quickly; the rest are still opened before we publish.
+ */
+export function planSignEventDialOrder(uriRelays: string[]): string[] {
+  const uri = uniqueNormalizedRelays(uriRelays).filter((u) =>
+    bunkerMayUseRelay(u)
+  );
+  const live = AMBER_DIAL_FIRST.filter((u) => uri.includes(u));
+  const rest = uri.filter((u) => !live.includes(u));
+  const fresh = rest.filter((u) => !STALE_BUNKER_RELAYS.has(u));
+  const stale = rest.filter((u) => STALE_BUNKER_RELAYS.has(u));
+  return [...live, ...fresh, ...stale].slice(0, BUNKER_PUBLISH_MAX_RELAYS);
+}
+
+/**
+ * True when this browser dialed every bunker relay Amber was paired with
+ * (open or refused) before the signing wait ended.
+ */
+export function signRequestLeftTheBrowser(
+  attemptedUrls: string[],
+  uriRelays: string[]
+): boolean {
+  const order = planSignEventDialOrder(uriRelays);
+  if (order.length === 0) return false;
+  const attempted = relayUrlSet(attemptedUrls);
+  return order.every((u) => attempted.has(u));
+}
+
+/**
  * Second chance after the first dial left every socket CLOSED.
  * Skip hosts the first wave already tried, and skip oxtr.
  */
@@ -372,9 +413,7 @@ export function bunkerRescueRelays(uriRelays: string[]): string[] {
   ])
     .filter(
       (u) =>
-        bunkerMayUseRelay(u) &&
-        !already.has(u) &&
-        !STALE_BUNKER_RELAYS.has(u)
+        bunkerMayUseRelay(u) && !already.has(u) && !STALE_BUNKER_RELAYS.has(u)
     )
     .slice(0, 4);
 }
@@ -492,6 +531,41 @@ export function bunkerPublishIsThin(
   const o = bunkerRelayPublishOverlap(publishedUrls, uriRelays);
   const want = Math.min(BUNKER_MIN_PREFERRED_OPEN, relayUrlSet(uriRelays).size);
   return o.uriOnly.length > 0 && o.overlap.length < Math.max(want, 1);
+}
+
+/**
+ * What to tell the person after sign_event times out.
+ * If gittr already handed the request to every bunker relay it could open,
+ * the phone (Amber locked, Orbot, VPN) did not answer. If gittr only tried
+ * one relay, say so — that failure is this browser, and the next push covers
+ * the rest.
+ */
+export function signTimeoutUserMessage(opts: {
+  publishedUrls: string[];
+  uriRelays: string[];
+  attemptedUrls: string[];
+}): string {
+  const overlap = bunkerRelayPublishOverlap(opts.publishedUrls, opts.uriRelays);
+  const wanted = relayUrlSet(opts.uriRelays).size;
+  const delivered = overlap.overlap.length;
+  if (wanted > 0 && !overlap.hasOverlap && opts.publishedUrls.length > 0) {
+    return "The signing request reached a relay Amber is not watching. Open Amber, confirm it is online on its bunker relays (from the bunker link — not gittr’s forge relays), then try again.";
+  }
+  if (
+    delivered > 0 &&
+    signRequestLeftTheBrowser(opts.attemptedUrls, opts.uriRelays)
+  ) {
+    const unopened = Math.max(0, wanted - delivered);
+    const where =
+      unopened === 0
+        ? `all ${wanted} bunker relays Amber is paired with`
+        : `${delivered} of ${wanted} bunker relays Amber is paired with (${unopened} would not open from this browser)`;
+    return `gittr sent the signing request to ${where}. Amber did not show a prompt. Open Amber, turn off Orbot or any VPN on the phone, then try again. This browser already delivered the request.`;
+  }
+  if (bunkerPublishIsThin(opts.publishedUrls, opts.uriRelays)) {
+    return `gittr only delivered the signing request to ${delivered} of ${wanted} Amber bunker relays. Try the push again — gittr will open the rest of Amber’s relays before it sends.`;
+  }
+  return "Amber did not open a signing prompt. Unlock Amber on your phone (bunker online), keep this tab open, then try again. Relay OK (acked:true) does not mean the phone saw the request.";
 }
 
 export const DEFAULT_REMOTE_SIGNER_LABEL = "gittr.space";
@@ -1042,6 +1116,10 @@ export class RemoteSignerManager {
   private released = false;
   /** True when the in-flight dial will not try Amber defaults after the URI wave. */
   private bunkerDialUriOnly = false;
+  /** True while sign_event is dialing the rest of Amber's bunker relays. */
+  private signerDialBusy = false;
+  /** Bunker URI relays dialed before the last sign_event (open or refused). */
+  private lastSignAttempted: string[] = [];
   /** Last direct-pool publish targets — used for sign_event timeout diagnostics. */
   private lastPublishMeta?: {
     method: string;
@@ -1209,7 +1287,9 @@ export class RemoteSignerManager {
       // encrypted copies of it only delay the real sign_event.
       if (cachedPubkey) {
         console.log(
-          "[RemoteSigner] Transport open with cached identity — skipping connect probe; sign_event will wake Amber",
+          preferredOpen.length > 0
+            ? "[RemoteSigner] Transport open with cached identity — skipping connect probe; sign_event will wake Amber"
+            : "[RemoteSigner] Cached identity restored — bunker sockets are not open yet; sign_event will dial Amber's relays",
           {
             open: preferredOpen.length,
             preferred: preferredOpen,
@@ -1782,22 +1862,12 @@ export class RemoteSignerManager {
           /* ignore */
         }
         void this.ensureDirectTransport(session).catch(() => undefined);
-        if (
-          uriRelays.length > 0 &&
-          !overlap.hasOverlap &&
-          published.length > 0
-        ) {
-          throw new Error(
-            "The signing request reached a relay Amber is not watching. Open Amber, confirm it is online on its bunker relays (from the bunker link — not gittr’s forge relays), then try again."
-          );
-        }
-        if (bunkerPublishIsThin(published, uriRelays)) {
-          throw new Error(
-            `The signing request only reached ${overlap.overlap.length} of ${uriRelays.length} Amber bunker relays. Keep Amber open and unlocked, then try again — gittr will retry on more of those relays.`
-          );
-        }
         throw new Error(
-          "Amber did not open a signing prompt. Unlock Amber on your phone (bunker online), keep this tab open, then try again. Relay OK (acked:true) does not mean the phone saw the request."
+          signTimeoutUserMessage({
+            publishedUrls: published,
+            uriRelays,
+            attemptedUrls: this.lastSignAttempted,
+          })
         );
       }
       throw err;
@@ -1995,7 +2065,15 @@ export class RemoteSignerManager {
    */
   private async ensureBunkerSocketsOpen(
     session: RemoteSignerSession,
-    opts?: { quiet?: boolean; uriFirstOnly?: boolean; budgetMs?: number }
+    opts?: {
+      quiet?: boolean;
+      uriFirstOnly?: boolean;
+      budgetMs?: number;
+      /** Open one more closed bunker-URI relay. Used by the 45s keepalive. */
+      topUp?: boolean;
+      /** Open every closed bunker-URI relay. Used when the tab becomes visible. */
+      topUpAll?: boolean;
+    }
   ): Promise<string[]> {
     if (this.bunkerDialInFlight) {
       const joined = this.bunkerDialInFlight;
@@ -2056,6 +2134,52 @@ export class RemoteSignerManager {
           this.buildBunkerTransportTargets(session)
         )
       );
+      if ((opts?.topUp || opts?.topUpAll) && uriRelays.length > 0) {
+        const order = planSignEventDialOrder(uriRelays);
+        const have = new Set(
+          (await this.listDirectOpenRelays(order)).map((u) =>
+            normalizeRelayUrl(u)
+          )
+        );
+        const missing = order.filter((u) => !have.has(u));
+        const batch = opts.topUpAll ? missing : missing.slice(0, 1);
+        if (batch.length > 0) {
+          console.log(
+            "[RemoteSigner] Keepalive opening Amber bunker relay(s)",
+            {
+              next: batch,
+              open: have.size,
+              uri: order.length,
+            }
+          );
+          const dialBatch = async () =>
+            this.dialRelaysWithConcurrency(
+              batch,
+              BUNKER_URI_DIAL_CONCURRENCY,
+              Math.min(
+                opts?.budgetMs ?? BUNKER_SIGN_RELAY_BUDGET_MS,
+                BUNKER_SIGN_RELAY_BUDGET_MS
+              ),
+              batch.length
+            );
+          if (opts.topUpAll) {
+            const suspended = this.suspendMainPoolForBunkerDial();
+            try {
+              await this.waitForMainPoolIdle(4000);
+              await dialBatch();
+            } finally {
+              this.resumeMainPoolAfterBunkerDial(suspended);
+            }
+          } else {
+            await dialBatch();
+          }
+        }
+        return preferOpen(
+          await this.listDirectOpenRelays(
+            this.buildBunkerTransportTargets(session)
+          )
+        );
+      }
       if (open.length > 0) return open;
 
       // Page-load warm leaves CLOSED cache entries. A later repo (pyramid
@@ -2165,6 +2289,8 @@ export class RemoteSignerManager {
     this.bunkerWarmInFlight = null;
     this.bunkerDialInFlight = null;
     this.lastPublishMeta = undefined;
+    this.lastSignAttempted = [];
+    this.signerDialBusy = false;
     this.lastSignEventEnvelopes = [];
     this.completedRpcIds = [];
     this.releaseBunkerHostsFromDirectPool();
@@ -2433,7 +2559,8 @@ export class RemoteSignerManager {
   private async dialRelaysWithConcurrency(
     relays: string[],
     concurrency: number,
-    budgetMs: number
+    budgetMs: number,
+    stopAfterOpen = BUNKER_PROCEED_WHEN_OPEN
   ): Promise<string[]> {
     const targets = uniqueNormalizedRelays(relays).filter(
       (u) => u.startsWith("wss://") && bunkerMayUseRelay(u)
@@ -2449,8 +2576,9 @@ export class RemoteSignerManager {
           if (!url) break;
           if (await this.openDirectRelay(url, budgetMs)) {
             open.push(url);
-            // First OPEN is enough to unblock Push / bootstrap.
-            if (open.length >= BUNKER_PROCEED_WHEN_OPEN) return;
+            // Bootstrap stops at the first OPEN. sign_event passes the full
+            // list length so every Amber bunker relay is tried.
+            if (open.length >= stopAfterOpen) return;
           }
         }
       }
@@ -2604,7 +2732,7 @@ export class RemoteSignerManager {
           console.log(
             "[RemoteSigner] Tab visible — reconnecting bunker transport"
           );
-          void this.warmBunkerTransportQuietly();
+          void this.warmBunkerTransportQuietly({ topUpAll: true });
         }
       };
       document.addEventListener(
@@ -2618,7 +2746,7 @@ export class RemoteSignerManager {
         console.log(
           "[RemoteSigner] Network online — reconnecting bunker transport"
         );
-        void this.warmBunkerTransportQuietly();
+        void this.warmBunkerTransportQuietly({ topUpAll: true });
       };
       window.addEventListener("online", this.bunkerOnlineHandler);
     }
@@ -2658,7 +2786,8 @@ export class RemoteSignerManager {
       }
       void this.warmBunkerTransportQuietly({
         uriFirstOnly: true,
-        budgetMs: BUNKER_SERIAL_RELAY_BUDGET_MS,
+        budgetMs: BUNKER_SIGN_RELAY_BUDGET_MS,
+        topUp: true,
       });
     }, BUNKER_KEEPALIVE_MS);
   }
@@ -2673,12 +2802,15 @@ export class RemoteSignerManager {
   private async warmBunkerTransportQuietly(opts?: {
     budgetMs?: number;
     uriFirstOnly?: boolean;
+    topUp?: boolean;
+    topUpAll?: boolean;
   }) {
     if (this.released) return;
     const session = this.session;
     if (!session?.userPubkey) return;
-    // Do not unsub/resub bunker listen while Push is waiting on Amber.
-    if (this.pending.size > 0) return;
+    // Do not unsub/resub bunker listen while Push is waiting on Amber,
+    // and do not dial beside the sign_event cover.
+    if (this.pending.size > 0 || this.signerDialBusy) return;
     if (this.bunkerWarmInFlight) return this.bunkerWarmInFlight;
     this.bunkerWarmInFlight = (async () => {
       try {
@@ -2686,6 +2818,8 @@ export class RemoteSignerManager {
           quiet: true,
           uriFirstOnly: opts?.uriFirstOnly,
           budgetMs: opts?.budgetMs,
+          topUp: opts?.topUp,
+          topUpAll: opts?.topUpAll,
         });
         if (open.length > 0) {
           console.log("[RemoteSigner] Background bunker warm ready", {
@@ -2725,6 +2859,90 @@ export class RemoteSignerManager {
   }
 
   /**
+   * Open every bunker relay Amber was paired with, one socket at a time,
+   * before the single sign_event publish. Page-load still stops at the first
+   * OPEN socket. Stopping there on Push is why Amber (especially behind
+   * Orbot) never saw the request: it was listening on one of the other six.
+   */
+  private async coverAmberUriRelays(
+    session: RemoteSignerSession,
+    uriRelays: string[]
+  ): Promise<string[]> {
+    this.signerDialBusy = true;
+    let suspended: string[] = [];
+    try {
+      if (this.bunkerDialInFlight) {
+        try {
+          await this.bunkerDialInFlight;
+        } catch {
+          /* the in-flight dial logs its own failure */
+        }
+      }
+      const order = planSignEventDialOrder(uriRelays);
+      this.lastSignAttempted = [];
+      if (order.length === 0) return [];
+      const have = new Set(
+        (await this.listDirectOpenRelays(order)).map((u) =>
+          normalizeRelayUrl(u)
+        )
+      );
+      const missing = order.filter((u) => !have.has(u));
+      if (missing.length > 0) {
+        console.log(
+          "[RemoteSigner] Opening every Amber bunker relay before the signing request",
+          {
+            already: have.size,
+            remaining: missing,
+            uri: order,
+          }
+        );
+        suspended = this.suspendMainPoolForBunkerDial();
+        await this.waitForMainPoolIdle(4000);
+        await this.dialRelaysWithConcurrency(
+          missing,
+          BUNKER_URI_DIAL_CONCURRENCY,
+          BUNKER_SIGN_RELAY_BUDGET_MS,
+          missing.length
+        );
+        const stillOpen = new Set(
+          (await this.listDirectOpenRelays(order)).map((u) =>
+            normalizeRelayUrl(u)
+          )
+        );
+        const died = [...have].filter((u) => !stillOpen.has(u));
+        if (died.length > 0) {
+          console.warn(
+            "[RemoteSigner] Bunker sockets closed while covering the rest — reopening",
+            died
+          );
+          await this.dialRelaysWithConcurrency(
+            died,
+            BUNKER_URI_DIAL_CONCURRENCY,
+            BUNKER_SIGN_RELAY_BUDGET_MS,
+            died.length
+          );
+        }
+      }
+      this.lastSignAttempted = order;
+      const open = preferUriOpenRelays(
+        await this.listDirectOpenRelays(order),
+        uriRelays,
+        BUNKER_PUBLISH_MAX_RELAYS
+      );
+      const openSet = new Set(open.map((u) => normalizeRelayUrl(u)));
+      console.log("[RemoteSigner] Amber bunker relays covered", {
+        open,
+        missed: order.filter((u) => !openSet.has(u)),
+        uri: order.length,
+      });
+      return open;
+    } finally {
+      this.signerDialBusy = false;
+      this.resumeMainPoolAfterBunkerDial(suspended);
+    }
+  }
+
+  /**
    * Re-open dead/stuck directPool sockets before publishing a NIP-46 request.
    * nostr-tools v1 relays never auto-reconnect: after a silent drop the
    * subscription is dead and trySend discards messages, so requests would
@@ -2740,7 +2958,7 @@ export class RemoteSignerManager {
   private async ensureDirectTransport(
     session: RemoteSignerSession,
     dialTargets?: string[],
-    opts?: { quiet?: boolean }
+    opts?: { quiet?: boolean; coverUri?: boolean }
   ): Promise<string[]> {
     const quiet = !!opts?.quiet;
     const softWarn = (...args: unknown[]) => {
@@ -2757,6 +2975,30 @@ export class RemoteSignerManager {
     if (targets.length === 0) return [];
     const uriRelays = getSessionUriRelays(session);
     const preferredNorm = new Set(uriRelays.map(normalizeRelayUrl));
+
+    if (opts?.coverUri && uriRelays.length > 0) {
+      const covered = await this.coverAmberUriRelays(session, uriRelays);
+      if (covered.length > 0) {
+        console.log("[RemoteSigner] Direct transport ready", {
+          open: covered.length,
+          total: targets.length,
+          openUrls: covered.map((u) => normalizeRelayUrl(u)),
+          uriRelays,
+          coveredAllUri: true,
+        });
+        if (this.pending.size === 0) {
+          try {
+            await this.startSubscription(session, covered);
+          } catch (error) {
+            console.warn(
+              "[RemoteSigner] Failed to refresh subscription on covered bunker sockets:",
+              error
+            );
+          }
+        }
+        return covered;
+      }
+    }
 
     const alreadyOpen = await this.listDirectOpenRelays(targets);
     const alreadyNorm = new Set(alreadyOpen.map(normalizeRelayUrl));
@@ -3382,7 +3624,11 @@ export class RemoteSignerManager {
     // Repair the dedicated NIP-46 transport first — dead sockets silently
     // swallow requests AND responses (the "push fails silently" symptom).
     // Do not addRelay bunker URLs into the app pool (socket starvation).
-    const openDirect = await this.ensureDirectTransport(session);
+    const openDirect = await this.ensureDirectTransport(
+      session,
+      undefined,
+      method === "sign_event" ? { coverUri: true } : undefined
+    );
     if (openDirect.length === 0) {
       throw new Error(
         "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
@@ -3545,7 +3791,13 @@ export class RemoteSignerManager {
               "[RemoteSigner] sign_event publish had no relay OK — resetting bunker transport and retrying once"
             );
             this.resetDirectPool();
-            const reopened = await this.ensureDirectTransport(session);
+            const reopened = await this.ensureDirectTransport(
+              session,
+              undefined,
+              {
+                coverUri: true,
+              }
+            );
             publishTargets = preferUriOpenRelays(reopened, uriRelays);
             if (publishTargets.length === 0) {
               throw new Error(
