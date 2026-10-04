@@ -30,5 +30,8 @@ describe("theme filled-button contrast", () => {
     expect(css).toContain(
       ':root[data-theme="midnight"] .bg-purple-600.text-white'
     );
+    expect(css).toContain(
+      ':root[data-theme="midnight"] .bg-purple-600 .text-white'
+    );
   });
 });

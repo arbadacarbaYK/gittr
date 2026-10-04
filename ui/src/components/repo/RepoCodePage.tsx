@@ -18470,7 +18470,7 @@ export function RepoCodePage() {
                     variant="outline"
                   >
                     Add file
-                    <ChevronDown className="ml-2 h-4 w-4 text-white" />
+                    <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>

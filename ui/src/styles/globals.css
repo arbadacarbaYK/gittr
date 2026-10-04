@@ -613,7 +613,23 @@ a:hover {
 :root[data-theme="cypherpunk"] .theme-bg-accent-primary.text-white,
 :root[data-theme="girly"] .theme-bg-accent-primary.text-white,
 :root[data-theme="arcade80s"] .theme-bg-accent-primary.text-white,
-:root[data-theme="midnight"] .theme-bg-accent-primary.text-white {
+:root[data-theme="midnight"] .theme-bg-accent-primary.text-white,
+/* Icons use their own text-white, which would stay body-colored on the fill. */
+:root[data-theme="bitcoin"] .bg-purple-600 .text-white,
+:root[data-theme="cypherpunk"] .bg-purple-600 .text-white,
+:root[data-theme="girly"] .bg-purple-600 .text-white,
+:root[data-theme="arcade80s"] .bg-purple-600 .text-white,
+:root[data-theme="midnight"] .bg-purple-600 .text-white,
+:root[data-theme="bitcoin"] .theme-bg-accent-primary .text-white,
+:root[data-theme="cypherpunk"] .theme-bg-accent-primary .text-white,
+:root[data-theme="girly"] .theme-bg-accent-primary .text-white,
+:root[data-theme="arcade80s"] .theme-bg-accent-primary .text-white,
+:root[data-theme="midnight"] .theme-bg-accent-primary .text-white,
+:root[data-theme="bitcoin"] .hover\:bg-purple-700:hover .text-white,
+:root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover .text-white,
+:root[data-theme="girly"] .hover\:bg-purple-700:hover .text-white,
+:root[data-theme="arcade80s"] .hover\:bg-purple-700:hover .text-white,
+:root[data-theme="midnight"] .hover\:bg-purple-700:hover .text-white {
   color: var(--color-on-accent) !important;
 }
 

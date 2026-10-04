@@ -1820,7 +1820,7 @@ export default function RepoLayoutClient({
                   )}
                   type="button"
                 >
-                  Actions <ChevronDown className="ml-2 h-4 w-4 text-white" />
+                  Actions <ChevronDown className="ml-2 h-4 w-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="ml-8 mt-2">
                   <DropdownMenuItem
