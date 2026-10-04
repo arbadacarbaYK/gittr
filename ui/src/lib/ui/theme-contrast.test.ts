@@ -19,4 +19,16 @@ describe("theme filled-button contrast", () => {
     );
     expect(css).toContain("color: var(--color-on-accent) !important;");
   });
+
+  it("gives midnight navy ink on teal accent fills", () => {
+    expect(css).toMatch(
+      /\[data-theme="midnight"\][\s\S]*?--color-on-accent:\s*#050812/
+    );
+    expect(css).not.toMatch(
+      /\[data-theme="midnight"\][\s\S]*?--color-on-accent:\s*var\(--color-text-primary\)/
+    );
+    expect(css).toContain(
+      ':root[data-theme="midnight"] .bg-purple-600.text-white'
+    );
+  });
 });

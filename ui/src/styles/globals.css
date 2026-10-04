@@ -233,7 +233,8 @@ html.gittr-needs-status-bar-gap {
   --color-border: #1f2937; /* Subtle border */
   --color-link: #38bdf8; /* Sky blue links */
   --color-link-hover: #7dd3fc;
-  --color-on-accent: var(--color-text-primary);
+  /* Filled buttons: navy ink on bright teal (off-white on #2dd4bf is ~1.6:1). */
+  --color-on-accent: #050812;
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
