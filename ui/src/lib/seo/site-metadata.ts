@@ -27,7 +27,7 @@ export {
   buildSoftwareAppDescription,
 } from "./site-copy";
 
-const OG_IMAGE_ALT = "gittr - Nostr git hosting";
+const OG_IMAGE_ALT = "gittr — gits announced to Nostr";
 
 function absolutePath(siteUrl: string, path: string): string {
   const base = siteUrl.replace(/\/$/, "");

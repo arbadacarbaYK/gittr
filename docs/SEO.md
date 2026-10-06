@@ -1,6 +1,6 @@
 # SEO & discoverability (gittr)
 
-How search engines and social previews find gittr content. Marketing copy describes **use cases** (Nostr git hosting, mirror, collaborate, Pages, apps, bounties) and technical terms people search for (NIP-34, GRASP, git on Nostr). The daily **repo index snapshot** that fills `/sitemap.xml` at scale is built on the production host — do not overwrite it from a laptop.
+How search engines and social previews find gittr content. The homepage card is discovery (**gits announced to Nostr**), not hosting. Other pages still describe use cases (issues, pull requests, Pages, apps, bounties) and technical terms people search for (NIP-34, GRASP, git on Nostr). The daily **repo index snapshot** that fills `/sitemap.xml` at scale is built on the production host — do not overwrite it from a laptop.
 
 ## What controls SEO in the codebase
 
@@ -102,15 +102,15 @@ Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`
 
 - **Index what matters:** Home, `/nostr-git` (what Nostr git is — links the gittr README for the full platform map), explore, help, `/apps` and per-app pages, public repo pages, Pages directory — via sitemap + internal links (footer includes Nostr git / Repos / Apps). The `/pages` hub paints **48** cards first (`GET /api/gittr-pages/status-sites?limit=48`) then hydrates the rest; load-more is UI page size 48 (same as Explore).
 - **Don’t index auth flows:** `robots.ts` blocks `/login`, `/signup`, `/settings/`, `/api/`, `/import`, `/apps/mine`, `/repositories`. `/new` (create/import hub) is **allowed** so X/Telegram can load its OG card.
-- **Keywords / on-page copy:** Prefer “nostr git”, “git on nostr”, “Nostr git hosting”, “NIP-34”, “GRASP”, “Lightning bounties”, “mirror git repository”. Titles, H1s, and `/nostr-git` matter more than the keywords meta tag. Still avoid “github alternative” as the product identity.
-- **GitHub repo README:** Lead with “Nostr git hosting” in the first paragraph so snippets for the gittr and gittr-mcp repositories match the live site.
+- **Keywords / on-page copy:** Prefer “nostr git”, “git on nostr”, “gits announced to Nostr”, “NIP-34”, “GRASP”, “Lightning bounties”. The homepage share card does not say hosting. Titles, H1s, and `/nostr-git` matter more than the keywords meta tag. Still avoid “github alternative” as the product identity.
+- **GitHub repo README:** The live homepage card is discovery (“gits announced to Nostr”). Do not put “Nostr git hosting” back on that card.
 - **gittr-blossom:** blob storage for gittr Pages and Nostr git, live at `blossom.gittr.space`. Repo on gittr: [gittr-blossom](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-blossom?branch=master) (branch `master`). GitHub About is that same sentence.
 - **Import is a feature, not the headline:** README and meta mention importing from GitHub/GitLab/Codeberg under **mirror / backup**, not as the product identity.
 - **Reputation ≠ SEO:** Google Safe Browsing clean + good sitemap does not fix Sophos category or LinkedIn link wrappers; see IT reclassification for those.
 
 ## Social previews (X, Telegram, LinkedIn)
 
-- Homepage vs hubs: `/`, `/apps`, `/pages`, `/explore`, `/help`, `/nostr-git`, `/bounty-hunt`, and `/new` each have their own **title**, **description**, and **OG image**. Do not reuse homepage copy for hub links. `/new` is **Create or import** — Nostr git create plus batch import/mirror from foreign forges (GitHub/GitLab/Codeberg).
+- Homepage vs hubs: `/`, `/apps`, `/pages`, `/explore`, `/help`, `/nostr-git`, `/bounty-hunt`, and `/new` each have their own **title**, **description**, and **OG image**. Do not reuse homepage copy for hub links. The homepage card is discovery, not hosting: image tagline **gits announced to Nostr**, title **gittr — gits announced to Nostr**, description “Announce gits to Nostr from any forge and make them discoverable in one place — issues, pull requests, pages, apps, and bounties.” `/new` is **Create or import** — Nostr git create plus batch import/mirror from foreign forges (GitHub/GitLab/Codeberg).
 - Repo cards (`create-repo-og-image.tsx`): keep the **bottom-left corner empty** — X overlays the link name chip there. Brand (`gittr · nostr`) + `NIP-34` sit **bottom-right**.
 - **Canonical share URL** is always `/{entity}/{repo}` (no `?branch=` / `?file=` / tab path). Nested pages inherit the same `og:image`; Share/QR copies the root so social caches do not fork per deep link. File “Copy permalink” stays deep for collaborators.
 - `og:image` / `twitter:image` are emitted as **absolute `https://`** URLs (`normalizeSocialImageUrl` + `getPublicSiteUrl`). Scheme-less pastes like `gittr.space` still resolve to HTTPS HTML; if `NEXT_PUBLIC_SITE_URL` were `http://…`, non-localhost hosts are upgraded to `https://` so messengers do not drop the card image.

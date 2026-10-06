@@ -1,10 +1,9 @@
 /** Default site title (also used in Open Graph / Twitter). */
-export const SITE_TITLE_DEFAULT =
-  "gittr — Nostr git hosting, issues, PRs & Lightning bounties";
+export const SITE_TITLE_DEFAULT = "gittr — gits announced to Nostr";
 
 /** ~155 chars — good for Google snippets and social cards. */
 export const SITE_DESCRIPTION_DEFAULT =
-  "Host git on Nostr. Mirror repos to relays, run issues and PRs as signed events, publish Pages, discover Nostr apps, and fund work with Lightning bounties.";
+  "Announce gits to Nostr from any forge and make them discoverable in one place — issues, pull requests, pages, apps, and bounties.";
 
 /** Hub routes: keep these distinct from the homepage card so Telegram/X previews match the link. */
 export const APPS_DESCRIPTION =

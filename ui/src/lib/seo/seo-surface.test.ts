@@ -6,7 +6,7 @@ import {
   softwareSourceCodeJsonLd,
   websiteJsonLd,
 } from "./json-ld";
-import { SITE_DESCRIPTION_DEFAULT } from "./site-copy";
+import { SITE_DESCRIPTION_DEFAULT, SITE_TITLE_DEFAULT } from "./site-copy";
 import { SITEMAP_HUBS, sitemapHubEntries } from "./sitemap-hubs";
 import {
   isAppsCatalogPath,
@@ -86,8 +86,11 @@ describe("json-ld", () => {
     );
   });
 
-  it("keeps the default description oriented at Nostr git hosting", () => {
-    expect(SITE_DESCRIPTION_DEFAULT.toLowerCase()).toContain("nostr");
-    expect(SITE_DESCRIPTION_DEFAULT.toLowerCase()).toMatch(/git/);
+  it("keeps the homepage card on discovery, not hosting", () => {
+    expect(SITE_DESCRIPTION_DEFAULT).toBe(
+      "Announce gits to Nostr from any forge and make them discoverable in one place — issues, pull requests, pages, apps, and bounties."
+    );
+    expect(SITE_TITLE_DEFAULT).toBe("gittr — gits announced to Nostr");
+    expect(SITE_DESCRIPTION_DEFAULT.toLowerCase()).not.toMatch(/\bhost/);
   });
 });
