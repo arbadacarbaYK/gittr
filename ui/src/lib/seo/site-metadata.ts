@@ -4,6 +4,7 @@ import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 import { type Metadata } from "next";
 
 import {
+  HOME_CARD_PATH,
   SITE_DESCRIPTION_DEFAULT,
   SITE_KEYWORDS,
   SITE_TITLE_DEFAULT,
@@ -116,8 +117,8 @@ export function buildNoindexPageMetadata(opts: {
 
 export function buildRootSiteMetadata(): Metadata {
   const siteUrl = getPublicSiteUrl();
-  const ogImage = normalizeSocialImageUrl("/opengraph-image", siteUrl);
-  const twitterImage = normalizeSocialImageUrl("/twitter-image", siteUrl);
+  const ogImage = normalizeSocialImageUrl(HOME_CARD_PATH, siteUrl);
+  const twitterImage = ogImage;
 
   return {
     title: {

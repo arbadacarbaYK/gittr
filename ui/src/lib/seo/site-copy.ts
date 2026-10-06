@@ -1,3 +1,9 @@
+/**
+ * Homepage picture URL. Telegram caches `/opengraph-image` by path and ignores
+ * Next’s `?hash`, so a tagline change must use a path that bot has never fetched.
+ */
+export const HOME_CARD_PATH = "/og/home-card";
+
 /** Default site title (also used in Open Graph / Twitter). */
 export const SITE_TITLE_DEFAULT = "gittr — gits announced to Nostr";
 
