@@ -27,6 +27,25 @@ export function isMainPoolPausedForBunker(): boolean {
   return pauseDepth > 0;
 }
 
+/**
+ * Subscriptions must keep waiting for the whole bunker pause, not for 15s
+ * after the page loaded. Settings → Delete pauses the pool while Amber dials.
+ * A clock that started at page load has already expired by then, so the page
+ * reopens its relays during that dial and every bunker socket closes.
+ * The wait starts the first time this subscribe sees the pause.
+ */
+export const MAIN_POOL_PAUSE_WAIT_MS = 35000;
+
+export function mainPoolSubscribeShouldWait(
+  paused: boolean,
+  firstSawPauseAt: number | null,
+  now: number,
+  maxWaitMs = MAIN_POOL_PAUSE_WAIT_MS
+): boolean {
+  if (!paused || firstSawPauseAt == null) return false;
+  return now - firstSawPauseAt < maxWaitMs;
+}
+
 export function pushMainPoolBunkerPause(): void {
   pauseDepth += 1;
 }

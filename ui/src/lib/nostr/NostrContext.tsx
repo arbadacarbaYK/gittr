@@ -35,6 +35,7 @@ import {
   holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
   isMainPoolPausedForBunker,
+  mainPoolSubscribeShouldWait,
   onMainPoolUnpaused,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
@@ -92,10 +93,13 @@ function subscribeWhenMainPoolFree(
 ): () => void {
   let cancelled = false;
   let unsub: (() => void) | undefined;
-  const started = Date.now();
+  let firstSawPauseAt: number | null = null;
   const tryStart = () => {
     if (cancelled) return;
-    if (isMainPoolPausedForBunker() && Date.now() - started < 15000) {
+    const paused = isMainPoolPausedForBunker();
+    if (paused && firstSawPauseAt == null) firstSawPauseAt = Date.now();
+    if (!paused) firstSawPauseAt = null;
+    if (mainPoolSubscribeShouldWait(paused, firstSawPauseAt, Date.now())) {
       window.setTimeout(tryStart, 100);
       return;
     }

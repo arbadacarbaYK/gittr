@@ -9,6 +9,8 @@ import {
   isBunkerMainPoolBlocked,
   isMainPoolPausedForBunker,
   listBunkerMainPoolBlockedHosts,
+  MAIN_POOL_PAUSE_WAIT_MS,
+  mainPoolSubscribeShouldWait,
   onMainPoolUnpaused,
   popMainPoolBunkerPause,
   pushMainPoolBunkerPause,
@@ -21,6 +23,24 @@ describe("bunker-main-pool-guard", () => {
   beforeEach(() => {
     setBunkerMainPoolBlockedHosts(null);
     resetMainPoolBunkerPauseForTests();
+  });
+
+  it("keeps a subscribe waiting for a pause that starts long after page load", () => {
+    const pageLoad = 0;
+    const deleteClick = pageLoad + 20_000;
+    expect(
+      mainPoolSubscribeShouldWait(true, deleteClick, deleteClick + 1000)
+    ).toBe(true);
+    expect(
+      mainPoolSubscribeShouldWait(
+        true,
+        deleteClick,
+        deleteClick + MAIN_POOL_PAUSE_WAIT_MS
+      )
+    ).toBe(false);
+    expect(mainPoolSubscribeShouldWait(false, deleteClick, deleteClick)).toBe(
+      false
+    );
   });
 
   it("blocks normalized bunker hosts while set", () => {

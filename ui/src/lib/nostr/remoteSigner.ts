@@ -2025,6 +2025,18 @@ export class RemoteSignerManager {
           "[RemoteSigner] Bunker relay statuses after warm-up:",
           JSON.stringify(statuses)
         );
+        const cachedPubkey =
+          typeof session.userPubkey === "string" &&
+          HEX_64_RE.test(session.userPubkey);
+        // Settings → Delete used to stop here. Push still reached Amber
+        // because a live socket skipped this warm. A saved Amber identity
+        // must continue into sign_event, which dials every bunker relay.
+        if (cachedPubkey) {
+          console.warn(
+            "[RemoteSigner] No bunker socket yet — sign_event will dial Amber's relays"
+          );
+          return;
+        }
         throw new Error(
           "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
         );
