@@ -7,6 +7,7 @@ Why this exists: Zapstore and other Nostr app stores index **GitHub Release asse
 ## What it is / is not
 
 - Same live gittr.space UI as the browser PWA (`?source=apk`).
+- Not a Capacitor app. Do not add `@capacitor/*` under `ui/` — Capacitor’s WebView proxy was CVE-2026-103922. This wrapper is ordinary Android WebView code.
 - Android 15 draws that WebView under the signal / battery row. The live site pads the header (Home, Search, New) even when `env(safe-area-inset-top)` is 0; the wrapper also forwards the real inset as CSS pixels. Website deploys pick this up without a new APK.
 - Sign in with **Amber / NIP-46** (no browser extension inside the WebView).
 - External sites open in the system browser; `*.gittr.space` stays in the app.

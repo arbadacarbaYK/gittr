@@ -29,6 +29,7 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     readFileSync(join(uiRoot, "package.json"), "utf8")
   ) as {
     dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
     resolutions?: Record<string, string>;
   };
   const resolutions = pkg.resolutions || {};
@@ -37,6 +38,21 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     expect(gte(resolutionFloor(resolutions.browserslist), [4, 28, 7])).toBe(
       true
     );
+  });
+
+  it("does not depend on Capacitor (CVE-2026-103922)", () => {
+    const names = [
+      "@capacitor/android",
+      "@capacitor/cli",
+      "@capacitor/core",
+      "@capacitor/ios",
+    ];
+    for (const name of names) {
+      expect(pkg.dependencies?.[name]).toBeUndefined();
+      expect(pkg.devDependencies?.[name]).toBeUndefined();
+    }
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    expect(lock.includes("@capacitor/")).toBe(false);
   });
 
   it("pins @xmldom/xmldom at the CVE-2026-83610 0.8.x floor", () => {
