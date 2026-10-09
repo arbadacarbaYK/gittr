@@ -40,7 +40,8 @@ export async function POST(req: Request) {
   const verb = tags.find(
     (t): t is string[] => Array.isArray(t) && t[0] === "t" && typeof t[1] === "string"
   );
-  if (!verb || verb[1].toLowerCase() !== "delete") {
+  const verbName = verb?.[1];
+  if (typeof verbName !== "string" || verbName.toLowerCase() !== "delete") {
     return NextResponse.json(
       { error: "authEvent must include t=delete" },
       { status: 400 }
