@@ -1,6 +1,8 @@
 # Web of Trust (WoT) on gittr
 
-gittr shows a **viewer-relative** trust badge next to Nostr identities when you are logged in:
+Hop distance comes from [Leon Acosta](https://github.com/leonacostaok)’s [Nostr Web of Trust](https://github.com/nostr-wot/nostr-wot): the [browser extension](https://github.com/nostr-wot/nostr-wot-extension) (`window.nostr.wot`) and the [oracle](https://github.com/nostr-wot/nostr-wot-oracle). gittr shows that distance in the UI.
+
+gittr shows a **viewer-relative** trust badge next to Nostr identities when you are logged in.
 
 | Badge | Meaning |
 |--------|---------|
@@ -83,9 +85,13 @@ Self-host: [nostr-wot-oracle](https://github.com/nostr-wot/nostr-wot-oracle).
 
 ## Code
 
-- `ui/src/lib/nostr/wot.ts` — distance resolution
+[Leon Acosta](https://github.com/leonacostaok) built the [extension](https://github.com/nostr-wot/nostr-wot-extension) and [oracle](https://github.com/nostr-wot/nostr-wot-oracle). gittr only calls them and paints a badge. The wiring is:
+
+- `ui/src/lib/nostr/wot.ts` — distance resolution and labels
 - `ui/src/lib/nostr/useWoTDistance.ts` — React hook
 - `ui/src/components/ui/trust-badge.tsx` — UI
 - `ui/src/pages/api/wot/distance.ts` — oracle proxy
+
+[wot-trust-badges](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/wot-trust-badges) copies `wotLabel`, `wotResultLabel`, and `wotBadgeClassName` from `wot.ts` into `wot-labels.ts`. Hop lookup stays in the files above.
 
 Tracked previously in [gittr#26](https://github.com/arbadacarbaYK/gittr/issues/26) (**closed** — WoT shipped). Optional **L402** payment rail: [gittr#34](https://github.com/arbadacarbaYK/gittr/issues/34).

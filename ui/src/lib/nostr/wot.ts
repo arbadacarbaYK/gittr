@@ -1,5 +1,8 @@
 /**
- * Web of Trust (WoT) helpers — extension, oracle API, and display labels.
+ * Web of Trust (WoT) helpers — display labels on top of Nostr Web of Trust.
+ * Extension and oracle by Leon Acosta (https://github.com/leonacostaok):
+ * https://github.com/nostr-wot/nostr-wot-extension
+ * https://github.com/nostr-wot/nostr-wot-oracle
  * @see https://nostr-wot.com/docs
  */
 import { nip19 } from "nostr-tools";
