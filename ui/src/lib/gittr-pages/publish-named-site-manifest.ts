@@ -12,6 +12,12 @@ import {
   uint8Equal,
 } from "@/lib/gittr-pages/manifest-file-bytes";
 import { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
+import {
+  hashesUsedByOtherSites,
+  manifestPathHashes,
+  newestManifestForDTag,
+  staleBlossomHashes,
+} from "@/lib/gittr-pages/stale-blossom-hashes";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
@@ -172,6 +178,138 @@ function blossomBatchAuthTtlSeconds(hashCount: number): number {
   return Math.min(
     BLOSSOM_BATCH_AUTH_MAX_SEC,
     BLOSSOM_BATCH_AUTH_BASE_SEC + n * BLOSSOM_BATCH_AUTH_PER_HASH_SEC
+  );
+}
+
+function buildUnsignedBlossomDeleteAuth(params: {
+  pubkeyHex: string;
+  sha256Hex: string[];
+}): {
+  kind: number;
+  created_at: number;
+  pubkey: string;
+  tags: string[][];
+  content: string;
+  id: string;
+  sig: string;
+} {
+  const now = Math.floor(Date.now() / 1000);
+  const uniq = Array.from(
+    new Set(params.sha256Hex.map((h) => String(h).toLowerCase()))
+  )
+    .filter((h) => /^[0-9a-f]{64}$/.test(h))
+    .sort();
+  const tags: string[][] = [
+    ["t", "delete"],
+    ["expiration", String(now + 600)],
+    ...uniq.map((h) => ["x", h] as string[]),
+  ];
+  const srv = gittrPagesBlossomServerTag();
+  if (srv) tags.push(srv);
+  return {
+    kind: 24242,
+    created_at: now,
+    pubkey: params.pubkeyHex.toLowerCase(),
+    tags,
+    content:
+      uniq.length === 1
+        ? "gittr Pages: remove previous file"
+        : `gittr Pages: remove ${uniq.length} previous files`,
+    id: "",
+    sig: "",
+  };
+}
+
+async function collectPublisherPageManifests(
+  subscribe: PublishNamedSiteManifestOptions["subscribe"],
+  relays: string[],
+  pubkeyHex: string
+): Promise<{ tags?: unknown; created_at?: number; id?: string }[]> {
+  if (!relays.length) return [];
+  return new Promise((resolve) => {
+    const byId = new Map<string, { tags?: unknown; created_at?: number; id?: string }>();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      resolve([...byId.values()]);
+    };
+    const timer = setTimeout(finish, 8000);
+    let unsub: (() => void) | undefined;
+    try {
+      unsub = subscribe(
+        [
+          {
+            kinds: [KIND_NSITE_NAMED],
+            authors: [pubkeyHex.toLowerCase()],
+            limit: 80,
+          },
+        ],
+        relays,
+        (event) => {
+          const ev = event as { id?: string; tags?: unknown; created_at?: number };
+          if (ev?.id) byId.set(ev.id, ev);
+        },
+        undefined,
+        () => {
+          clearTimeout(timer);
+          setTimeout(finish, 400);
+        }
+      );
+    } catch {
+      clearTimeout(timer);
+      finish();
+    }
+  });
+}
+
+async function removeReplacedPageFiles(args: {
+  signEvent: (event: UnsignedEvent | NostrEvent) => Promise<NostrEvent>;
+  pubkeyHex: string;
+  stale: string[];
+  onProgress?: (message: string) => void;
+}): Promise<void> {
+  if (args.stale.length === 0) return;
+  args.onProgress?.(
+    `Removing ${args.stale.length} file(s) the new version replaced…`
+  );
+  const unsigned = buildUnsignedBlossomDeleteAuth({
+    pubkeyHex: args.pubkeyHex,
+    sha256Hex: args.stale,
+  });
+  unsigned.id = getEventHash(unsigned);
+  let signed: NostrEvent;
+  try {
+    signed = await args.signEvent(unsigned);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    args.onProgress?.(
+      `Left the previous files in place: delete approval was cancelled (${msg})`
+    );
+    return;
+  }
+  let removed = 0;
+  for (const sha256 of args.stale) {
+    try {
+      const res = await fetch("/api/gittr-pages/blossom-proxy-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authEvent: signed, sha256 }),
+      });
+      if (res.ok) removed++;
+    } catch {
+      /* one file failing must not undo the new page */
+    }
+  }
+  args.onProgress?.(
+    removed === args.stale.length
+      ? `Removed ${removed} replaced file(s).`
+      : `Removed ${removed} of ${args.stale.length} replaced file(s). The rest stay until the next publish.`
   );
 }
 
@@ -830,6 +968,24 @@ export async function publishNamedSiteManifest(
     };
   }
 
+  let replacedHashes: string[] = [];
+  try {
+    onProgress?.("Checking the previous version…");
+    const earlier = await collectPublisherPageManifests(
+      subscribe,
+      defaultRelays,
+      signerPk
+    );
+    const previous = newestManifestForDTag(earlier, dTag);
+    replacedHashes = staleBlossomHashes({
+      previousHashes: previous ? manifestPathHashes(previous.tags) : [],
+      nextHashes: uploads.map((u) => u.sha256),
+      stillUsedHashes: hashesUsedByOtherSites(earlier, dTag),
+    });
+  } catch {
+    replacedHashes = [];
+  }
+
   const serverTagUrl = gittrPagesBlossomOrigin();
 
   const tags: string[][] = [
@@ -886,6 +1042,19 @@ export async function publishNamedSiteManifest(
 
   if (!manifest.id) {
     return { ok: false, error: "Manifest event missing id after signing." };
+  }
+
+  if (pub.confirmed && replacedHashes.length > 0) {
+    await removeReplacedPageFiles({
+      signEvent,
+      pubkeyHex: signerPk,
+      stale: replacedHashes,
+      onProgress,
+    });
+  } else if (!pub.confirmed && replacedHashes.length > 0) {
+    onProgress?.(
+      "The new version was sent, but a relay did not confirm it yet. Previous files were left in place."
+    );
   }
 
   const blossomOrigin = normalizeServerUrl(gittrPagesBlossomOrigin());
