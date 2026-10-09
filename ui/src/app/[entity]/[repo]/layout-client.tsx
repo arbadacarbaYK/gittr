@@ -1678,6 +1678,16 @@ export default function RepoLayoutClient({
     return (
       <section className="mx-auto max-w-[95%] px-4 py-16 md:px-6 xl:max-w-[90%] 2xl:max-w-[85%]">
         <div className="mx-auto max-w-xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-6 text-center">
+          <img
+            src="https://media.tenor.com/WUVEKHTvdbEAAAAM/cat-black-cat.gif"
+            alt="A black cat filing its nails"
+            width={220}
+            height={220}
+            className="mx-auto mb-4 h-[220px] w-[220px] rounded-md"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
           <h1 className="mb-2 text-lg font-semibold text-[var(--color-text-primary)]">
             Unsupported repository identifier
           </h1>
