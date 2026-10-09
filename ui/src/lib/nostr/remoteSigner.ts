@@ -18,7 +18,9 @@ import {
 import { isGraspServer } from "../utils/grasp-servers";
 
 import {
+  bunkerDialSettleMs,
   collectActiveMainPoolUrls,
+  collectMainPoolUrlsToSuspend,
   isBunkerMainPoolBlocked,
   popMainPoolBunkerPause,
   pushMainPoolBunkerPause,
@@ -1121,6 +1123,12 @@ export class RemoteSignerManager {
   private bunkerDialUriOnly = false;
   /** True while sign_event is dialing the rest of Amber's bunker relays. */
   private signerDialBusy = false;
+  /**
+   * Page relays removed for this sign. Null means we did not pause the pool.
+   * Stays set until signEvent finishes so a failed warm cannot put ~21 sockets
+   * back in the same tick as the signing dial.
+   */
+  private pageRelaysHeld: string[] | null = null;
   /** Bunker URI relays dialed before the last sign_event (open or refused). */
   private lastSignAttempted: string[] = [];
   /** Last direct-pool publish targets — used for sign_event timeout diagnostics. */
@@ -1812,6 +1820,7 @@ export class RemoteSignerManager {
     this.detachBunkerTransportRecovery();
     this.bunkerWarmInFlight = null;
     this.bunkerDialInFlight = null;
+    this.releasePageRelaysAfterBunkerDial();
     this.resetDirectPool();
   }
 
@@ -1821,6 +1830,19 @@ export class RemoteSignerManager {
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
     // Warm bunker transport first (do not block on silent connect ack).
     // sign_event itself is the live Amber probe — keep the phone unlocked.
+    try {
+      return await this.signEventWhilePageRelaysYield(event);
+    } finally {
+      // Failed warms used to restore the Code tab's relays here, before the
+      // signing dial. Those sockets came back CONNECTING, the next dial
+      // aborted them, and every Amber relay stayed CLOSED.
+      this.releasePageRelaysAfterBunkerDial();
+    }
+  }
+
+  private async signEventWhilePageRelaysYield(
+    event: UnsignedEvent
+  ): Promise<NostrEvent> {
     await this.ensureRpcHealthy();
     const session = this.requireSession();
     const payload = toSignEventTemplate(event);
@@ -1864,7 +1886,8 @@ export class RemoteSignerManager {
         } catch {
           /* ignore */
         }
-        void this.ensureDirectTransport(session).catch(() => undefined);
+        // Do not redial here. signEvent is about to put the page relays
+        // back; a background dial in that window closes every bunker socket.
         throw new Error(
           signTimeoutUserMessage({
             publishedUrls: published,
@@ -1957,111 +1980,139 @@ export class RemoteSignerManager {
    */
   private async prepareTransportForSession(session: RemoteSignerSession) {
     // Code-tab HTTP (clone/list/file-content) can saturate browser sockets so
-    // every bunker dial lands CLOSED. Free collisions and pause briefly first.
+    // every bunker dial lands CLOSED. Free collisions and keep the page
+    // relays down until signEvent finishes — restoring them in this finally
+    // put ~21 CONNECTING sockets under the signing dial.
     const dialTargets = this.buildBunkerTransportTargets(session);
     const alreadyOpen = await this.listDirectOpenRelays(dialTargets);
-    let suspendedMainPool: string[] = [];
-    let pausedMainPool = false;
     if (alreadyOpen.length === 0) {
-      pausedMainPool = true;
-      pushMainPoolBunkerPause();
       this.claimBunkerHostsForDirectPool(
         getSessionUriRelays(session).length > 0
           ? getSessionUriRelays(session)
           : dialTargets
       );
-      await waitForGitSourceHttpIdle(5000);
       console.warn("[RemoteSigner] Warming bunker sockets", {
         gitSourceHttpInflight: gitSourceHttpInflight(),
         mainPool: (this.deps.getRelayStatuses?.() || []).map(
           ([url, status]) => `${normalizeRelayUrl(url)}:${status}`
         ),
       });
-      suspendedMainPool = this.suspendMainPoolForBunkerDial();
-      await this.waitForMainPoolIdle();
-      // removeRelay drops the pool entry before the browser releases the
-      // handshake. 21 aborted sockets need longer than 600ms or the next
-      // bunker dial lands CLOSED again.
-      const settleMs = Math.min(
-        3000,
-        500 + suspendedMainPool.length * 100
+      await this.holdPageRelaysForBunkerDial();
+    }
+    let open = await this.ensureBunkerSocketsOpen(session);
+    if (open.length === 0) {
+      console.warn(
+        "[RemoteSigner] First bunker dial closed every relay — freeing page sockets and trying fast relays"
       );
+      if (!this.pageRelaysHeld) {
+        await this.holdPageRelaysForBunkerDial();
+      }
+      const allUrls = (this.deps.getRelayStatuses?.() || []).map(
+        ([url]) => url
+      );
+      for (const url of allUrls) {
+        try {
+          this.deps.removeRelay?.(url);
+        } catch {
+          /* ignore */
+        }
+        if (this.pageRelaysHeld && !this.pageRelaysHeld.includes(url)) {
+          this.pageRelaysHeld.push(url);
+        }
+      }
+      await this.waitForMainPoolIdle(4000);
+      const rescueSettleMs = bunkerDialSettleMs(allUrls.length);
+      if (rescueSettleMs > 0) {
+        await new Promise((r) => setTimeout(r, rescueSettleMs));
+      }
+      // Do not replace the pool here. A new SimplePool makes every relay
+      // look "missing" and drops a socket that is still finishing.
+      const rescue = uniqueNormalizedRelays([
+        "wss://nos.lol",
+        GITTR_BUNKER_RELAY,
+        ...bunkerRescueRelays(getSessionUriRelays(session)),
+      ]).slice(0, 4);
+      open = await this.dialRelaysWithConcurrency(rescue, 1, 12000);
+    }
+    if (open.length === 0) {
+      const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
+      console.error(
+        "[RemoteSigner] Bunker relay statuses after warm-up:",
+        JSON.stringify(statuses)
+      );
+      const cachedPubkey =
+        typeof session.userPubkey === "string" &&
+        HEX_64_RE.test(session.userPubkey);
+      // Settings → Delete used to stop here. Push still reached Amber
+      // because a live socket skipped this warm. A saved Amber identity
+      // must continue into sign_event, which dials every bunker relay.
+      // Page relays stay down for that dial (released in signEvent).
+      if (cachedPubkey) {
+        console.warn(
+          "[RemoteSigner] No bunker socket yet — sign_event will dial Amber's relays"
+        );
+        return;
+      }
+      throw new Error(
+        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
+      );
+    }
+    this.lastBunkerWarmAt = Date.now();
+    this.attachBunkerTransportRecovery();
+    try {
+      await this.startSubscription(session, open);
+    } catch (error) {
+      console.warn(
+        "[RemoteSigner] Failed to start subscription during transport warm-up:",
+        error
+      );
+    }
+    if (typeof window !== "undefined" && window.nostr) {
+      if (!this.originalNostr || window.nostr !== this.adapter) {
+        this.originalNostr = window.nostr;
+      }
+    }
+    this.applyNip07Adapter();
+    this.startBunkerKeepalive();
+  }
+
+  /**
+   * Pause the main pool and drop every page socket, including CLOSED ones
+   * that are about to reconnect. Idempotent for the rest of this sign.
+   */
+  private async holdPageRelaysForBunkerDial(): Promise<void> {
+    const alreadyHeld = this.pageRelaysHeld != null;
+    if (!alreadyHeld) {
+      this.pageRelaysHeld = [];
+      pushMainPoolBunkerPause();
+    }
+    await waitForGitSourceHttpIdle(5000);
+    const urls = this.suspendMainPoolForBunkerDial();
+    await this.waitForMainPoolIdle();
+    const settleMs = bunkerDialSettleMs(urls.length);
+    if (settleMs > 0) {
       await new Promise((r) => setTimeout(r, settleMs));
     }
-    try {
-      let open = await this.ensureBunkerSocketsOpen(session);
-      if (open.length === 0) {
-        console.warn(
-          "[RemoteSigner] First bunker dial closed every relay — freeing page sockets and trying fast relays"
-        );
-        const allUrls = (this.deps.getRelayStatuses?.() || []).map(
-          ([url]) => url
-        );
-        for (const url of allUrls) {
-          try {
-            this.deps.removeRelay?.(url);
-          } catch {
-            /* ignore */
-          }
-        }
-        for (const url of allUrls) {
-          if (!suspendedMainPool.includes(url)) suspendedMainPool.push(url);
-        }
-        await this.waitForMainPoolIdle(4000);
-        const rescueSettleMs = Math.min(2500, 800 + allUrls.length * 60);
-        await new Promise((r) => setTimeout(r, rescueSettleMs));
-        // Do not replace the pool here. A new SimplePool makes every relay
-        // look "missing" and drops a socket that is still finishing.
-        const rescue = uniqueNormalizedRelays([
-          "wss://nos.lol",
-          GITTR_BUNKER_RELAY,
-          ...bunkerRescueRelays(getSessionUriRelays(session)),
-        ]).slice(0, 4);
-        open = await this.dialRelaysWithConcurrency(rescue, 1, 12000);
-      }
-      if (open.length === 0) {
-        const statuses = await this.snapshotDirectRelayStatuses(dialTargets);
-        console.error(
-          "[RemoteSigner] Bunker relay statuses after warm-up:",
-          JSON.stringify(statuses)
-        );
-        const cachedPubkey =
-          typeof session.userPubkey === "string" &&
-          HEX_64_RE.test(session.userPubkey);
-        // Settings → Delete used to stop here. Push still reached Amber
-        // because a live socket skipped this warm. A saved Amber identity
-        // must continue into sign_event, which dials every bunker relay.
-        if (cachedPubkey) {
-          console.warn(
-            "[RemoteSigner] No bunker socket yet — sign_event will dial Amber's relays"
-          );
-          return;
-        }
-        throw new Error(
-          "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
-        );
-      }
-      this.lastBunkerWarmAt = Date.now();
-      this.attachBunkerTransportRecovery();
-      try {
-        await this.startSubscription(session, open);
-      } catch (error) {
-        console.warn(
-          "[RemoteSigner] Failed to start subscription during transport warm-up:",
-          error
-        );
-      }
-      if (typeof window !== "undefined" && window.nostr) {
-        if (!this.originalNostr || window.nostr !== this.adapter) {
-          this.originalNostr = window.nostr;
-        }
-      }
-      this.applyNip07Adapter();
-      this.startBunkerKeepalive();
-    } finally {
-      if (pausedMainPool) popMainPoolBunkerPause();
-      this.resumeMainPoolAfterBunkerDial(suspendedMainPool);
+    const held = this.pageRelaysHeld;
+    if (!held) return;
+    for (const url of urls) {
+      if (!held.includes(url)) held.push(url);
     }
+    if (!alreadyHeld || urls.length > 0) {
+      console.log(
+        "[RemoteSigner] Page relays stay closed until Amber's signing dial finishes",
+        { held: held.length, swept: urls.length }
+      );
+    }
+  }
+
+  /** Put the Code tab's relays back. Safe to call more than once. */
+  private releasePageRelaysAfterBunkerDial(): void {
+    if (!this.pageRelaysHeld) return;
+    const urls = this.pageRelaysHeld;
+    this.pageRelaysHeld = null;
+    popMainPoolBunkerPause();
+    this.resumeMainPoolAfterBunkerDial(urls);
   }
 
   /**
@@ -2195,12 +2246,24 @@ export class RemoteSignerManager {
               batch.length
             );
           if (opts.topUpAll) {
-            const suspended = this.suspendMainPoolForBunkerDial();
-            try {
-              await this.waitForMainPoolIdle(4000);
+            // A visibility reconnect must not pop a sign that already holds
+            // the page relays. That sign releases them when it finishes.
+            if (this.pageRelaysHeld) {
               await dialBatch();
-            } finally {
-              this.resumeMainPoolAfterBunkerDial(suspended);
+            } else {
+              pushMainPoolBunkerPause();
+              const suspended = this.suspendMainPoolForBunkerDial();
+              try {
+                await this.waitForMainPoolIdle(4000);
+                const settleMs = bunkerDialSettleMs(suspended.length);
+                if (settleMs > 0) {
+                  await new Promise((r) => setTimeout(r, settleMs));
+                }
+                await dialBatch();
+              } finally {
+                popMainPoolBunkerPause();
+                this.resumeMainPoolAfterBunkerDial(suspended);
+              }
             }
           } else {
             await dialBatch();
@@ -2216,10 +2279,26 @@ export class RemoteSignerManager {
 
       // Page-load warm leaves CLOSED cache entries. A later repo (pyramid
       // after gitnostr) then redials those dead sockets and never reaches
-      // the rest of the bunker URI. One fresh pool, then walk the full list.
+      // the rest of the bunker URI. Replace the pool only when nothing is
+      // still CONNECTING — resetDirectPool closes those and the browser
+      // reports "closed before the connection is established".
       if (!uriFirstOnly) {
-        this.resetDirectPool();
-        await new Promise((r) => setTimeout(r, 400));
+        const snapBeforeReset = await this.snapshotDirectRelayStatuses(
+          this.buildBunkerTransportTargets(session)
+        );
+        const anyLive = Object.values(snapBeforeReset).some(
+          (status) => status === 0 || status === 1
+        );
+        if (!anyLive) {
+          this.resetDirectPool();
+          await new Promise((r) => setTimeout(r, 400));
+        } else {
+          for (const [url, status] of Object.entries(snapBeforeReset)) {
+            if (status !== 0 && status !== 1 && status !== "missing") {
+              this.dropDirectRelay(url);
+            }
+          }
+        }
       }
 
       const waves = planBunkerDialWaves(uriRelays);
@@ -2325,6 +2404,7 @@ export class RemoteSignerManager {
   }
 
   private clearSession() {
+    this.releasePageRelaysAfterBunkerDial();
     this.rpcHealthy = false;
     this.healthProbeInFlight = null;
     this.bunkerWarmInFlight = null;
@@ -2695,9 +2775,11 @@ export class RemoteSignerManager {
    */
   private suspendMainPoolForBunkerDial(): string[] {
     if (!this.deps.removeRelay || !this.deps.getRelayStatuses) return [];
-    const active = collectActiveMainPoolUrls(this.deps.getRelayStatuses());
-    if (active.length === 0) return [];
-    for (const url of active) {
+    // Include CLOSED (3). Those relays still have a reconnect timer, and
+    // that timer opens a socket during the bunker dial.
+    const urls = collectMainPoolUrlsToSuspend(this.deps.getRelayStatuses());
+    if (urls.length === 0) return [];
+    for (const url of urls) {
       try {
         this.deps.removeRelay(url);
       } catch {
@@ -2705,10 +2787,10 @@ export class RemoteSignerManager {
       }
     }
     console.warn(
-      `[RemoteSigner] Suspended ${active.length} main-pool socket(s) so Amber can dial`,
-      active.map((u) => normalizeRelayUrl(u))
+      `[RemoteSigner] Suspended ${urls.length} main-pool socket(s) so Amber can dial`,
+      urls.map((u) => normalizeRelayUrl(u))
     );
-    return active;
+    return urls;
   }
 
   private resumeMainPoolAfterBunkerDial(urls: string[]) {
@@ -2913,8 +2995,6 @@ export class RemoteSignerManager {
     uriRelays: string[]
   ): Promise<string[]> {
     this.signerDialBusy = true;
-    let suspended: string[] = [];
-    let pausedForCover = false;
     try {
       if (this.bunkerDialInFlight) {
         try {
@@ -2933,8 +3013,6 @@ export class RemoteSignerManager {
       );
       const missing = order.filter((u) => !have.has(u));
       if (missing.length > 0) {
-        pausedForCover = true;
-        pushMainPoolBunkerPause();
         console.log(
           "[RemoteSigner] Opening every Amber bunker relay before the signing request",
           {
@@ -2943,8 +3021,10 @@ export class RemoteSignerManager {
             uri: order,
           }
         );
-        suspended = this.suspendMainPoolForBunkerDial();
-        await this.waitForMainPoolIdle(4000);
+        // Reuse the warm's hold. A second suspend here used to abort the
+        // page relays that the warm had just restored, then dial with no
+        // settle — every bunker relay came back status 3.
+        await this.holdPageRelaysForBunkerDial();
         await this.dialRelaysWithConcurrency(
           missing,
           BUNKER_URI_DIAL_CONCURRENCY,
@@ -2985,8 +3065,6 @@ export class RemoteSignerManager {
       return open;
     } finally {
       this.signerDialBusy = false;
-      if (pausedForCover) popMainPoolBunkerPause();
-      this.resumeMainPoolAfterBunkerDial(suspended);
     }
   }
 

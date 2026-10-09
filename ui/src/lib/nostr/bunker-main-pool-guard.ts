@@ -28,13 +28,24 @@ export function isMainPoolPausedForBunker(): boolean {
 }
 
 /**
- * Subscriptions must keep waiting for the whole bunker pause, not for 15s
- * after the page loaded. Settings → Delete pauses the pool while Amber dials.
- * A clock that started at page load has already expired by then, so the page
- * reopens its relays during that dial and every bunker socket closes.
+ * Subscriptions must keep waiting for the whole bunker pause, not for a short
+ * clock that started at page load. Settings → Delete and Push both pause the
+ * pool while Amber dials. A cap of ~35s expired during a slow signing dial
+ * (serial bunker relays, then the Amber approval wait), the page reopened its
+ * relays, and every bunker socket closed.
  * The wait starts the first time this subscribe sees the pause.
  */
-export const MAIN_POOL_PAUSE_WAIT_MS = 35000;
+export const MAIN_POOL_PAUSE_WAIT_MS = 150000;
+
+/**
+ * How long to wait after aborting page sockets before the first bunker dial.
+ * The browser does not free a handshake the moment removeRelay returns.
+ * 21 aborted sockets need longer than a few hundred milliseconds.
+ */
+export function bunkerDialSettleMs(suspendedCount: number): number {
+  if (suspendedCount <= 0) return 0;
+  return Math.min(3000, 500 + suspendedCount * 100);
+}
 
 export function mainPoolSubscribeShouldWait(
   paused: boolean,
@@ -148,6 +159,44 @@ export function collectActiveMainPoolUrls(
   return statuses
     .filter(([, status]) => status === 0 || status === 1 || status === 2)
     .map(([url]) => url);
+}
+
+/**
+ * Every main-pool entry, including CLOSED (3).
+ * nostr-relaypool reconnects a CLOSED relay on its own (the first retry is
+ * immediate). Those sockets are not "active" yet, so a dial that only
+ * suspends CONNECTING/OPEN/CLOSING misses them. They open during the bunker
+ * dial and every Amber socket lands CLOSED.
+ */
+export function collectMainPoolUrlsToSuspend(
+  statuses: Array<[string, number]>
+): string[] {
+  return statuses.map(([url]) => url);
+}
+
+/**
+ * removeRelay used to leave a reconnect timer armed. That timer calls
+ * connect() on a relay we already dropped, opens a WebSocket the pool map
+ * no longer lists, and the bunker dial loses the browser slot.
+ * Call this on the pool instance before close().
+ */
+export function silenceRelayPoolInstance(
+  instance:
+    | {
+        relay?: {
+          closedByClient?: boolean;
+          dontAutoReconnect?: boolean;
+          connect?: () => Promise<void>;
+        };
+      }
+    | null
+    | undefined
+): void {
+  const inner = instance?.relay;
+  if (!inner) return;
+  inner.closedByClient = true;
+  inner.dontAutoReconnect = true;
+  inner.connect = async () => {};
 }
 
 /** Strip bunker-owned hosts from a main-pool subscribe/publish relay list. */

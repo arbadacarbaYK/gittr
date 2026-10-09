@@ -32,6 +32,7 @@ import {
   collectBlockedRelayPoolUrls,
   consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
+  silenceRelayPoolInstance,
   holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
   isMainPoolPausedForBunker,
@@ -290,8 +291,15 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         keys.add(poolUrl);
       }
     }
+    const poolMap = (relayPool as { relayByUrl?: Map<string, unknown> })
+      .relayByUrl;
     for (const key of keys) {
       try {
+        // close() sets closedByClient, but a reconnect timer already queued
+        // still calls connect() and opens a socket the pool no longer tracks.
+        silenceRelayPoolInstance(
+          poolMap?.get(key) as Parameters<typeof silenceRelayPoolInstance>[0]
+        );
         relayPool.removeRelay(key);
       } catch {
         /* ignore */

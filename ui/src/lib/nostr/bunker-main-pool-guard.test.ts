@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  bunkerDialSettleMs,
   collectActiveMainPoolUrls,
   collectBlockedRelayPoolUrls,
+  collectMainPoolUrlsToSuspend,
+  silenceRelayPoolInstance,
   consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
   holdMainPoolForColdBunkerStart,
@@ -94,6 +97,49 @@ describe("bunker-main-pool-guard", () => {
         "WSS://NOS.LOL",
       ])
     ).toEqual(["wss://relay.primal.net/", "WSS://NOS.LOL"]);
+  });
+
+  it("suspends CLOSED relays too — they reconnect on their own", () => {
+    const statuses: Array<[string, number]> = [
+      ["wss://relay.gittr.space", 1],
+      ["wss://nos.lol", 3],
+      ["wss://relay.damus.io", 0],
+    ];
+    expect(collectActiveMainPoolUrls(statuses)).toEqual([
+      "wss://relay.gittr.space",
+      "wss://relay.damus.io",
+    ]);
+    expect(collectMainPoolUrlsToSuspend(statuses)).toEqual([
+      "wss://relay.gittr.space",
+      "wss://nos.lol",
+      "wss://relay.damus.io",
+    ]);
+  });
+
+  it("waits longer after more aborted page sockets", () => {
+    expect(bunkerDialSettleMs(0)).toBe(0);
+    expect(bunkerDialSettleMs(1)).toBe(600);
+    expect(bunkerDialSettleMs(21)).toBe(2600);
+    expect(bunkerDialSettleMs(40)).toBe(3000);
+  });
+
+  it("stops a removed relay from reconnecting", () => {
+    let opened = 0;
+    const instance = {
+      relay: {
+        closedByClient: false,
+        dontAutoReconnect: false,
+        connect: async () => {
+          opened += 1;
+        },
+      },
+    };
+    silenceRelayPoolInstance(instance);
+    return instance.relay.connect().then(() => {
+      expect(opened).toBe(0);
+      expect(instance.relay.closedByClient).toBe(true);
+      expect(instance.relay.dontAutoReconnect).toBe(true);
+    });
   });
 
   it("collects CONNECTING, OPEN, and CLOSING sockets, not CLOSED", () => {
