@@ -1,0 +1,121 @@
+widget "nostr apps" {
+  meta {
+    description: "Newest Nostr apps on gittr, with search. GitHub stars show only when the listing points at GitHub."
+    version: "1.0"
+    license: "MIT"
+    category: "dev"
+    owl: 5
+  }
+  size: 6x5
+  minSize: 4x4
+
+  state who = "" persist
+  state q = ""
+  source raw = http("https://gittr.space/api/widgets/launcher") every 15m json timeout 20s status
+  source trust = http("https://gittr.space/api/widgets/wot?set=apps&from=${who}") every 30m json timeout 15s status
+  let data = raw.ok ? raw.out : null
+  let hops = trust.ok ? trust.out.hops : null
+  let pool = data.apps ?? []
+  let query = lower(trim(q))
+  let matched = query == "" ? pool : pool.filter(a => contains(a.hay, query))
+  let shown = take(matched, 6)
+  let searchUrl = "https://gittr.space/apps?q=${replace(trim(q), ' ', '+')}"
+
+  component AppRow(name, desc, meta, href, hop) {
+    Column {
+      gap: 0
+      onTap: url(href)
+      Row {
+        Text { text: name; fontSize: 13; bold: true; maxLines: 1; weight: 1 }
+        if hop != null {
+          Text {
+            text: "${hop}"
+            fontSize: 11
+            bold: true
+            width: 16
+            align: end
+            color: hop == 1 ? green : hop == 2 ? cyan : hop == 3 ? yellow : orange
+          }
+        }
+      }
+      if desc != "" { Text { text: desc; fontSize: 11; color: muted; maxLines: 2 } }
+      if meta != "" { Text { text: meta; fontSize: 10; color: accent; maxLines: 1 } }
+    }
+  }
+
+  Column {
+    gap: 4
+    Row {
+      Text {
+        text: "nostr apps · latest"
+        style: muted
+        weight: 1
+        maxLines: 1
+        onTap: screen()
+      }
+      Text {
+        text: "gittr"
+        fontSize: 12
+        color: accent
+        onTap: url("https://gittr.space")
+      }
+    }
+    Input {
+      placeholder: "search apps"
+      text: q
+      onChange: q = value
+      onSubmit: url(searchUrl)
+    }
+    if data == null {
+      Text { text: raw == null ? "loading…" : "gittr is offline"; style: small; color: muted }
+      if raw != null { Button { text: "try again"; onTap: refresh() } }
+    } else if len(shown) == 0 {
+      Text { text: "nothing in the latest apps"; style: small; color: muted }
+      Button { text: "search on gittr"; onTap: url(searchUrl) }
+    } else {
+      Column {
+        scroll: true
+        weight: 1
+        gap: 6
+        for a in shown key a.url {
+          let hop = hops[a.pubkey]
+          AppRow {
+            name: a.name
+            desc: a.desc
+            meta: a.meta
+            href: a.url
+            hop: hop
+          }
+        }
+      }
+    }
+  }
+
+  screen {
+    title: "nostr apps"
+    Column {
+      scroll: true
+      gap: 8
+      Input {
+        placeholder: "npub1… for trust marks"
+        text: who
+        onSubmit: { who = trim(value); refresh() }
+      }
+      for a in matched key a.url {
+        let hop = hops[a.pubkey]
+        AppRow {
+          name: a.name
+          desc: a.desc
+          meta: a.meta
+          href: a.url
+          hop: hop
+        }
+      }
+      Row {
+        gap: 12
+        Text { text: "app store"; color: accent; onTap: url("https://gittr.space/apps") }
+        Text { text: "help"; color: accent; onTap: url("https://gittr.space/help#publish-pages-apps") }
+      }
+    }
+  }
+}

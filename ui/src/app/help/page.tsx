@@ -571,6 +571,15 @@ export default function HelpPage() {
                 Install as App (PWA)
               </Link>
             </li>
+            <li>
+              •{" "}
+              <Link
+                href="#launcher-widgets"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Phone home screen
+              </Link>
+            </li>
           </ul>
         </div>
 
@@ -1035,6 +1044,73 @@ export default function HelpPage() {
               Note: In-app browsers (Telegram/Twitter, etc.) often block PWA
               install. Open in the system browser. Offline mode only shows a
               fallback screen and does not replace full online functionality.
+            </p>
+          </div>
+        </HelpSection>
+
+        <HelpSection
+          id="launcher-widgets"
+          title={<>Phone home screen</>}
+        >
+          <div className="space-y-2">
+            <p>
+              gittr publishes two tiles for{" "}
+              <a
+                href="https://github.com/SimonSchubert/omalauncher"
+                className="text-purple-400 hover:text-purple-300"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Omalauncher
+              </a>
+              , the Android home screen that follows Omarchy. They use the
+              same public lists as this site. They follow the phone&apos;s
+              theme. Linux is not required.
+            </p>
+            <HelpTopic title={<>Nostr git</>}>
+              <p>
+                The busiest public repos, same ranking as Most Active on the
+                home page. The yellow number is that activity. A description
+                shows when the repo announcement has one. Nostr stars and
+                GitHub stars show on the small line only when gittr has
+                actually counted them. Tap a row to open the repo. Tap the
+                title for the busiest people. Tap gittr to come back here.
+              </p>
+            </HelpTopic>
+            <HelpTopic title={<>Nostr apps</>}>
+              <p>
+                The newest apps in the{" "}
+                <Link
+                  href="/apps"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  app store
+                </Link>
+                , with a search box. The small line is the platform and topic.
+                A GitHub star count is added only when that listing points at
+                GitHub. gittr does not have Zapstore install totals, so the
+                tile does not invent a popularity number. Tap the title for
+                the rest of the list.
+              </p>
+            </HelpTopic>
+            <HelpTopic title={<>Trust marks</>}>
+              <p>
+                Open a tile full screen and save your npub. A small number
+                then appears beside people you can reach: 1 if you follow
+                them, otherwise the hop count. Nothing shows for you, for
+                someone outside your network, or before that npub is saved.
+                The npub stays on the phone.
+              </p>
+            </HelpTopic>
+            <p className="text-sm text-gray-400">
+              Install notes and the tile files:{" "}
+              <a
+                href="https://gittr.space/omalauncher/README.md"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                gittr.space/omalauncher
+              </a>
+              .
             </p>
           </div>
         </HelpSection>

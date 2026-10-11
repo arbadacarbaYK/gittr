@@ -1,0 +1,125 @@
+widget "nostr git" {
+  meta {
+    description: "Most active public repos on Nostr git, from gittr. Tap a row to open it, the title for people, gittr for the forge."
+    version: "1.0"
+    license: "MIT"
+    category: "dev"
+    owl: 5
+  }
+  size: 6x4
+  minSize: 4x3
+
+  state who = "" persist
+  source raw = http("https://gittr.space/api/widgets/launcher") every 15m json timeout 20s status
+  source trust = http("https://gittr.space/api/widgets/wot?set=git&from=${who}") every 30m json timeout 15s status
+  let data = raw.ok ? raw.out : null
+  let hops = trust.ok ? trust.out.hops : null
+  let repos = data.repos ?? []
+  let people = data.people ?? []
+
+  component RepoRow(name, desc, meta, count, href, hop) {
+    Column {
+      gap: 0
+      onTap: url(href)
+      Row {
+        Text { text: name; fontSize: 13; bold: true; maxLines: 1; weight: 1 }
+        if hop != null {
+          Text {
+            text: "${hop}"
+            fontSize: 11
+            bold: true
+            width: 16
+            align: end
+            color: hop == 1 ? green : hop == 2 ? cyan : hop == 3 ? yellow : orange
+          }
+        }
+        Text {
+          text: "${count}"
+          fontSize: 11
+          color: yellow
+          width: 48
+          align: end
+        }
+      }
+      if desc != "" { Text { text: desc; fontSize: 11; color: muted; maxLines: 2 } }
+      if meta != "" { Text { text: meta; fontSize: 10; color: accent; maxLines: 1 } }
+    }
+  }
+
+  Column {
+    gap: 4
+    Row {
+      Text {
+        text: "nostr git · most active"
+        style: muted
+        weight: 1
+        maxLines: 1
+        onTap: screen()
+      }
+      Text {
+        text: "gittr"
+        fontSize: 12
+        color: accent
+        onTap: url("https://gittr.space")
+      }
+    }
+    if data == null {
+      Text { text: raw == null ? "loading…" : "gittr is offline"; style: small; color: muted }
+      if raw != null { Button { text: "try again"; onTap: refresh() } }
+    } else if len(repos) == 0 {
+      Text { text: "no active repos yet"; style: small; color: muted }
+    } else {
+      Column {
+        scroll: true
+        weight: 1
+        gap: 6
+        for r in repos key r.url {
+          let hop = hops[r.pubkey]
+          RepoRow {
+            name: r.name
+            desc: r.desc
+            meta: r.meta
+            count: r.countLabel
+            href: r.url
+            hop: hop
+          }
+        }
+      }
+    }
+  }
+
+  screen {
+    title: "most active people"
+    Column {
+      scroll: true
+      gap: 8
+      Text {
+        text: "Your npub stays on this phone. gittr uses it only to measure distance."
+        style: small
+        color: muted
+      }
+      Input {
+        placeholder: "npub1… for trust marks"
+        text: who
+        onSubmit: { who = trim(value); refresh() }
+      }
+      for u in people key u.url {
+        let hop = hops[u.pubkey]
+        RepoRow {
+          name: u.name
+          desc: u.desc
+          meta: u.meta
+          count: u.countLabel
+          href: u.url
+          hop: hop
+        }
+      }
+      Row {
+        gap: 12
+        Text { text: "explore"; color: accent; onTap: url("https://gittr.space/explore") }
+        Text { text: "what is nostr git"; color: accent; onTap: url("https://gittr.space/nostr-git") }
+        Text { text: "help"; color: accent; onTap: url("https://gittr.space/help#launcher-widgets") }
+      }
+    }
+  }
+}

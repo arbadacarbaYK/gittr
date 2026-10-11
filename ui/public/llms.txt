@@ -13,6 +13,7 @@ gittr is a web forge for git on Nostr (NIP-34 / GRASP). Repo names, issues, and 
 - Published Pages: https://gittr.space/pages
 - Create or import a repo: https://gittr.space/new
 - Help: https://gittr.space/help
+- Omalauncher tiles: https://gittr.space/omalauncher/README.md
 - Lightning bounties: https://gittr.space/bounty-hunt
 - Legal: https://gittr.space/legal
 

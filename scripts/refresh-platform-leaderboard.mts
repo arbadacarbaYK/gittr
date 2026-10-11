@@ -26,6 +26,17 @@ async function main(): Promise<void> {
   console.log(
     `[platform-leaderboard] ok topRepos=${snap.topRepos.length} topUsers=${snap.topUsers.length} recentRepos=${snap.recentRepos.length} activities=${snap.recentActivities.length} durationMs=${Date.now() - started} at=${snap.at}`
   );
+  try {
+    const { warmLauncherWidgetEnrichment } = await import(
+      "../ui/src/lib/widgets/launcher-enrich"
+    );
+    const enrich = await warmLauncherWidgetEnrichment(snap);
+    console.log(
+      `[platform-leaderboard] widget repos=${Object.keys(enrich.repos).length} apps=${Object.keys(enrich.apps).length}`
+    );
+  } catch (error) {
+    console.warn("[platform-leaderboard] widget enrich skipped", error);
+  }
 }
 
 main().catch((err: unknown) => {

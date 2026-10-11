@@ -81,6 +81,8 @@ The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr r
 
 This installs `gittr-leaderboard-refresh.timer` (hourly) and a oneshot that runs `npx tsx /opt/ngit/scripts/refresh-platform-leaderboard.mts` with `WorkingDirectory=/opt/ngit/ui` (`MemoryMax=1200M`). Unit files live in `infra/systemd/`. Local `yarn dev` with no snapshot file is covered in [LOCAL_SETUP.md](LOCAL_SETUP.md).
 
+The same job writes `ui/data/launcher-widget-enrich.json` (descriptions, Nostr stars, GitHub stars for the tile) and `ui/data/launcher-widget-names.json`. Those files are server cache. Do not upload a laptop copy. `GET /api/widgets/launcher` only reads disk. `GET /api/widgets/wot?set=git&from=<npub>` and `?set=apps` ask the trust oracle for the rows on that tile and return hop counts of 1 or more. The two tiles do not share one 16-key budget, so app authors are actually looked up. Omalauncher tiles live in `ui/public/omalauncher/`.
+
 Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journalctl -u gittr-leaderboard-refresh.service --since today`.
 
 ### SEO sitemap repo index (daily, explore-class)
