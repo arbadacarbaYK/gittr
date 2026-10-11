@@ -1,23 +1,24 @@
-# gittr on the Omalauncher home screen
+# Add the gittr tiles
 
-Two tiles for [Omalauncher](https://github.com/SimonSchubert/omalauncher). They read public gittr pages. They use the phone theme. They do not need the Linux install.
+On the phone, open [gittr.space/omalauncher](https://gittr.space/omalauncher) and tap **Add Nostr git** or **Add Nostr apps**.
 
-Open one of these links on the phone. Omalauncher shows the tile and asks before adding it.
+Omalauncher opens, shows the tile, and asks before it keeps it. If Add stays on the gittr page, open that same address in Chrome.
 
-**Nostr git** — the same most-active repos as the gittr home page. The yellow number is that activity. A description shows when the announcement has one. Nostr stars and GitHub stars show on the small line only after gittr has counted them. Tap a row to open the repo. Tap the title for the busiest people. Tap **gittr** for [gittr.space](https://gittr.space).
+The tile files are [nostr-git.owl](nostr-git.owl) and [nostr-apps.owl](nostr-apps.owl).
 
-**Nostr apps** — the newest apps, with search. Tap the title for the rest of the list and to save an npub. The small line is platform and topic. A GitHub star count is added only when the listing points at GitHub. There is no Zapstore install total on this tile. Tap **gittr** for the forge. The full list links to the [app store](https://gittr.space/apps).
+## Widget store
 
-Full screen on either tile: paste your npub once if you want a short trust mark (1 if you follow them, otherwise the hop count). Nothing shows for you, for someone outside your network, or before that npub is saved.
+Reviewed tiles are listed from [omarchy-widgets](https://github.com/SimonSchubert/omarchy-widgets), which is the store Omalauncher reads. They do not go in the Omalauncher app repo, and they are not an Omarchy desktop plugin.
 
-Help: [what the tiles show](https://gittr.space/help#launcher-widgets).
+To submit them, fork that repo and add:
 
-## Nostr git
+- `widgets/<your-github-name>/nostr-git/widget.owl`
+- `widgets/<your-github-name>/nostr-apps/widget.owl`
 
-https://simonschubert.github.io/omarchy-widgets/w#owl1.lVfbbhs3EH33V0y3QSEBji6-IZAhCGifAqR9SPxSBHmgV5R2Gy654MWyKgjo1_QX-t5P6Zd0huSuuLTSJgbs3Z0Zcm5nLt7V6y23UEhlrIZtbQs4XAA03DL_ArDmptR1a2slF1D8jHLASls_cWjdo6hL0LxVBpSEX7o7LmGjVUNvVk_ggbXAQKsdWAWq5RJIwlYcbG0Fh43S0HLVCn4ZjngK8fG55ZPCm_HEtQkmzCezQELlXBpOVr19CKSSWb5Veo-0NX8KNLUTC7jF1yP-mvp3PHD3fENO1vKD_7x5vr4gnsXTsKsULKEo0CbUaCwxlNMlB812yKmsbUcF_TWL6TT4aFpW8ilr6-nOx9NMBXOyrLguxsDR9D3Mbxv4zWCUbN1w5SxczYzX6MxJg9UOw_u1OnbKrgy3S-T_QAFfvjqg8cde5fUsUzm_TVQKTPuaYZqX5NhEfYZVeEHBBUgnRBSqVGtQyNsWxOKrsxPPG0gHNCz91ZPwsVrBx0-RHRLd8eNXEECJUjWtklxaeI8n36vdSLIGYUEYvPSgvEQZJxE_leabS7JtHHH6kxKukfEDYMvaBczih5IP9Om0GNG5cSSjgl4e4IE_WziAxQd6hHrvEYDSBojMr-_hUYn1gpxHTsOe39WSG-Tcw47X2woPzT3Ewk-9IePgu6UPTqKmU5QQICotXh3wzLEYsBIb5gPGyZwBGdFhKxS-G1CZqLdYPFyuB-RSCaUX3tLlEu1fwVZzrNCedIWkcs8SyjVS9lwIjN0ClGZym-o_BeCYBTYR6r31uRz4-wVvo51Bb0KPzt68SWhnXO1s6Z6YHIIUZQcL_TBMPXEGqccMR_2Ns3ydJv8Kjumlvm2evZQ4g0tn_aWsxDZmB5Dqbz36tnWRodtj-8a_phDO4hyj3Hd2-PsvaE7t-xR1Y_eCR-d6Yo_pnpLY19NiYeGEQNSMxlmYzxvk29lJexKTq544CE2ujcr4XHMshvrDX0q173JZIQ6y4zt7FFhBIRRb13L7zx9_FtAZDDXOuM1GYASK-y5kpmFCDNGRwoGu7RsA_OisxWbc6Swstmi2ZbXE-6Jn2Js0N9VofAIAcGE4XSYwwL6fjsnU2XlHMNvddA69d8_t15gb1XR3Zr0UKMFKiKzbvISIB-ZdkloNGDgZbfnM96AnmL1BM4gjhqYeDpOPeoJrBUp-SkTiMMh6JrVoDNmEngMGFTAx6DlgUBESg55ZG8Q-RBz_8o49cjHg09BYBNuHdNX6vvifDTCr5FAr0Re_AWHamnSt8kOxODfUzqTBh_zNAAt5wf2KywVIDCsN_71f1WyFcG4rnLWTuHM5ww0uZsgUe1rUGs6M0xzWuAIxWXZrmLciQVNesWkT6QLwFnWnZrUCi7XC6cU1IRYNm2Opha3PL0AN059NkbmBq03SCD64x6ZG6iHua1bXzeiJCcfH92kZZaaQDkeIjJsHQdJlkMwA6V4A8hwcAxhdDsYARZdDMQDR5UCMMHTnYRhA6DIQvoBg7vLQUg-XpNEOuwd_bjGL1OCy2fQ_nXfaHRy_GPvd1buKWeqhp380vlmJP_qajn5ZTcVF--0306nvu5X9ddyvixw-oYSPF_8C
+Copy the two `.owl` files above into those names. The folder name is your GitHub login in lowercase. Then, from a checkout of that repo:
 
-## Nostr apps
+```
+java -jar tools/owl.jar review . widgets/<your-github-name>/nostr-git/widget.owl widgets/<your-github-name>/nostr-apps/widget.owl
+```
 
-https://simonschubert.github.io/omarchy-widgets/w#owl1.lVfNjts2EL77KaZq0LVQR2vvHwovXKPNIQ3Q5tBsT0EOtExb7FKklqRW6xoG-jR9hd77KH2SDn8ki4oX2QaIJc2QM8NvvpnhNmy9pQYSIbVRQKpKJ7AfAZTUEPcCsKY6V6wyTIo5JO9pQ7WB9916kAK2zBg1gYaZAjQlKi8yeMvMT_UKtCFKgy5kgwv5DpqCCjAFBc60YWILlWTCaCAm7MgS5_WRKu09zrKpF3GWU6Epin55d-dFOTF0K9UOZWv66GWy4XO4xtcD_tfsD9xw82S_SyY-uM-rp6uR1RncjQFJWECSQGU9atMpHpzYfspa5RQUaVBSGFONE_ur5-fn7uCZrkhOz0nFzhsHpz7npBZ5QVWSAsWT7GB2XcLvGqEyrKSyNnAx1c5PrY8ejKoR2pf6aKRZamoWNgnfbJQsF6_2eJhD5_NyOvA5u-755Jj2NcEsL-zJMnkPS_-CC-cgas7DokJikhc-OL8svNYmc7podSUlx9XWcubosVzCx09B-VDbuBbAZUPV2ChWjh_SNChLYhCyNarDMpeVpbc4d49sw7jBnRj095BLYQgTekyyguwmfldnzTJO2LDJPR0H0xO46dSOpb8pG-szSFd6-YCQKlpxFLTRTuAMzvDn27P0kFgW5bKspKDCwA9V9atsxoKUdOKqZuLKaAKFopuJxTENJfVG8roU4QNgS6o5TMOHFHf2s1Z8bPelQYyWu_UAd_TJwB4MPhB9dHgLG4TD03t2eQsryddzmyjUlOTpZyaoRs0tNJRtC9w0c-Xh_7GNDQ6-WrhE9ty0jnoCCE6TV3vcc0giVS-GWaQ4hhOJkcqmwMU3kZRwtsXCp2IdiXPJpZq7SJEaM2TGVlFsJp3oAkX5jvQklyjZUY50Q5lURGz7_o8AtG_tEwGx-bOIIAX3MdxWE8GNqIbYytrQdR_wCzj0jbquetKo1URGp51RkmPbM1EaO6sH1-ZGA0Y5Pl2NhrQZ5DLk8dj54Z-_gWPn0-aYVW12nIaDdcKOQ52kF1snC0TG4YFZGqcDiE8H4yrw6L2Hx0UnjGAZerNlc6qek9i__30nqvoYhCvzAolK0XriG4SfiKN-jA9dnb4pLKHmblA8Et5xW4oP9apkxkfTdZq059kSzPXeQclFnHADJyxYQsIlWePA_PfPvxJooQKG83ez4Yh9ctsmS5eE85iTfRJas12pw4-1MTgiWp-Jwc5LtthX0V7AFLuQoroYp0faAeWaWmMcU-tabWpDnZ4-CHLMFHbWszD6Hck8ti-KehhkSE578ziGGgMeR9uGNmi-YBkqOR-0p8857qrqpsdNrBp7Ij9p7inilqH_qFuG-WlnOk7KjySr6hWu_NRb4qfGoMfalo4Uz-wzUtjmYxX2GSlsA7EK-4wUdojMfWixXFauT76gIXZdxtdyiNUwY_PWvzqeGm4n0HVIfhc-4iIcliEqVzOkvIPb349Kou71sUd4SuDFp9cK2vrbh9udm92uRNPbPp0HPalLaXsVOZXUL6b0REKfSeczyXwmlacT-Vkah4eKY3HQ95ppXKeYRCxHqWwzGUyfL_RXd19K0h6FYssF5dX_N2p3fY344t8KxeuKbKl-PfDTJ-hh9B8
-
-The same files are [nostr-git.owl](nostr-git.owl) and [nostr-apps.owl](nostr-apps.owl).
+Open the pull request. The phone buttons work before it is merged.

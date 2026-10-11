@@ -1103,14 +1103,14 @@ export default function HelpPage() {
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">
-              Install notes and the tile files:{" "}
-              <a
-                href="https://gittr.space/omalauncher/README.md"
+              On the phone, open{" "}
+              <Link
+                href="/omalauncher"
                 className="text-purple-400 hover:text-purple-300"
               >
                 gittr.space/omalauncher
-              </a>
-              .
+              </Link>{" "}
+              and tap Add. Omalauncher asks before the tile is added.
             </p>
           </div>
         </HelpSection>
