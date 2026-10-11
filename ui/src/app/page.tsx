@@ -53,6 +53,7 @@ export default async function Page() {
           recentRepos: snapshot.recentRepos,
           recentActivities: snapshot.recentActivities,
           snapshotAt: snapshot.at,
+          windowDays: snapshot.windowDays,
         }
       : null;
 

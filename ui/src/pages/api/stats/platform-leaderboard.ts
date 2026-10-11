@@ -1,14 +1,15 @@
-import {
-  PLATFORM_STATS_RELAYS,
-} from "@/lib/nostr/server-relay-subscribe";
+import { PLATFORM_STATS_RELAYS } from "@/lib/nostr/server-relay-subscribe";
 import {
   type LeaderboardSnapshot,
+  PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
   hasAnyLeaderboardData,
   loadPlatformLeaderboardSnapshot,
 } from "@/lib/platform-leaderboard-snapshot";
 import { buildAndSavePlatformLeaderboard } from "@/lib/stats/build-platform-leaderboard";
 
 import type { NextApiRequest, NextApiResponse } from "next";
+
+import fs from "fs/promises";
 
 /** Short in-memory mirror of the disk snapshot (no relay work). */
 const MEMORY_CACHE_MS = 2 * 60 * 1000;
@@ -17,6 +18,7 @@ type LeaderboardSnapshotWritable = LeaderboardSnapshot;
 
 let cache: LeaderboardSnapshotWritable | null = null;
 let cacheLoadedAt = 0;
+let cacheMtimeMs = 0;
 
 export type PlatformLeaderboardResponse = {
   topRepos: LeaderboardSnapshot["topRepos"];
@@ -27,6 +29,7 @@ export type PlatformLeaderboardResponse = {
   refreshing: boolean;
   relayCount: number;
   snapshotAt?: number;
+  windowDays?: number;
 };
 
 function cloneSnapshot(snap: LeaderboardSnapshot): LeaderboardSnapshotWritable {
@@ -36,15 +39,24 @@ function cloneSnapshot(snap: LeaderboardSnapshot): LeaderboardSnapshotWritable {
     topUsers: [...snap.topUsers],
     recentRepos: [...snap.recentRepos],
     recentActivities: [...snap.recentActivities],
+    windowDays: snap.windowDays,
   };
 }
 
 async function ensureCacheFromDisk(force = false): Promise<void> {
   const now = Date.now();
+  let mtimeMs = 0;
+  try {
+    const st = await fs.stat(PLATFORM_LEADERBOARD_SNAPSHOT_PATH);
+    mtimeMs = st.mtimeMs;
+  } catch {
+    mtimeMs = 0;
+  }
   if (
     !force &&
     cache &&
     hasAnyLeaderboardData(cache) &&
+    mtimeMs === cacheMtimeMs &&
     now - cacheLoadedAt < MEMORY_CACHE_MS
   ) {
     return;
@@ -53,6 +65,7 @@ async function ensureCacheFromDisk(force = false): Promise<void> {
   if (disk && hasAnyLeaderboardData(disk)) {
     cache = cloneSnapshot(disk);
     cacheLoadedAt = now;
+    cacheMtimeMs = mtimeMs;
   }
 }
 
@@ -78,6 +91,12 @@ export default async function handler(
       const snap = await buildAndSavePlatformLeaderboard();
       cache = cloneSnapshot(snap);
       cacheLoadedAt = Date.now();
+      try {
+        const st = await fs.stat(PLATFORM_LEADERBOARD_SNAPSHOT_PATH);
+        cacheMtimeMs = st.mtimeMs;
+      } catch {
+        cacheMtimeMs = 0;
+      }
     } catch (e) {
       console.error("[platform-leaderboard] emergency refresh failed", e);
       return res.status(503).json({
@@ -113,5 +132,6 @@ export default async function handler(
     refreshing: false,
     relayCount: PLATFORM_STATS_RELAYS.length,
     snapshotAt: cache.at > 0 ? cache.at : undefined,
+    windowDays: cache.windowDays,
   });
 }

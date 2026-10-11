@@ -37,6 +37,7 @@ import {
   type PlatformRecentActivity,
   type PlatformRecentRepo,
   type RepoStats,
+  TRENDING_WINDOW_DAYS,
   type UserStats,
   getLatestBounties,
   getOpenBounties,
@@ -155,6 +156,7 @@ export type HomeInitialLeaderboard = {
   recentRepos: PlatformRecentRepo[];
   recentActivities: PlatformRecentActivity[];
   snapshotAt: number;
+  windowDays?: number;
 } | null;
 
 export default function HomePage({
@@ -209,6 +211,9 @@ export default function HomePage({
   const [topBountyTakers, setTopBountyTakers] = useState<UserStats[]>([]);
   const [topUsers, setTopUsers] = useState<UserStats[]>(
     () => initialLeaderboard?.topUsers ?? []
+  );
+  const [weeklyLeaderboard, setWeeklyLeaderboard] = useState(
+    () => initialLeaderboard?.windowDays === TRENDING_WINDOW_DAYS
   );
   const [latestBounties, setLatestBounties] = useState<any[]>([]);
   const [openBounties, setOpenBounties] = useState<any[]>([]);
@@ -283,11 +288,14 @@ export default function HomePage({
       topUsers?: UserStats[];
       recentRepos?: PlatformRecentRepo[];
       recentActivities?: PlatformRecentActivity[];
+      windowDays?: number;
     }) => {
       const refreshing =
         typeof (data as { refreshing?: boolean }).refreshing === "boolean"
           ? (data as { refreshing?: boolean }).refreshing
           : false;
+      const weekly = data.windowDays === TRENDING_WINDOW_DAYS;
+      setWeeklyLeaderboard(weekly);
 
       if (Array.isArray(data.topRepos)) {
         const sortedRepos = [...data.topRepos].sort(
@@ -295,10 +303,10 @@ export default function HomePage({
         );
         setTopRepos(sortedRepos);
         if (sortedRepos.length > 0) setLbTopReposReady(true);
-        if (sortedRepos.length > 0) {
+        if (sortedRepos.length > 0 && weekly) {
           try {
             sessionStorage.setItem(
-              "gittr_cached_topRepos",
+              "gittr_cached_topRepos_w7",
               JSON.stringify(sortedRepos)
             );
           } catch {
@@ -314,10 +322,10 @@ export default function HomePage({
         setTopUsers(sortedUsers);
         hasTopUsers = sortedUsers.length > 0;
         if (hasTopUsers) setLbTopUsersReady(true);
-        if (hasTopUsers) {
+        if (hasTopUsers && weekly) {
           try {
             sessionStorage.setItem(
-              "gittr_cached_topUsers",
+              "gittr_cached_topUsers_w7",
               JSON.stringify(sortedUsers)
             );
           } catch {
@@ -374,8 +382,8 @@ export default function HomePage({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const cachedRepos = sessionStorage.getItem("gittr_cached_topRepos");
-      const cachedUsers = sessionStorage.getItem("gittr_cached_topUsers");
+      const cachedRepos = sessionStorage.getItem("gittr_cached_topRepos_w7");
+      const cachedUsers = sessionStorage.getItem("gittr_cached_topUsers_w7");
       const cachedRecentRepos = sessionStorage.getItem(
         "gittr_cached_recentRepos"
       );
@@ -387,6 +395,7 @@ export default function HomePage({
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTopRepos(parsed);
           setLbTopReposReady(true);
+          setWeeklyLeaderboard(true);
         }
       }
       if (cachedUsers) {
@@ -394,6 +403,7 @@ export default function HomePage({
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTopUsers(parsed);
           setLbTopUsersReady(true);
+          setWeeklyLeaderboard(true);
         }
       }
       if (cachedRecentRepos) {
@@ -444,6 +454,7 @@ export default function HomePage({
           recentRepos?: PlatformRecentRepo[];
           recentActivities?: PlatformRecentActivity[];
           refreshing?: boolean;
+          windowDays?: number;
         };
         if (cancelled || gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
@@ -1332,7 +1343,7 @@ export default function HomePage({
           {/* Top Repos - Always show */}
           <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
             <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-              Most Active Repos
+              {weeklyLeaderboard ? "Trending this week" : "Most Active Repos"}
             </h3>
             <div className="space-y-2 flex-1">
               {topRepos.length > 0 ? (
@@ -1377,7 +1388,7 @@ export default function HomePage({
           {/* Top Users - Always show */}
           <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
             <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
-              Most Active
+              {weeklyLeaderboard ? "People this week" : "Most Active"}
             </h3>
             <div className="space-y-2 flex-1">
               {topUsers.length > 0 ? (

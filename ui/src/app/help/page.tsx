@@ -1069,12 +1069,13 @@ export default function HelpPage() {
             </p>
             <HelpTopic title={<>Nostr git</>}>
               <p>
-                The title is “nostr git · most active”, the same ranking as
-                Most Active on the home page. The yellow number says “active”.
-                A description shows when the repo announcement has one. Nostr
-                stars and GitHub stars show on the small line only when gittr
-                has actually counted them. Tap a row to open the repo. Tap the
-                title for the busiest people, and gittr from there.
+                The title is “nostr git · this week”, the same list as Trending
+                this week on the home page. The yellow number is pushes, pull
+                requests, and issues in the last 7 days. A description shows
+                when the repo announcement has one. Nostr stars and GitHub
+                stars show on the small line only when gittr has actually
+                counted them. Tap a row to open the repo. Tap the title for
+                the busiest people, and gittr from there.
               </p>
             </HelpTopic>
             <HelpTopic title={<>Nostr apps</>}>

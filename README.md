@@ -47,7 +47,7 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 - **Releases tab** — Lists forge Release assets (GitHub / Codeberg / GitLab) and any NIP-82 / Blossom releases already on Nostr. A Nostr version like `1.0.0` is the same GitHub tag as `v1.0.0`. gittr’s own Zapstore APK uses **1.0.0 and up** (no more 0.x tags). **New listing** is notes in this browser only — not an app announce. Separate from Push to Nostr.
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.
 - **Home Recent Activity** — Latest public Nostr for repos, apps, pages, and (when the snapshot has them) issues/PRs/commits. Same list signed in or out. Clicking a PR or commit opens that page from the network (not only this browser’s local cache).
-- **Phone home screen** — Two [Omalauncher](https://github.com/SimonSchubert/omalauncher) tiles: most active Nostr git repos, and the newest Nostr apps. Add them from [gittr.space/omalauncher](https://gittr.space/omalauncher). The widget store is [omarchy-widgets](https://github.com/SimonSchubert/omarchy-widgets).
+- **Phone home screen** — Two [Omalauncher](https://github.com/SimonSchubert/omalauncher) tiles: Nostr git repos trending this week, and the newest Nostr apps. Add them from [gittr.space/omalauncher](https://gittr.space/omalauncher). The widget store is [omarchy-widgets](https://github.com/SimonSchubert/omarchy-widgets).
 
 Sitemap/SEO: [docs/SEO.md](docs/SEO.md) — public hubs, per-repo and per-app URLs, JSON-LD, and the production repo index.
 

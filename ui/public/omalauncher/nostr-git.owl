@@ -1,7 +1,7 @@
 widget "nostr git" {
   meta {
-    description: "Most active public repos on Nostr git. The yellow number is activity, not stars. Tap a row to open it."
-    version: "1.1"
+    description: "Nostr git repos with the most pushes, pull requests, and issues in the last 7 days."
+    version: "1.2"
     license: "MIT"
     category: "dev"
     owl: 5
@@ -34,10 +34,10 @@ widget "nostr git" {
           }
         }
         Text {
-          text: "${count} active"
+          text: "${count}"
           fontSize: 11
           color: yellow
-          width: 76
+          width: 64
           align: end
         }
       }
@@ -49,7 +49,7 @@ widget "nostr git" {
   Column {
     gap: 4
     Text {
-      text: "nostr git · most active"
+      text: "nostr git · this week"
       style: muted
       maxLines: 1
       onTap: screen()
@@ -80,7 +80,7 @@ widget "nostr git" {
   }
 
   screen {
-    title: "most active people"
+    title: "people this week"
     Column {
       scroll: true
       gap: 8

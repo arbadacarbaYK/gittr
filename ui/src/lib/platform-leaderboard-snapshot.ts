@@ -24,6 +24,8 @@ export type LeaderboardSnapshot = {
   topUsers: UserStats[];
   recentRepos: PlatformRecentRepo[];
   recentActivities: PlatformRecentActivity[];
+  /** Set when topRepos and topUsers were counted over TRENDING_WINDOW_DAYS. */
+  windowDays?: number;
 };
 
 export function hasAnyLeaderboardData(snap: LeaderboardSnapshot): boolean {
@@ -62,6 +64,7 @@ export async function savePlatformLeaderboardSnapshot(
     topUsers: snap.topUsers || [],
     recentRepos: snap.recentRepos || [],
     recentActivities: snap.recentActivities || [],
+    windowDays: snap.windowDays,
   };
   await fs.mkdir(path.dirname(PLATFORM_LEADERBOARD_SNAPSHOT_PATH), {
     recursive: true,

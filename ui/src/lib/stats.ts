@@ -85,6 +85,9 @@ export interface RepoStats {
   lastActivity: number;
 }
 
+/** Homepage cards and the Nostr git tile rank this many days of pushes, pull requests, and issues. */
+export const TRENDING_WINDOW_DAYS = 7;
+
 export interface UserStats {
   pubkey: string;
   activityCount: number;
@@ -1058,64 +1061,71 @@ export function countRepoActivitiesFromNostr(
     options?: any
   ) => () => void,
   relays: string[],
-  sinceDays = 90 // Count activity from last 90 days (increased from 30 for better coverage)
+  sinceDays = TRENDING_WINDOW_DAYS
 ): Promise<Map<string, RepoStats>> {
   // Use the full relay set (same as countUserActivitiesFromNostr). Issues/PRs and many
   // kind-30617/30618 events live on general relays (nos.lol, damus), not only GRASP hosts.
   const activeRelays = relays.filter(Boolean);
+  const sinceSec =
+    sinceDays > 0 && sinceDays < 36500
+      ? Math.floor((Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000)
+      : undefined;
+  const windowed = (filter: Record<string, unknown>) =>
+    sinceSec != null ? { ...filter, since: sinceSec } : filter;
 
   console.log(
     `🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} relays:`,
-    activeRelays
+    activeRelays,
+    sinceSec != null ? `since=${sinceSec}` : "since=all"
   );
 
   return new Promise((resolve) => {
     const repoMap = new Map<string, RepoStats>();
     const privateRepoIds = new Set<string>();
-    // REMOVED since filter - count ALL activities from all time, not just last 90 days
-    // This ensures we capture all historical activity, not just recent
 
     let eoseCount = 0;
     const expectedEose = activeRelays.length;
     let resolved = false;
 
     const filters = [
-      // Repo announcements (kind 30617) - count unique repos (NO since - get all)
+      // Announcements stay open-ended so a private or deleted repo is still recognized.
       {
         kinds: [KIND_REPOSITORY_NIP34],
         limit: 1200,
       },
-      // Repo state events (kind 30618) - indicate pushes (NO since - get all)
-      {
+      windowed({
         kinds: [KIND_REPOSITORY_STATE],
         limit: 1200,
-      },
-      // PR events (kind 1618) (NO since - get all)
-      {
+      }),
+      windowed({
         kinds: [KIND_PULL_REQUEST],
         limit: 800,
-      },
-      // PR merged status (kind 1631) (NO since - get all)
-      {
+      }),
+      windowed({
         kinds: [KIND_STATUS_APPLIED],
         limit: 400,
-      },
-      // Issue events (kind 1621) (NO since - get all)
-      {
+      }),
+      windowed({
         kinds: [KIND_ISSUE],
         limit: 800,
-      },
-      // Issue closed status (kind 1632) (NO since - get all)
-      {
+      }),
+      windowed({
         kinds: [KIND_STATUS_CLOSED],
         limit: 400,
-      },
+      }),
     ];
 
     const unsub = subscribe(
       filters,
       activeRelays,
       (event, _isAfterEose, _relayURL) => {
+        if (
+          sinceSec != null &&
+          event.kind !== KIND_REPOSITORY_NIP34 &&
+          (event.created_at || 0) < sinceSec
+        ) {
+          return;
+        }
         // Count repo announcements (kind 30617) - DON'T count as activity, just ensure repo exists
         // Repo announcements are metadata, not activities. Activities are pushes, PRs, issues.
         if (event.kind === KIND_REPOSITORY_NIP34) {
@@ -1425,6 +1435,7 @@ export function countUserActivitiesFromNostr(
       filters,
       activeRelays,
       (event, _isAfterEose, _relayURL) => {
+        if (useSince != null && (event.created_at || 0) < useSince) return;
         const userPubkey = event.pubkey;
         if (!userPubkey || !/^[0-9a-f]{64}$/i.test(userPubkey)) return;
 
@@ -1583,8 +1594,8 @@ export async function getTopReposFromNostr(
     const repoMap = await countRepoActivitiesFromNostr(
       subscribe,
       relays,
-      999999
-    ); // All time (sinceDays param ignored now, but kept for API compatibility)
+      TRENDING_WINDOW_DAYS
+    );
 
     // Debug: Log all repos with activity
     const allReposWithActivity = Array.from(repoMap.values()).filter(
@@ -1667,7 +1678,11 @@ export async function getTopUsersFromNostr(
   console.log(
     `🔍 [getTopUsersFromNostr] Starting query with ${relays.length} relays`
   );
-  const userMap = await countUserActivitiesFromNostr(subscribe, relays, 999999); // All-time (same window as platform repo leaderboard)
+  const userMap = await countUserActivitiesFromNostr(
+    subscribe,
+    relays,
+    TRENDING_WINDOW_DAYS
+  );
   const ranked = Array.from(userMap.values())
     .filter((u) => !isPublisherBlocklisted(u.pubkey) && u.activityCount > 0)
     .sort((a, b) => b.activityCount - a.activityCount);

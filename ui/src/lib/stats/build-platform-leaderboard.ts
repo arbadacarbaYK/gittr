@@ -2,7 +2,6 @@
  * Shared builder for homepage platform leaderboard snapshot.
  * Used by standalone systemd job (preferred) and emergency API path.
  */
-
 import {
   PLATFORM_STATS_RELAYS,
   withRelayPoolSubscribe,
@@ -13,6 +12,7 @@ import {
   savePlatformLeaderboardSnapshot,
 } from "@/lib/platform-leaderboard-snapshot";
 import {
+  TRENDING_WINDOW_DAYS,
   getLiveRecentReposFromNostr,
   getRecentPlatformActivitiesFromNostr,
   getTopReposFromNostr,
@@ -26,6 +26,7 @@ export async function buildAndSavePlatformLeaderboard(): Promise<LeaderboardSnap
     topUsers: [],
     recentRepos: [],
     recentActivities: [],
+    windowDays: TRENDING_WINDOW_DAYS,
   };
 
   await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
