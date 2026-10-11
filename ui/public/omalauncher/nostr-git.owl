@@ -1,7 +1,7 @@
 widget "nostr git" {
   meta {
-    description: "Most active public repos on Nostr git, from gittr. Tap a row to open it, the title for people, gittr for the forge."
-    version: "1.0"
+    description: "Most active public repos on Nostr git. The yellow number is activity, not stars. Tap a row to open it."
+    version: "1.1"
     license: "MIT"
     category: "dev"
     owl: 5
@@ -34,10 +34,10 @@ widget "nostr git" {
           }
         }
         Text {
-          text: "${count}"
+          text: "${count} active"
           fontSize: 11
           color: yellow
-          width: 48
+          width: 76
           align: end
         }
       }
@@ -48,20 +48,11 @@ widget "nostr git" {
 
   Column {
     gap: 4
-    Row {
-      Text {
-        text: "nostr git · most active"
-        style: muted
-        weight: 1
-        maxLines: 1
-        onTap: screen()
-      }
-      Text {
-        text: "gittr"
-        fontSize: 12
-        color: accent
-        onTap: url("https://gittr.space")
-      }
+    Text {
+      text: "nostr git · most active"
+      style: muted
+      maxLines: 1
+      onTap: screen()
     }
     if data == null {
       Text { text: raw == null ? "loading…" : "gittr is offline"; style: small; color: muted }
@@ -116,6 +107,7 @@ widget "nostr git" {
       }
       Row {
         gap: 12
+        Text { text: "gittr"; color: accent; onTap: url("https://gittr.space") }
         Text { text: "explore"; color: accent; onTap: url("https://gittr.space/explore") }
         Text { text: "what is nostr git"; color: accent; onTap: url("https://gittr.space/nostr-git") }
         Text { text: "help"; color: accent; onTap: url("https://gittr.space/help#launcher-widgets") }

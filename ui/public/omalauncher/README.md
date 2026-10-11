@@ -2,7 +2,7 @@
 
 On the phone, open [gittr.space/omalauncher](https://gittr.space/omalauncher) and tap **Add Nostr git** or **Add Nostr apps**.
 
-Omalauncher opens, shows the tile, and asks before it keeps it. If Add stays on the gittr page, open that same address in Chrome.
+Omalauncher opens, shows the tile, and asks before it keeps it. If Add stays on the gittr page, open that same address in Chrome. A tile already on the home screen keeps its old copy until you remove it and add it again.
 
 The tile files are [nostr-git.owl](nostr-git.owl) and [nostr-apps.owl](nostr-apps.owl).
 

@@ -1,7 +1,7 @@
 widget "nostr apps" {
   meta {
     description: "Newest Nostr apps on gittr, with search. GitHub stars show only when the listing points at GitHub."
-    version: "1.0"
+    version: "1.1"
     license: "MIT"
     category: "dev"
     owl: 5
@@ -45,20 +45,11 @@ widget "nostr apps" {
 
   Column {
     gap: 4
-    Row {
-      Text {
-        text: "nostr apps · latest"
-        style: muted
-        weight: 1
-        maxLines: 1
-        onTap: screen()
-      }
-      Text {
-        text: "gittr"
-        fontSize: 12
-        color: accent
-        onTap: url("https://gittr.space")
-      }
+    Text {
+      text: "nostr apps · latest"
+      style: muted
+      maxLines: 1
+      onTap: screen()
     }
     Input {
       placeholder: "search apps"
@@ -113,6 +104,7 @@ widget "nostr apps" {
       }
       Row {
         gap: 12
+        Text { text: "gittr"; color: accent; onTap: url("https://gittr.space") }
         Text { text: "app store"; color: accent; onTap: url("https://gittr.space/apps") }
         Text { text: "help"; color: accent; onTap: url("https://gittr.space/help#publish-pages-apps") }
       }

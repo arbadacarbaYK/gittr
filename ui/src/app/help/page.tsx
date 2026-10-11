@@ -1069,12 +1069,12 @@ export default function HelpPage() {
             </p>
             <HelpTopic title={<>Nostr git</>}>
               <p>
-                The busiest public repos, same ranking as Most Active on the
-                home page. The yellow number is that activity. A description
-                shows when the repo announcement has one. Nostr stars and
-                GitHub stars show on the small line only when gittr has
-                actually counted them. Tap a row to open the repo. Tap the
-                title for the busiest people. Tap gittr to come back here.
+                The title is “nostr git · most active”, the same ranking as
+                Most Active on the home page. The yellow number says “active”.
+                A description shows when the repo announcement has one. Nostr
+                stars and GitHub stars show on the small line only when gittr
+                has actually counted them. Tap a row to open the repo. Tap the
+                title for the busiest people, and gittr from there.
               </p>
             </HelpTopic>
             <HelpTopic title={<>Nostr apps</>}>
@@ -1089,8 +1089,8 @@ export default function HelpPage() {
                 , with a search box. The small line is the platform and topic.
                 A GitHub star count is added only when that listing points at
                 GitHub. gittr does not have Zapstore install totals, so the
-                tile does not invent a popularity number. Tap the title for
-                the rest of the list.
+                tile does not invent a popularity number. The title is “nostr
+                apps · latest”. Tap it for the rest of the list.
               </p>
             </HelpTopic>
             <HelpTopic title={<>Trust marks</>}>
