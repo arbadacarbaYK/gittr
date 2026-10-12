@@ -10,6 +10,7 @@
  * - live_with_edits: was live, has local changes not pushed yet
  */
 import { repoHasUnpushedLocalEdits } from "../repos/unpushed-local-edits";
+
 import { findRepoByEntityAndName } from "./repo-finder";
 
 export type RepoStatus =
@@ -118,6 +119,25 @@ export async function checkBridgeExists(
 }
 
 /**
+ * Relay echo can time out after both events are already on the network.
+ * Leaving the badge on "pushing" made a second Push look necessary, and that
+ * Push then failed to open Amber.
+ */
+export function repoStatusAfterRelayEcho(
+  confirmed: boolean,
+  stateEventId: string | undefined,
+  previousStatus: string | undefined
+): string {
+  if (
+    confirmed ||
+    (typeof stateEventId === "string" && stateEventId.length > 0)
+  ) {
+    return "live_soon";
+  }
+  return previousStatus || "local";
+}
+
+/**
  * Get the current status of a repository.
  *
  * live = announcement on Nostr and past the short post-publish window
@@ -126,7 +146,12 @@ export async function checkBridgeExists(
  * live_with_edits = was live, local changes not pushed.
  */
 export function getRepoStatus(repo: any): RepoStatus {
-  if (repo.status === "pushing") return "pushing";
+  if (repo.status === "pushing") {
+    const publishedBoth =
+      repoHasNostrAnnounce(repo) &&
+      !!(repo.stateEventId || repo.lastStateEventId);
+    if (!publishedBoth) return "pushing";
+  }
   if (repo.status === "push_failed") return "push_failed";
 
   const bridgeProcessed = repo.bridgeProcessed;

@@ -8,6 +8,7 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "../repos/storage";
+import { repoStatusAfterRelayEcho } from "../utils/repo-status";
 
 import { KIND_REPOSITORY, resolveNip34HeadBranchName } from "./events";
 
@@ -268,7 +269,11 @@ export function storeRepoEventId(
         ...(stateEventId
           ? { stateEventId, lastStateEventId: stateEventId }
           : {}),
-        status: confirmed ? "live_soon" : existingRepo.status || "local",
+        status: repoStatusAfterRelayEcho(
+          confirmed,
+          stateEventId,
+          existingRepo.status
+        ),
         syncedFromNostr: confirmed ? true : existingRepo.syncedFromNostr,
         hasUnpushedEdits: false, // Clear unpushed edits flag after successful push
         clone: nextClone,

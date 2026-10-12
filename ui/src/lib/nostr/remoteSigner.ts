@@ -2025,8 +2025,10 @@ export class RemoteSignerManager {
       if (rescueSettleMs > 0) {
         await new Promise((r) => setTimeout(r, rescueSettleMs));
       }
-      // Do not replace the pool here. A new SimplePool makes every relay
-      // look "missing" and drops a socket that is still finishing.
+      // A socket that is still CONNECTING must be kept. A pool whose every
+      // entry is already CLOSED makes ensureRelay return that dead socket
+      // and the fast retry never leaves the browser.
+      await this.replaceDirectPoolIfFullyClosed(dialTargets);
       const rescue = uniqueNormalizedRelays([
         "wss://nos.lol",
         GITTR_BUNKER_RELAY,
@@ -2455,6 +2457,27 @@ export class RemoteSignerManager {
     // NIP-46 uses directPool for transport; do not hard-fail when the app relaypool
     // has not finished opening URI relays (e.g. Amber bunker primal/oxtr defaults).
     return open.length > 0 ? open : relays;
+  }
+
+  /**
+   * nostr-tools returns a cached CLOSED relay forever. Replace the pool only
+   * when nothing is still CONNECTING or OPEN — resetting under a live dial
+   * closes the socket the browser was still finishing.
+   */
+  private async replaceDirectPoolIfFullyClosed(
+    relays: string[]
+  ): Promise<boolean> {
+    const snap = await this.snapshotDirectRelayStatuses(relays);
+    const anyLive = Object.values(snap).some(
+      (status) => status === 0 || status === 1
+    );
+    if (anyLive) return false;
+    console.warn(
+      "[RemoteSigner] Replacing closed bunker pool before another dial"
+    );
+    this.resetDirectPool();
+    await new Promise((r) => setTimeout(r, 400));
+    return true;
   }
 
   private resetDirectPool() {
@@ -3057,11 +3080,19 @@ export class RemoteSignerManager {
         BUNKER_PUBLISH_MAX_RELAYS
       );
       const openSet = new Set(open.map((u) => normalizeRelayUrl(u)));
-      console.log("[RemoteSigner] Amber bunker relays covered", {
-        open,
-        missed: order.filter((u) => !openSet.has(u)),
-        uri: order.length,
-      });
+      const missed = order.filter((u) => !openSet.has(u));
+      if (open.length === 0) {
+        console.warn(
+          "[RemoteSigner] Amber bunker relays still closed after cover",
+          { missed, uri: order.length }
+        );
+      } else {
+        console.log("[RemoteSigner] Amber bunker relays covered", {
+          open,
+          missed,
+          uri: order.length,
+        });
+      }
       return open;
     } finally {
       this.signerDialBusy = false;
@@ -3124,6 +3155,9 @@ export class RemoteSignerManager {
         }
         return covered;
       }
+      // Cover walked a pool of CLOSED sockets. The fallback dial below used
+      // to call ensureRelay on that same cache and report no OPEN sockets.
+      await this.replaceDirectPoolIfFullyClosed(targets);
     }
 
     const alreadyOpen = await this.listDirectOpenRelays(targets);

@@ -39,10 +39,10 @@ export function formatPushRepoSuccessAlert(
   if (result.stateEventId) {
     const stateId = result.stateEventId.slice(0, 16) || "unknown";
     return (
-      `⚠️ Repository published but awaiting confirmation.\n\n` +
+      `✅ Repository is already on Nostr.\n\n` +
       `✅ Announcement event (30617): ${announcementId}...\n` +
       `✅ State event (30618): ${stateId}...\n\n` +
-      `Both events published - confirmation may take a few moments.` +
+      `Both events were published. Relays have not echoed them back to this page yet. You do not need to push again — a second push can fail to reach your phone. Wait a minute, then refresh.` +
       excludedNote +
       `\n\nNote: older PR/issue events on relays are unchanged—reopen Nostr PRs if file changes might make them stale.`
     );

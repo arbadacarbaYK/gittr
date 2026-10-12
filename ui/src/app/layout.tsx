@@ -3,6 +3,7 @@
 import { websiteJsonLd } from "@/lib/seo/json-ld";
 import { JsonLd } from "@/lib/seo/json-ld-script";
 import { buildRootSiteMetadata } from "@/lib/seo/site-metadata";
+import { gittrConsoleBootScript } from "@/lib/ui/early-console-script";
 import { gittrThemeBootScript } from "@/lib/ui/theme-preference";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
@@ -60,87 +61,16 @@ export default function RootLayout({
             `,
           }}
         />
-        {/* Apply theme before React hydrates to prevent flash */}
+        {/* Theme and console filters are separate tags. One broken script used to
+            fail the whole tag (`Missing catch or finally after try`) and skip theme. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `${gittrThemeBootScript()}
-              (function() {
-                try {
-                // Suppress console errors early (before Next.js dev tools interceptor)
-                if (typeof console !== 'undefined') {
-                  const buildFullMessage = (args) => {
-                    const allMessages = args.map(arg => {
-                      if (typeof arg === 'string') return arg;
-                      if (arg && typeof arg === 'object') {
-                        if (arg.message) return arg.message.toString();
-                        if (arg.toString) return arg.toString();
-                        if (arg.name && arg.stack) return arg.name + ' ' + arg.stack;
-                      }
-                      return '';
-                    }).join(' ');
-                    const stackTrace = args.find(arg => arg && arg.stack)?.stack?.toString() || '';
-                    return (allMessages + ' ' + stackTrace).toLowerCase();
-                  };
-                  const shouldSuppress = (fullMessage) => (
-                    fullMessage.includes('error connecting relay') ||
-                    fullMessage.includes('websocket connection to') ||
-                    fullMessage.includes('websocket') ||
-                    fullMessage.includes('reconnecting after') ||
-                    (fullMessage.includes('wss://') &&
-                      (fullMessage.includes('failed') ||
-                        fullMessage.includes('error') ||
-                        fullMessage.includes('502') ||
-                        fullMessage.includes('reconnect'))) ||
-                    fullMessage.includes('accessing element.ref was removed in react 19') ||
-                    fullMessage.includes('ref is now a regular prop') ||
-                    fullMessage.includes('element.ref was removed') ||
-                    fullMessage.includes('will be removed from the jsx element type') ||
-                    fullMessage.includes('[file fetch] api error: 404') ||
-                    (fullMessage.includes('api error') && fullMessage.includes('404')) ||
-                    (fullMessage.includes('element.ref') && fullMessage.includes('react 19'))
-                  );
-
-                  if (console.error) {
-                    const originalError = console.error;
-                    console.error = function(...args) {
-                      const fullMessage = buildFullMessage(args);
-                      if (shouldSuppress(fullMessage)) return;
-                      originalError.apply(console, args);
-                    };
-                    if (typeof window !== 'undefined' && window.console && window.console.error !== console.error) {
-                      window.console.error = console.error;
-                    }
-                  }
-
-                  if (console.warn) {
-                    const originalWarn = console.warn;
-                    console.warn = function(...args) {
-                      const fullMessage = buildFullMessage(args);
-                      if (shouldSuppress(fullMessage)) return;
-                      originalWarn.apply(console, args);
-                    };
-                    if (typeof window !== 'undefined' && window.console && window.console.warn !== console.warn) {
-                      window.console.warn = console.warn;
-                    }
-                  }
-
-                  // nostr-relaypool uses console.log for "wss://… reconnecting after Ns" (not .warn)
-                  if (console.log) {
-                    const shouldSuppressRelayLog = (fullMessage) =>
-                      fullMessage.includes('reconnecting after');
-                    const originalLog = console.log;
-                    console.log = function(...args) {
-                      const fullMessage = buildFullMessage(args);
-                      if (shouldSuppressRelayLog(fullMessage)) return;
-                      originalLog.apply(console, args);
-                    };
-                    if (typeof window !== 'undefined' && window.console && window.console.log !== console.log) {
-                      window.console.log = console.log;
-                    }
-                  }
-                }
-              })();
-            `,
+            __html: gittrThemeBootScript(),
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: gittrConsoleBootScript(),
           }}
         />
       </head>
