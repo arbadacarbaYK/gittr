@@ -174,7 +174,7 @@ export default function HomePage({
   const [sourceOfflineNoticeVisible, setSourceOfflineNoticeVisible] =
     useState(false);
 
-  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v7";
+  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v8";
 
   // Prevent hydration mismatch by only showing personalized message after mount
   useEffect(() => {
@@ -1257,14 +1257,15 @@ export default function HomePage({
 
         {mounted && sourceOfflineNoticeVisible && (
           <div
-            className="mb-6 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3 text-sm text-[var(--color-text-secondary)]"
+            className="mb-4 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-sm text-[var(--color-text-secondary)]"
             role="status"
           >
             <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
+              <div className="min-w-0 flex-1 space-y-1">
                 <p>
                   Watch us on Nostr git, FOSSing away central servers for our
-                  code and apps.{" "}
+                  code and apps. Tiles for Omalauncher, the Android home screen
+                  that follows Omarchy.{" "}
                   <Link
                     href="/omalauncher"
                     className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
@@ -1272,61 +1273,40 @@ export default function HomePage({
                     widget-links
                   </Link>
                 </p>
-                <p className="md:hidden">
-                  Import git so it stays findable if GitHub goes down.{" "}
+                <p>
+                  Import git so it stays findable if the source goes down.{" "}
+                  <strong className="text-[var(--color-text-primary)]">
+                    Push to Nostr
+                  </strong>
+                  .{" "}
                   <Link
                     href="/help#when-source-goes-offline"
                     className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
                   >
-                    More
+                    When the source is gone
+                  </Link>
+                  {" · "}
+                  <Link
+                    href="/new"
+                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                  >
+                    New repo
                   </Link>
                 </p>
-                <div className="hidden space-y-1 md:block">
-                  <p>
-                    Import your git from GitHub / Gitea / Codeberg or Gitlab so
-                    it can still be discovered even if the source goes down.
-                    When that already happened you can still create a repo on
-                    nostr git with a local backup. Don&apos;t forget to{" "}
-                    <strong className="text-[var(--color-text-primary)]">
-                      Push to Nostr
-                    </strong>
-                    !
-                  </p>
-                  <p className="text-xs">
-                    <Link
-                      href="/help#when-source-goes-offline"
-                      className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                    >
-                      When the source is gone
-                    </Link>
-                    {" · "}
-                    <Link
-                      href="/new"
-                      className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                    >
-                      New repo
-                    </Link>
-                  </p>
-                </div>
                 {SECURITY_AUDIT_UI_ENABLED && (
-                  <div className="hidden space-y-1 md:block">
-                    <p>
-                      Every repo here also gets a free security audit — known
-                      CVEs in its dependencies show on the repo&apos;s{" "}
-                      <strong className="text-[var(--color-text-primary)]">
-                        Dependencies
-                      </strong>{" "}
-                      tab, exact-version matches only.
-                    </p>
-                    <p className="text-xs">
-                      <Link
-                        href="/help#security-alerts"
-                        className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
-                      >
-                        How to get alerted
-                      </Link>
-                    </p>
-                  </div>
+                  <p>
+                    Free dependency audit on each repo&apos;s{" "}
+                    <strong className="text-[var(--color-text-primary)]">
+                      Dependencies
+                    </strong>{" "}
+                    tab.{" "}
+                    <Link
+                      href="/help#security-alerts"
+                      className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                    >
+                      How to get alerted
+                    </Link>
+                  </p>
                 )}
               </div>
               <button
