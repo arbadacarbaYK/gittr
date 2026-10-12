@@ -2,21 +2,28 @@ import { describe, expect, it } from "vitest";
 
 import {
   GITTR_BUNKER_RELAY,
+  PRIMAL_BUNKER_RELAYS,
   bunkerPublishIsThin,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
   bunkerRescueRelays,
+  confirmedPublishUrls,
   expandBunkerRelays,
+  getNip46PairingRelays,
   getSessionUriRelays,
   nip46PrimaryEncryption,
   nip46ShouldDualPublish,
   planBunkerDialWaves,
   planSignEventDialOrder,
   preferUriOpenRelays,
+  primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
+  sessionUsesNostrConnect,
+  signEventPublishNeedsAnotherDial,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
+  signerBunkerRelays,
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
@@ -365,10 +372,120 @@ describe("bunkerRelayPublishOverlap", () => {
   });
 });
 
+describe("Primal nostrconnect relays", () => {
+  it("puts Primal's bunker relays in the login QR ahead of filler relays", () => {
+    const relays = getNip46PairingRelays([
+      "wss://relay.gittr.space",
+      "wss://nos.lol",
+    ]);
+    expect(relays[0]).toBe("wss://relay.primal.net");
+    expect(relays[1]).toBe("wss://relay.nip46.com");
+    expect(relays).toContain("wss://relay.gittr.space");
+    expect(relays).not.toContain("wss://relay.damus.io");
+    expect(relays.length).toBeLessThanOrEqual(5);
+  });
+
+  it("still treats an old QR session as nostrconnect after pairing clears the temporary flag", () => {
+    expect(
+      sessionUsesNostrConnect({
+        nostrConnectPairing: false,
+        uriRelays: [
+          "wss://purplepag.es",
+          "wss://directory.yabu.me",
+          "wss://profiles.nostr1.com",
+          "wss://user.kindpag.es",
+          "wss://relay.damus.io",
+        ],
+      })
+    ).toBe(true);
+    expect(
+      sessionUsesNostrConnect({
+        uriRelays: ["wss://relay.gittr.space", "wss://nos.lol"],
+      })
+    ).toBe(false);
+  });
+
+  it("dials Primal first on sign_event without dropping the saved QR relays", () => {
+    const saved = [
+      "wss://purplepag.es",
+      "wss://directory.yabu.me",
+      "wss://profiles.nostr1.com",
+      "wss://user.kindpag.es",
+      "wss://relay.damus.io",
+    ];
+    const order = planSignEventDialOrder(saved, { nostrConnect: true });
+    expect(order.slice(0, 2)).toEqual([...PRIMAL_BUNKER_RELAYS]);
+    expect(order).toContain("wss://purplepag.es");
+    expect(signerBunkerRelays(saved, true).slice(0, 2)).toEqual([
+      ...PRIMAL_BUNKER_RELAYS,
+    ]);
+  });
+
+  it("does not count one relay OK as every bunker relay", () => {
+    const targets = [
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://relay.gittr.space",
+    ];
+    expect(
+      confirmedPublishUrls({
+        publishTargets: targets,
+        okRelays: ["wss://nos.lol"],
+      })
+    ).toEqual({ urls: ["wss://nos.lol"], acked: true });
+    expect(
+      confirmedPublishUrls({ publishTargets: targets, okRelays: [] }).acked
+    ).toBe(false);
+  });
+
+  it("redials when Primal's relay did not accept the request", () => {
+    const uri = signerBunkerRelays(
+      ["wss://purplepag.es", "wss://nos.lol", "wss://theforest.nostr1.com"],
+      true
+    );
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: [
+          "wss://nos.lol",
+          "wss://purplepag.es",
+          "wss://theforest.nostr1.com",
+        ],
+        uriRelays: uri,
+        nostrConnect: true,
+      })
+    ).toBe(true);
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: ["wss://relay.primal.net"],
+        uriRelays: uri,
+        nostrConnect: true,
+      })
+    ).toBe(false);
+  });
+});
+
 describe("nip46 encryption preference", () => {
   it("sends NIP-04 first for sign_event so Amber can decrypt the prompt", () => {
     expect(nip46PrimaryEncryption("sign_event")).toBe("nip04");
     expect(nip46ShouldDualPublish("sign_event")).toBe(false);
+  });
+
+  it("keeps Amber on NIP-04 and sends NIP-44 only toward Primal's relays", () => {
+    expect(nip46PrimaryEncryption("sign_event")).toBe("nip04");
+    expect(nip46ShouldDualPublish("sign_event")).toBe(false);
+    expect(
+      primalSignRelayTargets(
+        ["wss://nos.lol", "wss://relay.primal.net", "wss://relay.nip46.com"],
+        true
+      )
+    ).toEqual(["wss://relay.primal.net", "wss://relay.nip46.com"]);
+    expect(primalSignRelayTargets(["wss://relay.primal.net"], false)).toEqual(
+      []
+    );
   });
 
   it("uses the same Amber wrap for encrypt/decrypt RPC", () => {

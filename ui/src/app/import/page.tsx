@@ -11,6 +11,7 @@ import {
 } from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
+  hasStoredRemoteSignerSession,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
@@ -1621,47 +1622,6 @@ export default function ImportPage() {
         }
       }
 
-      // Verify save worked and log structure
-      const savedRepos = JSON.parse(
-        localStorage.getItem("gittr_repos") || "[]"
-      );
-      const tidesInSaved = savedRepos.find((r: any) => {
-        const repoName = r.repo || r.slug || r.name || "";
-        return repoName.toLowerCase() === "tides";
-      });
-      if (tidesInSaved) {
-        console.debug("🌊 [Import] Tides repo verified in localStorage", {
-          entity: tidesInSaved.entity,
-          entityLength: tidesInSaved.entity?.length,
-          ownerPubkey: tidesInSaved.ownerPubkey?.slice(0, 16),
-          ownerPubkeyLength: tidesInSaved.ownerPubkey?.length,
-          hasContributors: !!(
-            tidesInSaved.contributors &&
-            Array.isArray(tidesInSaved.contributors)
-          ),
-          contributorsCount: tidesInSaved.contributors?.length || 0,
-          ownerContributor: tidesInSaved.contributors?.find(
-            (c: any) => c.weight === 100
-          ),
-          repo: tidesInSaved.repo,
-          slug: tidesInSaved.slug,
-          name: tidesInSaved.name,
-        });
-      } else {
-        console.error(
-          "❌ [Import] ERROR: tides repo NOT found in localStorage after save!"
-        );
-        console.error(
-          "All saved repos:",
-          savedRepos.map((r: any) => ({
-            repo: r.repo,
-            slug: r.slug,
-            name: r.name,
-            entity: r.entity,
-          }))
-        );
-      }
-
       // Dispatch event to update repositories page
       // This works in the same tab (unlike StorageEvent which only fires in other tabs)
       // Dispatch event to trigger reload on repositories page
@@ -1700,6 +1660,19 @@ export default function ImportPage() {
             `${statusLine}. Push skipped: ${NO_SIGNING_METHOD_MESSAGE}`
           );
         } else {
+          // Same warm as the repo page Push button. Import used to sign only
+          // after GitHub fetch + file load, with the page relays still up.
+          try {
+            await remoteSigner?.ensureRpcHealthy?.();
+          } catch (warmErr) {
+            const warmMsg =
+              warmErr instanceof Error ? warmErr.message : String(warmErr);
+            console.warn("[Import Push] Remote signer warm:", warmMsg);
+            if (hasStoredRemoteSignerSession() && !signer.privateKey) {
+              setStatus(`${statusLine}. Push skipped: ${warmMsg}`);
+              return;
+            }
+          }
           for (let i = 0; i < newlyImported.length; i++) {
             const item = newlyImported[i]!;
             setStatus(

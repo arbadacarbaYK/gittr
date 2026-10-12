@@ -745,9 +745,10 @@ export default function Login() {
               {showPairingQR ? (
                 <div className="space-y-3 rounded-lg border border-purple-800/40 bg-purple-950/20 p-3">
                   <p className="text-xs text-purple-200">
-                    Gittr is already listening — scan this QR with Amber and
-                    approve. Use{" "}
-                    <span className="font-semibold">Create new</span> when Amber
+                    Gittr is already listening — scan this QR with Amber or
+                    Primal and approve. Primal watches its own bunker relay;
+                    that relay is in this QR. In Amber, choose{" "}
+                    <span className="font-semibold">Create new</span> if it
                     asks. You can tap{" "}
                     <span className="font-semibold">Pair &amp; Login</span>{" "}
                     again only if pairing got stuck.

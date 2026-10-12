@@ -90,6 +90,12 @@ export interface RemoteSignerSession {
   lastConnected: number;
   /** True while waiting for the first inbound event to learn the signer pubkey. */
   nostrConnectPairing?: boolean;
+  /**
+   * Durable. True when this login was gittr's nostrconnect QR (Primal, or
+   * Amber scanning that QR). `nostrConnectPairing` is cleared as soon as the
+   * phone answers, so sign paths must not use it.
+   */
+  nostrConnect?: boolean;
 }
 
 export type RemoteSignerState = "idle" | "connecting" | "ready" | "error";
@@ -166,6 +172,16 @@ const AMBER_DIAL_FIRST = [
   "wss://relay.ditto.pub",
   "wss://theforest.nostr1.com",
   "wss://nos.lol",
+];
+
+/**
+ * Primal's phone signer watches these. They are not Amber defaults.
+ * The login QR used to fill all 5 relay slots before these, so a Primal
+ * session could pair and then never see sign_event.
+ */
+export const PRIMAL_BUNKER_RELAYS = [
+  "wss://relay.primal.net",
+  "wss://relay.nip46.com",
 ];
 
 /** Old bunker URI hosts that close in the browser. Not used for the first dial. */
@@ -302,9 +318,16 @@ export function getNip46PairingRelays(appRelays: string[], max = 5): string[] {
       merged.push(normalized);
     }
   };
+  // Primal listens on its own relays. Filling the 5 QR slots with
+  // purplepag.es / yabu / kindpag.es / damus left those out, so sign_event
+  // was delivered to relays the phone was not watching.
+  PRIMAL_BUNKER_RELAYS.forEach(add);
+  add(GITTR_BUNKER_RELAY);
+  add("wss://nos.lol");
+  add("wss://theforest.nostr1.com");
+  appRelays.filter((r) => bunkerMayUseRelay(r)).forEach(add);
   NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
   NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
-  appRelays.filter((r) => bunkerMayUseRelay(r)).forEach(add);
   return merged.slice(0, max);
 }
 
@@ -380,15 +403,117 @@ export function planBunkerDialWaves(uriRelays: string[]): {
  * Relays Amber shows as connected go first so a clearnet phone gets the
  * prompt quickly; the rest are still opened before we publish.
  */
-export function planSignEventDialOrder(uriRelays: string[]): string[] {
-  const uri = uniqueNormalizedRelays(uriRelays).filter((u) =>
+export function planSignEventDialOrder(
+  uriRelays: string[],
+  opts?: { nostrConnect?: boolean }
+): string[] {
+  const pinned = opts?.nostrConnect
+    ? PRIMAL_BUNKER_RELAYS.filter((u) => bunkerMayUseRelay(u))
+    : [];
+  const uri = uniqueNormalizedRelays([...pinned, ...uriRelays]).filter((u) =>
     bunkerMayUseRelay(u)
   );
-  const live = AMBER_DIAL_FIRST.filter((u) => uri.includes(u));
-  const rest = uri.filter((u) => !live.includes(u));
+  const pinnedSet = new Set(pinned);
+  const live = AMBER_DIAL_FIRST.filter(
+    (u) => uri.includes(u) && !pinnedSet.has(u)
+  );
+  const rest = uri.filter((u) => !live.includes(u) && !pinnedSet.has(u));
   const fresh = rest.filter((u) => !STALE_BUNKER_RELAYS.has(u));
   const stale = rest.filter((u) => STALE_BUNKER_RELAYS.has(u));
-  return [...live, ...fresh, ...stale].slice(0, BUNKER_PUBLISH_MAX_RELAYS);
+  return [...pinned, ...live, ...fresh, ...stale].slice(
+    0,
+    BUNKER_PUBLISH_MAX_RELAYS
+  );
+}
+
+const NOSTRCONNECT_QR_MARKERS = [
+  "wss://purplepag.es",
+  "wss://directory.yabu.me",
+  "wss://profiles.nostr1.com",
+  "wss://user.kindpag.es",
+];
+
+/**
+ * True for a nostrconnect QR login, including sessions saved before the
+ * durable flag existed. Those QRs were filled with Amber's old default
+ * relays, which is how we still recognize them after pairing clears
+ * `nostrConnectPairing`.
+ */
+export function sessionUsesNostrConnect(
+  session:
+    | {
+        nostrConnect?: boolean;
+        nostrConnectPairing?: boolean;
+        uriRelays?: string[];
+      }
+    | null
+    | undefined
+): boolean {
+  if (!session) return false;
+  if (session.nostrConnect || session.nostrConnectPairing) return true;
+  const uri = new Set((session.uriRelays || []).map(normalizeRelayUrl));
+  return NOSTRCONNECT_QR_MARKERS.filter((u) => uri.has(u)).length >= 3;
+}
+
+/** Relays this sign must actually reach. nostrconnect adds Primal's relays. */
+export function signerBunkerRelays(
+  uriRelays: string[],
+  nostrConnect: boolean
+): string[] {
+  if (!nostrConnect) return uniqueNormalizedRelays(uriRelays);
+  return uniqueNormalizedRelays([...PRIMAL_BUNKER_RELAYS, ...uriRelays]);
+}
+
+/**
+ * One relay OK must not be reported as every bunker relay. That made a
+ * single-repo import say "all 5" and then wait until the phone timed out.
+ */
+export function confirmedPublishUrls(opts: {
+  publishTargets: string[];
+  okRelays: string[];
+}): { urls: string[]; acked: boolean } {
+  const ok = uniqueNormalizedRelays(opts.okRelays);
+  if (ok.length === 0) {
+    return {
+      urls: uniqueNormalizedRelays(opts.publishTargets),
+      acked: false,
+    };
+  }
+  return { urls: ok, acked: true };
+}
+
+/** Open Primal relays among the sockets we will publish on. Empty for Amber bunker://. */
+export function primalSignRelayTargets(
+  openRelays: string[],
+  nostrConnect: boolean
+): string[] {
+  if (!nostrConnect) return [];
+  const want = new Set(PRIMAL_BUNKER_RELAYS.map(normalizeRelayUrl));
+  return uniqueNormalizedRelays(openRelays).filter((u) => want.has(u));
+}
+
+/** True when sign_event should drop the bunker pool and publish once more. */
+export function signEventPublishNeedsAnotherDial(opts: {
+  method: string;
+  acked: boolean;
+  publishedUrls: string[];
+  uriRelays: string[];
+  nostrConnect?: boolean;
+}): boolean {
+  if (opts.method !== "sign_event") return false;
+  if (!opts.acked) return true;
+  if (opts.nostrConnect) {
+    const published = relayUrlSet(opts.publishedUrls);
+    const wanted = PRIMAL_BUNKER_RELAYS.map(normalizeRelayUrl).filter((u) =>
+      relayUrlSet(opts.uriRelays).has(u)
+    );
+    const primalReached = wanted.some((u) => published.has(u));
+    // A single OK on relay.primal.net is the phone. Do not drop that socket
+    // just because the other QR relays stayed quiet.
+    if (primalReached) return false;
+    if (wanted.length > 0) return true;
+  }
+  return bunkerPublishIsThin(opts.publishedUrls, opts.uriRelays);
 }
 
 /**
@@ -554,7 +679,7 @@ export function signTimeoutUserMessage(opts: {
   const wanted = relayUrlSet(opts.uriRelays).size;
   const delivered = overlap.overlap.length;
   if (wanted > 0 && !overlap.hasOverlap && opts.publishedUrls.length > 0) {
-    return "The signing request reached a relay Amber is not watching. Open Amber, confirm it is online on its bunker relays (from the bunker link — not gittr’s forge relays), then try again.";
+    return "The signing request reached a relay your signer is not watching. Open Amber or Primal, confirm it is online on its bunker relays (from the login QR — not gittr’s forge relays), then try again.";
   }
   if (
     delivered > 0 &&
@@ -563,14 +688,14 @@ export function signTimeoutUserMessage(opts: {
     const unopened = Math.max(0, wanted - delivered);
     const where =
       unopened === 0
-        ? `all ${wanted} bunker relays Amber is paired with`
-        : `${delivered} of ${wanted} bunker relays Amber is paired with (${unopened} would not open from this browser)`;
-    return `gittr sent the signing request to ${where}. Amber did not show a prompt. Open Amber, turn off Orbot or any VPN on the phone, then try again. This browser already delivered the request.`;
+        ? `all ${wanted} bunker relays your signer is paired with`
+        : `${delivered} of ${wanted} bunker relays your signer is paired with (${unopened} would not open from this browser)`;
+    return `gittr sent the signing request to ${where}. Your signer did not show a prompt. Open Amber or Primal, turn off Orbot or any VPN on the phone, then try again. This browser already delivered the request.`;
   }
   if (bunkerPublishIsThin(opts.publishedUrls, opts.uriRelays)) {
-    return `gittr only delivered the signing request to ${delivered} of ${wanted} Amber bunker relays. Try the push again — gittr will open the rest of Amber’s relays before it sends.`;
+    return `gittr only delivered the signing request to ${delivered} of ${wanted} bunker relays. Try the push again — gittr will open the rest, including Primal’s relay when you signed in with Primal.`;
   }
-  return "Amber did not open a signing prompt. Unlock Amber on your phone (bunker online), keep this tab open, then try again. Relay OK (acked:true) does not mean the phone saw the request.";
+  return "Your signer did not open a prompt. Unlock Amber or Primal, keep this tab open, then try again. Relay OK (acked:true) does not mean the phone saw the request.";
 }
 
 export const DEFAULT_REMOTE_SIGNER_LABEL = "gittr.space";
@@ -871,6 +996,8 @@ async function encryptNip46RpcPayload(
   primaryScheme: "nip04" | "nip44";
   dual: string | null;
   dualScheme: "nip04" | "nip44" | null;
+  /** The other scheme. nostrconnect sign_event sends this only if the phone stays quiet. */
+  alternate: string | null;
 }> {
   const primaryScheme = nip46PrimaryEncryption(method);
   let nip44Cipher: string | null = null;
@@ -902,15 +1029,7 @@ async function encryptNip46RpcPayload(
       : primary === nip44Cipher
       ? "nip44"
       : "nip04";
-  if (!nip46ShouldDualPublish(method)) {
-    return {
-      primary,
-      primaryScheme: usedPrimary,
-      dual: null,
-      dualScheme: null,
-    };
-  }
-  const dual =
+  const alternate =
     usedPrimary === "nip04"
       ? nip44Cipher && nip44Cipher !== primary
         ? nip44Cipher
@@ -918,11 +1037,25 @@ async function encryptNip46RpcPayload(
       : nip04Cipher && nip04Cipher !== primary
       ? nip04Cipher
       : null;
+  if (!nip46ShouldDualPublish(method)) {
+    return {
+      primary,
+      primaryScheme: usedPrimary,
+      dual: null,
+      dualScheme: null,
+      alternate,
+    };
+  }
   return {
     primary,
     primaryScheme: usedPrimary,
-    dual,
-    dualScheme: dual ? (usedPrimary === "nip04" ? "nip44" : "nip04") : null,
+    dual: alternate,
+    dualScheme: alternate
+      ? usedPrimary === "nip04"
+        ? "nip44"
+        : "nip04"
+      : null,
+    alternate: null,
   };
 }
 
@@ -1058,6 +1191,22 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
         .filter((u) => u.startsWith("wss://") && bunkerMayUseRelay(u));
     }
     // Keep `relays` aligned with URI authority — dial expansion stays ephemeral.
+    if (sessionUsesNostrConnect(parsed)) {
+      const flagWasSet = parsed.nostrConnect === true;
+      parsed.nostrConnect = true;
+      const withPrimal = uniqueNormalizedRelays([
+        ...PRIMAL_BUNKER_RELAYS,
+        ...parsed.uriRelays,
+      ]);
+      const relaysChanged = withPrimal.length !== parsed.uriRelays.length;
+      if (relaysChanged) {
+        parsed.uriRelays = withPrimal;
+        parsed.relays = [...withPrimal];
+      }
+      if (!flagWasSet || relaysChanged) {
+        persistRemoteSignerSession(parsed);
+      }
+    }
     if (parsed.uriRelays.length > 0) {
       parsed.relays = [...parsed.uriRelays];
     }
@@ -1563,6 +1712,7 @@ export class RemoteSignerManager {
       label: config.label || DEFAULT_REMOTE_SIGNER_LABEL,
       lastConnected: Date.now(),
       nostrConnectPairing: config.mode === "nostrconnect",
+      nostrConnect: config.mode === "nostrconnect",
     };
 
     if (config.mode === "bunker") {
@@ -3026,9 +3176,17 @@ export class RemoteSignerManager {
           /* the in-flight dial logs its own failure */
         }
       }
-      const order = planSignEventDialOrder(uriRelays);
+      const nostrConnect = sessionUsesNostrConnect(session);
+      const order = planSignEventDialOrder(
+        signerBunkerRelays(uriRelays, nostrConnect),
+        { nostrConnect }
+      );
       this.lastSignAttempted = [];
       if (order.length === 0) return [];
+      // Import + single-repo push used to skip this when every socket already
+      // looked OPEN. The page relays stayed up, the publish was acked, and
+      // Primal/Amber never showed a prompt.
+      await this.holdPageRelaysForBunkerDial();
       const have = new Set(
         (await this.listDirectOpenRelays(order)).map((u) =>
           normalizeRelayUrl(u)
@@ -3037,17 +3195,14 @@ export class RemoteSignerManager {
       const missing = order.filter((u) => !have.has(u));
       if (missing.length > 0) {
         console.log(
-          "[RemoteSigner] Opening every Amber bunker relay before the signing request",
+          "[RemoteSigner] Opening every bunker relay before the signing request",
           {
             already: have.size,
             remaining: missing,
             uri: order,
+            nostrConnect,
           }
         );
-        // Reuse the warm's hold. A second suspend here used to abort the
-        // page relays that the warm had just restored, then dial with no
-        // settle — every bunker relay came back status 3.
-        await this.holdPageRelaysForBunkerDial();
         await this.dialRelaysWithConcurrency(
           missing,
           BUNKER_URI_DIAL_CONCURRENCY,
@@ -3342,16 +3497,17 @@ export class RemoteSignerManager {
           resolve({ urls, acked });
         };
         const timer = setTimeout(() => {
-          if (okRelays.length > 0) {
-            // Record every OPEN target we published to (not only the first OK).
-            finish(uniqueNormalizedRelays([...publishTargets]), true);
-            return;
+          const result = confirmedPublishUrls({
+            publishTargets,
+            okRelays,
+          });
+          if (!result.acked) {
+            console.warn(
+              "[RemoteSigner] Direct publish got no OK ack; continuing because bunker sockets were OPEN",
+              { eventId: event?.id, relays: publishTargets }
+            );
           }
-          console.warn(
-            "[RemoteSigner] Direct publish got no OK ack; continuing because bunker sockets were OPEN",
-            { eventId: event?.id, relays: publishTargets }
-          );
-          finish(uniqueNormalizedRelays([...publishTargets]), false);
+          finish(result.urls, result.acked);
         }, timeoutMs);
         try {
           const pub = this.directPool.publish(publishTargets, event);
@@ -3360,7 +3516,11 @@ export class RemoteSignerManager {
             if (
               uniqueNormalizedRelays(okRelays).length >= publishTargets.length
             ) {
-              finish(uniqueNormalizedRelays([...publishTargets]), true);
+              const result = confirmedPublishUrls({
+                publishTargets,
+                okRelays,
+              });
+              finish(result.urls, result.acked);
             }
           });
           pub.on("failed", (relayUrl: string) => {
@@ -3921,7 +4081,10 @@ export class RemoteSignerManager {
           // Publish NIP-46 only on directPool — app relaypool publish would
           // dial bunker hosts again and fight for the same browser sockets.
           // Prefer Amber URI/signer relays among OPEN sockets.
-          const uriRelays = getSessionUriRelays(session);
+          const uriRelays = signerBunkerRelays(
+            getSessionUriRelays(session),
+            sessionUsesNostrConnect(session)
+          );
           let publishTargets = preferUriOpenRelays(
             openDirect.length > 0 ? openDirect : [],
             uriRelays
@@ -3944,11 +4107,21 @@ export class RemoteSignerManager {
             acked: published.acked,
             uriRelays,
           };
-          // sign_event: zombie OPEN sockets often soft-continue without OK —
-          // Amber never sees the request. Reset + republish once before waiting.
-          if (method === "sign_event" && !published.acked) {
+          // One OK used to count as every relay. Primal never saw that request.
+          // Reset + republish once when the ack missed Primal's relays or
+          // no relay accepted it.
+          if (
+            signEventPublishNeedsAnotherDial({
+              method,
+              acked: published.acked,
+              publishedUrls: published.urls,
+              uriRelays,
+              nostrConnect: sessionUsesNostrConnect(session),
+            })
+          ) {
             console.warn(
-              "[RemoteSigner] sign_event publish had no relay OK — resetting bunker transport and retrying once"
+              "[RemoteSigner] sign_event did not reach enough signer relays — resetting bunker transport and retrying once",
+              { acked: published.acked, urls: published.urls, uriRelays }
             );
             this.resetDirectPool();
             const reopened = await this.ensureDirectTransport(
@@ -3979,6 +4152,30 @@ export class RemoteSignerManager {
           if (method === "sign_event" && published.acked) {
             signPublishSettled = true;
             signPublishAcked = true;
+          }
+          const primalTargets = primalSignRelayTargets(
+            publishTargets,
+            sessionUsesNostrConnect(session)
+          );
+          if (
+            method === "sign_event" &&
+            primalTargets.length > 0 &&
+            encrypted.alternate
+          ) {
+            const alternateEvent = buildRpcEvent(encrypted.alternate);
+            console.log(
+              "[RemoteSigner] Sending NIP-44 to Primal's bunker relays",
+              primalTargets
+            );
+            void this.publishDirectConfirmed(
+              primalTargets,
+              alternateEvent,
+              4000
+            )
+              .then((result) => {
+                if (result.acked) signPublishAcked = true;
+              })
+              .catch(() => undefined);
           }
           const overlap = bunkerRelayPublishOverlap(published.urls, uriRelays);
           console.log("[RemoteSigner] Published via direct pool", {

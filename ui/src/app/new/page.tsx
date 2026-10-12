@@ -6,6 +6,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
+  hasStoredRemoteSignerSession,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
@@ -306,7 +307,10 @@ function NewRepoPageContent() {
     const importCandidates = resolveImportCandidates();
 
     if (importCandidates.length > 0) {
-      if (pushAfterImport && (!publish || !subscribe || !defaultRelays?.length)) {
+      if (
+        pushAfterImport &&
+        (!publish || !subscribe || !defaultRelays?.length)
+      ) {
         setStatus(
           "Cannot push after import yet. Wait until Nostr is connected, or leave “Also push to Nostr” off and push from the repo page."
         );
@@ -561,6 +565,21 @@ function NewRepoPageContent() {
                     `Saved in this browser. Push skipped: ${NO_SIGNING_METHOD_MESSAGE} Open /${entity}/${importedRepoSlug} and use Push to Nostr.`
                   );
                   return;
+                }
+                try {
+                  await remoteSigner?.ensureRpcHealthy?.();
+                } catch (warmErr) {
+                  const warmMsg =
+                    warmErr instanceof Error
+                      ? warmErr.message
+                      : String(warmErr);
+                  console.warn("[New Repo] Remote signer warm:", warmMsg);
+                  if (hasStoredRemoteSignerSession() && !signer.privateKey) {
+                    setStatus(
+                      `Saved in this browser. Push skipped: ${warmMsg} Open /${entity}/${importedRepoSlug} and use Push to Nostr.`
+                    );
+                    return;
+                  }
                 }
                 const paymentAuth = await ensurePushPaymentAuthorization({
                   entity,
@@ -1060,9 +1079,9 @@ function NewRepoPageContent() {
                 Also push to Nostr
               </span>
               <span className="block text-xs text-gray-400 mt-0.5">
-                One repo, usually two signature prompts. Off by default — without
-                it the files stay in this browser until you push from the repo
-                page.
+                One repo, usually two signature prompts. Off by default —
+                without it the files stay in this browser until you push from
+                the repo page.
               </span>
             </span>
           </label>
