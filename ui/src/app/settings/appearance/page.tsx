@@ -6,6 +6,7 @@ import SettingsHero from "@/components/settings-hero";
 
 const THEMES = [
   { id: "midnight", label: "Midnight (calm deep navy/teal)" },
+  { id: "tokyo", label: "Tokyo (navy, peach, and teal)" },
   { id: "bitcoin", label: "Bitcoin (orange/gray)" },
   { id: "classic", label: "Classic" },
   { id: "cypherpunk", label: "Cypherpunk (neon green/terminal)" },

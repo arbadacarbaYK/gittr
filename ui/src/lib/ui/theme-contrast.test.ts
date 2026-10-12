@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(
@@ -18,6 +17,21 @@ describe("theme filled-button contrast", () => {
       ':root[data-theme="cypherpunk"] .bg-purple-600.text-white'
     );
     expect(css).toContain("color: var(--color-on-accent) !important;");
+  });
+
+  it("gives tokyo navy ink on peach accent fills", () => {
+    expect(css).toMatch(
+      /\[data-theme="tokyo"\][\s\S]*?--color-on-accent:\s*#06182e/
+    );
+    expect(css).not.toMatch(
+      /\[data-theme="tokyo"\][\s\S]*?--color-on-accent:\s*var\(--color-text-primary\)/
+    );
+    expect(css).toContain(
+      ':root[data-theme="tokyo"] .bg-purple-600.text-white'
+    );
+    expect(css).toContain(
+      ':root[data-theme="tokyo"] .bg-purple-600 .text-white'
+    );
   });
 
   it("gives midnight navy ink on teal accent fills", () => {

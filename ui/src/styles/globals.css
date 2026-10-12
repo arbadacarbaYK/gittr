@@ -238,6 +238,24 @@ html.gittr-needs-status-bar-gap {
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Tokyo — navy field, peach type, teal labels, orange controls (style-panel reference). */
+:root[data-theme="tokyo"] {
+  --color-bg-primary: #06182e; /* Panel navy */
+  --color-bg-secondary: #0c2742; /* Raised cards */
+  --color-bg-dark: #030e1c;
+  --color-text-primary: #f8a868; /* Peach headings and body */
+  --color-text-secondary: #5eaea4; /* Teal labels */
+  --color-accent-primary: #faa968; /* Selected-control orange */
+  --color-accent-hover: #ffc48a;
+  --color-accent-secondary: #4d9c91; /* Teal for status */
+  --color-border: #c48b6a; /* Warm frame */
+  --color-link: #faa968;
+  --color-link-hover: #ffc48a;
+  /* Filled buttons: navy ink on peach (peach-on-peach is unreadable). */
+  --color-on-accent: #06182e;
+  --font-family: system-ui, -apple-system, sans-serif;
+}
+
 /* Apply theme colors and fonts globally */
 body {
   background-color: var(--color-bg-primary);
@@ -266,7 +284,8 @@ body {
   font-family: var(--font-family);
 }
 
-:root[data-theme="midnight"] * {
+:root[data-theme="midnight"] *,
+:root[data-theme="tokyo"] * {
   font-family: var(--font-family);
 }
 
@@ -328,7 +347,8 @@ a:hover {
 :root[data-theme="cypherpunk"] a,
 :root[data-theme="girly"] a,
 :root[data-theme="arcade80s"] a,
-:root[data-theme="midnight"] a {
+:root[data-theme="midnight"] a,
+:root[data-theme="tokyo"] a {
   color: var(--color-link) !important;
 }
 
@@ -336,7 +356,8 @@ a:hover {
 :root[data-theme="cypherpunk"] a:hover,
 :root[data-theme="girly"] a:hover,
 :root[data-theme="arcade80s"] a:hover,
-:root[data-theme="midnight"] a:hover {
+:root[data-theme="midnight"] a:hover,
+:root[data-theme="tokyo"] a:hover {
   color: var(--color-link-hover) !important;
 }
 
@@ -350,7 +371,9 @@ a:hover {
 :root[data-theme="arcade80s"] .text-purple-500,
 :root[data-theme="arcade80s"] .text-purple-400,
 :root[data-theme="midnight"] .text-purple-500,
-:root[data-theme="midnight"] .text-purple-400 {
+:root[data-theme="tokyo"] .text-purple-500,
+:root[data-theme="midnight"] .text-purple-400,
+:root[data-theme="tokyo"] .text-purple-400 {
   color: var(--color-accent-primary) !important;
 }
 
@@ -363,7 +386,9 @@ a:hover {
 :root[data-theme="arcade80s"] .hover\:text-purple-500:hover,
 :root[data-theme="arcade80s"] .hover\:text-purple-400:hover,
 :root[data-theme="midnight"] .hover\:text-purple-500:hover,
-:root[data-theme="midnight"] .hover\:text-purple-400:hover {
+:root[data-theme="tokyo"] .hover\:text-purple-500:hover,
+:root[data-theme="midnight"] .hover\:text-purple-400:hover,
+:root[data-theme="tokyo"] .hover\:text-purple-400:hover {
   color: var(--color-accent-hover) !important;
 }
 
@@ -372,7 +397,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .border-purple-500,
 :root[data-theme="girly"] .border-purple-500,
 :root[data-theme="arcade80s"] .border-purple-500,
-:root[data-theme="midnight"] .border-purple-500 {
+:root[data-theme="midnight"] .border-purple-500,
+:root[data-theme="tokyo"] .border-purple-500 {
   border-color: var(--color-accent-primary) !important;
 }
 
@@ -382,11 +408,13 @@ a:hover {
 :root[data-theme="girly"] .border-b-purple-600,
 :root[data-theme="arcade80s"] .border-b-purple-600,
 :root[data-theme="midnight"] .border-b-purple-600,
+:root[data-theme="tokyo"] .border-b-purple-600,
 :root[data-theme="bitcoin"] .border-purple-600,
 :root[data-theme="cypherpunk"] .border-purple-600,
 :root[data-theme="girly"] .border-purple-600,
 :root[data-theme="arcade80s"] .border-purple-600,
-:root[data-theme="midnight"] .border-purple-600 {
+:root[data-theme="midnight"] .border-purple-600,
+:root[data-theme="tokyo"] .border-purple-600 {
   border-color: var(--color-accent-primary) !important;
 }
 
@@ -394,7 +422,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .border-gray-700,
 :root[data-theme="girly"] .border-gray-700,
 :root[data-theme="arcade80s"] .border-gray-700,
-:root[data-theme="midnight"] .border-gray-700 {
+:root[data-theme="midnight"] .border-gray-700,
+:root[data-theme="tokyo"] .border-gray-700 {
   border-color: var(--color-border) !important;
 }
 
@@ -403,7 +432,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .ring-purple-500,
 :root[data-theme="girly"] .ring-purple-500,
 :root[data-theme="arcade80s"] .ring-purple-500,
-:root[data-theme="midnight"] .ring-purple-500 {
+:root[data-theme="midnight"] .ring-purple-500,
+:root[data-theme="tokyo"] .ring-purple-500 {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
@@ -411,7 +441,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .ring-purple-400,
 :root[data-theme="girly"] .ring-purple-400,
 :root[data-theme="arcade80s"] .ring-purple-400,
-:root[data-theme="midnight"] .ring-purple-400 {
+:root[data-theme="midnight"] .ring-purple-400,
+:root[data-theme="tokyo"] .ring-purple-400 {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
@@ -420,11 +451,13 @@ a:hover {
 :root[data-theme="girly"] .focus\:ring-purple-500:focus,
 :root[data-theme="arcade80s"] .focus\:ring-purple-500:focus,
 :root[data-theme="midnight"] .focus\:ring-purple-500:focus,
+:root[data-theme="tokyo"] .focus\:ring-purple-500:focus,
 :root[data-theme="bitcoin"] .focus\:ring-purple-400:focus,
 :root[data-theme="cypherpunk"] .focus\:ring-purple-400:focus,
 :root[data-theme="girly"] .focus\:ring-purple-400:focus,
 :root[data-theme="arcade80s"] .focus\:ring-purple-400:focus,
-:root[data-theme="midnight"] .focus\:ring-purple-400:focus {
+:root[data-theme="midnight"] .focus\:ring-purple-400:focus,
+:root[data-theme="tokyo"] .focus\:ring-purple-400:focus {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
@@ -455,9 +488,13 @@ a:hover {
 :root[data-theme="arcade80s"] button.border-purple-500.hover\:text-purple-400:hover,
 :root[data-theme="arcade80s"] .border-purple-500.hover\:text-purple-400:hover,
 :root[data-theme="midnight"] button.border-purple-500.text-purple-400,
+:root[data-theme="tokyo"] button.border-purple-500.text-purple-400,
 :root[data-theme="midnight"] .border-purple-500.text-purple-400,
+:root[data-theme="tokyo"] .border-purple-500.text-purple-400,
 :root[data-theme="midnight"] button.border-purple-500.hover\:text-purple-400:hover,
-:root[data-theme="midnight"] .border-purple-500.hover\:text-purple-400:hover {
+:root[data-theme="tokyo"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="midnight"] .border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="tokyo"] .border-purple-500.hover\:text-purple-400:hover {
   color: var(--color-accent-primary) !important;
   border-color: var(--color-accent-primary) !important;
 }
@@ -467,7 +504,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-purple-600,
 :root[data-theme="girly"] .bg-purple-600,
 :root[data-theme="arcade80s"] .bg-purple-600,
-:root[data-theme="midnight"] .bg-purple-600 {
+:root[data-theme="midnight"] .bg-purple-600,
+:root[data-theme="tokyo"] .bg-purple-600 {
   background-color: var(--color-accent-primary) !important;
 }
 
@@ -475,7 +513,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-purple-600:hover,
 :root[data-theme="girly"] .bg-purple-600:hover,
 :root[data-theme="arcade80s"] .bg-purple-600:hover,
-:root[data-theme="midnight"] .bg-purple-600:hover {
+:root[data-theme="midnight"] .bg-purple-600:hover,
+:root[data-theme="tokyo"] .bg-purple-600:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
@@ -483,7 +522,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover,
 :root[data-theme="girly"] .hover\:bg-purple-700:hover,
 :root[data-theme="arcade80s"] .hover\:bg-purple-700:hover,
-:root[data-theme="midnight"] .hover\:bg-purple-700:hover {
+:root[data-theme="midnight"] .hover\:bg-purple-700:hover,
+:root[data-theme="tokyo"] .hover\:bg-purple-700:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
@@ -492,7 +532,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-purple-500\/20,
 :root[data-theme="girly"] .bg-purple-500\/20,
 :root[data-theme="arcade80s"] .bg-purple-500\/20,
-:root[data-theme="midnight"] .bg-purple-500\/20 {
+:root[data-theme="midnight"] .bg-purple-500\/20,
+:root[data-theme="tokyo"] .bg-purple-500\/20 {
   background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
@@ -501,7 +542,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-purple-900\/20,
 :root[data-theme="girly"] .bg-purple-900\/20,
 :root[data-theme="arcade80s"] .bg-purple-900\/20,
-:root[data-theme="midnight"] .bg-purple-900\/20 {
+:root[data-theme="midnight"] .bg-purple-900\/20,
+:root[data-theme="tokyo"] .bg-purple-900\/20 {
   background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
@@ -510,7 +552,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-purple-900\/30,
 :root[data-theme="girly"] .bg-purple-900\/30,
 :root[data-theme="arcade80s"] .bg-purple-900\/30,
-:root[data-theme="midnight"] .bg-purple-900\/30 {
+:root[data-theme="midnight"] .bg-purple-900\/30,
+:root[data-theme="tokyo"] .bg-purple-900\/30 {
   background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 30%, transparent) !important;
 }
@@ -520,7 +563,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .border-purple-500\/50,
 :root[data-theme="girly"] .border-purple-500\/50,
 :root[data-theme="arcade80s"] .border-purple-500\/50,
-:root[data-theme="midnight"] .border-purple-500\/50 {
+:root[data-theme="midnight"] .border-purple-500\/50,
+:root[data-theme="tokyo"] .border-purple-500\/50 {
   border-color: var(--color-accent-primary);
   border-color: color-mix(in srgb, var(--color-accent-primary) 50%, transparent) !important;
 }
@@ -530,7 +574,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .text-purple-300,
 :root[data-theme="girly"] .text-purple-300,
 :root[data-theme="arcade80s"] .text-purple-300,
-:root[data-theme="midnight"] .text-purple-300 {
+:root[data-theme="midnight"] .text-purple-300,
+:root[data-theme="tokyo"] .text-purple-300 {
   color: var(--color-accent-primary) !important;
 }
 
@@ -546,7 +591,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .bg-dark,
 :root[data-theme="girly"] .bg-dark,
 :root[data-theme="arcade80s"] .bg-dark,
-:root[data-theme="midnight"] .bg-dark {
+:root[data-theme="midnight"] .bg-dark,
+:root[data-theme="tokyo"] .bg-dark {
   background-color: var(--color-bg-dark) !important;
 }
 
@@ -554,7 +600,8 @@ a:hover {
 :root[data-theme="cypherpunk"] [class~="bg-[#0E1116]"],
 :root[data-theme="girly"] [class~="bg-[#0E1116]"],
 :root[data-theme="arcade80s"] [class~="bg-[#0E1116]"],
-:root[data-theme="midnight"] [class~="bg-[#0E1116]"] {
+:root[data-theme="midnight"] [class~="bg-[#0E1116]"],
+:root[data-theme="tokyo"] [class~="bg-[#0E1116]"] {
   background-color: var(--color-bg-primary) !important;
 }
 
@@ -562,7 +609,8 @@ a:hover {
 :root[data-theme="cypherpunk"] [class~="bg-[#171B21]"],
 :root[data-theme="girly"] [class~="bg-[#171B21]"],
 :root[data-theme="arcade80s"] [class~="bg-[#171B21]"],
-:root[data-theme="midnight"] [class~="bg-[#171B21]"] {
+:root[data-theme="midnight"] [class~="bg-[#171B21]"],
+:root[data-theme="tokyo"] [class~="bg-[#171B21]"] {
   background-color: var(--color-bg-secondary) !important;
 }
 
@@ -570,7 +618,8 @@ a:hover {
 :root[data-theme="cypherpunk"] [class~="bg-[#22262C]"],
 :root[data-theme="girly"] [class~="bg-[#22262C]"],
 :root[data-theme="arcade80s"] [class~="bg-[#22262C]"],
-:root[data-theme="midnight"] [class~="bg-[#22262C]"] {
+:root[data-theme="midnight"] [class~="bg-[#22262C]"],
+:root[data-theme="tokyo"] [class~="bg-[#22262C]"] {
   background-color: var(--color-bg-secondary) !important;
 }
 
@@ -579,7 +628,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .text-white,
 :root[data-theme="girly"] .text-white,
 :root[data-theme="arcade80s"] .text-white,
-:root[data-theme="midnight"] .text-white {
+:root[data-theme="midnight"] .text-white,
+:root[data-theme="tokyo"] .text-white {
   color: var(--color-text-primary) !important;
 }
 
@@ -589,47 +639,56 @@ a:hover {
 :root[data-theme="girly"] .bg-purple-600,
 :root[data-theme="arcade80s"] .bg-purple-600,
 :root[data-theme="midnight"] .bg-purple-600,
+:root[data-theme="tokyo"] .bg-purple-600,
 :root[data-theme="bitcoin"] .bg-purple-600.text-white,
 :root[data-theme="cypherpunk"] .bg-purple-600.text-white,
 :root[data-theme="girly"] .bg-purple-600.text-white,
 :root[data-theme="arcade80s"] .bg-purple-600.text-white,
 :root[data-theme="midnight"] .bg-purple-600.text-white,
+:root[data-theme="tokyo"] .bg-purple-600.text-white,
 :root[data-theme="bitcoin"] .bg-purple-600:hover,
 :root[data-theme="cypherpunk"] .bg-purple-600:hover,
 :root[data-theme="girly"] .bg-purple-600:hover,
 :root[data-theme="arcade80s"] .bg-purple-600:hover,
 :root[data-theme="midnight"] .bg-purple-600:hover,
+:root[data-theme="tokyo"] .bg-purple-600:hover,
 :root[data-theme="bitcoin"] .hover\:bg-purple-700:hover,
 :root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover,
 :root[data-theme="girly"] .hover\:bg-purple-700:hover,
 :root[data-theme="arcade80s"] .hover\:bg-purple-700:hover,
 :root[data-theme="midnight"] .hover\:bg-purple-700:hover,
+:root[data-theme="tokyo"] .hover\:bg-purple-700:hover,
 :root[data-theme="bitcoin"] .theme-bg-accent-primary,
 :root[data-theme="cypherpunk"] .theme-bg-accent-primary,
 :root[data-theme="girly"] .theme-bg-accent-primary,
 :root[data-theme="arcade80s"] .theme-bg-accent-primary,
 :root[data-theme="midnight"] .theme-bg-accent-primary,
+:root[data-theme="tokyo"] .theme-bg-accent-primary,
 :root[data-theme="bitcoin"] .theme-bg-accent-primary.text-white,
 :root[data-theme="cypherpunk"] .theme-bg-accent-primary.text-white,
 :root[data-theme="girly"] .theme-bg-accent-primary.text-white,
 :root[data-theme="arcade80s"] .theme-bg-accent-primary.text-white,
 :root[data-theme="midnight"] .theme-bg-accent-primary.text-white,
+:root[data-theme="tokyo"] .theme-bg-accent-primary.text-white,
 /* Icons use their own text-white, which would stay body-colored on the fill. */
 :root[data-theme="bitcoin"] .bg-purple-600 .text-white,
 :root[data-theme="cypherpunk"] .bg-purple-600 .text-white,
 :root[data-theme="girly"] .bg-purple-600 .text-white,
 :root[data-theme="arcade80s"] .bg-purple-600 .text-white,
 :root[data-theme="midnight"] .bg-purple-600 .text-white,
+:root[data-theme="tokyo"] .bg-purple-600 .text-white,
 :root[data-theme="bitcoin"] .theme-bg-accent-primary .text-white,
 :root[data-theme="cypherpunk"] .theme-bg-accent-primary .text-white,
 :root[data-theme="girly"] .theme-bg-accent-primary .text-white,
 :root[data-theme="arcade80s"] .theme-bg-accent-primary .text-white,
 :root[data-theme="midnight"] .theme-bg-accent-primary .text-white,
+:root[data-theme="tokyo"] .theme-bg-accent-primary .text-white,
 :root[data-theme="bitcoin"] .hover\:bg-purple-700:hover .text-white,
 :root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover .text-white,
 :root[data-theme="girly"] .hover\:bg-purple-700:hover .text-white,
 :root[data-theme="arcade80s"] .hover\:bg-purple-700:hover .text-white,
-:root[data-theme="midnight"] .hover\:bg-purple-700:hover .text-white {
+:root[data-theme="midnight"] .hover\:bg-purple-700:hover .text-white,
+:root[data-theme="tokyo"] .hover\:bg-purple-700:hover .text-white {
   color: var(--color-on-accent) !important;
 }
 
@@ -637,7 +696,8 @@ a:hover {
 :root[data-theme="cypherpunk"] .text-gray-400,
 :root[data-theme="girly"] .text-gray-400,
 :root[data-theme="arcade80s"] .text-gray-400,
-:root[data-theme="midnight"] .text-gray-400 {
+:root[data-theme="midnight"] .text-gray-400,
+:root[data-theme="tokyo"] .text-gray-400 {
   color: var(--color-text-secondary) !important;
 }
 
