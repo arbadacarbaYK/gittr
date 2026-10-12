@@ -8,6 +8,24 @@ server {
     # This allows chunks up to 10MB, matching the chunk size limit in push-to-bridge.ts
     client_max_body_size 10M;
     
+    # NIP-05. Next already sends CORS. nginx add_header appends a second
+    # Access-Control-Allow-Origin, and browsers (iris.to) then reject the
+    # file and strikethrough the name. Hide the upstream copies, then add one.
+    location = /.well-known/nostr.json {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Cache-Control;
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Cache-Control "public, max-age=60, must-revalidate" always;
+    }
+
     location / {
         # Crawler nest storms. Facebook encodes slashes as %2F so $arg_path
         # does not contain "/" — match $request_uri (raw) for both forms.

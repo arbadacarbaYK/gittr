@@ -331,7 +331,7 @@ Clients query `https://gittr.space/.well-known/nostr.json?name=relay` and check 
 
 Also set `nip05` in the platform kind-0 profile (e.g. `"nip05": "relay@gittr.space"`).
 
-Serve with `Access-Control-Allow-Origin: *` (configured in `next.config.js` for this path).
+Serve with exactly one `Access-Control-Allow-Origin: *` (`next.config.js` sets it). On the server, nginx must `proxy_hide_header` that header before adding its own. Two copies make browsers reject the file, so clients such as iris.to strikethrough a valid name.
 
 ### Step 3: Set Environment Variable
 

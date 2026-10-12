@@ -67,6 +67,8 @@ const nextConfig = {
       },
       {
         // NIP-05: browsers on other origins (clients, nostr.watch) must be able to fetch this.
+        // nginx must proxy_hide_header these before its own add_header. A second copy
+        // fails the browser CORS check and iris.to strikethroughs the name.
         source: "/.well-known/nostr.json",
         headers: [
           {
