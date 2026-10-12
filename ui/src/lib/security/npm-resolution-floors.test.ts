@@ -72,15 +72,64 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     expect(gte(resolutionFloor(resolved![1]!), [4, 3, 2])).toBe(true);
   });
 
-  it("pins sharp at the GHSA-rgj7-g3m4-5g8c floor", () => {
-    expect(gte(resolutionFloor(resolutions.sharp), [0, 35, 4])).toBe(true);
+  it("pins sharp at the GHSA-wq5f-xc86-pv6w librsvg floor", () => {
+    // 0.35.4 cleared GHSA-rgj7-g3m4-5g8c; 0.35.5 clears the librsvg advisory.
+    expect(gte(resolutionFloor(resolutions.sharp), [0, 35, 5])).toBe(true);
 
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = lock.match(
       /^sharp@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
     );
     expect(resolved?.[1]).toBeTruthy();
-    expect(gte(resolutionFloor(resolved![1]!), [0, 35, 4])).toBe(true);
+    expect(gte(resolutionFloor(resolved![1]!), [0, 35, 5])).toBe(true);
+  });
+
+  it("pins source-map-js at the CVE-2026-93749 floor", () => {
+    expect(gte(resolutionFloor(resolutions["source-map-js"]), [1, 2, 2])).toBe(
+      true
+    );
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^source-map-js@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [1, 2, 2])).toBe(true);
+  });
+
+  it("pins postcss-selector-parser at the CVE-2026-104844 floor", () => {
+    // 6.x has no fix. 7.1.6 is the first release outside the range.
+    expect(
+      gte(resolutionFloor(resolutions["postcss-selector-parser"]), [7, 1, 6])
+    ).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^postcss-selector-parser@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [7, 1, 6])).toBe(true);
+  });
+
+  it("pins katex at the CVE-2026-103923 floor that still installs on Node 20", () => {
+    // Fixed in 0.18.2. 0.18.5+ depends on commander 15, which wants Node 22.
+    expect(gte(resolutionFloor(resolutions.katex), [0, 18, 4])).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^katex@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(resolved![1]!), [0, 18, 4])).toBe(true);
+  });
+
+  it("keeps braces at the newest npm publish, which is still last-affected", () => {
+    // GHSA-vfj7-8cjw-p6xm last_affected is 3.0.3. npm has no 3.0.4.
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = lock.match(
+      /^braces@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(resolved?.[1]).toBe("3.0.3");
   });
 
   it("pins brace-expansion off CVE-2026-102276 / 102277 / 102278", () => {
@@ -99,9 +148,7 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
   });
 
   it("pins dompurify at the GHSA-p98j-92pf-mc4p floor", () => {
-    expect(gte(resolutionFloor(resolutions.dompurify), [3, 4, 16])).toBe(
-      true
-    );
+    expect(gte(resolutionFloor(resolutions.dompurify), [3, 4, 16])).toBe(true);
 
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = lock.match(
