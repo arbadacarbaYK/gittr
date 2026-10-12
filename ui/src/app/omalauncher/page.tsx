@@ -1,12 +1,10 @@
 import { buildPageSiteMetadata } from "@/lib/seo/site-metadata";
 import {
-  omalauncherIntentUrl,
   omalauncherShareUrl,
   owlShareToken,
 } from "@/lib/widgets/omalauncher-share";
 
 import fs from "fs";
-import { headers } from "next/headers";
 import path from "path";
 
 export const metadata = buildPageSiteMetadata({
@@ -24,13 +22,9 @@ function tileToken(fileName: string): string {
   return owlShareToken(text);
 }
 
-export default async function OmalauncherInstallPage() {
-  const ua = (await headers()).get("user-agent") || "";
-  const android = /Android/i.test(ua);
-  const gitToken = tileToken("nostr-git.owl");
-  const appsToken = tileToken("nostr-apps.owl");
-  const hrefFor = (token: string) =>
-    android ? omalauncherIntentUrl(token) : omalauncherShareUrl(token);
+export default function OmalauncherInstallPage() {
+  const gitHref = omalauncherShareUrl(tileToken("nostr-git.owl"));
+  const appsHref = omalauncherShareUrl(tileToken("nostr-apps.owl"));
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -41,42 +35,29 @@ export default async function OmalauncherInstallPage() {
         Add gittr to Omalauncher
       </h1>
       <p className="mt-4 text-gray-300 leading-relaxed">
-        Omalauncher is the Android home screen. These two buttons add a tile.
-        The launcher shows the tile and asks before it keeps it. If Add stays on
-        this page, open gittr.space/omalauncher in Chrome. Linux is not
-        required.
+        Omalauncher is the Android home screen. Each button opens the tile page.
+        On that page, tap Open in Omalauncher. The launcher shows the tile and
+        asks before it keeps it. Linux is not required.
       </p>
 
       <div className="mt-8 flex flex-col gap-3">
         <a
-          href={hrefFor(gitToken)}
+          href={gitHref}
           className="rounded-lg bg-purple-600 px-4 py-3 text-center font-semibold text-white hover:bg-purple-500"
         >
           Add Nostr git
         </a>
         <a
-          href={omalauncherShareUrl(gitToken)}
-          className="text-center text-sm text-purple-300 hover:text-purple-200"
-        >
-          Open the Nostr git tile page
-        </a>
-        <a
-          href={hrefFor(appsToken)}
+          href={appsHref}
           className="mt-4 rounded-lg bg-purple-600 px-4 py-3 text-center font-semibold text-white hover:bg-purple-500"
         >
           Add Nostr apps
         </a>
-        <a
-          href={omalauncherShareUrl(appsToken)}
-          className="text-center text-sm text-purple-300 hover:text-purple-200"
-        >
-          Open the Nostr apps tile page
-        </a>
       </div>
 
       <p className="mt-8 text-sm text-gray-400 leading-relaxed">
-        Nostr git is the busiest public repos, same list as the gittr home page.
-        Nostr apps is the newest apps, with search.{" "}
+        Nostr git is the repos trending this week, same list as the gittr home
+        page. Nostr apps is the newest apps, with search.{" "}
         <a
           href="https://github.com/SimonSchubert/omarchy-widgets"
           className="text-purple-300 hover:text-purple-200"

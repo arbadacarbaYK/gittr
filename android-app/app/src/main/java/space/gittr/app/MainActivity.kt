@@ -2,6 +2,7 @@ package space.gittr.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -157,10 +158,35 @@ class MainActivity : AppCompatActivity() {
             }
             return openExternal(uri)
         }
-        if (scheme == "nostrsigner" || scheme == "nostrconnect" || scheme == "bunker" || scheme == "intent") {
+        if (scheme == "nostrsigner" || scheme == "nostrconnect" || scheme == "bunker") {
             return openExternal(uri)
         }
+        // Chrome understands intent://. A raw VIEW of that scheme does not, so an
+        // intent link tapped in this app used to do nothing.
+        if (scheme == "intent") {
+            return openIntentUrl(uri)
+        }
         return false
+    }
+
+    private fun openIntentUrl(uri: Uri): Boolean {
+        return try {
+            val parsed = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME)
+            parsed.addCategory(Intent.CATEGORY_BROWSABLE)
+            parsed.component = null
+            parsed.selector = null
+            try {
+                startActivity(parsed)
+            } catch (_: ActivityNotFoundException) {
+                val fallback = parsed.getStringExtra("browser_fallback_url")
+                if (!fallback.isNullOrBlank()) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallback)))
+                }
+            }
+            true
+        } catch (_: Exception) {
+            true
+        }
     }
 
     private fun openExternal(uri: Uri): Boolean {

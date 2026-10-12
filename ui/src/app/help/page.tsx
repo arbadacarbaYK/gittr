@@ -1111,7 +1111,8 @@ export default function HelpPage() {
               >
                 gittr.space/omalauncher
               </Link>{" "}
-              and tap Add. Omalauncher asks before the tile is added.
+              and tap Add. That opens the tile page. Tap Open in Omalauncher
+              there. The launcher asks before the tile is added.
             </p>
           </div>
         </HelpSection>
