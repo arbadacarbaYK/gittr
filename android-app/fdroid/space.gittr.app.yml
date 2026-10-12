@@ -1,35 +1,39 @@
+AntiFeatures:
+  TetheredNet:
+    en-US: This package always opens https://gittr.space. Self-hosting uses the git
+      repository, not this installer.
 Categories:
   - Code & Forge
   - Internet
 License: AGPL-3.0-only
+AuthorName: arbadacarba
 WebSite: https://gittr.space
 SourceCode: https://github.com/arbadacarbaYK/gittr
 IssueTracker: https://github.com/arbadacarbaYK/gittr/issues
 Changelog: https://github.com/arbadacarbaYK/gittr/releases
 
+AutoName: gittr
+
 RepoType: git
 Repo: https://github.com/arbadacarbaYK/gittr.git
 
 Builds:
-  - versionName: '1.0.2'
+  - versionName: 1.0.2
     versionCode: 10200
-    commit: v1.0.2
-    subdir: android-app
+    commit: 46cdd3dfd7d6e43dbcf9c95fd6f8234ab945bc27
+    subdir: android-app/app
     gradle:
       - yes
-    output: app/build/outputs/apk/release/app-release-unsigned.apk
-    scanignore:
-      - android-app/keystore/gittr-ci.p12
 
 MaintainerNotes: |
   Listing text and screenshots live in android-app/fastlane/metadata/android/en-US/.
   versionName and versionCode are in android-app/version.properties.
   Do not pass -PsignWithCiKeystore. That flag is only for the Zapstore CI key.
-  F-Droid must ship the unsigned APK and sign it with the F-Droid key.
-  Installs from org.fdroid.fdroid open ?source=fdroid and do not offer the GitHub APK download.
+  Build the unsigned APK and sign it with the F-Droid key.
+  Reproducible builds are not enabled. The GitHub APK is signed with a separate Zapstore CI key.
 
-AutoUpdateMode: None
+AutoUpdateMode: Version
 UpdateCheckMode: Tags
-UpdateCheckData: android-app/version.properties|versionName=(.*)|.|versionCode=(.*)
-CurrentVersion: '1.0.2'
+UpdateCheckData: android-app/version.properties|versionCode=([0-9]+)|.|versionName=(.+)
+CurrentVersion: 1.0.2
 CurrentVersionCode: 10200

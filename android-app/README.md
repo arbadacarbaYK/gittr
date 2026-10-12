@@ -41,7 +41,7 @@ Other publishers: put screenshot files in *your* git repo and list them under `i
 
 ## F-Droid
 
-Store text, icon, and phone screenshots are in `fastlane/metadata/android/en-US/`. The build recipe for F-Droid’s metadata repo is `fdroid/space.gittr.app.yml`. Maintainers file that inclusion request. Do not send someone else’s summary or screenshots.
+Store text, icon, and phone screenshots are in `fastlane/metadata/android/en-US/`. The build recipe for F-Droid’s metadata repo is `fdroid/space.gittr.app.yml`. Its `subdir` is `android-app/app`, the folder where Gradle writes `build/`. Do not set `output`; F-Droid finds the unsigned APK there on its own. Maintainers file that inclusion request. The GitLab description must be F-Droid’s **App inclusion** template, with the checklist left in place. A free-form description is closed without review. Do not send someone else’s summary or screenshots.
 
 An install whose installer is F-Droid opens `?source=fdroid` and does not offer the GitHub APK download. Zapstore and sideload builds still do.
 
