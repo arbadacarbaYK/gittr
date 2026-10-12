@@ -49,7 +49,7 @@ export default function RootLayout({
                       window.matchMedia('(display-mode: minimal-ui)').matches
                     )) || !!navigator.standalone;
                   } catch (e1) {}
-                  var apk = /GittrApp\\/\\d/i.test(ua) || /(?:^|[?&])source=apk(?:&|$)/.test(q);
+                  var apk = /GittrApp\\/\\d/i.test(ua) || /(?:^|[?&])source=(?:apk|fdroid)(?:&|$)/.test(q);
                   if (!apk) {
                     try { apk = sessionStorage.getItem('gittr_android_shell') === '1'; } catch (e2) {}
                   }

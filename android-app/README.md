@@ -21,8 +21,10 @@ Locally (JDK 17+, Android SDK):
 
 ```bash
 cd android-app
-gradle assembleRelease -PversionName=1.0.0 -PversionCode=10000
+gradle assembleRelease -PsignWithCiKeystore=true -PversionName=1.0.1 -PversionCode=10100
 ```
+
+Leave off `-PsignWithCiKeystore` for an unsigned APK. That is what F-Droid builds and signs itself. `version.properties` is the version F-Droid reads. Bump it in the same commit as a `v*` tag.
 
 APK: `app/build/outputs/apk/release/app-release.apk`.
 
@@ -36,6 +38,12 @@ After a GitHub Release has the APK:
 2. Or run `zsp publish -y zapstore.yaml` locally with `SIGN_WITH` (nsec or bunker). Do not put an nsec in GitHub Actions.
 
 Other publishers: put screenshot files in *your* git repo and list them under `images:` in *your* `zapstore.yaml` (repo-relative paths or https URLs). gittr’s **Publish on Nostr** copies those onto the listing. You can also paste extra https URLs in the announce panel. gittr’s own announce has no paste box — those shots always come from `ui/public/zapstore/`.
+
+## F-Droid
+
+Store text, icon, and phone screenshots are in `fastlane/metadata/android/en-US/`. The build recipe for F-Droid’s metadata repo is `fdroid/space.gittr.app.yml`. Maintainers file that inclusion request. Do not send someone else’s summary or screenshots.
+
+An install whose installer is F-Droid opens `?source=fdroid` and does not offer the GitHub APK download. Zapstore and sideload builds still do.
 
 ## Updates
 

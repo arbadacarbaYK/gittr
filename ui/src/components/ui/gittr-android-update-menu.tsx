@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 
 import {
-  isGittrAndroidShell,
+  offersGittrSideloadUpdate,
   rememberGittrAndroidShellFromLocation,
 } from "@/lib/repo/gittr-android-shell";
 import { runGittrAndroidUpdateCheck } from "@/lib/repo/gittr-android-update";
@@ -25,7 +25,7 @@ export function GittrAndroidUpdateMenuItem({
 
   useLayoutEffect(() => {
     rememberGittrAndroidShellFromLocation();
-    setShow(isGittrAndroidShell());
+    setShow(offersGittrSideloadUpdate());
   }, []);
 
   const run = useCallback(async () => {

@@ -3,8 +3,15 @@ plugins {
     id "org.jetbrains.kotlin.android"
 }
 
-def versionNameProp = project.findProperty("versionName") ?: "0.0.0-dev"
-def versionCodeProp = (project.findProperty("versionCode") ?: "1") as int
+def versionProps = new Properties()
+def versionFile = rootProject.file("version.properties")
+if (versionFile.exists()) {
+    versionFile.withInputStream { versionProps.load(it) }
+}
+def versionNameProp = project.findProperty("versionName") ?: versionProps.getProperty("versionName", "0.0.0-dev")
+def versionCodeProp = (project.findProperty("versionCode") ?: versionProps.getProperty("versionCode", "1")) as int
+// F-Droid must get an unsigned APK and sign it themselves. Zapstore CI opts in.
+def signRelease = project.hasProperty("signWithCiKeystore") || System.getenv("ANDROID_KEYSTORE_FILE")
 
 android {
     namespace "space.gittr.app"
@@ -40,7 +47,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (signRelease) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
         debug {

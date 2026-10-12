@@ -1,0 +1,10 @@
+<p>gittr is a Nostr git forge for repositories, issues, pull requests, pages, and apps.</p>
+<p>This package opens https://gittr.space. It is the same hosted forge as the website, not an offline copy.</p>
+<p>On the phone it adds:</p>
+<ul>
+<li>Sign-in with Amber or another NIP-46 remote signer</li>
+<li>The system file picker when you upload a file</li>
+<li>Links outside gittr open in the browser</li>
+<li>The page sits below the status bar and display cutout</li>
+</ul>
+<p>Self-hosters install from the git repository. This package always opens gittr.space. Installs from F-Droid update from F-Droid.</p>

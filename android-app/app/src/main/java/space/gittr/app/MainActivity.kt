@@ -67,7 +67,10 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccess = false
         settings.allowContentAccess = true
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        settings.userAgentString = settings.userAgentString + " GittrApp/" + BuildConfig.VERSION_NAME
+        val fdroid = isFDroidInstall()
+        val dist = if (fdroid) " GittrDist/fdroid" else ""
+        settings.userAgentString =
+            settings.userAgentString + " GittrApp/" + BuildConfig.VERSION_NAME + dist
 
         webView.webViewClient =
             object : WebViewClient() {
@@ -117,7 +120,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val deepLink = intent?.data?.toString()?.takeIf { it.startsWith("https://") }
-        webView.loadUrl(deepLink ?: START_URL)
+        webView.loadUrl(deepLink ?: if (fdroid) FDROID_URL else START_URL)
     }
 
     private fun cssPx(px: Int): String {
@@ -203,7 +206,26 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    private fun isFDroidInstall(): Boolean {
+        val installer =
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    packageManager.getInstallSourceInfo(packageName).installingPackageName
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getInstallerPackageName(packageName)
+                }
+            } catch (_: Exception) {
+                null
+            }
+        return installer == "org.fdroid.fdroid" ||
+            installer == "org.fdroid.basic" ||
+            installer == "org.fdroid.fdroid.privileged" ||
+            installer == "org.fdroid.fdroid.privileged.ota"
+    }
+
     companion object {
         const val START_URL = "https://gittr.space/?source=apk"
+        const val FDROID_URL = "https://gittr.space/?source=fdroid"
     }
 }

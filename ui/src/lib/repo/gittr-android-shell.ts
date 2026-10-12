@@ -5,26 +5,42 @@
 
 export const GITTR_ANDROID_SHELL_STORAGE_KEY = "gittr_android_shell";
 
+export const GITTR_ANDROID_DIST_STORAGE_KEY = "gittr_android_dist";
+
 export const GITTR_ANDROID_UA_PREFIX = "GittrApp/";
+
+function androidSource(search: string): string | null {
+  const source = searchParams(search).get("source");
+  if (source === "apk" || source === "fdroid") return source;
+  return null;
+}
 
 function searchParams(search: string): URLSearchParams {
   const raw = search.startsWith("?") ? search.slice(1) : search;
   return new URLSearchParams(raw);
 }
 
-/** Persist `?source=apk` so client navigation can drop the query. */
+/** Persist `?source=apk` or `?source=fdroid` so client navigation can drop the query. */
 export function rememberGittrAndroidShellFromLocation(
   search?: string,
-  storage?: Pick<Storage, "setItem"> | null
+  storage?:
+    | (Pick<Storage, "setItem"> & Partial<Pick<Storage, "removeItem">>)
+    | null
 ): void {
   const q =
     search ?? (typeof window !== "undefined" ? window.location.search : "");
-  if (searchParams(q).get("source") !== "apk") return;
+  const source = androidSource(q);
+  if (!source) return;
   try {
     const store =
       storage ??
       (typeof sessionStorage !== "undefined" ? sessionStorage : null);
     store?.setItem(GITTR_ANDROID_SHELL_STORAGE_KEY, "1");
+    if (source === "fdroid") {
+      store?.setItem(GITTR_ANDROID_DIST_STORAGE_KEY, "fdroid");
+    } else {
+      store?.removeItem?.(GITTR_ANDROID_DIST_STORAGE_KEY);
+    }
   } catch {
     /* private mode */
   }
@@ -42,7 +58,7 @@ export function isGittrAndroidShell(opts?: {
   const search =
     opts?.search ??
     (typeof window !== "undefined" ? window.location.search : "");
-  if (searchParams(search).get("source") === "apk") return true;
+  if (androidSource(search)) return true;
   try {
     const store =
       opts?.storage ??
@@ -51,6 +67,39 @@ export function isGittrAndroidShell(opts?: {
   } catch {
     return false;
   }
+}
+
+/** F-Droid installs must not offer the GitHub APK sideload. */
+export function isGittrFDroidInstall(opts?: {
+  userAgent?: string;
+  search?: string;
+  storage?: Pick<Storage, "getItem"> | null;
+}): boolean {
+  const ua =
+    opts?.userAgent ??
+    (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  if (/GittrDist\/fdroid/i.test(ua)) return true;
+  const search =
+    opts?.search ??
+    (typeof window !== "undefined" ? window.location.search : "");
+  if (androidSource(search) === "fdroid") return true;
+  try {
+    const store =
+      opts?.storage ??
+      (typeof sessionStorage !== "undefined" ? sessionStorage : null);
+    return store?.getItem(GITTR_ANDROID_DIST_STORAGE_KEY) === "fdroid";
+  } catch {
+    return false;
+  }
+}
+
+/** Zapstore / sideload builds can download a newer GitHub APK. F-Droid cannot. */
+export function offersGittrSideloadUpdate(opts?: {
+  userAgent?: string;
+  search?: string;
+  storage?: Pick<Storage, "getItem"> | null;
+}): boolean {
+  return isGittrAndroidShell(opts) && !isGittrFDroidInstall(opts);
 }
 
 /** `GittrApp/1.0.0` from the WebView user-agent, or null in a normal browser. */

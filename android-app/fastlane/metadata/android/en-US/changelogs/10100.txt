@@ -1,0 +1,1 @@
+First F-Droid build. Opens gittr.space, with Amber sign-in and the system file picker.

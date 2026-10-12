@@ -1033,7 +1033,8 @@ export default function HelpPage() {
                 phone hamburger if you are signed out) and tap{" "}
                 <strong className="text-white">Update app</strong>. gittr checks
                 GitHub for a newer installer and opens the download in your
-                system browser. The Apps page card for{" "}
+                system browser. An install from F-Droid does not show that
+                item; those updates come from F-Droid. The Apps page card for{" "}
                 <code className="text-purple-200">space.gittr.app</code> uses
                 that same GitHub latest so it does not lag Zapstore. Pages
                 inside the app already match the live website; you only need a

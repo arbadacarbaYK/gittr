@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GITTR_ANDROID_DIST_STORAGE_KEY,
   GITTR_ANDROID_SHELL_STORAGE_KEY,
   compareSemver,
   installedGittrAppVersion,
   isGittrAndroidShell,
+  isGittrFDroidInstall,
+  offersGittrSideloadUpdate,
   parseSemverParts,
   rememberGittrAndroidShellFromLocation,
 } from "./gittr-android-shell";
@@ -62,6 +65,56 @@ describe("gittr Android shell detection", () => {
         storage: { getItem: (k) => store[k] ?? null },
       })
     ).toBe(true);
+  });
+
+  it("hides the GitHub APK updater on an F-Droid install", () => {
+    expect(
+      isGittrFDroidInstall({
+        userAgent: "Mozilla/5.0 GittrApp/1.0.1 GittrDist/fdroid",
+        search: "",
+        storage: { getItem: () => null },
+      })
+    ).toBe(true);
+    expect(
+      offersGittrSideloadUpdate({
+        userAgent: "Mozilla/5.0 GittrApp/1.0.1 GittrDist/fdroid",
+        search: "",
+        storage: { getItem: () => null },
+      })
+    ).toBe(false);
+    expect(
+      offersGittrSideloadUpdate({
+        userAgent: "GittrApp/1.0.1",
+        search: "",
+        storage: { getItem: () => null },
+      })
+    ).toBe(true);
+
+    const store: Record<string, string> = {};
+    rememberGittrAndroidShellFromLocation("?source=fdroid", {
+      setItem: (k, v) => {
+        store[k] = v;
+      },
+      removeItem: (k) => {
+        delete store[k];
+      },
+    });
+    expect(store[GITTR_ANDROID_SHELL_STORAGE_KEY]).toBe("1");
+    expect(store[GITTR_ANDROID_DIST_STORAGE_KEY]).toBe("fdroid");
+    expect(
+      isGittrAndroidShell({
+        userAgent: "Mozilla/5.0",
+        search: "",
+        storage: { getItem: (k) => store[k] ?? null },
+      })
+    ).toBe(true);
+    expect(
+      offersGittrSideloadUpdate({
+        userAgent: "Mozilla/5.0",
+        search: "",
+        storage: { getItem: (k) => store[k] ?? null },
+      })
+    ).toBe(false);
   });
 
   it("compares installer versions numerically", () => {
