@@ -33,14 +33,14 @@ export async function buildAndSavePlatformLeaderboard(): Promise<LeaderboardSnap
     working.topRepos = await getTopReposFromNostr(
       subscribe,
       PLATFORM_STATS_RELAYS,
-      10
+      20
     );
     working.at = Date.now();
 
     working.topUsers = await getTopUsersFromNostr(
       subscribe,
       PLATFORM_STATS_RELAYS,
-      10
+      20
     );
     working.at = Date.now();
 

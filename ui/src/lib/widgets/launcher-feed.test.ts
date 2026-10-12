@@ -162,6 +162,35 @@ describe("buildLauncherWidgetFeed", () => {
     expect(feed.links.help).toBe("https://gittr.space/help#launcher-widgets");
   });
 
+  it("lists fifteen repos for the phone tile", () => {
+    const topRepos = Array.from({ length: 20 }, (_, index) => ({
+      repoId: `${OWNER}/repo-${index}`,
+      repoName: `repo-${index}`,
+      entity: OWNER,
+      activityCount: 30 - index,
+      prCount: 0,
+      commitCount: 1,
+      issueCount: 0,
+      zapCount: 0,
+      lastActivity: index,
+    }));
+    const apps = Array.from({ length: 20 }, (_, index) => ({
+      pubkey: OWNER,
+      appId: `app.${index}`,
+      name: `App ${index}`,
+      createdAt: 100 - index,
+    }));
+    const feed = buildLauncherWidgetFeed({
+      origin: "https://gittr.space",
+      topRepos,
+      apps,
+    });
+    expect(feed.repos).toHaveLength(15);
+    expect(feed.repos[0]?.name.endsWith("/repo-0")).toBe(true);
+    expect(feed.apps).toHaveLength(20);
+    expect(feed.apps[0]?.name).toBe("App 0");
+  });
+
   it("hides a blocked publisher and does not invent an app star line", () => {
     const feed = buildLauncherWidgetFeed({
       origin: "https://gittr.space",

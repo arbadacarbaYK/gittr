@@ -1,13 +1,15 @@
 widget "nostr git" {
   meta {
     description: "Nostr git repos with the most pushes, pull requests, and issues in the last 7 days."
-    version: "1.2"
+    version: "1.3"
     license: "MIT"
     category: "dev"
     owl: 5
   }
   size: 6x4
   minSize: 4x3
+
+  asset mark = base64"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"
 
   state who = "" persist
   source raw = http("https://gittr.space/api/widgets/launcher") every 15m json timeout 20s status
@@ -48,11 +50,27 @@ widget "nostr git" {
 
   Column {
     gap: 4
-    Text {
-      text: "nostr git · this week"
-      style: muted
-      maxLines: 1
-      onTap: screen()
+    Row {
+      gap: 8
+      Text {
+        text: "nostr git · this week"
+        style: muted
+        maxLines: 1
+        weight: 1
+        onTap: screen()
+      }
+      Box {
+        size: 22
+        radius: 11
+        clip: true
+        background: foreground
+        Image {
+          src: mark
+          size: 22
+          fit: cover
+          onTap: url("https://gittr.space/explore")
+        }
+      }
     }
     if data == null {
       Text { text: raw == null ? "loading…" : "gittr is offline"; style: small; color: muted }

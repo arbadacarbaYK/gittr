@@ -72,7 +72,7 @@ export async function fetchWidgetHops(
         .map((pk) => normalizeHexPubkey(pk))
         .filter((pk): pk is string => !!pk && pk !== from)
     ),
-  ].slice(0, 16);
+  ].slice(0, 40);
   if (unique.length === 0) return {};
 
   const now = Date.now();

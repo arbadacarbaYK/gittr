@@ -11,8 +11,8 @@ import { softwareAppHref } from "../seo/software-app-path";
 import { canonicalNpubRepoPath } from "../seo/vanity-repo-redirect";
 import type { PlatformRecentRepo, RepoStats, UserStats } from "../stats";
 
-export const LAUNCHER_REPO_LIMIT = 8;
-export const LAUNCHER_PEOPLE_LIMIT = 8;
+export const LAUNCHER_REPO_LIMIT = 15;
+export const LAUNCHER_PEOPLE_LIMIT = 15;
 export const LAUNCHER_APP_LIMIT = 24;
 
 export const LAUNCHER_LINKS = {

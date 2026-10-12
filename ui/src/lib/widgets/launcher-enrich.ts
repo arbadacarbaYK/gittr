@@ -25,8 +25,8 @@ import { resolveDisplayNames } from "@/lib/widgets/launcher-names";
 
 import { nip19 } from "nostr-tools";
 
-const REPO_CAP = 8;
-const APP_GITHUB_CAP = 12;
+const REPO_CAP = 15;
+const APP_GITHUB_CAP = 15;
 
 type AnnouncementHit = {
   id: string;
