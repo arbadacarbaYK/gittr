@@ -1362,7 +1362,7 @@ export default function HomePage({
                       key={repo.repoId}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
@@ -1399,7 +1399,7 @@ export default function HomePage({
                       key={user.pubkey}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
@@ -1447,7 +1447,7 @@ export default function HomePage({
                       key={bounty.issueId}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -1490,7 +1490,7 @@ export default function HomePage({
                       key={dev.pubkey}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
@@ -1521,7 +1521,7 @@ export default function HomePage({
                       key={hunter.pubkey}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
@@ -1553,7 +1553,7 @@ export default function HomePage({
               <div className="space-y-2 text-sm">
                 <Link
                   href="/bounty-hunt?status=paid"
-                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                  className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                 >
                   <div className="flex justify-between gap-2">
                     <span className="text-[var(--color-text-secondary)]">
@@ -1568,7 +1568,7 @@ export default function HomePage({
                 </Link>
                 <Link
                   href="/bounty-hunt?status=pending"
-                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                  className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                 >
                   <div className="flex justify-between gap-2">
                     <span className="text-[var(--color-text-secondary)]">
@@ -1583,7 +1583,7 @@ export default function HomePage({
                 </Link>
                 <Link
                   href="/bounty-hunt?status=released"
-                  className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                  className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                 >
                   <div className="flex justify-between gap-2">
                     <span className="text-[var(--color-text-secondary)]">
@@ -1691,7 +1691,7 @@ export default function HomePage({
                       key={bounty.issueId}
                       href={href}
                       onClick={(e) => leaveHome(e, href)}
-                      className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
+                      className="block rounded p-2 -mx-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
