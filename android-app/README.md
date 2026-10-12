@@ -21,7 +21,7 @@ Locally (JDK 17+, Android SDK):
 
 ```bash
 cd android-app
-gradle assembleRelease -PsignWithCiKeystore=true -PversionName=1.0.1 -PversionCode=10100
+gradle assembleRelease -PsignWithCiKeystore=true -PversionName=1.0.2 -PversionCode=10200
 ```
 
 Leave off `-PsignWithCiKeystore` for an unsigned APK. That is what F-Droid builds and signs itself. `version.properties` is the version F-Droid reads. Bump it in the same commit as a `v*` tag.

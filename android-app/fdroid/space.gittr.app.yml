@@ -11,9 +11,9 @@ RepoType: git
 Repo: https://github.com/arbadacarbaYK/gittr.git
 
 Builds:
-  - versionName: '1.0.1'
-    versionCode: 10100
-    commit: v1.0.1
+  - versionName: '1.0.2'
+    versionCode: 10200
+    commit: v1.0.2
     subdir: android-app
     gradle:
       - yes
@@ -31,5 +31,5 @@ MaintainerNotes: |
 AutoUpdateMode: None
 UpdateCheckMode: Tags
 UpdateCheckData: android-app/version.properties|versionName=(.*)|.|versionCode=(.*)
-CurrentVersion: '1.0.1'
-CurrentVersionCode: 10100
+CurrentVersion: '1.0.2'
+CurrentVersionCode: 10200
