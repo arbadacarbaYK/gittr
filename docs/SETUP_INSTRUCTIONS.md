@@ -53,6 +53,8 @@ cp .env.example .env.local
 yarn build
 ```
 
+**npm advisory floors** (`resolutions` in `ui/package.json`): `sharp` 0.35.5 (librsvg), `source-map-js` 1.2.2, `postcss-selector-parser` 7.1.6, `katex` 0.18.4. `katex` 0.18.5 and later pull `commander` 15, which refuses Node 20; 0.18.4 is the newest patched release that still installs here. `braces` 3.0.3 is still the newest publish on npm, so the Dependencies tab keeps that one OSV hit until upstream ships a release past 3.0.3. Tailwind’s file watcher (`micromatch` / `chokidar`) pulls it in. gittr does not expand visitor-supplied brace patterns.
+
 **Env notes (production):**
 
 - `NEXT_PUBLIC_NOSTR_RELAYS` should match bridge `relays` in `git-nostr-bridge.json`. **Explore** dials gittr’s NIP-34 set (`relay.gittr.space`, ngit, shakespeare, …) plus the visitor’s Settings → Relays (NIP-65) list. Explore does **not** fan-out every announce `relays` tag (that used to open hundreds of sockets). **Code tab does** subscribe to the announcement’s public `relays` tags — that is how a repo that only lives on the owner’s custom public relay is found. Dead GRASP (`git-01.uid.ovh`, `ngit-relay.nostrver.se`) and `/grasp` clone paths are not opened as WebSockets. **On gittr.space only:** skip localhost, `.local`, RFC1918, Tailscale `*.ts.net`, and CGNAT `100.64/10` so Chrome never asks for LAN access. Public owner relays (orangepill, atlas, shakespeare, ngit, nostrhub, stewlab, …) stay. Hetzner never `git clone`s those LAN hosts; viewing foreign GRASP is still a temp fetch, not a disk copy. CSP `connect-src` uses `wss:` / `ws:` so custom-port public relays can connect.
