@@ -1107,7 +1107,7 @@ export default function HelpPage() {
               </p>
             </HelpTopic>
             <p className="text-sm text-gray-400">
-              On the phone, open{" "}
+              The home page notice links here. On the phone, open{" "}
               <Link
                 href="/omalauncher"
                 className="text-purple-400 hover:text-purple-300"

@@ -174,7 +174,7 @@ export default function HomePage({
   const [sourceOfflineNoticeVisible, setSourceOfflineNoticeVisible] =
     useState(false);
 
-  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v6";
+  const SOURCE_OFFLINE_NOTICE_KEY = "gittr:notice:when-source-goes-offline:v7";
 
   // Prevent hydration mismatch by only showing personalized message after mount
   useEffect(() => {
@@ -1262,6 +1262,16 @@ export default function HomePage({
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1 space-y-3 leading-relaxed">
+                <p>
+                  Watch us on Nostr git, FOSSing away central servers for our
+                  code and apps.{" "}
+                  <Link
+                    href="/omalauncher"
+                    className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+                  >
+                    widget-links
+                  </Link>
+                </p>
                 <p className="md:hidden">
                   Import git so it stays findable if GitHub goes down.{" "}
                   <Link
