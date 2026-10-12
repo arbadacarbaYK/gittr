@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 
 import SettingsHero from "@/components/settings-hero";
+import {
+  DEFAULT_GITTR_THEME,
+  GITTR_THEME_EXPLICIT_KEY,
+  GITTR_THEME_STORAGE_KEY,
+  resolveGittrTheme,
+} from "@/lib/ui/theme-preference";
 
 const THEMES = [
   { id: "midnight", label: "Midnight (calm deep navy/teal)" },
@@ -21,11 +27,14 @@ const QR_STYLES = [
 ];
 
 export default function AppearancePage() {
-  const [theme, setTheme] = useState("midnight");
+  const [theme, setTheme] = useState(DEFAULT_GITTR_THEME);
   const [qrStyle, setQrStyle] = useState("classic");
 
   useEffect(() => {
-    const t = localStorage.getItem("gittr_theme") || "midnight";
+    const t = resolveGittrTheme(
+      localStorage.getItem(GITTR_THEME_STORAGE_KEY),
+      localStorage.getItem(GITTR_THEME_EXPLICIT_KEY)
+    );
     const q = localStorage.getItem("gittr_qr_style") || "classic";
     setTheme(t);
     setQrStyle(q);
@@ -35,7 +44,8 @@ export default function AppearancePage() {
 
   function applyTheme(t: string) {
     setTheme(t);
-    localStorage.setItem("gittr_theme", t);
+    localStorage.setItem(GITTR_THEME_STORAGE_KEY, t);
+    localStorage.setItem(GITTR_THEME_EXPLICIT_KEY, "1");
     // Apply theme immediately
     document.documentElement.dataset.theme = t;
     // Dispatch event so layout.tsx can also update

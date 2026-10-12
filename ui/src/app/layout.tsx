@@ -3,6 +3,7 @@
 import { websiteJsonLd } from "@/lib/seo/json-ld";
 import { JsonLd } from "@/lib/seo/json-ld-script";
 import { buildRootSiteMetadata } from "@/lib/seo/site-metadata";
+import { gittrThemeBootScript } from "@/lib/ui/theme-preference";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 import { type Viewport } from "next";
@@ -18,7 +19,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#171B21",
+  themeColor: "#06182e",
 };
 
 export default function RootLayout({
@@ -27,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme="midnight">
+    <html lang="en" suppressHydrationWarning data-theme="tokyo">
       <head>
         <JsonLd data={websiteJsonLd(getPublicSiteUrl())} />
         <meta name="gittr-build" content={DEV_CACHE_BUST} />
@@ -62,53 +63,9 @@ export default function RootLayout({
         {/* Apply theme before React hydrates to prevent flash */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `
+            __html: `${gittrThemeBootScript()}
               (function() {
                 try {
-                  // CRITICAL: Default to midnight, migrate classic/bitcoin-if-empty if present
-                  // This MUST run before any React rendering to prevent flash
-                  let theme = localStorage.getItem('gittr_theme');
-                  if (!theme || theme === 'classic' || theme === 'null' || theme === 'undefined') {
-                    theme = 'midnight';
-                    try {
-                      localStorage.setItem('gittr_theme', theme);
-                    } catch (e) {
-                      // Ignore localStorage write errors (private browsing, etc.)
-                    }
-                  }
-                  // CRITICAL: Set theme attribute immediately, before React hydration
-                  document.documentElement.setAttribute('data-theme', theme);
-                  document.documentElement.classList.add('dark');
-                  // Also set it on document.body as fallback
-                  if (document.body) {
-                    document.body.setAttribute('data-theme', theme);
-                  }
-                } catch (e) {
-                  // If anything fails, force midnight
-                  try {
-                    document.documentElement.setAttribute('data-theme', 'midnight');
-                    document.documentElement.classList.add('dark');
-                    if (document.body) {
-                      document.body.setAttribute('data-theme', 'midnight');
-                    }
-                  } catch (e2) {}
-                }
-                
-                // CRITICAL: Double-check theme is set correctly (in case localStorage was empty/null)
-                // This ensures midnight is always the default for first-time visitors
-                const currentThemeAttr = document.documentElement.getAttribute('data-theme');
-                if (!currentThemeAttr || currentThemeAttr === 'classic' || currentThemeAttr === 'null' || currentThemeAttr === 'undefined') {
-                  document.documentElement.setAttribute('data-theme', 'midnight');
-                  document.documentElement.classList.add('dark');
-                  if (document.body) {
-                    document.body.setAttribute('data-theme', 'midnight');
-                  }
-                  // Also update localStorage to persist
-                  try {
-                    localStorage.setItem('gittr_theme', 'midnight');
-                } catch (e) {}
-                }
-                
                 // Suppress console errors early (before Next.js dev tools interceptor)
                 if (typeof console !== 'undefined') {
                   const buildFullMessage = (args) => {

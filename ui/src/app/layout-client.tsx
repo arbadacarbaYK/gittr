@@ -18,6 +18,12 @@ import useSession from "@/lib/nostr/useSession";
 import { rememberGittrAndroidShellFromLocation } from "@/lib/repo/gittr-android-shell";
 import { clearNonLocalReposFromStorage } from "@/lib/repos/storage";
 import { applyGittrStatusBarGapClass } from "@/lib/ui/status-bar-inset";
+import {
+  DEFAULT_GITTR_THEME,
+  GITTR_THEME_EXPLICIT_KEY,
+  GITTR_THEME_STORAGE_KEY,
+  resolveGittrTheme,
+} from "@/lib/ui/theme-preference";
 import "@/styles/globals.css";
 
 function MigrationRunner() {
@@ -74,38 +80,37 @@ export default function ClientLayout({
     applyGittrStatusBarGapClass(document.documentElement);
     migrateLegacyLocalStorage();
 
-    // Migrate classic/empty theme to midnight (default)
-    // CRITICAL: This runs after React hydration, so we need to be aggressive
+    // Tokyo until the visitor picks a theme. The old app saved midnight for
+    // everyone, so that value is not treated as a choice.
     try {
-      const currentTheme = localStorage.getItem("gittr_theme");
-      // Check for classic, null, undefined, empty string, or invalid values
+      const theme = resolveGittrTheme(
+        localStorage.getItem(GITTR_THEME_STORAGE_KEY),
+        localStorage.getItem(GITTR_THEME_EXPLICIT_KEY)
+      );
+      const stored = (
+        localStorage.getItem(GITTR_THEME_STORAGE_KEY) || ""
+      ).trim();
       if (
-        !currentTheme ||
-        currentTheme === "classic" ||
-        currentTheme === "null" ||
-        currentTheme === "undefined" ||
-        currentTheme.trim() === ""
+        theme !== DEFAULT_GITTR_THEME &&
+        stored === theme &&
+        localStorage.getItem(GITTR_THEME_EXPLICIT_KEY) !== "1"
       ) {
-        localStorage.setItem("gittr_theme", "midnight");
-        document.documentElement.setAttribute("data-theme", "midnight");
-        document.documentElement.classList.add("dark");
-        // Also set on body as fallback
-        if (document.body) {
-          document.body.setAttribute("data-theme", "midnight");
-        }
-        console.log("✅ [Theme] Migrated to midnight default");
-      } else {
-        // Ensure theme is applied even if it's already set
-        document.documentElement.setAttribute("data-theme", currentTheme);
-        document.documentElement.classList.add("dark");
+        localStorage.setItem(GITTR_THEME_EXPLICIT_KEY, "1");
+      }
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.classList.add("dark");
+      if (document.body) {
+        document.body.setAttribute("data-theme", theme);
       }
     } catch (e) {
-      // If anything fails, force midnight
       try {
-        document.documentElement.setAttribute("data-theme", "midnight");
+        document.documentElement.setAttribute(
+          "data-theme",
+          DEFAULT_GITTR_THEME
+        );
         document.documentElement.classList.add("dark");
         if (document.body) {
-          document.body.setAttribute("data-theme", "midnight");
+          document.body.setAttribute("data-theme", DEFAULT_GITTR_THEME);
         }
       } catch (e2) {}
     }
@@ -232,7 +237,10 @@ export default function ClientLayout({
   useEffect(() => {
     try {
       const applyTheme = () => {
-        const t = localStorage.getItem("gittr_theme") || "midnight";
+        const t = resolveGittrTheme(
+          localStorage.getItem(GITTR_THEME_STORAGE_KEY),
+          localStorage.getItem(GITTR_THEME_EXPLICIT_KEY)
+        );
         document.documentElement.dataset.theme = t;
       };
 
