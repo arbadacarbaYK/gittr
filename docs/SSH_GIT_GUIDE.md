@@ -299,7 +299,11 @@ Notes:
 
 This check runs on the **server** (SSH user `git-nostr`), not on your laptop. Adding `safe.directory` locally does nothing.
 
-Cause: bare repo owned by **root** while SSH git runs as **git-nostr**. Operators: `chown -R git-nostr:git-nostr` under `git-nostr-repositories`. `git-nostr-ssh` also sets `safe.directory=*`; new clones/init chown after create.
+Cause: bare repo owned by **root** while SSH git runs as **git-nostr**. Operators: `chown -R git-nostr:git-nostr` under `git-nostr-repositories`. `git-nostr-ssh` also sets `safe.directory=*`. The website clone API chowns after create; a repo cloned before that fix stays root-owned until the next clone/push/sync.
+
+### "remote unpack failed: unable to create temporary object directory"
+
+Auth and `git ls-remote` can succeed while `git push` is rejected. The server user that runs `git-receive-pack` could read the repo but could not create a temp folder inside `objects/`. That happens when the clone API (it runs as root) leaves the bare repo owned by root. After the ownership fix, retry the push. To put GitHub’s real commits back, push those commits over SSH. Do not use the website/MCP file push for that: it saves one new snapshot and drops the imported history.
 
 ### Copy Nostr backup / `https://git.gittr.space/npub1…/…` 404
 

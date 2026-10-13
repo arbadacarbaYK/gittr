@@ -168,6 +168,8 @@ Deploy: hosted ([SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)) or local UI
 
 **Import limit:** API responses cap ~4 MB; huge trees (binaries, release assets) may fail import—trim or import a smaller slice.
 
+**Keeping GitHub history:** The first import copies the forge commits onto gittr. A later file push from the website or from MCP (`pushToBridge`) saves one new snapshot on that branch. It does not add a commit on top of the imported history. To bring in newer GitHub commits and keep the old ones, `git push` those commits over SSH. Asking the clone API again does not refresh a repo that is already there.
+
 ## Docs
 
 - [SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md) — production

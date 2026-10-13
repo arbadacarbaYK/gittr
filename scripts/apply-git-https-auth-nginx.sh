@@ -103,6 +103,22 @@ path.write_text(text)
 print("✅ Patched nginx site config")
 PY
 
+python3 - <<'PY'
+from pathlib import Path
+path = Path("/etc/nginx/sites-available/gittr")
+text = path.read_text()
+old = "fastcgi_param REMOTE_USER $remote_user;"
+new = """auth_request_set $git_remote_user $upstream_http_x_gittr_remote_user;
+        fastcgi_param REMOTE_USER $git_remote_user;"""
+if "fastcgi_param REMOTE_USER $git_remote_user;" in text:
+    print("✅ REMOTE_USER already comes from the Nostr auth subrequest")
+elif old not in text:
+    raise SystemExit("Could not find fastcgi_param REMOTE_USER $remote_user; to replace")
+else:
+    path.write_text(text.replace(old, new, 1))
+    print("✅ REMOTE_USER now uses X-Gittr-Remote-User from /api/git/http-auth")
+PY
+
 nginx -t
 systemctl reload nginx
 echo "✅ nginx reloaded"

@@ -94,6 +94,7 @@ CLI `git ls-remote` working is **not** enough. Browser clients also need:
    - Kind 30617 is replaceable and must be signed by the owner — on **My Repositories**, owners see a **Please republish** badge (and a batch **Republish broken clones** banner) when clone tags are only unusable (host-only, localhost, private LAN). That runs **Push to Nostr once per affected repo** (nsec / NIP-07 / remote signer; multiple approvals; can take a while).
    gittr’s **New / Import** paths used to publish the host only; `buildUnsignedRepositoryEvent` now expands host-only values.
 6. **fcgiwrap workers** — Ubuntu’s default `DAEMON_OPTS=-f` is single-process and serializes every `git-upload-pack`. Use `DAEMON_OPTS=-c 8` in `/etc/default/fcgiwrap` (and a systemd drop-in) so browser clients don’t time out while another clone runs.
+7. **HTTPS push (`git-receive-pack`)** — `git-http-backend` allows receive-pack only when `REMOTE_USER` is set. nginx `auth_request` does not fill `$remote_user`, so a valid `X-Nostr-Auth-Event` still produced an empty 403 while fetch kept working. Pass `X-Gittr-Remote-User` from `/api/git/http-auth` through as `REMOTE_USER` (`scripts/apply-git-https-auth-nginx.sh`). `www-data` is in group `git-nostr`; bare repos need group write (`core.sharedRepository=all`) or unpack fails after auth.
 
 See [nginx.gittr.conf.example](../nginx.gittr.conf.example) (reference only — do not wholesale-replace production nginx).
 

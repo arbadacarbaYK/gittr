@@ -1,5 +1,6 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { ensureBridgeRepoWritable } from "@/lib/git/ensure-bridge-repo-writable";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { isGittrBridgeHost, isGraspServer } from "@/lib/utils/grasp-servers";
@@ -27,7 +28,13 @@ const execAsync = promisify(exec);
  */
 const cloneInFlight = new Map<
   string,
-  Promise<{ success: true; path: string; message: string; cloneUrl: string }>
+  Promise<{
+    success: true;
+    path: string;
+    message: string;
+    cloneUrl: string;
+    refetched?: boolean;
+  }>
 >();
 
 /** True if bare repo at gitDir has at least one commit (valid HEAD). */
@@ -312,9 +319,12 @@ export default async function handler(
       const hasCommits = await bareRepoHasCommits(repoPath);
       if (hasCommits) {
         console.log("✅ Repository already exists at:", repoPath);
+        await ensureBridgeRepoWritable(repoPath);
         return res.status(200).json({
           success: true,
           message: "Repository already exists",
+          refetched: false,
+          hint: "Commits were not updated. To copy new forge history, POST /api/nostr/repo/sync-from-source (signed) or git push over SSH. POST /api/nostr/repo/push replaces the branch with one new snapshot and drops imported history.",
           path: repoPath,
         });
       }
@@ -335,9 +345,11 @@ export default async function handler(
     const doClone = async () => {
       // Re-check after acquiring the slot (another waiter may have finished).
       if (existsSync(repoPath) && (await bareRepoHasCommits(repoPath))) {
+        await ensureBridgeRepoWritable(repoPath);
         return {
           success: true as const,
           message: "Repository already exists",
+          refetched: false,
           path: repoPath,
           cloneUrl: normalizedCloneUrl,
         };
@@ -394,9 +406,11 @@ export default async function handler(
         // If a peer finished first, keep theirs and drop our temp.
         if (existsSync(repoPath) && (await bareRepoHasCommits(repoPath))) {
           await rm(tempPath, { recursive: true, force: true }).catch(() => {});
+          await ensureBridgeRepoWritable(repoPath);
           return {
             success: true as const,
             message: "Repository already exists",
+            refetched: false,
             path: repoPath,
             cloneUrl: normalizedCloneUrl,
           };
@@ -412,9 +426,11 @@ export default async function handler(
             await rm(tempPath, { recursive: true, force: true }).catch(
               () => {}
             );
+            await ensureBridgeRepoWritable(repoPath);
             return {
               success: true as const,
               message: "Repository already exists",
+              refetched: false,
               path: repoPath,
               cloneUrl: normalizedCloneUrl,
             };
@@ -422,6 +438,7 @@ export default async function handler(
           throw renameErr;
         }
 
+        await ensureBridgeRepoWritable(repoPath, { force: true });
         console.log("✅ Repository cloned successfully");
         return {
           success: true as const,

@@ -13,6 +13,7 @@ import {
 } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
+import { ensureBridgeRepoWritable } from "@/lib/git/ensure-bridge-repo-writable";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
@@ -317,13 +318,7 @@ export default async function handler(
       // keep existing HEAD if preferred branch missing
     }
 
-    try {
-      await execAsync(`chown -R git-nostr:git-nostr ${shellQuote(repoPath)}`, {
-        timeout: 30000,
-      });
-    } catch {
-      // local/dev may not have git-nostr
-    }
+    await ensureBridgeRepoWritable(repoPath, { force: true });
 
     const refs = await listRefs(repoPath);
     const headCommit =

@@ -4,6 +4,7 @@ import {
 } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
+import { ensureBridgeRepoWritable } from "@/lib/git/ensure-bridge-repo-writable";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 import { resolveBridgePushCommitMessage } from "@/lib/utils/push-commit-message";
 import { resolveBridgeRepoPath } from "@/lib/utils/sanitize-bridge-repo-name";
@@ -515,33 +516,10 @@ export default async function handler(
         `git --git-dir="${repoPath}" symbolic-ref HEAD ${shellQuote(branchRef)}`
       );
 
-      // CRITICAL: Set ownership to git-nostr:git-nostr so bridge can write refs
-      // git-http-backend (fcgiwrap) can read with proper permissions (755)
-      // On local dev, this might fail if git-nostr doesn't exist, which is fine
-      try {
-        await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
-        await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
-        console.log(
-          `✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`
-        );
-      } catch (chownError: any) {
-        // Fallback: try www-data if git-nostr doesn't exist (local dev)
-        console.warn(
-          `⚠️ Failed to set ownership to git-nostr, trying www-data:`,
-          chownError?.message
-        );
-        try {
-          await execAsync(`chown -R www-data:www-data "${repoPath}"`);
-          console.log(
-            `✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`
-          );
-        } catch (fallbackError: any) {
-          console.warn(
-            `⚠️ Failed to set ownership (this is OK for local dev):`,
-            fallbackError?.message
-          );
-        }
-      }
+      // SSH user git-nostr and HTTPS www-data (group git-nostr) must both be
+      // able to create objects/tmp_objdir-* or receive-pack dies with
+      // "unable to create temporary object directory".
+      await ensureBridgeRepoWritable(repoPath, { force: true });
     }
 
     // CRITICAL: Use shared working directory for chunked pushes to avoid slow clones
@@ -894,36 +872,9 @@ export default async function handler(
         `git --git-dir="${repoPath}" symbolic-ref HEAD ${shellQuote(branchRef)}`
       );
 
-      // CRITICAL: Ensure ownership is correct after push
-      // The bridge runs as git-nostr user and needs write access to update refs
-      // git-http-backend (fcgiwrap) runs as www-data but can read with proper permissions
-      // Solution: Set ownership to git-nostr:git-nostr, then add www-data to git-nostr group OR use 755 permissions
-      // For now, use git-nostr ownership (bridge can write, http-backend can read with 755 perms)
-      try {
-        await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
-        // Set permissions so www-data (git-http-backend) can read but git-nostr can write
-        await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
-        console.log(
-          `✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`
-        );
-      } catch (chownError: any) {
-        // Fallback: try www-data if git-nostr doesn't exist (local dev)
-        console.warn(
-          `⚠️ Failed to set ownership to git-nostr, trying www-data:`,
-          chownError?.message
-        );
-        try {
-          await execAsync(`chown -R www-data:www-data "${repoPath}"`);
-          console.log(
-            `✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`
-          );
-        } catch (fallbackError: any) {
-          console.warn(
-            `⚠️ Failed to set ownership (this is OK for local dev):`,
-            fallbackError?.message
-          );
-        }
-      }
+      // Root creates new objects during the push. Hand the repo back to
+      // git-nostr and keep it group-writable for www-data receive-pack.
+      await ensureBridgeRepoWritable(repoPath, { force: true });
     } else {
       // For intermediate chunks, just write files but don't commit/push
       // The files will be included when the last chunk commits

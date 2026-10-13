@@ -41,5 +41,11 @@ export default async function handler(
     return res.status(access.status).end();
   }
 
+  // git-http-backend enables receive-pack only when REMOTE_USER is set.
+  // nginx auth_request does not fill $remote_user, so a passed Nostr check
+  // still reached git as anonymous and info/refs?service=git-receive-pack
+  // returned an empty 403. nginx copies this header into REMOTE_USER.
+  const remoteUser = access.callerPubkey || "gittr-anonymous";
+  res.setHeader("X-Gittr-Remote-User", remoteUser);
   return res.status(200).end();
 }
