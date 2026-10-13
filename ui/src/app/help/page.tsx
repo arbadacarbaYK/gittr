@@ -2065,25 +2065,12 @@ export default function HelpPage() {
               </p>
               <p className="mt-2">
                 What keeps the repo{" "}
-                <strong>visible and cloneable online</strong> is an independent
-                mirror: import (or clone) into gittr, then{" "}
-                <Link
-                  href="#push-to-nostr"
-                  className="text-purple-400 hover:text-purple-300 underline"
-                >
-                  Push to Nostr
-                </Link>
-                . That publishes the announcement on relays and puts objects on
-                GRASP / the bridge (
-                <code className="bg-black/40 px-1 rounded text-xs">
-                  git.gittr.space
-                </code>{" "}
-                and other{" "}
-                <code className="bg-black/40 px-1 rounded text-xs">
-                  clone[]
-                </code>{" "}
-                hosts). Others can keep discovering and cloning without the
-                original forge.
+                <strong>visible and cloneable online</strong> is a Push to
+                Nostr after import. That publishes the announcement, and the
+                files sit on the Nostr git servers in that announcement — the
+                same list as <strong>Nostr Backups</strong> on the repo page.
+                gittr is one of those servers when it is listed there, not the
+                only one. Others clone those addresses, not the old source.
               </p>
               <p className="mt-2 text-sm text-gray-400">
                 Quick check: can someone still{" "}
@@ -2125,8 +2112,8 @@ export default function HelpPage() {
                         server compromise.
                       </td>
                       <td className="p-3 align-top text-amber-200/90">
-                        Not enough for others yet. Only your browser has the
-                        files; Push so relays and GRASP can serve them.
+                        Not enough for others yet. Push to Nostr so the
+                        servers under Nostr Backups can serve the files.
                       </td>
                     </tr>
                     <tr>
@@ -2134,20 +2121,17 @@ export default function HelpPage() {
                         gittr import + successful Push to Nostr
                       </td>
                       <td className="p-3 align-top">
-                        Kind 30617 / 30618 on relays, and objects mirrored onto
-                        the GRASP / bridge hosts listed in{" "}
+                        The announcement on relays, and the files on the Nostr
+                        git servers listed in{" "}
                         <code className="bg-black/40 px-1 rounded text-xs">
                           clone[]
                         </code>{" "}
-                        (for example{" "}
-                        <code className="bg-black/40 px-1 rounded text-xs">
-                          git.gittr.space
-                        </code>
-                        )
+                        (Nostr Backups on the repo page). One of them may be
+                        gittr. Check the address before you treat it as a copy.
                       </td>
                       <td className="p-3 align-top text-emerald-200/90">
                         Safe for that snapshot and still discoverable. Others
-                        clone from GRASP, not the original forge. If the old
+                        clone a Nostr Backups address, not the original forge. If the old
                         host was compromised, rotate secrets that lived only
                         there (and any tokens you once committed inside the
                         repo).
@@ -2164,7 +2148,7 @@ export default function HelpPage() {
                       </td>
                       <td className="p-3 align-top text-amber-200/90">
                         Download buttons that point at the dead forge break.
-                        Code you already Push&apos;d to GRASP can still be
+                        Code already on a Nostr Backups server can still be
                         cloned — that is source, not the release installers. See{" "}
                         <Link
                           href="#releases"
@@ -2240,276 +2224,190 @@ export default function HelpPage() {
                 </table>
               </div>
 
-              <div className="mt-4 p-3 bg-blue-900/20 border border-blue-600/30 rounded space-y-2">
-                <p className="text-sm text-blue-100">
-                  <strong className="text-blue-50">What to do now</strong>
-                </p>
-                <ul className="list-disc list-inside text-sm text-blue-100 space-y-1.5">
-                  <li>
-                    <strong className="text-blue-50">
-                      Source still reachable?
-                    </strong>{" "}
-                    Import it into gittr while you can (
-                    <Link
-                      href="#importing-repositories"
-                      className="underline hover:text-blue-50"
-                    >
-                      Importing Repositories
-                    </Link>
-                    , or{" "}
-                    <Link href="/new" className="underline hover:text-blue-50">
-                      Create repository
-                    </Link>{" "}
-                    and paste the clone URL), then{" "}
-                    <Link
-                      href="#push-to-nostr"
-                      className="underline hover:text-blue-50"
-                    >
-                      Push to Nostr
-                    </Link>
-                    .
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Only a local backup / disk copy left?
-                    </strong>{" "}
-                    Create a new repo from that tree on{" "}
-                    <Link href="/new" className="underline hover:text-blue-50">
-                      /new
-                    </Link>
-                    , then Push to Nostr so others can clone without the old
-                    host.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Already imported and Pushed, and the forge now returns
-                      403 (account suspended, blocked, or gone)?
-                    </strong>{" "}
-                    The files from that Push stay on gittr. Keep working here.
-                    Do not start a new import, and do not point the repo at an
-                    empty Forgejo. Details below.
-                  </li>
-                </ul>
-                <p className="text-sm text-blue-100 pt-1">
-                  <strong className="text-blue-50">
-                    Keep working after the forge says 403
-                  </strong>
-                </p>
-                <p className="text-sm text-blue-100">
-                  GitHub’s message looks like{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    Sorry. Your account was suspended
-                  </code>
-                  . That is GitHub refusing the account. It does not delete
-                  commits already stored on{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    git.gittr.space
-                  </code>
-                  . The repo page still <em>asks</em> GitHub first, because the
-                  announcement still has a{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    source
-                  </code>{" "}
-                  link. That is not the same as “the files only exist on
-                  GitHub.”
-                </p>
-                <ul className="list-disc list-inside text-sm text-blue-100 space-y-1.5">
-                  <li>
-                    <strong className="text-blue-50">Files.</strong> The Code
-                    tab also asks every address in{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      clone[]
-                    </code>
-                    , including{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      https://git.gittr.space/&lt;npub&gt;/&lt;repo&gt;.git
-                    </code>
-                    . If that copy answers, the file list is the gittr copy.
-                    Clone that address. The “copy clone” button can still put
-                    the old GitHub address on the clipboard, because it prefers
-                    the source link. Ignore that one.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Issues and pull requests.
-                    </strong>{" "}
-                    Old GitHub tickets will not load. Use{" "}
-                    <strong className="text-blue-50">New issue</strong> and{" "}
-                    <strong className="text-blue-50">New pull request</strong>{" "}
-                    on this repo. Those are Nostr issues and pull requests.
-                    They do not need GitHub. Closing a GitHub issue number is
-                    not possible while the account is suspended.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      To do and Discussions.
-                    </strong>{" "}
-                    While the source link is still GitHub, those two tabs stay
-                    the forge’s read-only copy. Use Issues for new conversation.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Two choices on the repo page, and nothing else.
-                    </strong>{" "}
-                    If you own the repo, open{" "}
-                    <strong className="text-blue-50">
-                      If this git host is gone
-                    </strong>{" "}
-                    at the end of Source.{" "}
-                    <strong className="text-blue-50">
-                      Keep the Nostr git copy
-                    </strong>{" "}
-                    publishes a new card with the same clone addresses and no
-                    forge source. The dead host is left off that card. It checks
-                    the public git.gittr.space address first and does not move
-                    the commits. It stops if those commits change while it runs.{" "}
-                    <strong className="text-blue-50">Use</strong> a backup, or{" "}
-                    <strong className="text-blue-50">Check this server</strong>
-                    , only when that public forge already has the same commits.
-                    The server checks again and will not delete the repo or
-                    move a branch to do it. If it does not match, nothing is
-                    fetched. There is no button that
-                    takes a new address and replaces gittr with whatever is
-                    there now. A page already published stays on Blossom. A new
-                    app announcement still needs a forge release that actually
-                    has the installer, or the copy already pinned to Blossom.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Push to Nostr does not make it Nostr-only.
-                    </strong>{" "}
-                    With no file edits, Push tries GitHub once, fails, and
-                    keeps the commits already on gittr. The source link stays,
-                    so the next visit still asks GitHub. Editing files in the
-                    browser and then Push saves a new snapshot of those files.
-                    It is not a normal git commit on top of the old history.
-                    To add a real commit, clone the{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      git.gittr.space
-                    </code>{" "}
-                    address and{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      git push
-                    </code>{" "}
-                    there.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">
-                      Settings → SSH Base does nothing for this.
-                    </strong>{" "}
-                    That box is only the hostname in a displayed SSH line. It
-                    does not switch the source, and the next Push does not send
-                    the files there.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">Where to do it.</strong>{" "}
-                    The two choices above are at the end of Source on the repo
-                    page. That is the only place that changes the source.
-                    An agent (gittr MCP) can read the files, open new Nostr
-                    issues and pull requests, and publish a commit you already
-                    pushed. It has no swap of its own. SSH is how you send
-                    commits: clone{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      git.gittr.space
-                    </code>{" "}
-                    and{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      git push
-                    </code>{" "}
-                    there. To use another public forge, push this copy to that
-                    server first, then come back and press{" "}
-                    <strong className="text-blue-50">Check this server</strong>.
-                    Settings → SSH Base does not do any of this.
-                  </li>
-                  <li>
-                    <strong className="text-blue-50">Same steps for an agent (gittr MCP).</strong>{" "}
-                    Read with{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      bridgeListFiles
-                    </code>{" "}
-                    /{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      bridgeGetFileContent
-                    </code>
-                    . New work is{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      createIssue
-                    </code>{" "}
-                    and{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      createPR
-                    </code>
-                    . Do not call{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      mirrorRepo
-                    </code>{" "}
-                    on the dead GitHub URL, and do not point it at a new empty
-                    forge — that copies the new URL onto gittr and replaces the
-                    branches. Do not call{" "}
-                    <code className="bg-black/40 px-1 rounded text-xs">
-                      pushToBridge
-                    </code>{" "}
-                    if the old commits must stay.
-                  </li>
-                </ul>
-                <p className="text-xs text-blue-200/80">
-                  Looking for a Nostr mirror of a known forge repo (GitHub,
-                  GitLab, Codeberg, Gitea, … — exact URL /{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    owner/repo
-                  </code>
-                  , not fuzzy name)? Use MCP{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    findReposBySource
-                  </code>{" "}
-                  or{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    GET /api/nostr/repos-by-github?source=https://…
-                  </code>
-                  — returns npub + gittr URL so you can reach them on Nostr
-                  (profile / DM) when the forge is unreachable. Needs a Push to
-                  Nostr announce that kept the{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    source
-                  </code>{" "}
-                  tag. Import / clone only copies repo objects (commits, trees,
-                  blobs) — not the old forge&apos;s server config. After Push,
-                  confirm a{" "}
-                  <code className="bg-black/40 px-1 rounded text-xs">
-                    clone[]
-                  </code>{" "}
-                  URL works without the original host. If you still run
-                  self-hosted Gitea older than 1.27.1, patch that machine
-                  separately:{" "}
-                  <a
-                    href="https://github.com/go-gitea/gitea/security/advisories/GHSA-6v53-hr58-556r"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-blue-100"
-                  >
-                    GHSA-6v53-hr58-556r
-                  </a>
-                  ,{" "}
-                  <a
-                    href="https://github.com/go-gitea/gitea/security/advisories/GHSA-rcr6-4jqh-j84m"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-blue-100"
-                  >
-                    GHSA-rcr6-4jqh-j84m
-                  </a>
-                  ,{" "}
-                  <a
-                    href="https://blog.gitea.com/release-of-1.27.1/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-blue-100"
-                  >
-                    Gitea 1.27.1
-                  </a>
-                  .
-                </p>
+              <p className="mt-4 text-sm text-gray-300">
+                When the git host in <strong>Source</strong> is gone, the files
+                are on whichever Nostr git servers under{" "}
+                <strong>Nostr Backups</strong> still answer. Confirm an address
+                before you treat it as a copy.
+              </p>
+              <div className="mt-3 overflow-x-auto rounded border border-slate-600">
+                <table className="w-full min-w-[640px] text-left text-sm text-gray-300">
+                  <thead className="bg-slate-800/80 text-slate-100">
+                    <tr>
+                      <th className="p-3 font-semibold">Situation</th>
+                      <th className="p-3 font-semibold">What to do</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700">
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Source still answers
+                      </td>
+                      <td className="p-3 align-top">
+                        <Link
+                          href="#importing-repositories"
+                          className="text-purple-400 hover:text-purple-300 underline"
+                        >
+                          Import
+                        </Link>
+                        , then{" "}
+                        <Link
+                          href="#push-to-nostr"
+                          className="text-purple-400 hover:text-purple-300 underline"
+                        >
+                          Push to Nostr
+                        </Link>
+                        . The clone addresses show under Nostr Backups.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Only a copy on your computer
+                      </td>
+                      <td className="p-3 align-top">
+                        <Link
+                          href="/new"
+                          className="text-purple-400 hover:text-purple-300 underline"
+                        >
+                          Create the repo
+                        </Link>
+                        , then Push to Nostr.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Source is already gone
+                      </td>
+                      <td className="p-3 align-top">
+                        Clone a Nostr Backups address that answers. Do not
+                        import again. Do not point Source at an empty server.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        New issue or pull request
+                      </td>
+                      <td className="p-3 align-top">
+                        <strong>New issue</strong> and{" "}
+                        <strong>New pull request</strong>. Those are Nostr.
+                        Tickets that lived only on the old host will not load.
+                        To do and Discussions stay that host’s pages until
+                        Source is cleared.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Stop following the old host
+                      </td>
+                      <td className="p-3 align-top">
+                        Owner only. End of Source →{" "}
+                        <strong>If this git host is gone</strong> →{" "}
+                        <strong>Keep the Nostr git copy</strong>. Same clone
+                        addresses. The commits stay where they are.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Another public forge
+                      </td>
+                      <td className="p-3 align-top">
+                        <strong>Check this server</strong> only when that forge
+                        already has the same commits. If it does not, push a
+                        Nostr Backups copy there first. There is no button that
+                        replaces the repo with whatever a new address has now.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        A new commit
+                      </td>
+                      <td className="p-3 align-top">
+                        Clone a Nostr Backups address and{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          git push
+                        </code>{" "}
+                        there. Settings → SSH Base only changes a displayed
+                        hostname. Editing in the browser and Push saves a
+                        snapshot, not the old history.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Pages and apps
+                      </td>
+                      <td className="p-3 align-top">
+                        A page already published stays on Blossom. A new app
+                        announcement needs a release that still has the
+                        installer, or a copy already pinned to Blossom.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        An agent
+                      </td>
+                      <td className="p-3 align-top">
+                        Read with{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          bridgeListFiles
+                        </code>
+                        . New work is{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          createIssue
+                        </code>{" "}
+                        and{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          createPR
+                        </code>
+                        . Do not call{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          mirrorRepo
+                        </code>{" "}
+                        on the dead source or an empty server. Do not call{" "}
+                        <code className="bg-black/40 px-1 rounded text-xs">
+                          pushToBridge
+                        </code>{" "}
+                        if the old commits must stay.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
+              <p className="mt-3 text-xs text-gray-400">
+                To find an announcement from a known source URL, an agent uses{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  findReposBySource
+                </code>
+                . That needs a Push which kept the source tag. If you still run
+                self-hosted Gitea older than 1.27.1, patch that machine
+                separately:{" "}
+                <a
+                  href="https://github.com/go-gitea/gitea/security/advisories/GHSA-6v53-hr58-556r"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-200"
+                >
+                  GHSA-6v53-hr58-556r
+                </a>
+                ,{" "}
+                <a
+                  href="https://github.com/go-gitea/gitea/security/advisories/GHSA-rcr6-4jqh-j84m"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-200"
+                >
+                  GHSA-rcr6-4jqh-j84m
+                </a>
+                ,{" "}
+                <a
+                  href="https://blog.gitea.com/release-of-1.27.1/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-200"
+                >
+                  Gitea 1.27.1
+                </a>
+                .
+              </p>
             </HelpTopic>
 
             <HelpTopic id="ssh-keys" title={<>SSH Keys</>}>
