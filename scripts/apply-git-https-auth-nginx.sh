@@ -76,8 +76,20 @@ if 'auth_request /_git_auth' not in text:
         count=1,
     )
 
-ssl_marker = "    listen 443 ssl http2;\n    server_name git.gittr.space;"
-idx = text.find(ssl_marker)
+# listen line may include a Certbot or http2 comment, so match the name
+# and confirm a listen 443 ssl sits just above it.
+idx = -1
+pos = 0
+name = "server_name git.gittr.space;"
+while True:
+    found = text.find(name, pos)
+    if found < 0:
+        break
+    back = text[max(0, found - 300):found]
+    if "listen 443 ssl" in back:
+        idx = found
+        break
+    pos = found + len(name)
 if idx < 0:
     raise SystemExit("git.gittr.space SSL server block not found")
 start = text.rfind("\nserver {", 0, idx)
