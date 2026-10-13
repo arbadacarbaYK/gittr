@@ -2355,7 +2355,7 @@ export default function HelpPage() {
                     <strong className="text-blue-50">
                       If this git host is gone
                     </strong>{" "}
-                    under the source line.{" "}
+                    at the end of Source.{" "}
                     <strong className="text-blue-50">
                       Keep the Nostr git copy
                     </strong>{" "}
@@ -2403,8 +2403,8 @@ export default function HelpPage() {
                   </li>
                   <li>
                     <strong className="text-blue-50">Where to do it.</strong>{" "}
-                    The two choices above are on the repo page, under the
-                    source line. That is the only place that changes the source.
+                    The two choices above are at the end of Source on the repo
+                    page. That is the only place that changes the source.
                     An agent (gittr MCP) can read the files, open new Nostr
                     issues and pull requests, and publish a commit you already
                     pushed. It has no swap of its own. SSH is how you send

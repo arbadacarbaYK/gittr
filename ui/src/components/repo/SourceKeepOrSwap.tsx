@@ -114,8 +114,8 @@ export function SourceKeepOrSwap(props: {
   }
 
   return (
-    <details className="pt-2 border-t border-gray-700 space-y-2">
-      <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-300">
+    <details className="mt-2">
+      <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-400">
         If this git host is gone
       </summary>
       <div className="space-y-2 pt-2">

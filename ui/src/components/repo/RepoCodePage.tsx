@@ -18459,6 +18459,38 @@ export function RepoCodePage() {
     );
   }
 
+  const sourceHostGone =
+    mounted && repoIsOwner ? (
+      <SourceKeepOrSwap
+        entity={resolvedParams.entity}
+        repoName={decodedRepo}
+        ownerPubkey={currentUserPubkey || repoData?.ownerPubkey || ""}
+        sourceUrl={
+          Number(repoData?.forgeSourceClearedAt) > 0
+            ? ""
+            : effectiveSourceUrl || ""
+        }
+        sourceCleared={Number(repoData?.forgeSourceClearedAt) > 0}
+        repo={repoData}
+        cloneUrls={httpCloneUrls}
+        remoteHeadHints={cloneHeadHints}
+        onApplied={(patch) => {
+          setRepoData((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev, ...patch };
+            if (!patch.forgeSourceClearedAt) {
+              delete next.forgeSourceClearedAt;
+            }
+            if (!patch.sourceUrl) {
+              delete next.sourceUrl;
+            }
+            return next;
+          });
+          setEffectiveSourceUrl(patch.sourceUrl || null);
+        }}
+      />
+    ) : null;
+
   return (
     <div className="mt-4">
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -20785,6 +20817,7 @@ export function RepoCodePage() {
                         ? "Files are stored on this git server (per NIP-34 architecture)"
                         : "Owner’s clone host from the Nostr announcement — not gittr’s git.gittr.space unless they published that"}
                     </p>
+                    {sourceHostGone}
                   </>
                 ) : null}
               </div>
@@ -20807,39 +20840,9 @@ export function RepoCodePage() {
                     ? "Files are stored on this git server (per NIP-34 architecture)"
                     : "Owner’s clone host from the Nostr announcement — not gittr’s git.gittr.space unless they published that"}
                 </p>
+                {sourceHostGone}
               </div>
             )
-          ) : null}
-
-          {mounted && repoIsOwner ? (
-            <SourceKeepOrSwap
-              entity={resolvedParams.entity}
-              repoName={decodedRepo}
-              ownerPubkey={currentUserPubkey || repoData?.ownerPubkey || ""}
-              sourceUrl={
-                Number(repoData?.forgeSourceClearedAt) > 0
-                  ? ""
-                  : effectiveSourceUrl || ""
-              }
-              sourceCleared={Number(repoData?.forgeSourceClearedAt) > 0}
-              repo={repoData}
-              cloneUrls={httpCloneUrls}
-              remoteHeadHints={cloneHeadHints}
-              onApplied={(patch) => {
-                setRepoData((prev) => {
-                  if (!prev) return prev;
-                  const next = { ...prev, ...patch };
-                  if (!patch.forgeSourceClearedAt) {
-                    delete next.forgeSourceClearedAt;
-                  }
-                  if (!patch.sourceUrl) {
-                    delete next.sourceUrl;
-                  }
-                  return next;
-                });
-                setEffectiveSourceUrl(patch.sourceUrl || null);
-              }}
-            />
           ) : null}
 
           {mounted &&
