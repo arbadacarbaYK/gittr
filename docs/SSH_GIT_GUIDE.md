@@ -28,6 +28,8 @@ Amber / NIP-46 is only involved when **you** signed those Nostr events in the br
 
 **SSH host:** always use **`git.gittr.space`** (not `gittr.space`). Example: `git clone git@git.gittr.space:<npub>/<repo>.git`.
 
+**A dead GitHub (or other forge) is not an SSH job.** Settings → SSH Base only changes the hostname shown in an SSH line. It does not change the repo’s source, and the next Push does not send the files there. Leaving that forge, or following another public forge that already has the same commits, is the repo page: **If this git host is gone**. Help: [When your git host goes dark](https://gittr.space/help#when-source-goes-offline). SSH is still how you push commits to `git.gittr.space`, and how you push that copy onto a new forge before the website will follow it.
+
 The bridge subscribes to kind **52** for repository **owners** and permission targets, then writes `authorized_keys`. Publishing from Settings → SSH Keys also POSTs the event directly to the bridge so you do not wait on relays.
 
 ## Quick Start: Set Up SSH Keys

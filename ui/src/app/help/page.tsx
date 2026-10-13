@@ -2402,6 +2402,26 @@ export default function HelpPage() {
                     the files there.
                   </li>
                   <li>
+                    <strong className="text-blue-50">Where to do it.</strong>{" "}
+                    The two choices above are on the repo page, under the
+                    source line. That is the only place that changes the source.
+                    An agent (gittr MCP) can read the files, open new Nostr
+                    issues and pull requests, and publish a commit you already
+                    pushed. It has no swap of its own. SSH is how you send
+                    commits: clone{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      git.gittr.space
+                    </code>{" "}
+                    and{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      git push
+                    </code>{" "}
+                    there. To use another public forge, push this copy to that
+                    server first, then come back and press{" "}
+                    <strong className="text-blue-50">Check this server</strong>.
+                    Settings → SSH Base does not do any of this.
+                  </li>
+                  <li>
                     <strong className="text-blue-50">Same steps for an agent (gittr MCP).</strong>{" "}
                     Read with{" "}
                     <code className="bg-black/40 px-1 rounded text-xs">
