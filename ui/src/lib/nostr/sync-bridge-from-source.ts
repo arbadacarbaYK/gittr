@@ -24,6 +24,11 @@ export async function syncBridgeFromSource(opts: {
   pubkey: string;
   signer: (event: any) => Promise<any>;
   authEvent?: any;
+  /**
+   * Server refuses the fetch unless every gittr branch tip is already on
+   * that address. Does not delete an empty repo or copy a different history.
+   */
+  onlyIfSameTips?: boolean;
 }): Promise<SyncFromSourceResult> {
   const headers = await getBridgeAuthHeaders(opts.pubkey, opts.signer);
   headers.set("Content-Type", "application/json");
@@ -49,6 +54,7 @@ export async function syncBridgeFromSource(opts: {
       repo: opts.repo,
       sourceUrl: opts.sourceUrl,
       branch: opts.branch,
+      onlyIfSameTips: opts.onlyIfSameTips === true,
     }),
   });
 

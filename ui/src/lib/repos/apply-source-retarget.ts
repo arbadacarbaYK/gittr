@@ -20,6 +20,7 @@ import {
 import {
   type GitRefTip,
   branchTipsHeld,
+  cloneUrlsWithoutForgeSource,
   forgeAlreadyHasOurTips,
   normalizeGitRefTips,
 } from "./source-retarget-plan";
@@ -103,6 +104,11 @@ function cardFromRepo(
   const dropped = normGitUrl(repo.sourceUrl);
   const fork = typeof repo.forkedFrom === "string" ? repo.forkedFrom : "";
   const keepFork = fork && normGitUrl(fork) !== dropped ? fork : undefined;
+  const clone = opts.omitForgeSource
+    ? cloneUrlsWithoutForgeSource(repo.clone, repo.sourceUrl)
+    : Array.isArray(repo.clone)
+      ? [...repo.clone]
+      : [];
   const payload: RepositoryEvent = {
     repositoryName: repoName,
     name: repo.name || repo.repositoryName || repoName,
@@ -111,7 +117,7 @@ function cardFromRepo(
     description: repo.description,
     tags: Array.isArray(repo.topics) ? repo.topics : undefined,
     topics: Array.isArray(repo.topics) ? repo.topics : undefined,
-    clone: Array.isArray(repo.clone) ? [...repo.clone] : [],
+    clone,
     relays: Array.isArray(repo.relays) ? [...repo.relays] : [],
     links: Array.isArray(repo.links) ? [...repo.links] : undefined,
     contributors: Array.isArray(repo.contributors)
@@ -233,6 +239,75 @@ function utf8ToBase64Json(obj: unknown): string {
   return btoa(binary);
 }
 
+/**
+ * The public git.gittr.space address is checked first, then any other Nostr
+ * git clone on the card. One of them must already list these commits.
+ * A forge URL is not that check.
+ */
+async function nostrGitCopyHasOurTips(
+  clone: string[] | undefined,
+  bridgeHeads: GitRefTip[],
+  ownerPubkey: string,
+  repoName: string
+): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+  const seen = new Set<string>();
+  const gittrCopies: string[] = [];
+  const otherCopies: string[] = [];
+  const add = (url: string) => {
+    const trimmed = url.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return;
+    if (isCloneableUpstreamSourceUrl(trimmed)) return;
+    const key = normGitUrl(trimmed);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    if (trimmed.toLowerCase().includes("git.gittr.space")) {
+      gittrCopies.push(trimmed);
+    } else {
+      otherCopies.push(trimmed);
+    }
+  };
+
+  if (
+    /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+    repoName &&
+    !repoName.includes("/") &&
+    !repoName.includes("..")
+  ) {
+    try {
+      const { nip19 } = await import("nostr-tools");
+      add(
+        `https://git.gittr.space/${nip19.npubEncode(
+          ownerPubkey.toLowerCase()
+        )}/${repoName}.git`
+      );
+    } catch {
+      /* a listed clone address can still pass */
+    }
+  }
+  for (const url of clone || []) add(url);
+
+  if (gittrCopies.length === 0 && otherCopies.length === 0) {
+    return {
+      ok: false,
+      message:
+        "This repo has no Nostr git address to check. Nothing was changed.",
+    };
+  }
+  for (const url of [...gittrCopies, ...otherCopies]) {
+    const remote = await readRemoteHeads(url);
+    if (!remote.ok) continue;
+    if (forgeAlreadyHasOurTips(bridgeHeads, remote.heads).ok) {
+      return { ok: true, url };
+    }
+  }
+  return {
+    ok: false,
+    message: gittrCopies.length
+      ? "https://git.gittr.space does not show these commits yet. Nothing was changed."
+      : "None of the Nostr git addresses show these commits yet. Nothing was changed.",
+  };
+}
+
 export async function keepNostrGitCopy(opts: {
   entity: string;
   repoName: string;
@@ -260,8 +335,28 @@ export async function keepNostrGitCopy(opts: {
     };
   }
 
+  const publicCopy = await nostrGitCopyHasOurTips(
+    opts.repo.clone,
+    first.heads,
+    opts.ownerPubkey,
+    opts.repoName
+  );
+  if (!publicCopy.ok) return { ok: false, message: publicCopy.message };
+
+  const keptClone = cloneUrlsWithoutForgeSource(
+    opts.repo.clone,
+    opts.repo.sourceUrl
+  );
+  const keptHasNostrCopy = keptClone.some(
+    (url) =>
+      /^https?:\/\//i.test(url) && !isCloneableUpstreamSourceUrl(url)
+  );
+  const repoForCard: StoredRepo = keptHasNostrCopy
+    ? { ...opts.repo, clone: keptClone }
+    : { ...opts.repo, clone: [...keptClone, publicCopy.url] };
+
   const published = await signAndPublish({
-    card: cardFromRepo(opts.repo, opts.repoName, { omitForgeSource: true }),
+    card: cardFromRepo(repoForCard, opts.repoName, { omitForgeSource: true }),
     signer: opts.signer,
     pub: opts.pub,
     ownerPubkey: opts.ownerPubkey,
@@ -346,6 +441,7 @@ export async function adoptPublicForge(opts: {
     sourceUrl,
     pubkey: pubkeyHex,
     signer: opts.signer.signEvent,
+    onlyIfSameTips: true,
   });
   if (!synced.success) {
     return {

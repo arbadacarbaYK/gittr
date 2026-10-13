@@ -2360,12 +2360,15 @@ export default function HelpPage() {
                       Keep the Nostr git copy
                     </strong>{" "}
                     publishes a new card with the same clone addresses and no
-                    forge source. It does not move the commits. It stops if
-                    those commits change while it runs.{" "}
+                    forge source. The dead host is left off that card. It checks
+                    the public git.gittr.space address first and does not move
+                    the commits. It stops if those commits change while it runs.{" "}
                     <strong className="text-blue-50">Use</strong> a backup, or{" "}
                     <strong className="text-blue-50">Check this server</strong>
                     , only when that public forge already has the same commits.
-                    If it does not, nothing is fetched. There is no button that
+                    The server checks again and will not delete the repo or
+                    move a branch to do it. If it does not match, nothing is
+                    fetched. There is no button that
                     takes a new address and replaces gittr with whatever is
                     there now. A page already published stays on Blossom. A new
                     app announcement still needs a forge release that actually

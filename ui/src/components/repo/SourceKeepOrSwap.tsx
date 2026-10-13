@@ -122,9 +122,10 @@ export function SourceKeepOrSwap(props: {
         {forgeSource ? (
           <p className="text-xs text-gray-500">
             The addresses under Nostr Backups are what other apps clone. A “has
-            files” badge means that copy already has the commits. These choices
-            do not type a new address and replace the repo with whatever is
-            there now.
+            files” badge means that address lists commits. It does not mean
+            they are the same commits. A typed address is used only when that
+            server already has the same ones. Nothing here replaces the repo
+            with whatever a new address has now.
           </p>
         ) : (
           <p className="text-xs text-gray-500">
@@ -134,7 +135,7 @@ export function SourceKeepOrSwap(props: {
         )}
         {copiesWithFiles.length > 0 ? (
           <p className="text-xs text-gray-400">
-            Already has the commits:{" "}
+            Shows commits:{" "}
             {copiesWithFiles.map((url) => hostLabel(url)).join(", ")}
           </p>
         ) : null}

@@ -75,3 +75,36 @@ export function forgeAlreadyHasOurTips(
   }
   return { ok: true };
 }
+
+/** Drop the forge address from clone[] so a new card cannot tell other apps to clone a dead host. */
+export function cloneUrlsWithoutForgeSource(
+  clone: string[] | undefined,
+  sourceUrl: string | undefined
+): string[] {
+  const dropped = String(sourceUrl || "")
+    .trim()
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+  return (Array.isArray(clone) ? clone : []).filter((url) => {
+    if (!dropped) return true;
+    const next = String(url || "")
+      .trim()
+      .replace(/\.git$/i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+    return next !== dropped;
+  });
+}
+
+/** Map a side-namespace ref back to a branch. Rejects anything that is not a plain branch name. */
+export function sideCheckRefToHead(refname: string): string | null {
+  const prefix = "refs/remotes/source-check/";
+  if (!refname.startsWith(prefix)) return null;
+  const name = refname.slice(prefix.length);
+  if (!name || name.includes("..") || name.startsWith("/") || /\s/.test(name)) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._/-]+$/.test(name)) return null;
+  return `refs/heads/${name}`;
+}

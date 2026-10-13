@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { parseLsRemoteHeads } from "../git/remote-has-git-refs";
 
-import { branchTipsHeld, forgeAlreadyHasOurTips } from "./source-retarget-plan";
+import {
+  branchTipsHeld,
+  cloneUrlsWithoutForgeSource,
+  forgeAlreadyHasOurTips,
+  sideCheckRefToHead,
+} from "./source-retarget-plan";
 
 const main = "a".repeat(40);
 const other = "b".repeat(40);
@@ -67,6 +72,31 @@ describe("branchTipsHeld", () => {
         ]
       )
     ).toBe(true);
+  });
+});
+
+describe("cloneUrlsWithoutForgeSource", () => {
+  it("drops the dead forge address and keeps the Nostr git addresses", () => {
+    expect(
+      cloneUrlsWithoutForgeSource(
+        [
+          "https://github.com/acme/widgets.git",
+          "https://git.gittr.space/npub1abc/widgets.git",
+        ],
+        "https://github.com/acme/widgets"
+      )
+    ).toEqual(["https://git.gittr.space/npub1abc/widgets.git"]);
+  });
+});
+
+describe("sideCheckRefToHead", () => {
+  it("maps a side-namespace ref to a branch and rejects traversal", () => {
+    expect(sideCheckRefToHead("refs/remotes/source-check/main")).toBe(
+      "refs/heads/main"
+    );
+    expect(sideCheckRefToHead("refs/remotes/source-check/../heads/main")).toBe(
+      null
+    );
   });
 });
 

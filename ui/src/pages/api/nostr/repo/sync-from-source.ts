@@ -14,6 +14,11 @@ import {
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
 import { ensureBridgeRepoWritable } from "@/lib/git/ensure-bridge-repo-writable";
+import { listRemoteHeadRefs } from "@/lib/git/remote-has-git-refs";
+import {
+  forgeAlreadyHasOurTips,
+  sideCheckRefToHead,
+} from "@/lib/repos/source-retarget-plan";
 import { assertSafeOutboundGitUrl } from "@/lib/security/safe-remote-url";
 import { isCloneableUpstreamSourceUrl } from "@/lib/utils/detect-git-forge";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
@@ -84,6 +89,76 @@ function normalizeCloneUrl(sourceUrl: string): string {
   return url;
 }
 
+async function ensureUpstreamRemote(
+  repoPath: string,
+  cloneUrl: string
+): Promise<void> {
+  try {
+    await execAsync(
+      `git --git-dir=${shellQuote(repoPath)} remote set-url upstream ${shellQuote(
+        cloneUrl
+      )}`,
+      { timeout: 15000 }
+    );
+  } catch {
+    await execAsync(
+      `git --git-dir=${shellQuote(repoPath)} remote add upstream ${shellQuote(
+        cloneUrl
+      )}`,
+      { timeout: 15000 }
+    );
+  }
+}
+
+async function listSideCheckHeads(
+  repoPath: string
+): Promise<Array<{ ref: string; commit: string }>> {
+  try {
+    const { stdout } = await execAsync(
+      `git --git-dir=${shellQuote(
+        repoPath
+      )} for-each-ref --format='%(objectname) %(refname)' refs/remotes/source-check`,
+      { timeout: 30000 }
+    );
+    const out: Array<{ ref: string; commit: string }> = [];
+    for (const line of stdout.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const space = trimmed.indexOf(" ");
+      if (space < 0) continue;
+      const commit = trimmed.slice(0, space);
+      const head = sideCheckRefToHead(trimmed.slice(space + 1));
+      if (!head || !/^[0-9a-f]{40}$/i.test(commit)) continue;
+      out.push({ ref: head, commit });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function dropSideCheckRefs(repoPath: string): Promise<void> {
+  try {
+    const { stdout } = await execAsync(
+      `git --git-dir=${shellQuote(
+        repoPath
+      )} for-each-ref --format='%(refname)' refs/remotes/source-check`,
+      { timeout: 15000 }
+    );
+    for (const line of stdout.split("\n")) {
+      const ref = line.trim();
+      if (!ref.startsWith("refs/remotes/source-check/")) continue;
+      if (ref.includes("..") || /\s/.test(ref)) continue;
+      await execAsync(
+        `git --git-dir=${shellQuote(repoPath)} update-ref -d ${shellQuote(ref)}`,
+        { timeout: 10000 }
+      );
+    }
+  } catch {
+    /* side refs are not the commits */
+  }
+}
+
 async function listRefs(
   repoPath: string
 ): Promise<Array<{ ref: string; commit: string }>> {
@@ -144,6 +219,7 @@ export default async function handler(
     repo: repoName,
     sourceUrl: sourceUrlInput,
     branch: branchInput,
+    onlyIfSameTips,
   } = req.body || {};
 
   if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
@@ -245,55 +321,104 @@ export default async function handler(
   try {
     await mkdir(dirname(repoPath), { recursive: true });
 
-    // A Nostr announcement creates an empty bare repo before this copy runs.
-    // Fetching into that empty shell often leaves zero branches ("no files").
-    // Throw it away and clone the forge fresh.
-    if (existsSync(repoPath)) {
+    // Owner "use this forge" path. Never delete the bare repo and never
+    // move a branch that is already here. A normal Push does not send this flag.
+    if (onlyIfSameTips === true) {
+      if (!existsSync(repoPath)) {
+        return res.status(409).json({
+          error:
+            "gittr does not have the commits for this repo yet, so there is nothing to match. Nothing was fetched.",
+          success: false,
+        });
+      }
       const existingRefs = await listRefs(repoPath);
-      const hasHeads = existingRefs.some((r) =>
-        r.ref.startsWith("refs/heads/")
-      );
-      if (!hasHeads) {
-        console.log(
-          `🔄 [SyncFromSource] Replacing empty bare repo before clone: ${repoPath}`
-        );
-        await rm(repoPath, { recursive: true, force: true });
+      const remoteHeads = await listRemoteHeadRefs(cloneUrl);
+      const match = forgeAlreadyHasOurTips(existingRefs, remoteHeads);
+      if (!match.ok) {
+        return res.status(409).json({
+          error: match.message,
+          success: false,
+        });
       }
-    }
 
-    if (!existsSync(repoPath)) {
-      console.log(`🔄 [SyncFromSource] Cloning ${cloneUrl} → ${repoPath}`);
-      await execAsync(
-        `git clone --bare ${shellQuote(cloneUrl)} ${shellQuote(repoPath)}`,
-        { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
-      );
-    } else {
-      console.log(
-        `🔄 [SyncFromSource] Fetching ${cloneUrl} into existing ${repoPath}`
-      );
-      // Ensure upstream remote points at forge
-      try {
-        await execAsync(
-          `git --git-dir=${shellQuote(
-            repoPath
-          )} remote set-url upstream ${shellQuote(cloneUrl)}`,
-          { timeout: 15000 }
-        );
-      } catch {
-        await execAsync(
-          `git --git-dir=${shellQuote(
-            repoPath
-          )} remote add upstream ${shellQuote(cloneUrl)}`,
-          { timeout: 15000 }
-        );
-      }
-      // Force-update local heads/tags to match upstream tip (exact forge SHAs)
+      await ensureUpstreamRemote(repoPath, cloneUrl);
       await execAsync(
         `git --git-dir=${shellQuote(
           repoPath
-        )} fetch --prune upstream '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'`,
+        )} fetch upstream '+refs/heads/*:refs/remotes/source-check/*'`,
         { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
       );
+      const sideHeads = await listSideCheckHeads(repoPath);
+      const again = forgeAlreadyHasOurTips(existingRefs, sideHeads);
+      if (!again.ok) {
+        await dropSideCheckRefs(repoPath);
+        return res.status(409).json({
+          error: again.message,
+          success: false,
+        });
+      }
+
+      const localHeads = new Map(
+        existingRefs
+          .filter((row) => row.ref.startsWith("refs/heads/"))
+          .map((row) => [row.ref, row.commit.toLowerCase()])
+      );
+      for (const row of sideHeads) {
+        const have = localHeads.get(row.ref);
+        if (have && have !== row.commit.toLowerCase()) {
+          await dropSideCheckRefs(repoPath);
+          return res.status(409).json({
+            error:
+              "That server does not already have the same commits as gittr. Nothing was fetched. Push the gittr copy to that server first, then try again.",
+            success: false,
+          });
+        }
+        if (!have) {
+          await execAsync(
+            `git --git-dir=${shellQuote(repoPath)} update-ref ${shellQuote(
+              row.ref
+            )} ${shellQuote(row.commit)}`,
+            { timeout: 10000 }
+          );
+        }
+      }
+      await dropSideCheckRefs(repoPath);
+    } else {
+      // A Nostr announcement creates an empty bare repo before this copy runs.
+      // Fetching into that empty shell often leaves zero branches ("no files").
+      // Throw it away and clone the forge fresh.
+      if (existsSync(repoPath)) {
+        const existingRefs = await listRefs(repoPath);
+        const hasHeads = existingRefs.some((r) =>
+          r.ref.startsWith("refs/heads/")
+        );
+        if (!hasHeads) {
+          console.log(
+            `🔄 [SyncFromSource] Replacing empty bare repo before clone: ${repoPath}`
+          );
+          await rm(repoPath, { recursive: true, force: true });
+        }
+      }
+
+      if (!existsSync(repoPath)) {
+        console.log(`🔄 [SyncFromSource] Cloning ${cloneUrl} → ${repoPath}`);
+        await execAsync(
+          `git clone --bare ${shellQuote(cloneUrl)} ${shellQuote(repoPath)}`,
+          { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
+        );
+      } else {
+        console.log(
+          `🔄 [SyncFromSource] Fetching ${cloneUrl} into existing ${repoPath}`
+        );
+        await ensureUpstreamRemote(repoPath, cloneUrl);
+        // Force-update local heads/tags to match upstream tip (exact forge SHAs)
+        await execAsync(
+          `git --git-dir=${shellQuote(
+            repoPath
+          )} fetch --prune upstream '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'`,
+          { timeout: 180000, maxBuffer: 20 * 1024 * 1024 }
+        );
+      }
     }
 
     const branch = await resolveDefaultBranch(
