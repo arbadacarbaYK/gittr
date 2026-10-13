@@ -52,8 +52,6 @@
 
 If the host in **Source** is gone, follow [Help](https://gittr.space/help#when-source-goes-offline). Confirm a Nostr Backups address before you treat it as a copy.
 
-If Chrome asks to access devices on your local network, block it. gittr.space does not need that.
-
 ## Where the pieces are
 
 ![gittr platform map](docs/gittr-platform.gif)
