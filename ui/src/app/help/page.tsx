@@ -2280,6 +2280,130 @@ export default function HelpPage() {
                     , then Push to Nostr so others can clone without the old
                     host.
                   </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      Already imported and Pushed, and the forge now returns
+                      403 (account suspended, blocked, or gone)?
+                    </strong>{" "}
+                    The files from that Push stay on gittr. Keep working here.
+                    Do not start a new import, and do not point the repo at an
+                    empty Forgejo. Details below.
+                  </li>
+                </ul>
+                <p className="text-sm text-blue-100 pt-1">
+                  <strong className="text-blue-50">
+                    Keep working after the forge says 403
+                  </strong>
+                </p>
+                <p className="text-sm text-blue-100">
+                  GitHub’s message looks like{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    Sorry. Your account was suspended
+                  </code>
+                  . That is GitHub refusing the account. It does not delete
+                  commits already stored on{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    git.gittr.space
+                  </code>
+                  . The repo page still <em>asks</em> GitHub first, because the
+                  announcement still has a{" "}
+                  <code className="bg-black/40 px-1 rounded text-xs">
+                    source
+                  </code>{" "}
+                  link. That is not the same as “the files only exist on
+                  GitHub.”
+                </p>
+                <ul className="list-disc list-inside text-sm text-blue-100 space-y-1.5">
+                  <li>
+                    <strong className="text-blue-50">Files.</strong> The Code
+                    tab also asks every address in{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      clone[]
+                    </code>
+                    , including{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      https://git.gittr.space/&lt;npub&gt;/&lt;repo&gt;.git
+                    </code>
+                    . If that copy answers, the file list is the gittr copy.
+                    Clone that address. The “copy clone” button can still put
+                    the old GitHub address on the clipboard, because it prefers
+                    the source link. Ignore that one.
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      Issues and pull requests.
+                    </strong>{" "}
+                    Old GitHub tickets will not load. Use{" "}
+                    <strong className="text-blue-50">New issue</strong> and{" "}
+                    <strong className="text-blue-50">New pull request</strong>{" "}
+                    on this repo. Those are Nostr issues and pull requests.
+                    They do not need GitHub. Closing a GitHub issue number is
+                    not possible while the account is suspended.
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      To do and Discussions.
+                    </strong>{" "}
+                    While the source link is still GitHub, those two tabs stay
+                    the forge’s read-only copy. Use Issues for new conversation.
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      Push to Nostr does not make it Nostr-only.
+                    </strong>{" "}
+                    With no file edits, Push tries GitHub once, fails, and
+                    keeps the commits already on gittr. The source link stays,
+                    so the next visit still asks GitHub. Editing files in the
+                    browser and then Push saves a new snapshot of those files.
+                    It is not a normal git commit on top of the old history.
+                    To add a real commit, clone the{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      git.gittr.space
+                    </code>{" "}
+                    address and{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      git push
+                    </code>{" "}
+                    there.
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">
+                      Settings → SSH Base does nothing for this.
+                    </strong>{" "}
+                    That box is only the hostname in a displayed SSH line. It
+                    does not switch the source, and the next Push does not send
+                    the files there.
+                  </li>
+                  <li>
+                    <strong className="text-blue-50">Same steps for an agent (gittr MCP).</strong>{" "}
+                    Read with{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      bridgeListFiles
+                    </code>{" "}
+                    /{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      bridgeGetFileContent
+                    </code>
+                    . New work is{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      createIssue
+                    </code>{" "}
+                    and{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      createPR
+                    </code>
+                    . Do not call{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      mirrorRepo
+                    </code>{" "}
+                    on the dead GitHub URL, and do not point it at a new empty
+                    forge — that copies the new URL onto gittr and replaces the
+                    branches. Do not call{" "}
+                    <code className="bg-black/40 px-1 rounded text-xs">
+                      pushToBridge
+                    </code>{" "}
+                    if the old commits must stay.
+                  </li>
                 </ul>
                 <p className="text-xs text-blue-200/80">
                   Looking for a Nostr mirror of a known forge repo (GitHub,
