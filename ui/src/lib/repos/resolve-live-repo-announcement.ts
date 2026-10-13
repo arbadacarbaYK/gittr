@@ -13,6 +13,7 @@ import {
   type ProfileRepoCloneHints,
   fetchRepoCloneHintsFromProfile,
 } from "./hydrate-clone-from-profile-repos";
+import { persistForgeSourceCleared } from "./persist-forge-source-choice";
 import { persistRepoAnnouncementMeta } from "./repo-github-hub";
 
 export async function resolveLiveRepoAnnouncement(opts: {
@@ -43,13 +44,20 @@ export async function resolveLiveRepoAnnouncement(opts: {
         entity,
         repo: opts.repoName,
         lastNostrEventId: hints.lastNostrEventId,
-        sourceUrl: hints.sourceUrl,
+        sourceUrl: hints.forgeSourceCleared ? undefined : hints.sourceUrl,
         clone: hints.clone,
         forkedFrom: hints.forkedFrom,
         description: hints.description,
         ownerPubkey: opts.ownerPubkey,
         publicRead: hints.publicRead,
       });
+      if (hints.forgeSourceCleared) {
+        persistForgeSourceCleared({
+          entity,
+          repo: opts.repoName,
+          clearedAt: Math.floor(Date.now() / 1000),
+        });
+      }
     } catch {
       /* localStorage quota / SSR */
     }

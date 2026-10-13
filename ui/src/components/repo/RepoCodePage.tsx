@@ -16,6 +16,7 @@ import {
 import { HtmlFilePreviewFrame } from "@/components/repo/HtmlFilePreviewFrame";
 import { ReadmeMarkdownImage } from "@/components/repo/ReadmeMarkdownImage";
 import { RepoFolderReadmeMarkdown } from "@/components/repo/RepoFolderReadmeMarkdown";
+import { SourceKeepOrSwap } from "@/components/repo/SourceKeepOrSwap";
 import { appAlert } from "@/components/ui/app-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +184,8 @@ import {
   queryNostrForGithubSourceUrl,
   resolveRepoActivityDisplayMs,
 } from "@/lib/repos/repo-github-hub";
+import { persistForgeSourceCleared } from "@/lib/repos/persist-forge-source-choice";
+import { announcementClearsForgeSource } from "@/lib/repos/source-cleared-tag";
 import {
   cloneSourceUrlIsUsable,
   firstSuccessfulSourceKey,
@@ -5374,6 +5377,7 @@ export function RepoCodePage() {
           Array.isArray(prev.clone) &&
           prev.clone.length === mergedClone.length &&
           prev.clone.every((u: string) => mergedClone.includes(u)) &&
+          !hints.forgeSourceCleared &&
           (!hints.sourceUrl || prev.sourceUrl === hints.sourceUrl)
         ) {
           if (nextId && prev.lastNostrEventId !== nextId) {
@@ -5396,7 +5400,12 @@ export function RepoCodePage() {
                 ),
               }
             : {}),
-          sourceUrl: hints.sourceUrl || base.sourceUrl,
+          sourceUrl: hints.forgeSourceCleared
+                  ? undefined
+                  : hints.sourceUrl || base.sourceUrl,
+                forgeSourceClearedAt: hints.forgeSourceCleared
+                  ? Math.floor(Date.now() / 1000)
+                  : base.forgeSourceClearedAt,
           lastNostrEventId: nextId,
           syncedFromNostr: true,
           ownerPubkey: ownerPk,
@@ -5988,7 +5997,12 @@ export function RepoCodePage() {
                   (base as { announcementClone?: string[] }).announcementClone,
                   hints.clone
                 ),
-                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                sourceUrl: hints.forgeSourceCleared
+                  ? undefined
+                  : hints.sourceUrl || base.sourceUrl,
+                forgeSourceClearedAt: hints.forgeSourceCleared
+                  ? Math.floor(Date.now() / 1000)
+                  : base.forgeSourceClearedAt,
                 lastNostrEventId:
                   hints.lastNostrEventId || base.lastNostrEventId,
                 syncedFromNostr: true,
@@ -6110,7 +6124,12 @@ export function RepoCodePage() {
                   (base as { announcementClone?: string[] }).announcementClone,
                   hints.clone
                 ),
-                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                sourceUrl: hints.forgeSourceCleared
+                  ? undefined
+                  : hints.sourceUrl || base.sourceUrl,
+                forgeSourceClearedAt: hints.forgeSourceCleared
+                  ? Math.floor(Date.now() / 1000)
+                  : base.forgeSourceClearedAt,
                 lastNostrEventId:
                   hints.lastNostrEventId || base.lastNostrEventId,
                 syncedFromNostr: true,
@@ -6383,7 +6402,12 @@ export function RepoCodePage() {
                   base.announcementClone,
                   hints.clone
                 ),
-                sourceUrl: hints.sourceUrl || base.sourceUrl,
+                sourceUrl: hints.forgeSourceCleared
+                  ? undefined
+                  : hints.sourceUrl || base.sourceUrl,
+                forgeSourceClearedAt: hints.forgeSourceCleared
+                  ? Math.floor(Date.now() / 1000)
+                  : base.forgeSourceClearedAt,
                 lastNostrEventId:
                   hints.lastNostrEventId || base.lastNostrEventId,
                 syncedFromNostr: true,
@@ -7755,10 +7779,15 @@ export function RepoCodePage() {
                   }
                   // Sidebar Links: ["link", type, url, label?] (+ web fallback)
                   eventRepoData.links = parseRepoLinksFromNip34Tags(event.tags);
-                  const forgeFromTags = extractForgeSourceFromEventTags(
+                  const sourceClearedOnCard = announcementClearsForgeSource(
                     event.tags || []
                   );
-                  if (forgeFromTags) {
+                  const forgeFromTags = sourceClearedOnCard
+                    ? ""
+                    : extractForgeSourceFromEventTags(event.tags || []);
+                  if (sourceClearedOnCard) {
+                    delete eventRepoData.sourceUrl;
+                  } else if (forgeFromTags) {
                     const cleanForge = forgeFromTags
                       .replace(/\.git$/i, "")
                       .replace(/^git@([^:]+):(.+)$/, "https://$1/$2");
@@ -7780,8 +7809,19 @@ export function RepoCodePage() {
                       : [],
                     description: eventRepoData.description,
                     ownerPubkey: event.pubkey,
+                    eventCreatedAt: event.created_at,
                   });
-                  if (
+                  if (sourceClearedOnCard) {
+                    persistForgeSourceCleared({
+                      entity: resolvedParams.entity,
+                      repo: resolvedParams.repo,
+                      clearedAt:
+                        Number(event.created_at) ||
+                        Math.floor(Date.now() / 1000),
+                      previousSourceUrl: eventRepoData.sourceUrl,
+                    });
+                    delete eventRepoData.sourceUrl;
+                  } else if (
                     eventRepoData.sourceUrl &&
                     isRefetchableUpstreamSourceUrl(eventRepoData.sourceUrl)
                   ) {
@@ -20769,6 +20809,37 @@ export function RepoCodePage() {
                 </p>
               </div>
             )
+          ) : null}
+
+          {mounted && repoIsOwner ? (
+            <SourceKeepOrSwap
+              entity={resolvedParams.entity}
+              repoName={decodedRepo}
+              ownerPubkey={currentUserPubkey || repoData?.ownerPubkey || ""}
+              sourceUrl={
+                Number(repoData?.forgeSourceClearedAt) > 0
+                  ? ""
+                  : effectiveSourceUrl || ""
+              }
+              sourceCleared={Number(repoData?.forgeSourceClearedAt) > 0}
+              repo={repoData}
+              cloneUrls={httpCloneUrls}
+              remoteHeadHints={cloneHeadHints}
+              onApplied={(patch) => {
+                setRepoData((prev) => {
+                  if (!prev) return prev;
+                  const next = { ...prev, ...patch };
+                  if (!patch.forgeSourceClearedAt) {
+                    delete next.forgeSourceClearedAt;
+                  }
+                  if (!patch.sourceUrl) {
+                    delete next.sourceUrl;
+                  }
+                  return next;
+                });
+                setEffectiveSourceUrl(patch.sourceUrl || null);
+              }}
+            />
           ) : null}
 
           {mounted &&

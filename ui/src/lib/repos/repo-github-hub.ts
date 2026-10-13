@@ -22,6 +22,7 @@ import {
 } from "@/lib/repos/repo-about-text";
 import { storedGithubSourceUnchanged } from "@/lib/repos/repo-page-chrome";
 import { mergeAnnouncementTagClones } from "@/lib/repos/sidebar-announcement-clones";
+import { announcementClearsForgeSource } from "@/lib/repos/source-cleared-tag";
 import {
   type StoredRepo,
   loadStoredRepos,
@@ -149,6 +150,7 @@ export async function queryNostrForGithubSourceUrl(
 
   try {
     const hints = await fetchRepoCloneHintsFromProfile(ownerPubkey, repoSlug);
+    if (hints?.forgeSourceCleared) return "";
     const fromProfile = hints?.sourceUrl?.trim();
     if (fromProfile && isCloneableUpstreamSourceUrl(fromProfile)) {
       return fromProfile.replace(/\.git$/i, "");
@@ -188,10 +190,19 @@ export async function queryNostrForGithubSourceUrl(
       ],
       relays,
       (event: { kind: number; created_at: number; tags: string[][] }) => {
-        const url = extractGithubUrlFromEventTags(event.tags || []);
+        const created = Number(event.created_at) || 0;
+        const tags = event.tags || [];
+        if (announcementClearsForgeSource(tags)) {
+          if (created >= bestCreated) {
+            bestCreated = created;
+            bestUrl = "";
+          }
+          return;
+        }
+        const url = extractGithubUrlFromEventTags(tags);
         if (!url) return;
-        if (event.created_at >= bestCreated) {
-          bestCreated = event.created_at;
+        if (created >= bestCreated) {
+          bestCreated = created;
           bestUrl = url;
         }
       },
@@ -217,6 +228,7 @@ export function persistGithubSourceOnRepo(
     return found !== undefined;
   });
   if (idx < 0) return;
+  if (Number(repos[idx]?.forgeSourceClearedAt) > 0) return;
 
   const existing = repos[idx]!;
   const clones = Array.isArray(existing.clone) ? [...existing.clone] : [];
@@ -640,6 +652,8 @@ export function persistRepoAnnouncementMeta(opts: {
   description?: string | null;
   ownerPubkey?: string | null;
   publicRead?: boolean;
+  /** Unix seconds of the card being applied. Older than a source drop, it is ignored. */
+  eventCreatedAt?: number | null;
 }): void {
   const repos = loadStoredRepos();
   const idx = repos.findIndex((r) => {
@@ -681,8 +695,18 @@ export function persistRepoAnnouncementMeta(opts: {
     patch.lastNostrEventId = eventId;
     patch.nostrEventId = eventId;
   }
+  const clearedAt =
+    idx >= 0 ? Number(repos[idx]?.forgeSourceClearedAt) || 0 : 0;
+  const eventAt = Number(opts.eventCreatedAt) || 0;
+  const newerThanClear = clearedAt > 0 && eventAt > clearedAt;
   if (source && isRefetchableUpstreamSourceUrl(source)) {
-    patch.sourceUrl = source;
+    if (!(clearedAt > 0) || newerThanClear) {
+      patch.sourceUrl = source;
+      if (newerThanClear) {
+        delete (patch as { forgeSourceClearedAt?: number })
+          .forgeSourceClearedAt;
+      }
+    }
   }
   const prevForSanitize = idx >= 0 ? repos[idx] : undefined;
   const sanitizedFork = sanitizeForkedFromField(
@@ -725,7 +749,6 @@ export function persistRepoAnnouncementMeta(opts: {
       ...patch,
       clone: mergeCloneUrlLists(prev.clone, clone),
       announcementClone: patch.announcementClone || prev.announcementClone,
-      sourceUrl: source || prev.sourceUrl,
       description: description || prev.description,
       lastNostrEventId: eventId || prev.lastNostrEventId,
       nostrEventId: eventId || prev.nostrEventId,
@@ -737,6 +760,14 @@ export function persistRepoAnnouncementMeta(opts: {
       syncedFromNostr: true,
       fromNostr: true,
     };
+    if (clearedAt > 0 && !newerThanClear) {
+      delete next.sourceUrl;
+    } else if (source || prev.sourceUrl) {
+      next.sourceUrl = source || prev.sourceUrl;
+    }
+    if (newerThanClear) {
+      delete next.forgeSourceClearedAt;
+    }
     if (sanitizedFork) {
       next.forkedFrom = sanitizedFork;
     } else if (forkedRaw) {

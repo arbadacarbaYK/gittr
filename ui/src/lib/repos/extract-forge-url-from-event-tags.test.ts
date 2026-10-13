@@ -90,6 +90,15 @@ describe("extractForgeSourceFromEventTags", () => {
     expect(url).toBe("");
   });
 
+  it("does not bring a forge back after the owner cleared it", () => {
+    const url = extractForgeSourceFromEventTags([
+      ["clone", "https://git.gittr.space/npub1abc/notes.git"],
+      ["forkedFrom", "https://github.com/someone/notes"],
+      ["source-cleared", "true"],
+    ]);
+    expect(url).toBe("");
+  });
+
   it("still persists an explicit source tag", () => {
     const url = extractForgeSourceFromEventTags([
       ["clone", "https://git.gittr.space/npub1abc/andronixorigin.git"],

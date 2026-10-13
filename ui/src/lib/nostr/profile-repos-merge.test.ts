@@ -128,4 +128,22 @@ describe("profile-repos merge (latest 30617 wins)", () => {
       ])
     );
   });
+
+  it("does not copy an older GitHub source back after source-cleared", () => {
+    const repos = rowsOf(
+      announce("notes", 1_700_000_000, {}, [
+        ["source", "https://github.com/someone/notes"],
+        ["clone", "https://git.gittr.space/npub1abc/notes.git"],
+      ]),
+      announce("notes", 1_700_000_100, {}, [
+        ["source-cleared", "true"],
+        ["clone", "https://git.gittr.space/npub1abc/notes.git"],
+      ]),
+      announce("notes", 1_700_000_050, {}, [
+        ["source", "https://github.com/someone/notes"],
+      ])
+    );
+    expect(repos[0]?.forgeSourceCleared).toBe(true);
+    expect(repos[0]?.sourceUrl).toBeFalsy();
+  });
 });

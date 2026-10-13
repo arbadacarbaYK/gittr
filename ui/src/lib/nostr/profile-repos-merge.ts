@@ -13,6 +13,7 @@ import { nip19 } from "nostr-tools";
 import { extractForgeSourceFromEventTags } from "../repos/extract-forge-url-from-event-tags";
 import { sanitizeForkedFromField } from "../repos/fork-attribution";
 import { preferRepoDisplayName } from "../repos/merge-profile-repos";
+import { announcementClearsForgeSource } from "../repos/source-cleared-tag";
 import { mergeCloneUrlLists } from "../utils/filter-display-clone-urls";
 import { nip34TagValuesFromRow } from "../utils/nip34-tag-values";
 
@@ -46,6 +47,8 @@ export type ProfileRepoRow = {
   stateEventId?: string;
   /** Forge upstream from `source` / `forkedFrom` / clone tags */
   sourceUrl?: string;
+  /** Latest card asked to drop the forge source. Older cards must not fill it back. */
+  forgeSourceCleared?: boolean;
   /** Real fork parent from `forkedFrom` tag (not this repo's own GitHub URL). */
   forkedFrom?: string;
   clone?: string[];
@@ -147,7 +150,7 @@ function fillAnnounceGaps(row: ProfileRepoRow, event: ProfileRepoEvent): void {
   if (row.publicRead === undefined) {
     row.publicRead = isPublicReadFromEvent(event as Event);
   }
-  if (!row.sourceUrl) {
+  if (!row.sourceUrl && !row.forgeSourceCleared) {
     row.sourceUrl = forgeSourceFromTags(event.tags);
   }
   if (!row.forkedFrom) {
@@ -175,7 +178,11 @@ function buildAnnounceRow(
   const nameFromTag = tagValue(event.tags, "name");
   const nameFromContent = nameFromAnnounceContent(event);
   const descriptionFromTag = tagValue(event.tags, "description");
-  const sourceUrl = forgeSourceFromTags(event.tags) || existing?.sourceUrl;
+  const forgeSourceCleared = announcementClearsForgeSource(event.tags);
+  const sourceUrl = forgeSourceCleared
+    ? undefined
+    : forgeSourceFromTags(event.tags) ||
+      (existing?.forgeSourceCleared ? undefined : existing?.sourceUrl);
   const forkedFrom = sanitizeForkedFromField(
     tagValue(event.tags, "forkedFrom") || existing?.forkedFrom,
     { sourceUrl }
@@ -199,6 +206,7 @@ function buildAnnounceRow(
     lastNostrEventCreatedAt: event.created_at,
     stateEventId: existing?.stateEventId,
     sourceUrl,
+    forgeSourceCleared: forgeSourceCleared || undefined,
     forkedFrom,
     clone: mergeCloneUrlLists(existing?.clone, clone),
     publicRead,

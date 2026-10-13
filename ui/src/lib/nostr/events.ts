@@ -3,6 +3,7 @@ import { discussionRepoTagValues } from "@/lib/discussions/repo-scope";
 import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 import { sanitizeForkedFromField } from "@/lib/repos/fork-attribution";
+import { SOURCE_CLEARED_TAG } from "@/lib/repos/source-cleared-tag";
 import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
 import { omitHomeLanRelayUrls } from "@/lib/security/private-network-host";
 import { formatSshKeyContent } from "@/lib/ssh/openssh-public-key";
@@ -75,6 +76,11 @@ export interface RepositoryEvent {
   relays?: string[]; // Array of Nostr relay URLs (e.g., ["wss://relay.noderunners.network", "wss://gitnostr.com"])
   // Extended metadata for full repo info
   sourceUrl?: string;
+  /**
+   * Owner dropped the forge source on purpose. The card gets `source-cleared`
+   * and no `source` tag, even if an older clone URL still mentions that host.
+   */
+  omitForgeSource?: boolean;
   forkedFrom?: string;
   readme?: string;
   files?: Array<{ type: string; path: string; size?: number }>;
@@ -423,8 +429,13 @@ export function buildUnsignedRepositoryEvent(
 
   // NIP-34 / gittr: `source` = forge provenance for refetch.
   // `forkedFrom` = real parent only (GitHub parent or gittr /npub/repo), never this repo's own URL.
-  const forgeUpstream = resolveRepoUpstreamSource(repo);
-  if (forgeUpstream) {
+  // omitForgeSource is an intentional drop (dead forge). Do not copy an older URL back.
+  const forgeUpstream = repo.omitForgeSource
+    ? ""
+    : resolveRepoUpstreamSource(repo);
+  if (repo.omitForgeSource) {
+    tags.push([SOURCE_CLEARED_TAG, "true"]);
+  } else if (forgeUpstream) {
     const clean = forgeUpstream.replace(/\.git$/, "");
     tags.push(["source", clean]);
   }

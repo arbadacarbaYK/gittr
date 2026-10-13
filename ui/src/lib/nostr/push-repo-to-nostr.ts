@@ -372,71 +372,85 @@ export async function pushRepoToNostr(
     // GitHub/GitLab on `source` only (not clone); if localStorage later drops
     // sourceUrl, a re-push must not wipe the previous announcement's source tags.
     {
-      const { sanitizeForkedFromField } = await import(
-        "@/lib/repos/fork-attribution"
-      );
-      const { urlLooksLikeSourceUpstream } = await import(
-        "@/lib/repos/forge-tree-shrink"
-      );
-      const asForge = (raw: string) =>
-        urlLooksLikeSourceUpstream(raw) ? raw.trim() : "";
+      const forgeSourceCleared =
+        Number(
+          (repo as { forgeSourceClearedAt?: number }).forgeSourceClearedAt
+        ) > 0;
+      if (forgeSourceCleared) {
+        delete (repo as { sourceUrl?: string }).sourceUrl;
+        console.log(
+          "[Push Repo] Owner dropped the forge source; not copying it back from an older card."
+        );
+      } else {
+        const { sanitizeForkedFromField } = await import(
+          "@/lib/repos/fork-attribution"
+        );
+        const { urlLooksLikeSourceUpstream } = await import(
+          "@/lib/repos/forge-tree-shrink"
+        );
+        const asForge = (raw: string) =>
+          urlLooksLikeSourceUpstream(raw) ? raw.trim() : "";
 
-      let upstream =
-        asForge(resolveRepoUpstreamSource(repo) || "") ||
-        asForge(typeof repo.sourceUrl === "string" ? repo.sourceUrl : "") ||
-        asForge(typeof repo.forkedFrom === "string" ? repo.forkedFrom : "");
-      if (
-        !upstream &&
-        subscribe &&
-        Array.isArray(defaultRelays) &&
-        defaultRelays.length > 0
-      ) {
-        try {
-          onProgress?.(
-            "Looking up previous forge source on Nostr (source/forkedFrom)..."
-          );
-          const found = await queryNostrForGithubSourceUrl(
-            entity,
-            repoSlug,
-            subscribe,
-            defaultRelays
-          );
-          upstream = asForge(found || "");
-          if (upstream) {
-            console.log(
-              `✅ [Push Repo] Recovered forge URL from prior 30617: ${upstream}`
+        let upstream =
+          asForge(resolveRepoUpstreamSource(repo) || "") ||
+          asForge(typeof repo.sourceUrl === "string" ? repo.sourceUrl : "") ||
+          asForge(typeof repo.forkedFrom === "string" ? repo.forkedFrom : "");
+        if (
+          !upstream &&
+          subscribe &&
+          Array.isArray(defaultRelays) &&
+          defaultRelays.length > 0
+        ) {
+          try {
+            onProgress?.(
+              "Looking up previous forge source on Nostr (source/forkedFrom)..."
+            );
+            const found = await queryNostrForGithubSourceUrl(
+              entity,
+              repoSlug,
+              subscribe,
+              defaultRelays
+            );
+            upstream = asForge(found || "");
+            if (upstream) {
+              console.log(
+                `✅ [Push Repo] Recovered forge URL from prior 30617: ${upstream}`
+              );
+            }
+          } catch (e) {
+            console.warn(
+              "⚠️ [Push Repo] Could not query prior forge source tags:",
+              e
             );
           }
-        } catch (e) {
-          console.warn(
-            "⚠️ [Push Repo] Could not query prior forge source tags:",
-            e
-          );
         }
-      }
-      // Clear bogus GRASP/mirror forkedFrom left in localStorage
-      if (repo.forkedFrom && !sanitizeForkedFromField(repo.forkedFrom, repo)) {
-        delete (repo as { forkedFrom?: string }).forkedFrom;
-      }
-      if (upstream) {
-        const clean = upstream.replace(/\.git$/, "");
-        if (!repo.sourceUrl) {
-          (repo as { sourceUrl?: string }).sourceUrl = clean;
-        }
-        const forkAttr = sanitizeForkedFromField(repo.forkedFrom, {
-          sourceUrl:
-            typeof repo.sourceUrl === "string" ? repo.sourceUrl : clean,
-          clone: Array.isArray(repo.clone) ? repo.clone : undefined,
-        });
-        if (forkAttr) {
-          (repo as { forkedFrom?: string }).forkedFrom = forkAttr;
-        } else {
+        // Clear bogus GRASP/mirror forkedFrom left in localStorage
+        if (
+          repo.forkedFrom &&
+          !sanitizeForkedFromField(repo.forkedFrom, repo)
+        ) {
           delete (repo as { forkedFrom?: string }).forkedFrom;
         }
-        try {
-          persistGithubSourceOnRepo(entity, repoSlug, clean);
-        } catch {
-          /* ignore */
+        if (upstream) {
+          const clean = upstream.replace(/\.git$/, "");
+          if (!repo.sourceUrl) {
+            (repo as { sourceUrl?: string }).sourceUrl = clean;
+          }
+          const forkAttr = sanitizeForkedFromField(repo.forkedFrom, {
+            sourceUrl:
+              typeof repo.sourceUrl === "string" ? repo.sourceUrl : clean,
+            clone: Array.isArray(repo.clone) ? repo.clone : undefined,
+          });
+          if (forkAttr) {
+            (repo as { forkedFrom?: string }).forkedFrom = forkAttr;
+          } else {
+            delete (repo as { forkedFrom?: string }).forkedFrom;
+          }
+          try {
+            persistGithubSourceOnRepo(entity, repoSlug, clean);
+          } catch {
+            /* ignore */
+          }
         }
       }
     }
@@ -861,11 +875,15 @@ export async function pushRepoToNostr(
       return !isDeleted;
     });
 
-    const upstreamSourceUrl =
-      normalizeGithubSourceUrl(repo.sourceUrl || "") ||
-      resolveRepoUpstreamSource(repo) ||
-      repo.sourceUrl ||
-      "";
+    const forgeSourceClearedForPush =
+      Number((repo as { forgeSourceClearedAt?: number }).forgeSourceClearedAt) >
+      0;
+    const upstreamSourceUrl = forgeSourceClearedForPush
+      ? ""
+      : normalizeGithubSourceUrl(repo.sourceUrl || "") ||
+        resolveRepoUpstreamSource(repo) ||
+        repo.sourceUrl ||
+        "";
     // Refetch fills overrides as a cache — that must NOT force a rewritten bridge tip.
     // Prefer one server sync-from-source for large/post-refetch forge trees.
     const postSourceRefetchPending =

@@ -9,6 +9,8 @@ export type ProfileRepoCloneHints = {
   publicRead?: boolean;
   description?: string;
   forkedFrom?: string;
+  /** Latest card dropped the forge source on purpose. */
+  forgeSourceCleared?: boolean;
 };
 
 const HINTS_TTL_MS = 8000;
@@ -126,8 +128,11 @@ export async function fetchRepoCloneHintsFromProfile(
           )
           .map((u) => u.trim())
       : [];
+    const forgeSourceCleared = match.forgeSourceCleared === true;
     const sourceRaw =
-      typeof match.sourceUrl === "string" && match.sourceUrl.trim()
+      !forgeSourceCleared &&
+      typeof match.sourceUrl === "string" &&
+      match.sourceUrl.trim()
         ? match.sourceUrl.trim()
         : undefined;
     const sourceUrl =
@@ -156,6 +161,7 @@ export async function fetchRepoCloneHintsFromProfile(
       publicRead,
       description,
       forkedFrom,
+      forgeSourceCleared: forgeSourceCleared || undefined,
     };
     hintsCache.set(cacheKey, { at: Date.now(), value: hints });
     return hints;

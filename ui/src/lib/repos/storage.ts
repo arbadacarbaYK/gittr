@@ -98,6 +98,11 @@ export interface StoredRepo {
   files?: RepoFileEntry[]; // Deprecated: Use fileCount + separate files storage instead
   fileCount?: number; // Number of files (files stored separately via saveRepoFiles)
   sourceUrl?: string;
+  /**
+   * Unix seconds. Set when the owner dropped the forge source on purpose.
+   * Push and Settings must not copy that host back from an older card.
+   */
+  forgeSourceClearedAt?: number;
   readme?: string;
   forkedFrom?: string;
   clone?: string[];

@@ -801,10 +801,21 @@ export default function RepoSettingsPage() {
           clone: repoData?.clone || [],
           relays: repoData?.relays || defaultRelays || [],
           // Keep forge tags on republish so Settings Save does not strip them.
+          // A deliberate source drop must stay dropped.
           sourceUrl:
-            resolveRepoUpstreamSource(repoData) ||
-            repoData?.sourceUrl ||
-            undefined,
+            Number(
+              (repoData as { forgeSourceClearedAt?: number } | null)
+                ?.forgeSourceClearedAt
+            ) > 0
+              ? undefined
+              : resolveRepoUpstreamSource(repoData) ||
+                repoData?.sourceUrl ||
+                undefined,
+          omitForgeSource:
+            Number(
+              (repoData as { forgeSourceClearedAt?: number } | null)
+                ?.forgeSourceClearedAt
+            ) > 0 || undefined,
           forkedFrom: repoData?.forkedFrom || undefined,
           contributors: [
             ...owners.map((o) => ({

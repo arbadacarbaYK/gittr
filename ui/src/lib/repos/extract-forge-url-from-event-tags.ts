@@ -1,6 +1,8 @@
 import { isHashtreeCloneUrl } from "../utils/hashtree-clone";
 import { nip34TagValuesFromRow } from "../utils/nip34-tag-values";
 
+import { announcementClearsForgeSource } from "./source-cleared-tag";
+
 /** Hosts that are Nostr-git mirrors, not foreign forge upstreams. */
 const GRASP_OR_GITTR_HOST_RE =
   /(^|\.)(gittr\.space|ngit\.dev|nostrver\.se|gitworkshop\.dev)$/i;
@@ -105,5 +107,6 @@ export function extractGithubUrlFromEventTags(
 
 /** Forge URL safe to persist as `sourceUrl` (Push tip / sync-from-source). */
 export function extractForgeSourceFromEventTags(tags: string[][]): string {
+  if (announcementClearsForgeSource(tags)) return "";
   return extractGithubUrlFromEventTags(tags, ["source", "forkedFrom", "clone"]);
 }
