@@ -12,6 +12,7 @@ import {
   uint8Equal,
 } from "@/lib/gittr-pages/manifest-file-bytes";
 import { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
+import { savePagesManifestOnDirectory } from "@/lib/gittr-pages/publish-event-to-relay";
 import {
   hashesUsedByOtherSites,
   manifestPathHashes,
@@ -227,7 +228,10 @@ async function collectPublisherPageManifests(
 ): Promise<{ tags?: unknown; created_at?: number; id?: string }[]> {
   if (!relays.length) return [];
   return new Promise((resolve) => {
-    const byId = new Map<string, { tags?: unknown; created_at?: number; id?: string }>();
+    const byId = new Map<
+      string,
+      { tags?: unknown; created_at?: number; id?: string }
+    >();
     let done = false;
     const finish = () => {
       if (done) return;
@@ -252,7 +256,11 @@ async function collectPublisherPageManifests(
         ],
         relays,
         (event) => {
-          const ev = event as { id?: string; tags?: unknown; created_at?: number };
+          const ev = event as {
+            id?: string;
+            tags?: unknown;
+            created_at?: number;
+          };
           if (ev?.id) byId.set(ev.id, ev);
         },
         undefined,
@@ -648,6 +656,7 @@ export type PublishNamedSiteManifestResult =
       manifestEventId: string;
       pathCount: number;
       confirmed: boolean;
+      relayNote?: string;
       serverListEventId?: string;
       serverListConfirmed?: boolean;
     }
@@ -1032,13 +1041,32 @@ export async function publishNamedSiteManifest(
   }
 
   onProgress?.("Publishing manifest to relays…");
-  const pub = await publishWithConfirmation(
-    publish as (e: unknown, r: string[]) => void,
-    subscribe as any,
-    manifest,
-    defaultRelays,
-    15000
-  );
+  onProgress?.("Saving the page on relay.gittr.space…");
+  const direct = await savePagesManifestOnDirectory(manifest);
+  const directoryOk = direct.ok;
+  const directoryNote = direct.ok
+    ? ""
+    : direct.reason || "relay.gittr.space did not accept the page.";
+  const pub = directoryOk
+    ? {
+        eventId: manifest.id,
+        confirmed: true,
+        confirmedRelays: [],
+      }
+    : await publishWithConfirmation(
+        publish as (e: unknown, r: string[]) => void,
+        subscribe as any,
+        manifest,
+        defaultRelays,
+        15000
+      );
+  if (directoryOk) {
+    try {
+      publish(manifest, defaultRelays);
+    } catch {
+      /* the directory relay already stored it */
+    }
+  }
 
   if (!manifest.id) {
     return { ok: false, error: "Manifest event missing id after signing." };
@@ -1115,6 +1143,7 @@ export async function publishNamedSiteManifest(
     manifestEventId: manifest.id,
     pathCount: uploads.length,
     confirmed: pub.confirmed,
+    relayNote: pub.confirmed ? undefined : directoryNote || undefined,
     serverListEventId,
     serverListConfirmed,
   };

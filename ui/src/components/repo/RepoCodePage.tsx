@@ -24173,6 +24173,7 @@ export function RepoCodePage() {
                                         manifestEventId: r.manifestEventId,
                                         pathCount: r.pathCount,
                                         confirmed: r.confirmed,
+                                        relayNote: r.relayNote,
                                         namedUrl,
                                         serverListEventId: r.serverListEventId,
                                         serverListConfirmed:

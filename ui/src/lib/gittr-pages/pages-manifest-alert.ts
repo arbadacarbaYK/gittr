@@ -9,6 +9,8 @@ export type PagesManifestSuccessAlertInput = {
   ingestFound?: boolean | null;
   /** Event id the gateway is actually serving for this page name. */
   ingestEventId?: string | null;
+  /** Why the directory relay refused or never answered. */
+  relayNote?: string | null;
 };
 
 export function formatPagesManifestErrorAlert(message: string): string {
@@ -41,7 +43,8 @@ export function formatPagesManifestSuccessAlert(
   if (result.confirmed && directoryHasThisVersion) {
     headline = "✅ Pages live.";
   } else if (result.confirmed && directoryKeptOlder) {
-    headline = "⚠️ Pages manifest published. The directory still has the previous version.";
+    headline =
+      "⚠️ Pages manifest published. The directory still has the previous version.";
     wait =
       "\n\nThe relay that fills /pages did not keep this publish. Push the manifest once more.";
   } else if (result.confirmed && ingestFound === false) {
@@ -51,7 +54,10 @@ export function formatPagesManifestSuccessAlert(
       "\n\nThis is usually a few seconds — not a 10-minute wait. Refresh /pages or this repo’s Links shortly.";
   } else if (!result.confirmed) {
     headline = "⚠️ Pages manifest published but awaiting relay confirmation.";
-    wait = "\n\nRelays may need a moment. Then /pages will list the site.";
+    const note = result.relayNote?.trim();
+    wait = note
+      ? `\n\n${note}`
+      : "\n\nRelays may need a moment. Then /pages will list the site.";
   } else {
     headline = "✅ Pages manifest published.";
     wait =
