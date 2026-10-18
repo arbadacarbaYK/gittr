@@ -4,6 +4,8 @@
 
 [gittr.space](https://gittr.space) · [Pages](https://pages.gittr.space) · [Apps](https://gittr.space/apps) · [Help](https://gittr.space/help) · [Relay](https://relay.gittr.space)
 
+Help has a search box. It looks through every topic and the writing inside it, including topics that are folded closed.
+
 ## How it compares
 
 **oldschool gits** are GitHub, GitLab, Codeberg, Gitea. **nostr git clients** are ngit, gitworkshop, gitplaza, and similar. **gittr** is this website. **✓** means it has it.

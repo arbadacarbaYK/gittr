@@ -8,6 +8,7 @@ import {
   HelpTopic,
   openHelpHashTargets,
 } from "@/components/ui/help-collapse";
+import { HelpSearch } from "@/components/ui/help-search";
 import {
   GITTR_DOC_FILE_FETCHING,
   GITTR_DOC_GITNOSTR_ARCHITECTURE,
@@ -50,6 +51,8 @@ import Link from "next/link";
 
 export default function HelpPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
+  const helpArticleRef = useRef<HTMLDivElement>(null);
+  const clearHelpSearchRef = useRef<() => void>(() => {});
 
   // Deep links from repo sidebar / TOC / homepage (e.g. /help#when-source-goes-offline)
   useLayoutEffect(() => {
@@ -73,6 +76,7 @@ export default function HelpPage() {
       const href = anchor.getAttribute("href") || "";
       const id = href.startsWith("#") ? href.slice(1) : "";
       if (!id) return;
+      clearHelpSearchRef.current();
       // Let the browser update the hash, then open (hashchange may also fire)
       window.setTimeout(() => openHelpHashTargets(id), 0);
     };
@@ -230,6 +234,9 @@ export default function HelpPage() {
         </p>
       </header>
 
+      <HelpSearch articleRef={helpArticleRef} clearRef={clearHelpSearchRef} />
+
+      <div id="help-article" ref={helpArticleRef}>
       <HelpSection id="what-is-gittr" title={<>What you can do on gittr</>}>
         <ul className="grid gap-3 sm:grid-cols-2 text-sm text-gray-300">
           <li>
@@ -500,7 +507,10 @@ export default function HelpPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* Quick Links */}
-        <div className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+        <div
+          data-help-block="help-card-quick"
+          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+        >
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-purple-400" />
             Quick Start
@@ -583,7 +593,10 @@ export default function HelpPage() {
           </ul>
         </div>
 
-        <div className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+        <div
+          data-help-block="help-card-dev"
+          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+        >
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <Code className="h-5 w-5 text-green-400" />
             Development
@@ -682,7 +695,10 @@ export default function HelpPage() {
           </ul>
         </div>
 
-        <div className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+        <div
+          data-help-block="help-card-settings"
+          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+        >
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <Settings className="h-5 w-5 text-cyan-400" />
             Settings
@@ -4179,6 +4195,7 @@ export default function HelpPage() {
             </HelpTopic>
           </div>
         </HelpSection>
+      </div>
       </div>
     </div>
   );

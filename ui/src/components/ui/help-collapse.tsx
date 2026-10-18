@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 import { ChevronDown } from "lucide-react";
 
@@ -24,9 +24,11 @@ export function HelpSection({
   defaultOpen = false,
   className = "",
 }: HelpSectionProps) {
+  const autoId = useId();
   return (
     <details
       id={id}
+      data-help-block={id || autoId}
       className={`group help-section border border-[#383B42] rounded-lg bg-[#171B21] mb-4 scroll-mt-24 open:mb-6 ${className}`}
       ref={(node) => {
         if (node && defaultOpen) node.open = true;
@@ -62,9 +64,11 @@ export function HelpTopic({
   children,
   defaultOpen = false,
 }: HelpTopicProps) {
+  const autoId = useId();
   return (
     <details
       id={id}
+      data-help-block={id || autoId}
       className="group/topic help-topic rounded-lg border border-[#383B42]/70 bg-[#0f1318]/80 scroll-mt-24"
       ref={(node) => {
         if (node && defaultOpen) node.open = true;
@@ -98,8 +102,10 @@ export function HelpSubTopic({
   children,
   defaultOpen = false,
 }: HelpSubTopicProps) {
+  const autoId = useId();
   return (
     <details
+      data-help-block={autoId}
       className="group/sub help-subtopic rounded-md border border-[#383B42]/50 bg-[#12161c] mt-2"
       ref={(node) => {
         if (node && defaultOpen) node.open = true;
