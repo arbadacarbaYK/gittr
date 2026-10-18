@@ -24178,6 +24178,7 @@ export function RepoCodePage() {
                                         serverListConfirmed:
                                           r.serverListConfirmed,
                                         ingestFound: ingest?.found,
+                                        ingestEventId: ingest?.id,
                                       }),
                                       "gittr Pages"
                                     );

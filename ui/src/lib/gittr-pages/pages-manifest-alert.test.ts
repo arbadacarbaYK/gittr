@@ -35,6 +35,20 @@ describe("formatPagesManifestSuccessAlert", () => {
     expect(msg).toContain("few seconds");
   });
 
+  it("does not call the page live when the directory still has an older event", () => {
+    const msg = formatPagesManifestSuccessAlert({
+      manifestEventId: "bbbbbbbbbbbbbbbb",
+      pathCount: 44,
+      confirmed: true,
+      namedUrl: liveUrl,
+      ingestFound: true,
+      ingestEventId: "aaaaaaaaaaaaaaaa",
+    });
+    expect(msg.startsWith("⚠️")).toBe(true);
+    expect(msg).toContain("previous version");
+    expect(msg).not.toContain("✅ Pages live.");
+  });
+
   it("warns when relays have not confirmed", () => {
     const msg = formatPagesManifestSuccessAlert({
       manifestEventId: "aaaaaaaaaaaaaaaa",

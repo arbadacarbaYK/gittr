@@ -75,7 +75,9 @@ export async function publishWithConfirmation(
       ],
       relays,
       (receivedEvent, isAfterEose, relayURL) => {
-        if (receivedEvent.id === eventId && !confirmed) {
+        // A cache hit has no relay URL. Counting that as confirmation made
+        // "Pages live" appear when no relay had stored the new manifest.
+        if (receivedEvent.id === eventId && relayURL && !confirmed) {
           confirmed = true;
           if (relayURL && !confirmedRelays.includes(relayURL)) {
             confirmedRelays.push(relayURL);

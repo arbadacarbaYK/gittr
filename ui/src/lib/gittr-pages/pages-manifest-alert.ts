@@ -7,6 +7,8 @@ export type PagesManifestSuccessAlertInput = {
   serverListConfirmed?: boolean;
   /** Gateway ingest found the 35128. Null/undefined = ingest did not answer. */
   ingestFound?: boolean | null;
+  /** Event id the gateway is actually serving for this page name. */
+  ingestEventId?: string | null;
 };
 
 export function formatPagesManifestErrorAlert(message: string): string {
@@ -24,10 +26,24 @@ export function formatPagesManifestSuccessAlert(
   const eventId = result.manifestEventId?.trim() || "unknown";
   const liveUrl = result.namedUrl.trim();
   const ingestFound = result.ingestFound;
+  const publishedId = result.manifestEventId?.trim().toLowerCase() || "";
+  const directoryId = result.ingestEventId?.trim().toLowerCase() || "";
+  const directoryHasThisVersion =
+    ingestFound === true &&
+    (!publishedId || !directoryId || publishedId === directoryId);
+  const directoryKeptOlder =
+    ingestFound === true &&
+    !!publishedId &&
+    !!directoryId &&
+    publishedId !== directoryId;
   let headline: string;
   let wait = "";
-  if (result.confirmed && ingestFound === true) {
+  if (result.confirmed && directoryHasThisVersion) {
     headline = "✅ Pages live.";
+  } else if (result.confirmed && directoryKeptOlder) {
+    headline = "⚠️ Pages manifest published. The directory still has the previous version.";
+    wait =
+      "\n\nThe relay that fills /pages did not keep this publish. Push the manifest once more.";
   } else if (result.confirmed && ingestFound === false) {
     headline =
       "⚠️ Pages manifest published. The directory is still catching up.";

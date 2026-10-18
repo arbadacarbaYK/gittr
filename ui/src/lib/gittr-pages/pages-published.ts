@@ -45,6 +45,7 @@ export function gatewayIngestUrl(
 export type PagesIngestClientResult = {
   ok: boolean;
   found?: boolean;
+  id?: string | null;
 };
 
 /** After Push Manifest: ask gittr to ingest this pubkey+d and bust the directory cache. */
@@ -60,15 +61,20 @@ export async function pokeGittrPagesIngest(
     );
     const raw = (await res.json().catch(() => null)) as {
       ok?: boolean;
-      gateway?: { found?: boolean };
+      gateway?: { found?: boolean; id?: string | null };
     } | null;
     const found =
       raw && raw.gateway && typeof raw.gateway.found === "boolean"
         ? raw.gateway.found
         : undefined;
+    const id =
+      raw && raw.gateway && typeof raw.gateway.id === "string"
+        ? raw.gateway.id
+        : null;
     return {
       ok: raw && typeof raw.ok === "boolean" ? raw.ok : res.ok,
       found,
+      id,
     };
   } catch {
     return null;
