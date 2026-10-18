@@ -830,8 +830,9 @@ export default function HelpPage() {
                     </li>
                     <li>
                       Optional, next to Import: <strong>Also push to Nostr</strong>.
-                      That publishes this one repo (usually two signature
-                      prompts). Off by default.
+                      That copies the files onto gittr and then announces the
+                      repo (usually two signature prompts). If the copy fails,
+                      nothing is published. Off by default.
                     </li>
                   </ul>
                 </HelpSubTopic>
@@ -871,9 +872,11 @@ export default function HelpPage() {
                     </li>
                     <li>
                       Optional, next to the import buttons:{" "}
-                      <strong>Also push to Nostr</strong>. A batch asks for a
-                      signature on every repo (usually two each), so a long list
-                      means a lot of prompts. Otherwise use{" "}
+                      <strong>Also push to Nostr</strong>. The files are copied
+                      onto gittr before each repo is announced. A batch asks
+                      for a signature on every repo (usually two each), so a
+                      long list means a lot of prompts. If a copy fails, that
+                      repo is not announced. Otherwise use{" "}
                       <strong>Push to Nostr</strong> per repo later
                     </li>
                   </ul>

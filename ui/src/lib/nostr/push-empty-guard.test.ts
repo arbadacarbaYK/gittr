@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   blockEmptyRepositoryState,
   blockPushWhenFileBytesMissing,
+  requireObjectsBeforeAnnouncement,
 } from "./push-empty-guard";
 
 describe("blockPushWhenFileBytesMissing", () => {
@@ -42,6 +43,24 @@ describe("blockPushWhenFileBytesMissing", () => {
         deferToBridgeSourceClone: false,
         filesWithContent: 0,
         namedFileCount: 0,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("requireObjectsBeforeAnnouncement", () => {
+  it("copies a forge import before announcing", () => {
+    expect(
+      requireObjectsBeforeAnnouncement({
+        deferToBridgeSourceClone: true,
+      })
+    ).toBe(true);
+  });
+
+  it("keeps local edits on the announce-then-push order", () => {
+    expect(
+      requireObjectsBeforeAnnouncement({
+        deferToBridgeSourceClone: false,
       })
     ).toBe(false);
   });

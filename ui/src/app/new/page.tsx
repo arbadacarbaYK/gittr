@@ -319,7 +319,7 @@ function NewRepoPageContent() {
       if (pushAfterImport) {
         const ok = window.confirm(
           "Import this repository and publish it to Nostr?\n\n" +
-            "You’ll be asked to sign — usually twice (the announcement, then the git copy). Stay on this page until it finishes.\n\n" +
+            "You’ll be asked to sign — usually twice. The files are copied onto gittr before the repo is announced. If that copy fails, nothing is published. Stay on this page until it finishes.\n\n" +
             "If you skip this, the files stay in this browser until you push from the repo page."
         );
         if (!ok) {
@@ -1079,9 +1079,10 @@ function NewRepoPageContent() {
                 Also push to Nostr
               </span>
               <span className="block text-xs text-gray-400 mt-0.5">
-                One repo, usually two signature prompts. Off by default —
-                without it the files stay in this browser until you push from
-                the repo page.
+                One repo, usually two signature prompts. The files are copied
+                onto gittr before anyone can see the repo. If that copy fails,
+                nothing is published. Off by default — without it the files stay
+                in this browser until you push from the repo page.
               </span>
             </span>
           </label>

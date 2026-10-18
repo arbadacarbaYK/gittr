@@ -950,12 +950,12 @@ export default function ImportPage() {
       const ok = window.confirm(
         many
           ? `Import ${selection.size} repositories and publish each new one to Nostr?\n\n` +
-              `This generates a lot of signing requests — usually two per repo (the announcement, then the git copy). ${selection.size} repos can mean about ${
+              `This generates a lot of signing requests — usually two per repo. The files are copied onto gittr before each repo is announced. If a copy fails, that repo is not announced. ${selection.size} repos can mean about ${
                 selection.size * 2
               } prompts. Stay on this page and approve each one. Do not close the tab.\n\n` +
               `Continue?`
           : `Import this repository and publish it to Nostr?\n\n` +
-              `You’ll be asked to sign — usually twice. Stay on this page until it finishes.\n\n` +
+              `You’ll be asked to sign — usually twice. The files are copied onto gittr before the repo is announced. If that copy fails, nothing is published. Stay on this page until it finishes.\n\n` +
               `Continue?`
       );
       if (!ok) return;
@@ -1793,10 +1793,12 @@ export default function ImportPage() {
           </li>
           <li>
             Optional, next to the import buttons:{" "}
-            <strong>Also push to Nostr</strong>. A batch asks you to sign each
-            repo separately — usually twice per repo — so a long list means a
-            lot of signing prompts. Leave the tab open. Single-repo URL
-            auto-import never pushes automatically.
+            <strong>Also push to Nostr</strong>. The files are copied onto
+            gittr before each repo is announced. If a copy fails, that repo is
+            not announced. A batch asks you to sign each repo separately —
+            usually twice per repo — so a long list means a lot of signing
+            prompts. Leave the tab open. Single-repo URL auto-import never
+            pushes automatically.
           </li>
           <li>
             You can select <strong>several</strong> repos and import them in{" "}
@@ -1942,7 +1944,9 @@ export default function ImportPage() {
               </span>
               <span className="block text-xs text-amber-100/80 mt-0.5">
                 Off by default. A batch generates a lot of signing requests —
-                usually two per repo (announcement, then the git copy). Ten
+                usually two per repo. The files are copied onto gittr before
+                each repo is announced. If a copy fails, that repo is not
+                announced. Ten
                 repos can mean about twenty prompts. Leave this tab open until
                 every one is approved.
               </span>

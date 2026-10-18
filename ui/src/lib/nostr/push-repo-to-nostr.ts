@@ -48,8 +48,10 @@ import {
 import {
   EMPTY_STATE_BLOCKED_MESSAGE,
   FILE_BYTES_MISSING_MESSAGE,
+  OBJECTS_NOT_COPIED_MESSAGE,
   blockEmptyRepositoryState,
   blockPushWhenFileBytesMissing,
+  requireObjectsBeforeAnnouncement,
 } from "./push-empty-guard";
 import type { RemoteSignerManager } from "./remoteSigner";
 import {
@@ -2527,6 +2529,162 @@ export async function pushRepoToNostr(
       throw new Error(NO_SIGNING_METHOD_MESSAGE);
     }
 
+    // Copy git objects BEFORE the kind 30617 announcement.
+    // Publishing first makes the bridge create an empty bare repo. If the copy
+    // then fails, people see the repo card and no files.
+    let refs: Array<{ ref: string; commit: string }> = [];
+
+    if (deferToBridgeSourceClone) {
+      onProgress?.("⏳ Syncing bridge bare mirror to forge tip…");
+      try {
+        // The server allows 5 copies per minute per person. Wait and retry
+        // before any announcement, or a batch leaves empty repo cards.
+        let syncResult = await syncBridgeFromSource({
+          ownerPubkey: pubkey,
+          repo: actualRepositoryName,
+          sourceUrl: upstreamSourceUrl,
+          branch: repo.defaultBranch || "main",
+          pubkey,
+          signer: getBridgeSigner()!,
+          authEvent: repoEvent,
+        });
+        for (
+          let waited = 0;
+          syncResult.status === 429 && waited < 8;
+          waited++
+        ) {
+          const seconds = Math.min(
+            90,
+            Math.max(5, syncResult.retryAfterSeconds || 60)
+          );
+          onProgress?.(
+            `⏳ Copy limit reached — waiting ${seconds}s, then copying this repo…`
+          );
+          await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+          syncResult = await syncBridgeFromSource({
+            ownerPubkey: pubkey,
+            repo: actualRepositoryName,
+            sourceUrl: upstreamSourceUrl,
+            branch: repo.defaultBranch || "main",
+            pubkey,
+            signer: getBridgeSigner()!,
+            authEvent: repoEvent,
+          });
+        }
+        if (
+          syncResult.success &&
+          Array.isArray(syncResult.refs) &&
+          syncResult.refs.length > 0
+        ) {
+          refs = syncResult.refs;
+          const tip =
+            syncResult.headCommit || refs.find((r) => r.commit)?.commit;
+          onProgress?.(
+            `✅ Bridge matches forge tip${
+              tip ? ` (${String(tip).slice(0, 12)}…)` : ""
+            }`
+          );
+          console.log(`✅ [Push Repo] sync-from-source ok tip=${tip}`, {
+            refs: refs.length,
+            syncedFrom: syncResult.syncedFrom,
+          });
+        } else {
+          onProgress?.(
+            `⚠️ Forge sync incomplete (${
+              syncResult.error || "no refs"
+            }) — polling bridge…`
+          );
+          console.warn(`⚠️ [Push Repo] sync-from-source soft-fail`, syncResult);
+        }
+      } catch (syncErr: any) {
+        console.warn(`⚠️ [Push Repo] sync-from-source error`, syncErr);
+        onProgress?.("⚠️ Forge sync error — polling existing bridge refs…");
+      }
+      if (refs.length === 0) {
+        const clonedRefs = await pollBridgeRepoRefs(
+          pubkey,
+          actualRepositoryName,
+          repo.defaultBranch || "main",
+          90000
+        );
+        if (clonedRefs.length > 0) {
+          refs = clonedRefs;
+          const refsWithCommits = refs.filter(
+            (r) => r.commit && r.commit.length > 0
+          ).length;
+          onProgress?.(
+            `✅ Bridge refs ready (${refsWithCommits} with commits)`
+          );
+        } else {
+          onProgress?.(
+            "⚠️ The git server still has no commits for this repo"
+          );
+        }
+      }
+
+      if (normalizedDeletedPaths.length > 0 && refs.length > 0) {
+        onProgress?.(
+          `🗑️ Applying ${normalizedDeletedPaths.length} deleted path(s) on bridge…`
+        );
+        try {
+          const { pushFilesToBridge } = await import("./push-to-bridge");
+          const deleteResult = await pushFilesToBridge({
+            ownerPubkey: pubkey,
+            repoSlug: actualRepositoryName,
+            entity,
+            branch: repo.defaultBranch || "main",
+            files: [],
+            commitDate: Math.floor(Date.now() / 1000),
+            authEvent: repoEvent,
+            pubkey,
+            signer: getBridgeSigner()!,
+            deletedPaths: normalizedDeletedPaths,
+          });
+          if (
+            deleteResult?.refs &&
+            Array.isArray(deleteResult.refs) &&
+            deleteResult.refs.length > 0
+          ) {
+            refs = deleteResult.refs;
+            onProgress?.(
+              `✅ Bridge tip updated after ${normalizedDeletedPaths.length} deletion(s)`
+            );
+          }
+        } catch (deleteErr: any) {
+          console.warn(
+            `⚠️ [Push Repo] Post-sync deletion commit failed`,
+            deleteErr
+          );
+          onProgress?.(
+            "⚠️ Could not apply deletions on bridge — files may still appear upstream"
+          );
+        }
+      }
+    }
+
+    const commitsReadyBeforeAnnounce = refs.filter(
+      (r) => r.commit && r.commit.length > 0
+    ).length;
+    if (
+      requireObjectsBeforeAnnouncement({
+        deferToBridgeSourceClone,
+      }) &&
+      commitsReadyBeforeAnnounce === 0
+    ) {
+      console.error(
+        `❌ [Push Repo] Refusing to announce ${actualRepositoryName}: git copy has no commits`
+      );
+      onProgress?.(`❌ ${OBJECTS_NOT_COPIED_MESSAGE}`);
+      setRepoStatus(repoSlug, entity, "local");
+      return {
+        success: false,
+        confirmed: false,
+        error: OBJECTS_NOT_COPIED_MESSAGE,
+        filesForBridge,
+        excludedFromPush,
+      };
+    }
+
     // Step 6: Publish with confirmation
     // CRITICAL: NIP-34 (kind 30617) events are standard Nostr events
     // Publish to ALL default relays for maximum discoverability by other clients
@@ -2703,143 +2861,11 @@ export async function pushRepoToNostr(
         );
       }
 
-      // Step 7.5: Push files to bridge and get commit SHAs (non-blocking)
-      // CRITICAL: We're NOT waiting for relay confirmation - we proceed as soon as first event is published
-      // We're waiting for the bridge to process files and return commit SHAs for the state event
-      // A kind 30618 with an empty commit id is not published. That blank branch is a public repo with no files.
-      let refs: Array<{ ref: string; commit: string }> = [];
-
-      if (deferToBridgeSourceClone) {
-        onProgress?.("⏳ Syncing bridge bare mirror to forge tip…");
-        try {
-          // A batch publishes one card per repo, then copies GitHub. The server
-          // allows 5 copies per minute per person. Without a wait, every repo
-          // after that keeps an empty shell and the Code tab still reads GitHub.
-          let syncResult = await syncBridgeFromSource({
-            ownerPubkey: pubkey,
-            repo: actualRepositoryName,
-            sourceUrl: upstreamSourceUrl,
-            branch: repo.defaultBranch || "main",
-            pubkey,
-            signer: getBridgeSigner()!,
-            authEvent: repoEvent,
-          });
-          for (
-            let waited = 0;
-            syncResult.status === 429 && waited < 8;
-            waited++
-          ) {
-            const seconds = Math.min(
-              90,
-              Math.max(5, syncResult.retryAfterSeconds || 60)
-            );
-            onProgress?.(
-              `⏳ Copy limit reached — waiting ${seconds}s, then copying this repo…`
-            );
-            await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
-            syncResult = await syncBridgeFromSource({
-              ownerPubkey: pubkey,
-              repo: actualRepositoryName,
-              sourceUrl: upstreamSourceUrl,
-              branch: repo.defaultBranch || "main",
-              pubkey,
-              signer: getBridgeSigner()!,
-              authEvent: repoEvent,
-            });
-          }
-          if (
-            syncResult.success &&
-            Array.isArray(syncResult.refs) &&
-            syncResult.refs.length > 0
-          ) {
-            refs = syncResult.refs;
-            const tip =
-              syncResult.headCommit || refs.find((r) => r.commit)?.commit;
-            onProgress?.(
-              `✅ Bridge matches forge tip${
-                tip ? ` (${String(tip).slice(0, 12)}…)` : ""
-              }`
-            );
-            console.log(`✅ [Push Repo] sync-from-source ok tip=${tip}`, {
-              refs: refs.length,
-              syncedFrom: syncResult.syncedFrom,
-            });
-          } else {
-            onProgress?.(
-              `⚠️ Forge sync incomplete (${
-                syncResult.error || "no refs"
-              }) — polling bridge…`
-            );
-            console.warn(
-              `⚠️ [Push Repo] sync-from-source soft-fail`,
-              syncResult
-            );
-          }
-        } catch (syncErr: any) {
-          console.warn(`⚠️ [Push Repo] sync-from-source error`, syncErr);
-          onProgress?.("⚠️ Forge sync error — polling existing bridge refs…");
-        }
-        if (refs.length === 0) {
-          const clonedRefs = await pollBridgeRepoRefs(
-            pubkey,
-            actualRepositoryName,
-            repo.defaultBranch || "main",
-            90000
-          );
-          if (clonedRefs.length > 0) {
-            refs = clonedRefs;
-            const refsWithCommits = refs.filter(
-              (r) => r.commit && r.commit.length > 0
-            ).length;
-            onProgress?.(
-              `✅ Bridge refs ready (${refsWithCommits} with commits)`
-            );
-          } else {
-            onProgress?.(
-              "⚠️ Bridge sync still in progress — state event will sync when ready"
-            );
-          }
-        }
-
-        if (normalizedDeletedPaths.length > 0 && refs.length > 0) {
-          onProgress?.(
-            `🗑️ Applying ${normalizedDeletedPaths.length} deleted path(s) on bridge…`
-          );
-          try {
-            const { pushFilesToBridge } = await import("./push-to-bridge");
-            const deleteResult = await pushFilesToBridge({
-              ownerPubkey: pubkey,
-              repoSlug: actualRepositoryName,
-              entity,
-              branch: repo.defaultBranch || "main",
-              files: [],
-              commitDate: Math.floor(Date.now() / 1000),
-              authEvent: repoEvent,
-              pubkey,
-              signer: getBridgeSigner()!,
-              deletedPaths: normalizedDeletedPaths,
-            });
-            if (
-              deleteResult?.refs &&
-              Array.isArray(deleteResult.refs) &&
-              deleteResult.refs.length > 0
-            ) {
-              refs = deleteResult.refs;
-              onProgress?.(
-                `✅ Bridge tip updated after ${normalizedDeletedPaths.length} deletion(s)`
-              );
-            }
-          } catch (deleteErr: any) {
-            console.warn(
-              `⚠️ [Push Repo] Post-sync deletion commit failed`,
-              deleteErr
-            );
-            onProgress?.(
-              "⚠️ Could not apply deletions on bridge — files may still appear upstream"
-            );
-          }
-        }
-      } else if (filesForBridge && filesForBridge.length > 0) {
+      if (
+        !deferToBridgeSourceClone &&
+        filesForBridge &&
+        filesForBridge.length > 0
+      ) {
         const oversizedPaths: string[] = [];
         const pushableFiles = filesForBridge.filter((file) => {
           const est = estimatePushPayloadBytes(file.content);

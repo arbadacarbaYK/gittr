@@ -9,6 +9,25 @@ export const FILE_BYTES_MISSING_MESSAGE =
 export const EMPTY_STATE_BLOCKED_MESSAGE =
   "Push stopped. The files were not stored on the git server, so no branch was published. If a repo card already appeared, open the repo in this browser and push again once the files are loaded.";
 
+/** Shown when the git copy fails before any announcement is sent. */
+export const OBJECTS_NOT_COPIED_MESSAGE =
+  "Push stopped. The files never landed on the git server, so the repository was not announced. Stay on this page and try again.";
+
+/**
+ * Forge import (the bridge clones the upstream tip) must not publish kind
+ * 30617 until those commits exist. Announcing first makes the bridge create
+ * an empty bare repo, and a failed copy leaves that empty card up.
+ *
+ * Local edits stay on the old order: announce the empty shell, then HTTP-push
+ * the bytes. Copying those bytes first would make the bridge see an existing
+ * repo and fetch the forge tip over the edits.
+ */
+export function requireObjectsBeforeAnnouncement(opts: {
+  deferToBridgeSourceClone: boolean;
+}): boolean {
+  return opts.deferToBridgeSourceClone;
+}
+
 export function blockPushWhenFileBytesMissing(opts: {
   deferToBridgeSourceClone: boolean;
   filesWithContent: number;
