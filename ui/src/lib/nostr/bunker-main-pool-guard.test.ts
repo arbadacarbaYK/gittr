@@ -1,18 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  MAIN_POOL_PAUSE_WAIT_MS,
   bunkerDialSettleMs,
   collectActiveMainPoolUrls,
   collectBlockedRelayPoolUrls,
   collectMainPoolUrlsToSuspend,
-  silenceRelayPoolInstance,
   consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
   holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
   isMainPoolPausedForBunker,
   listBunkerMainPoolBlockedHosts,
-  MAIN_POOL_PAUSE_WAIT_MS,
   mainPoolSubscribeShouldWait,
   onMainPoolUnpaused,
   popMainPoolBunkerPause,
@@ -20,6 +19,7 @@ import {
   releaseColdBunkerStartHold,
   resetMainPoolBunkerPauseForTests,
   setBunkerMainPoolBlockedHosts,
+  silenceRelayPoolInstance,
 } from "./bunker-main-pool-guard";
 
 describe("bunker-main-pool-guard", () => {
@@ -118,9 +118,9 @@ describe("bunker-main-pool-guard", () => {
 
   it("waits longer after more aborted page sockets", () => {
     expect(bunkerDialSettleMs(0)).toBe(0);
-    expect(bunkerDialSettleMs(1)).toBe(600);
-    expect(bunkerDialSettleMs(21)).toBe(2600);
-    expect(bunkerDialSettleMs(40)).toBe(3000);
+    expect(bunkerDialSettleMs(1)).toBe(1000);
+    expect(bunkerDialSettleMs(21)).toBe(5000);
+    expect(bunkerDialSettleMs(40)).toBe(8000);
   });
 
   it("stops a removed relay from reconnecting", () => {

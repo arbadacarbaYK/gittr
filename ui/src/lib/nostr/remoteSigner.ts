@@ -286,6 +286,12 @@ const BUNKER_URI_DIAL_CONCURRENCY = 1;
 /** Per-relay budget for a Push dial. Stop at the first OPEN; do not wait out 8 hosts. */
 const BUNKER_SERIAL_RELAY_BUDGET_MS = 6000;
 /**
+ * A socket that dies this fast was aborted in the browser (page relays still
+ * closing), not refused by the relay. Retry the same host after a short quiet
+ * gap instead of walking the rest of the list into the same abort.
+ */
+export const BUNKER_INSTANT_ABORT_MS = 500;
+/**
  * Per-relay budget when covering every Amber URI relay before one sign_event.
  * Live relays usually open in under a second; a dead host must not eat 15s.
  */
@@ -546,6 +552,21 @@ export function bunkerRescueRelays(uriRelays: string[]): string[] {
         bunkerMayUseRelay(u) && !already.has(u) && !STALE_BUNKER_RELAYS.has(u)
     )
     .slice(0, 4);
+}
+
+/**
+ * Second dial after every socket came back CLOSED.
+ * Start at relay.gittr.space, then the relays Amber was paired with.
+ * Do not lead with hosts the first wave skipped only because they are
+ * extra defaults (directory.yabu.me often refuses the handshake).
+ */
+export function bunkerRetryAfterMiss(uriRelays: string[]): string[] {
+  const waves = planBunkerDialWaves(uriRelays);
+  return uniqueNormalizedRelays([
+    GITTR_BUNKER_RELAY,
+    ...waves.first,
+    ...bunkerRescueRelays(uriRelays),
+  ]).slice(0, 4);
 }
 
 function uniqueNormalizedRelays(urls: string[]): string[] {
@@ -2179,11 +2200,7 @@ export class RemoteSignerManager {
       // entry is already CLOSED makes ensureRelay return that dead socket
       // and the fast retry never leaves the browser.
       await this.replaceDirectPoolIfFullyClosed(dialTargets);
-      const rescue = uniqueNormalizedRelays([
-        "wss://nos.lol",
-        GITTR_BUNKER_RELAY,
-        ...bunkerRescueRelays(getSessionUriRelays(session)),
-      ]).slice(0, 4);
+      const rescue = bunkerRetryAfterMiss(getSessionUriRelays(session));
       open = await this.dialRelaysWithConcurrency(rescue, 1, 12000);
     }
     if (open.length === 0) {
@@ -2626,7 +2643,9 @@ export class RemoteSignerManager {
       "[RemoteSigner] Replacing closed bunker pool before another dial"
     );
     this.resetDirectPool();
-    await new Promise((r) => setTimeout(r, 400));
+    // 400ms was not enough after a wave of aborted handshakes. The next
+    // ensureRelay then inherited readyState 3.
+    await new Promise((r) => setTimeout(r, 1200));
     return true;
   }
 
@@ -2740,12 +2759,16 @@ export class RemoteSignerManager {
       if (relay) {
         if (bunkerRelayIsOpen(relay.status)) return true;
         if (bunkerRelayShouldKeepWaiting(relay.status)) {
-          return this.waitForRelayStatusOpen(
-            relay,
-            Math.max(remaining(), 2000)
-          );
+          const stillWaiting = Math.min(4000, remaining());
+          if (
+            stillWaiting > 0 &&
+            (await this.waitForRelayStatusOpen(relay, stillWaiting))
+          ) {
+            return true;
+          }
         }
-        // CLOSED/CLOSING cache entry — SimplePool returns it without reconnecting.
+        // CLOSED/CLOSING, or a CONNECTING socket we are done waiting on.
+        // Leaving it up holds a browser slot and the next relay is aborted.
         this.dropDirectRelay(url);
         relay = null;
       }
@@ -2779,6 +2802,9 @@ export class RemoteSignerManager {
               )} in ${elapsed}ms (status=${relay.status})`
             );
             this.dropDirectRelay(url);
+            if (elapsed < BUNKER_INSTANT_ABORT_MS && remaining() > 2000) {
+              await new Promise((r) => setTimeout(r, 1500));
+            }
           }
         } catch (error) {
           // Race lost — ensureRelay may still be connecting in _conn. Wait it out.
@@ -2809,10 +2835,17 @@ export class RemoteSignerManager {
     const leftover = this.getDirectRelayFromPool(url);
     if (bunkerRelayIsOpen(leftover?.status)) return true;
     if (leftover && bunkerRelayShouldKeepWaiting(leftover.status)) {
-      return this.waitForRelayStatusOpen(leftover, Math.max(remaining(), 800));
+      const waited = await this.waitForRelayStatusOpen(
+        leftover,
+        Math.min(4000, Math.max(remaining(), 800))
+      );
+      if (waited) return true;
+      this.dropDirectRelay(url);
     }
     if (remaining() < 1500) {
-      return bunkerRelayIsOpen(leftover?.status);
+      const open = bunkerRelayIsOpen(leftover?.status);
+      if (!open) this.dropDirectRelay(url);
+      return open;
     }
     try {
       this.dropDirectRelay(url);
@@ -2842,6 +2875,7 @@ export class RemoteSignerManager {
         `[RemoteSigner] openDirectRelay retry failed for ${url}:`,
         error instanceof Error ? error.message : error
       );
+      this.dropDirectRelay(url);
       return false;
     }
   }
@@ -2927,8 +2961,8 @@ export class RemoteSignerManager {
   private async waitForMainPoolBunkerSlotsClear(timeoutMs = 8000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      const leftovers = (this.deps.getRelayStatuses?.() || []).filter(
-        ([url, status]) => isBunkerMainPoolBlocked(url) && status !== 3
+      const leftovers = (this.deps.getRelayStatuses?.() || []).filter(([url]) =>
+        isBunkerMainPoolBlocked(url)
       );
       if (leftovers.length === 0) return;
       for (const [url] of leftovers) {
@@ -3109,6 +3143,7 @@ export class RemoteSignerManager {
     if (this.pending.size > 0 || this.signerDialBusy) return;
     if (this.bunkerWarmInFlight) return this.bunkerWarmInFlight;
     this.bunkerWarmInFlight = (async () => {
+      let opened = false;
       try {
         const open = await this.ensureBunkerSocketsOpen(session, {
           quiet: true,
@@ -3117,7 +3152,8 @@ export class RemoteSignerManager {
           topUp: opts?.topUp,
           topUpAll: opts?.topUpAll,
         });
-        if (open.length > 0) {
+        opened = open.length > 0;
+        if (opened) {
           console.log("[RemoteSigner] Background bunker warm ready", {
             open: open.map((u) => normalizeRelayUrl(u)),
             uriFirstOnly: !!opts?.uriFirstOnly,
@@ -3149,9 +3185,12 @@ export class RemoteSignerManager {
         }
       } finally {
         this.bunkerWarmInFlight = null;
-        // Cold load held the page relay list. Release even when no socket
-        // opened so the Code tab is not stuck waiting on Amber.
-        releaseColdBunkerStartHold();
+        // Releasing here when nothing opened used to connect ~21 page relays
+        // in the same turn as Push, and every bunker socket landed CLOSED.
+        // The 12s timer still opens the page if Amber never connects.
+        if (opened) {
+          releaseColdBunkerStartHold();
+        }
       }
     })();
     return this.bunkerWarmInFlight;
@@ -3194,6 +3233,9 @@ export class RemoteSignerManager {
       );
       const missing = order.filter((u) => !have.has(u));
       if (missing.length > 0) {
+        if (have.size === 0) {
+          await this.replaceDirectPoolIfFullyClosed(order);
+        }
         console.log(
           "[RemoteSigner] Opening every bunker relay before the signing request",
           {

@@ -8,6 +8,7 @@ import {
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
   bunkerRescueRelays,
+  bunkerRetryAfterMiss,
   confirmedPublishUrls,
   expandBunkerRelays,
   getNip46PairingRelays,
@@ -178,6 +179,24 @@ describe("bunkerRescueRelays", () => {
       "wss://directory.yabu.me",
       "wss://profiles.nostr1.com",
       "wss://user.kindpag.es",
+    ]);
+  });
+
+  it("retries gittr and the paired relays before a dead extra default", () => {
+    const uri = [
+      "wss://relay.primal.net",
+      "wss://nos.lol",
+      "wss://theforest.nostr1.com",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.damus.io",
+      "wss://relay.azzamo.net",
+      "wss://purplepag.es",
+    ];
+    expect(bunkerRetryAfterMiss(uri)).toEqual([
+      GITTR_BUNKER_RELAY,
+      "wss://nos.lol",
+      "wss://theforest.nostr1.com",
+      "wss://purplepag.es",
     ]);
   });
 });

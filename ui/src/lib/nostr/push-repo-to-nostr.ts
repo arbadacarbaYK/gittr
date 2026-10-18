@@ -691,12 +691,14 @@ export async function pushRepoToNostr(
       let userGraspRelays: string[] = [];
       try {
         const { getUserGraspServers } = await import("../utils/grasp-list");
-        // Empty fallback so we merge defaults ourselves (avoids double-adding).
+        // Empty fallback: a timeout must not be treated as the user's list.
+        // Defaults are merged below. Passing them here marked relay.gittr.space
+        // as a user GRASP host and published it as a clone URL.
         userGraspRelays = await getUserGraspServers(
           subscribe,
           defaultRelays,
           pubkey,
-          defaultGraspRelays,
+          [],
           { timeoutMs: 2500 }
         );
       } catch (e) {
@@ -2616,9 +2618,7 @@ export async function pushRepoToNostr(
             `✅ Bridge refs ready (${refsWithCommits} with commits)`
           );
         } else {
-          onProgress?.(
-            "⚠️ The git server still has no commits for this repo"
-          );
+          onProgress?.("⚠️ The git server still has no commits for this repo");
         }
       }
 

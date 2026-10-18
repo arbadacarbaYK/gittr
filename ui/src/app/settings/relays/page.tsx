@@ -22,7 +22,10 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
-import { getUserGraspServers } from "@/lib/utils/grasp-list";
+import {
+  cacheUserGraspServers,
+  getUserGraspServers,
+} from "@/lib/utils/grasp-list";
 import { getGraspServers, isGraspServer } from "@/lib/utils/grasp-servers";
 
 import {
@@ -423,6 +426,7 @@ export default function RelaysPage() {
             })();
 
       await publish(graspListEvent, defaultRelays);
+      cacheUserGraspServers(pubkey, graspListServers);
       setGraspListStatus("✅ Saved to Nostr!");
       setTimeout(() => setGraspListStatus(""), 3000);
     } catch (error: any) {

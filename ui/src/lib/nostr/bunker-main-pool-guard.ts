@@ -44,7 +44,9 @@ export const MAIN_POOL_PAUSE_WAIT_MS = 150000;
  */
 export function bunkerDialSettleMs(suspendedCount: number): number {
   if (suspendedCount <= 0) return 0;
-  return Math.min(3000, 500 + suspendedCount * 100);
+  // A repo page aborts about 21 sockets. Capping the wait at 3s left every
+  // bunker handshake CLOSED (readyState 3) — the browser had not freed them.
+  return Math.min(8000, 800 + suspendedCount * 200);
 }
 
 export function mainPoolSubscribeShouldWait(

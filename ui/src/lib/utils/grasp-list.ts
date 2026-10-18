@@ -9,6 +9,42 @@
 import { KIND_GRASP_LIST } from "@/lib/nostr/events";
 import { normalizeGraspHost } from "@/lib/utils/grasp-servers";
 
+const GRASP_LIST_CACHE_KEY = "gittr_grasp_list_cache";
+
+/** Last kind-10317 list this browser actually loaded. Push reads it when the page relays are paused for Amber and a live fetch would time out. */
+export function cacheUserGraspServers(pubkey: string, servers: string[]): void {
+  if (typeof localStorage === "undefined" || !pubkey) return;
+  const urls = (servers || []).filter(
+    (url) =>
+      typeof url === "string" &&
+      (url.startsWith("wss://") || url.startsWith("ws://"))
+  );
+  try {
+    localStorage.setItem(
+      GRASP_LIST_CACHE_KEY,
+      JSON.stringify({ pubkey: pubkey.toLowerCase(), servers: urls })
+    );
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+export function readCachedUserGraspServers(pubkey: string): string[] | null {
+  if (typeof localStorage === "undefined" || !pubkey) return null;
+  try {
+    const raw = localStorage.getItem(GRASP_LIST_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { pubkey?: string; servers?: string[] };
+    if (parsed.pubkey?.toLowerCase() !== pubkey.toLowerCase()) return null;
+    const servers = (parsed.servers || []).filter(
+      (url) => typeof url === "string" && url.startsWith("wss://")
+    );
+    return servers.length > 0 ? servers : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface GraspListData {
   graspServers: string[]; // GRASP server URLs (wss://) in order of preference
   pubkey: string; // User pubkey who owns this list
@@ -101,9 +137,12 @@ export async function getUserGraspServers(
       if (latestEvent) {
         const parsed = parseGraspListEvent(latestEvent);
         if (parsed && parsed.graspServers.length > 0) {
+          cacheUserGraspServers(userPubkey, parsed.graspServers);
           return parsed.graspServers;
         }
       }
+      const cached = readCachedUserGraspServers(userPubkey);
+      if (cached) return cached;
       return defaultGraspServers;
     };
 
