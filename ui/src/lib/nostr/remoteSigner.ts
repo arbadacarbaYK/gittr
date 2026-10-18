@@ -522,7 +522,10 @@ export function signEventPublishNeedsAnotherDial(opts: {
   publishedUrls: string[];
   uriRelays: string[];
   nostrConnect?: boolean;
+  /** Amber already returned the signed event. A second dial would close the page relays that are publishing it. */
+  signatureAlreadyInHand?: boolean;
 }): boolean {
+  if (opts.signatureAlreadyInHand) return false;
   if (opts.method !== "sign_event") return false;
   if (!opts.acked) return true;
   if (opts.nostrConnect) {
@@ -4192,6 +4195,10 @@ export class RemoteSignerManager {
               publishedUrls: published.urls,
               uriRelays,
               nostrConnect: sessionUsesNostrConnect(session),
+              // The phone already answered. Resetting the bunker pool now
+              // closes the page relays, and the manifest publish never hears
+              // a relay echo ("awaiting relay confirmation").
+              signatureAlreadyInHand: !this.pending.has(id),
             })
           ) {
             console.warn(

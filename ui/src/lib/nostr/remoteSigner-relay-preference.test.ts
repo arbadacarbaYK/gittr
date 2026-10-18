@@ -494,6 +494,26 @@ describe("Primal nostrconnect relays", () => {
       })
     ).toBe(false);
   });
+
+  it("does not redial after Amber already returned the signature", () => {
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: ["wss://relay.gittr.space", "wss://relay.primal.net"],
+        uriRelays: [
+          "wss://relay.gittr.space",
+          "wss://bucket.coracle.social",
+          "wss://nrs.primal.net",
+          "wss://relay.primal.net",
+          "wss://relay.nip46.com",
+          "wss://theforest.nostr1.com",
+          "wss://relay.ditto.pub",
+        ],
+        signatureAlreadyInHand: true,
+      })
+    ).toBe(false);
+  });
 });
 
 describe("nip46 encryption preference", () => {
