@@ -44,8 +44,9 @@
             gittr is the hosted forge: issues, pull requests, static Pages, apps,
             Lightning, notifications, Kanban, and a profile for your repos.
             The conversation is signed Nostr events — any Nostr git client can
-            see the same issues and PRs. The files live on the git servers and
-            GRASP hosts you pushed to.
+            see the same issues and PRs. The files live on the git servers you
+            name under Settings → Relays. A push from this site, or from an
+            agent signed in as you, puts that server on the repo first.
             This page is the public map of that platform — each box below is a door.
             <a href="#jobs">What you can do</a> is the long list.
             <a href="#fit">How gittr fits</a>.
@@ -115,7 +116,7 @@
           <div class="tiles">
             <a class="tile" href="https://gittr.space/help#what-is-gittr" target="_blank" rel="noopener noreferrer">
               <div class="name">Mirror &amp; backup</div>
-              <div class="job">Copy repos from a forge or your own server onto Nostr git relays (GRASP).</div>
+              <div class="job">Name your git server in Settings → Relays. A push from the site or an agent writes that address onto the repo first. Other copies stay on the list after it.</div>
             </a>
             <a class="tile" href="https://gittr.space/help#collaboration" target="_blank" rel="noopener noreferrer">
               <div class="name">Issues &amp; PRs on Nostr</div>
@@ -147,7 +148,7 @@
             </a>
             <a class="tile" href="https://gittr.space/help#ssh-keys" target="_blank" rel="noopener noreferrer">
               <div class="name">SSH keys</div>
-              <div class="job">Settings → SSH Keys, then clone and push to git.gittr.space like any other git host — laptop git, no extra helper.</div>
+              <div class="job">Settings → SSH Keys, then clone and push like any other git host — to the server you named, or to git.gittr.space when that one is on the list.</div>
             </a>
             <a class="tile" href="https://gittr.space/help#notifications" target="_blank" rel="noopener noreferrer">
               <div class="name">Notifications</div>
@@ -221,7 +222,7 @@
             <div class="tile here">
               <div class="name">Git server · gitnostr</div>
               <div class="host">git.gittr.space</div>
-              <div class="job">Bare repos over SSH/HTTPS. Kind 52 keys. This is the disk gittr talks to.</div>
+              <div class="job">One git disk you can run yourself. Name it in Settings → Relays and the next push lists your host first.</div>
             </div>
             <div class="tile here">
               <div class="name">Web · gittr</div>
@@ -247,8 +248,8 @@
               <h3>Where the bits live</h3>
               <ul>
                 <li>Repo identity: npub + name on relays.</li>
-                <li>Git blobs: <code>git.gittr.space</code>.</li>
-                <li>Sites: <code>pages.gittr.space</code>. Blobs: <code>blossom.gittr.space</code>.</li>
+                <li>Git files: the servers you named, then the other copies still on the list. <code>git.gittr.space</code> is one of them when you keep it.</li>
+                <li>Sites: <code>pages.gittr.space</code>. Page files: <code>blossom.gittr.space</code>. Neither is the git server.</li>
                 <li>Laptop git: SSH/HTTPS to the bridge. <code>nostr://</code> is interop (install ngit’s helper). Agents: gittr-mcp over HTTPS + nsec, not SSH.</li>
               </ul>
             </article>
@@ -376,7 +377,7 @@
               >
                 <div class="name">gittr-mcp</div>
                 <div class="host">agents, not SSH</div>
-                <div class="job">MCP tools: create, push, PRs, issues, bounties. Same platform, no Amber popup.</div>
+                <div class="job">Same account as the website. A push names the git servers saved in Settings → Relays.</div>
               </a>
               <a
                 class="tile"
@@ -389,7 +390,7 @@
               <a class="tile" href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-blossom?branch=master" target="_blank" rel="noopener noreferrer">
                 <div class="name">Blossom</div>
                 <div class="host">blossom.gittr.space</div>
-                <div class="job">Blob store for Pages files. Not git objects. Never put APKs here.</div>
+                <div class="job">Page files, not the git repo. The repo stays on the servers you named. Never put APKs here.</div>
               </a>
               <a
                 class="tile"
@@ -397,7 +398,7 @@
               >
                 <div class="name">Pyramid relay</div>
                 <div class="host">relay.gittr.space</div>
-                <div class="job">Open forge relay + GRASP. wss for events. Not the git disk (that’s git.gittr.space).</div>
+                <div class="job">Events live here. The git files live on the server you named, not on this hostname.</div>
               </a>
               <a class="tile" href="https://gittr.space/help" target="_blank" rel="noopener noreferrer">
                 <div class="name">Lightning zaps</div>

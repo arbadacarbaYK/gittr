@@ -1,6 +1,6 @@
 # [gittr.space](https://gittr.space)
 
-**gittr** is a website for git on Nostr ([NIP-34](https://gittr.space/nostr-git)). Issues, pull requests, and the repo announcement are signed events. The git files sit on the Nostr git servers listed under **Nostr Backups**. gittr is one of those servers when its address is on that list.
+**gittr** is a website for git on Nostr ([NIP-34](https://gittr.space/nostr-git)). Issues, pull requests, and the repo announcement are signed events. The git files sit on the Nostr git servers listed under **Nostr Backups**. Name the one you run under **Settings → Relays**. gittr is one of those servers when its address is on that list.
 
 [gittr.space](https://gittr.space) · [Pages](https://pages.gittr.space) · [Apps](https://gittr.space/apps) · [Help](https://gittr.space/help) · [Relay](https://relay.gittr.space)
 
@@ -20,7 +20,7 @@
 | Planning | ✓ | ✗ | open issues on a board |
 | Notifications | ✓ | ✗ | ✓ plus CVE alerts |
 | Account | their login | your Nostr key | Nostr key, plus linked identities |
-| Git hosting | their servers | you name your own host | import from those forges |
+| Git hosting | their servers | you name your own host | the servers you name in Settings, including one you run |
 | Finding repos | their search | across Nostr | Nostr and web search |
 | How you use it | site, often an app | command line writes; site mostly reads | site, app, and agents |
 | SSH keys | on their servers | ✗ | ✓ plus a security scan |
@@ -42,7 +42,8 @@
 | Easy to miss | What it means |
 | --- | --- |
 | Source | stays the forge you imported from |
-| Nostr Backups | the git servers that have the files |
+| Your git server | Settings → Relays. The next push from the site or an agent names it first |
+| Nostr Backups | the git servers that have the files, yours included |
 | Imported ticket | keeps its old number; close it on that forge |
 | Bounty | pays when the pull request is merged on gittr |
 | App announce | lists the app. The installer stays out of the git files. A note you have not announced stays in this browser |

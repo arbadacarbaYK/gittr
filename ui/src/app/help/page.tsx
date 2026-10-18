@@ -1135,6 +1135,28 @@ export default function HelpPage() {
           }
         >
           <div className="space-y-2">
+            <HelpTopic title={<>Your git server</>}>
+              <p className="mb-3">
+                Open{" "}
+                <Link
+                  href="/settings/relays"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Settings → Relays
+                </Link>{" "}
+                and add the git server you run under{" "}
+                <strong>Your git servers</strong>. Save it with your signer.
+                The next push from this site, and a push from an agent using
+                the same key, names that server on the repo first. The address
+                shows under <strong>Nostr Backups</strong>, with the other
+                copies after it.
+              </p>
+              <p>
+                A hostname with <code className="bg-black/40 px-1 rounded text-xs">git.</code> in
+                it is recognized. <code className="bg-black/40 px-1 rounded text-xs">relay.gittr.space</code> is
+                for the conversation, not the files.
+              </p>
+            </HelpTopic>
             <HelpTopic title={<>Creating Repositories</>}>
               <p className="mb-3">You can create repositories in three ways:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mb-3">

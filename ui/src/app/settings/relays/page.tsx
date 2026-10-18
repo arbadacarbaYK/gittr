@@ -447,7 +447,7 @@ export default function RelaysPage() {
 
     if (!isGraspServer(url)) {
       alert(
-        "This is not a GRASP server. GRASP servers are git servers that also act as Nostr relays."
+        "Use the server's wss address. A hostname with git. in it, or a /grasp path, is recognized."
       );
       return;
     }
@@ -712,7 +712,7 @@ export default function RelaysPage() {
             <ChevronRight className="h-4 w-4" />
           )}
           <Server className="h-4 w-4 text-purple-400" />
-          <span>Preferred GRASP Servers (NIP-34)</span>
+          <span>Your git servers</span>
           <span className="text-xs text-gray-500 ml-auto">
             ({graspListLoading ? "..." : graspListServers.length} servers)
           </span>
@@ -720,8 +720,11 @@ export default function RelaysPage() {
         {graspListExpanded && (
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
-              Preferred GRASP servers for clone/push (kind 10317). Changes are
-              saved with your signer.
+              Add the git server you run. The next push from this site, and a
+              push from an agent signed in as you, names that server on the
+              repo first. It shows under Nostr Backups. A hostname with{" "}
+              <span className="text-gray-300">git.</span> in it is enough. Save
+              with your signer.
             </p>
 
             {graspListLoading ? (
@@ -751,7 +754,8 @@ export default function RelaysPage() {
                     ))
                   ) : (
                     <p className="text-xs text-gray-500 italic">
-                      No preferred GRASP servers set. Using defaults.
+                      No server saved yet. A push still names the public
+                      ones until you add yours.
                     </p>
                   )}
                 </div>
@@ -762,7 +766,7 @@ export default function RelaysPage() {
                       htmlFor="grasp-server"
                       className="text-sm text-gray-400"
                     >
-                      Add GRASP server
+                      Add your server
                     </Label>
                     <div className="flex gap-2 mt-2">
                       <Input
