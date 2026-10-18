@@ -53,7 +53,11 @@ import {
   blockPushWhenFileBytesMissing,
   requireObjectsBeforeAnnouncement,
 } from "./push-empty-guard";
-import type { RemoteSignerManager } from "./remoteSigner";
+import {
+  AMBER_CONNECTED_RELAYS,
+  type RemoteSignerManager,
+  mergeSignerPublishRelays,
+} from "./remoteSigner";
 import {
   shouldAnnounceUpstreamTip,
   shouldPreferBridgeSyncFromSource,
@@ -62,6 +66,21 @@ import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
 import { syncBridgeFromSource } from "./sync-bridge-from-source";
 
 export { formatPushRepoSuccessAlert } from "./push-repo-success-alert";
+
+/** NIP-07 extensions and the Amber adapter both expose getRelays(). */
+async function readSignerListedRelays(): Promise<string[]> {
+  if (typeof window === "undefined" || !window.nostr?.getRelays) return [];
+  try {
+    const listed = await Promise.race([
+      window.nostr.getRelays(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+    ]);
+    if (!listed || typeof listed !== "object") return [];
+    return Object.keys(listed);
+  } catch {
+    return [];
+  }
+}
 
 function resolveWssRelayForGitHost(domain: string): string {
   const host = domain.trim().toLowerCase().replace(/\/+$/, "");
@@ -277,6 +296,18 @@ export async function pushRepoToNostr(
   if (!hasNip07 && !effectivePrivateKey && !canSignWithResolved) {
     throw new Error(NO_SIGNING_METHOD_MESSAGE);
   }
+
+  // NIP-07: the extension's own list. Amber/Primal: that list plus the relays
+  // the phone keeps open, so an old login link does not hide the announcement
+  // from relays the signer is actually watching.
+  const signerListedRelays = [
+    ...(await readSignerListedRelays()),
+    ...(resolvedSource === "remote" ? AMBER_CONNECTED_RELAYS : []),
+  ];
+  const relaysForAnnouncement = mergeSignerPublishRelays(
+    defaultRelays,
+    signerListedRelays
+  );
 
   const getBridgeSigner = () => {
     // Prefer the resolved signer (manager.signEvent probes Amber health).
@@ -2121,7 +2152,7 @@ export async function pushRepoToNostr(
       });
 
       const publishSubset = [
-        ...new Set(defaultRelays.map(normalizeRelayWssUrl)),
+        ...new Set(relaysForAnnouncement.map(normalizeRelayWssUrl)),
       ]
         .filter(Boolean)
         .slice(0, 8);
@@ -2689,7 +2720,8 @@ export async function pushRepoToNostr(
     // CRITICAL: NIP-34 (kind 30617) events are standard Nostr events
     // Publish to ALL default relays for maximum discoverability by other clients
     // Other NIP-34 clients query all relays, not just GRASP servers
-    const publishRelays = defaultRelays.length > 0 ? defaultRelays : [];
+    const publishRelays =
+      relaysForAnnouncement.length > 0 ? relaysForAnnouncement : [];
 
     if (publishRelays.length === 0) {
       throw new Error("No relays available for publishing.");

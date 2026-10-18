@@ -143,59 +143,62 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
 ];
 
 /**
- * Extra NIP-46 relays when the bunker URI list is thin.
- * Damus is last-resort only — browsers often fail wss://relay.damus.io.
+ * Amber Android signer relays (AmberSettings.defaultAppRelays).
+ * The phone listens here for NIP-46. gittr is first because this site
+ * publishes there and Amber accepts kind 24133 on it.
+ * Profile indexers (purplepag.es, yabu, kindpag.es) are not in this list.
  */
-const NIP46_PAIRING_RELAY_FALLBACKS = ["wss://relay.damus.io"];
-
-/**
- * Relays Amber ships as its own defaults, then relays that show as connected
- * on a current Amber (outbox / "active relays"). Dial these before a stale
- * bunker URI (primal, oxtr, damus, azzamo) whose sockets are already closed.
- */
-const AMBER_LIVE_RELAYS = [
+export const AMBER_SIGNER_RELAYS = [
   "wss://relay.gittr.space",
   "wss://bucket.coracle.social",
-  "wss://relay.ditto.pub",
-  "wss://theforest.nostr1.com",
-  "wss://nos.lol",
-  "wss://purplepag.es",
-  "wss://directory.yabu.me",
-  "wss://profiles.nostr1.com",
-  "wss://user.kindpag.es",
-];
-
-/** Tried first on Push. These are the relays Amber shows as connected. */
-const AMBER_DIAL_FIRST = [
-  "wss://relay.gittr.space",
-  "wss://bucket.coracle.social",
-  "wss://relay.ditto.pub",
-  "wss://theforest.nostr1.com",
-  "wss://nos.lol",
+  "wss://nrs.primal.net",
+  "wss://relay.primal.net",
+  "wss://relay.nip46.com",
 ];
 
 /**
- * Primal's phone signer watches these. They are not Amber defaults.
- * The login QR used to fill all 5 relay slots before these, so a Primal
- * session could pair and then never see sign_event.
+ * Relays a current Amber screen shows as connected, in dial order.
+ * Signer defaults first (including relay.primal.net, which Amber keeps open),
+ * then theforest, ditto, and damus. auth.nostr1.com is an Amber built-in
+ * that does not fit in the 5-slot login QR.
+ */
+export const AMBER_CONNECTED_RELAYS = [
+  "wss://relay.gittr.space",
+  "wss://bucket.coracle.social",
+  "wss://nrs.primal.net",
+  "wss://relay.primal.net",
+  "wss://relay.nip46.com",
+  "wss://theforest.nostr1.com",
+  "wss://relay.ditto.pub",
+  "wss://relay.damus.io",
+  "wss://auth.nostr1.com",
+];
+
+/**
+ * Primal's phone signer watches these. The login QR used to fill every slot
+ * with profile indexers, so a Primal session could pair and then never see
+ * sign_event. nrs.primal.net is Primal's NIP-46 relay and an Amber default.
  */
 export const PRIMAL_BUNKER_RELAYS = [
   "wss://relay.primal.net",
   "wss://relay.nip46.com",
 ];
 
-/** Old bunker URI hosts that close in the browser. Not used for the first dial. */
-const STALE_BUNKER_RELAYS = new Set([
-  "wss://relay.primal.net",
+/**
+ * Shown on some signer screens, but the socket does not open.
+ * nos.lol and nostr.oxtr.dev time out. directory.yabu.me refuses the handshake.
+ * Never lead a dial with these — an 8s timeout burns the only quiet window.
+ */
+const BUNKER_RELAYS_DOWN = new Set([
+  "wss://nos.lol",
   "wss://nostr.oxtr.dev",
-  "wss://relay.damus.io",
+  "wss://directory.yabu.me",
   "wss://relay.azzamo.net",
 ]);
 
-/** Amber's built-in relay defaults (not the user's active-relay list). */
-const NIP46_SIGNER_DEFAULT_RELAYS = [
+/** Old Amber profile-indexer hosts. Not where the phone waits for sign_event. */
+const AMBER_INDEXER_RELAYS = [
   "wss://purplepag.es",
-  "wss://directory.yabu.me",
   "wss://profiles.nostr1.com",
   "wss://user.kindpag.es",
 ];
@@ -324,17 +327,14 @@ export function getNip46PairingRelays(appRelays: string[], max = 5): string[] {
       merged.push(normalized);
     }
   };
-  // Primal listens on its own relays. Filling the 5 QR slots with
-  // purplepag.es / yabu / kindpag.es / damus left those out, so sign_event
-  // was delivered to relays the phone was not watching.
+  // Amber's signer relays and Primal's bunker relays. Do not spend a QR
+  // slot on nos.lol, oxtr, or the profile indexers — the phone is not
+  // waiting for sign_event there.
+  AMBER_SIGNER_RELAYS.forEach(add);
   PRIMAL_BUNKER_RELAYS.forEach(add);
-  add(GITTR_BUNKER_RELAY);
-  add("wss://nos.lol");
-  add("wss://theforest.nostr1.com");
+  AMBER_CONNECTED_RELAYS.forEach(add);
   appRelays.filter((r) => bunkerMayUseRelay(r)).forEach(add);
-  NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
-  NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
-  return merged.slice(0, max);
+  return merged.filter((u) => !BUNKER_RELAYS_DOWN.has(u)).slice(0, max);
 }
 
 /**
@@ -355,9 +355,10 @@ export function expandBunkerRelays(relays: string[]): string[] {
     }
   };
   (relays || []).forEach(add);
-  NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
-  NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
-  return merged.slice(0, 8);
+  AMBER_CONNECTED_RELAYS.forEach(add);
+  const up = merged.filter((u) => !BUNKER_RELAYS_DOWN.has(u));
+  const down = merged.filter((u) => BUNKER_RELAYS_DOWN.has(u));
+  return [...up, ...down].slice(0, 8);
 }
 
 function looksLikeSignedNostrEvent(result: unknown): boolean {
@@ -374,40 +375,53 @@ function looksLikeSignedNostrEvent(result: unknown): boolean {
 }
 
 /**
- * Push dial plan. Wave 1 is the bunker link's own relays (the ones that
- * already work), skipping hosts that only ever close in the browser.
- * Relays Amber shows as connected are appended after that, not in front,
- * so the first OPEN socket is one the saved session already uses.
- * Wave 2 is only relays not already in wave 1.
+ * Push dial plan. Wave 1 starts at relay.gittr.space, then any bunker-link
+ * relays that are not Amber's list (another signer's own defaults), then
+ * the relays Amber shows as connected. Hosts that do not open (nos.lol,
+ * nostr.oxtr.dev, directory.yabu.me) are not in this wave.
+ * Wave 2 is profile indexers not already dialed — last resort only.
  */
 export function planBunkerDialWaves(uriRelays: string[]): {
   first: string[];
   retry: string[];
 } {
-  const uri = uniqueNormalizedRelays(uriRelays).filter(
-    (u) => bunkerMayUseRelay(u) && !STALE_BUNKER_RELAYS.has(u)
+  const uri = uniqueNormalizedRelays(uriRelays).filter((u) =>
+    bunkerMayUseRelay(u)
   );
-  const liveAfterUri = AMBER_DIAL_FIRST.filter(
-    (u) => bunkerMayUseRelay(u) && !uri.includes(u)
+  const down = (u: string) => BUNKER_RELAYS_DOWN.has(u);
+  const connected = AMBER_CONNECTED_RELAYS.filter(
+    (u) => bunkerMayUseRelay(u) && !down(u)
   );
-  const defaults = uniqueNormalizedRelays([
-    ...NIP46_SIGNER_DEFAULT_RELAYS,
-    ...NIP46_PAIRING_RELAY_FALLBACKS,
-  ]).filter((u) => bunkerMayUseRelay(u));
-  const first = uniqueNormalizedRelays(
-    uri.length > 0 ? [...uri, ...liveAfterUri] : AMBER_DIAL_FIRST
-  ).slice(0, 7);
+  const indexerSet = new Set(AMBER_INDEXER_RELAYS);
+  const uriUp = uri.filter((u) => !down(u));
+  const signerSpecific = uriUp.filter(
+    (u) => !connected.includes(u) && !indexerSet.has(u)
+  );
+  const uriConnected = connected.filter((u) => uriUp.includes(u));
+  const connectedExtra = connected.filter((u) => !uri.includes(u));
+  const indexersInUri = uriUp.filter((u) => indexerSet.has(u));
+  const first = uniqueNormalizedRelays([
+    GITTR_BUNKER_RELAY,
+    ...signerSpecific,
+    ...uriConnected,
+    ...connectedExtra,
+    ...indexersInUri,
+  ]).slice(0, 7);
   const seen = new Set(first);
-  const retry = defaults.filter((u) => !seen.has(u)).slice(0, 3);
+  const retry = uniqueNormalizedRelays([
+    ...uri.filter(down),
+    ...AMBER_INDEXER_RELAYS,
+  ])
+    .filter((u) => bunkerMayUseRelay(u) && !seen.has(u) && !down(u))
+    .slice(0, 3);
   return { first, retry };
 }
 
 /**
- * Order for the one sign_event publish. Every relay in the bunker link is
- * included — including hosts the fast page-load dial skips (primal, oxtr,
- * damus, azzamo). Amber's own relay screen is often exactly that list.
- * Relays Amber shows as connected go first so a clearnet phone gets the
- * prompt quickly; the rest are still opened before we publish.
+ * Order for the one sign_event publish. Amber's connected relays go first,
+ * including ones missing from an old login link (nrs.primal.net, bucket).
+ * Primal logins pin relay.primal.net and relay.nip46.com. Relays that do
+ * not open stay at the end and are dropped once eight relays are chosen.
  */
 export function planSignEventDialOrder(
   uriRelays: string[],
@@ -420,13 +434,16 @@ export function planSignEventDialOrder(
     bunkerMayUseRelay(u)
   );
   const pinnedSet = new Set(pinned);
-  const live = AMBER_DIAL_FIRST.filter(
-    (u) => uri.includes(u) && !pinnedSet.has(u)
+  const live = AMBER_CONNECTED_RELAYS.filter(
+    (u) => uri.includes(u) && !pinnedSet.has(u) && !BUNKER_RELAYS_DOWN.has(u)
+  );
+  const extra = AMBER_CONNECTED_RELAYS.filter(
+    (u) => !uri.includes(u) && !pinnedSet.has(u) && !BUNKER_RELAYS_DOWN.has(u)
   );
   const rest = uri.filter((u) => !live.includes(u) && !pinnedSet.has(u));
-  const fresh = rest.filter((u) => !STALE_BUNKER_RELAYS.has(u));
-  const stale = rest.filter((u) => STALE_BUNKER_RELAYS.has(u));
-  return [...pinned, ...live, ...fresh, ...stale].slice(
+  const fresh = rest.filter((u) => !BUNKER_RELAYS_DOWN.has(u));
+  const down = rest.filter((u) => BUNKER_RELAYS_DOWN.has(u));
+  return [...pinned, ...live, ...extra, ...fresh, ...down].slice(
     0,
     BUNKER_PUBLISH_MAX_RELAYS
   );
@@ -530,10 +547,12 @@ export function signRequestLeftTheBrowser(
   attemptedUrls: string[],
   uriRelays: string[]
 ): boolean {
-  const order = planSignEventDialOrder(uriRelays);
-  if (order.length === 0) return false;
+  const wanted = uniqueNormalizedRelays(uriRelays).filter((u) =>
+    bunkerMayUseRelay(u)
+  );
+  if (wanted.length === 0) return false;
   const attempted = relayUrlSet(attemptedUrls);
-  return order.every((u) => attempted.has(u));
+  return wanted.every((u) => attempted.has(u));
 }
 
 /**
@@ -543,13 +562,13 @@ export function signRequestLeftTheBrowser(
 export function bunkerRescueRelays(uriRelays: string[]): string[] {
   const already = new Set(planBunkerDialWaves(uriRelays).first);
   return uniqueNormalizedRelays([
-    ...AMBER_LIVE_RELAYS,
-    ...NIP46_SIGNER_DEFAULT_RELAYS,
+    ...AMBER_CONNECTED_RELAYS,
+    ...AMBER_INDEXER_RELAYS,
     ...uriRelays,
   ])
     .filter(
       (u) =>
-        bunkerMayUseRelay(u) && !already.has(u) && !STALE_BUNKER_RELAYS.has(u)
+        bunkerMayUseRelay(u) && !already.has(u) && !BUNKER_RELAYS_DOWN.has(u)
     )
     .slice(0, 4);
 }
@@ -567,6 +586,20 @@ export function bunkerRetryAfterMiss(uriRelays: string[]): string[] {
     ...waves.first,
     ...bunkerRescueRelays(uriRelays),
   ]).slice(0, 4);
+}
+
+/**
+ * App relays plus the relays the active signer lists (NIP-07 getRelays, or
+ * the Amber bunker link). Same host once. Relays whose sockets do not open
+ * are left out so a publish does not wait on nos.lol or oxtr.
+ */
+export function mergeSignerPublishRelays(
+  appRelays: string[],
+  signerRelays: string[]
+): string[] {
+  return uniqueNormalizedRelays([...appRelays, ...signerRelays]).filter(
+    (u) => !BUNKER_RELAYS_DOWN.has(u)
+  );
 }
 
 function uniqueNormalizedRelays(urls: string[]): string[] {
@@ -2292,7 +2325,7 @@ export class RemoteSignerManager {
   private claimBunkerHostsForDirectPool(relays: string[]) {
     const hosts = uniqueNormalizedRelays([
       ...expandBunkerRelays(relays),
-      ...AMBER_LIVE_RELAYS,
+      ...AMBER_CONNECTED_RELAYS,
     ]);
     setBunkerMainPoolBlockedHosts(hosts);
     this.freeMainPoolBunkerCollisions(hosts);
