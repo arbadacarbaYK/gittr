@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { clonesAreForeignGraspOnly } from "./grasp-servers";
+import {
+  clonesAreForeignGraspOnly,
+  mergeGraspHostsForPush,
+} from "./grasp-servers";
 
 describe("clonesAreForeignGraspOnly", () => {
   it("is true for ngit and shakespeare clone URLs", () => {
@@ -23,5 +26,24 @@ describe("clonesAreForeignGraspOnly", () => {
 
   it("is false for an empty list", () => {
     expect(clonesAreForeignGraspOnly([])).toBe(false);
+  });
+});
+
+describe("mergeGraspHostsForPush", () => {
+  it("keeps real git hosts and drops relay.gittr.space even from the user's list", () => {
+    expect(
+      mergeGraspHostsForPush(
+        ["wss://relay.gittr.space", "wss://git.shakespeare.diy"],
+        [
+          "wss://relay.gittr.space",
+          "wss://relay.ngit.dev",
+          "wss://git.gittr.space",
+        ]
+      )
+    ).toEqual([
+      "git.shakespeare.diy",
+      "relay.ngit.dev",
+      "git.gittr.space",
+    ]);
   });
 });

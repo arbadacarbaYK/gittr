@@ -49,6 +49,9 @@ export const GRASP_DOMAINS_EXCLUDED_FROM_PUSHING = [
   "git.jb55.com",
   // Public ngit mirror; often 502 / WSS refused (2026-07) — stalls Push sync
   "ngit-relay.nostrver.se",
+  // Nostr relay only. Bare repos live on git.gittr.space. A kind 10317 entry
+  // for this host must not become an https clone URL (git fetch 404s).
+  "relay.gittr.space",
 ] as const;
 
 /**
