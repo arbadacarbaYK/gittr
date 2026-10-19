@@ -4,9 +4,7 @@ import {
   issueOrPrDisplayNumber,
 } from "../utils/issue-pr-status";
 
-import type { NotificationData } from "./nostr-dm";
 import { type EventKey } from "./prefs";
-import { sendTelegramChannelAnnouncement } from "./telegram-channel";
 
 /** Human phrase for DMs: title, or #N for forge rows — never `#` + 64-char event id. */
 export function notificationIssueOrPrPhrase(opts: {
@@ -65,21 +63,8 @@ export async function sendNotification(
       }
     }
 
-    // Public channel announcements for bounties (community feed — not opt-in DMs)
-    if (
-      data.eventType === "bounty_funded" ||
-      data.eventType === "bounty_released"
-    ) {
-      const notificationData: NotificationData = {
-        eventType: data.eventType,
-        title: data.title,
-        message: data.message,
-        url: data.url,
-        repoEntity: data.repoEntity,
-        repoName: data.repoName,
-      };
-      await sendTelegramChannelAnnouncement(notificationData);
-    }
+    // Public channel posts are not sent from the browser. The server posts
+    // after a bounty payment actually succeeds.
   } catch (error) {
     console.error("Failed to send notification:", error);
   }

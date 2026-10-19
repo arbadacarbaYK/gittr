@@ -12,7 +12,39 @@ export function escapeTelegramHtml(s: string): string {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Absolute http(s) URL safe to place in an HTML href.
+ * Relative site paths are joined to the public site origin.
+ * Anything else (javascript:, data:, broken quotes) is dropped.
+ */
+export function safeTelegramHref(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+
+  let absolute = trimmed;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    const base = (
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://gittr.space"
+    ).replace(/\/$/, "");
+    absolute = `${base}${trimmed}`;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(absolute);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  if (parsed.username || parsed.password) return null;
+  return escapeTelegramHtml(parsed.toString());
 }
 
 export async function telegramSendMessage(opts: {
@@ -58,7 +90,8 @@ export async function telegramSendMessage(opts: {
   if (!data || data.ok !== true) {
     return {
       ok: false,
-      error: data?.description || `Telegram API rejected send (HTTP ${httpStatus})`,
+      error:
+        data?.description || `Telegram API rejected send (HTTP ${httpStatus})`,
       httpStatus,
       raw,
     };
@@ -101,12 +134,14 @@ export function formatTelegramNotificationHtml(opts: {
 }): { emoji: string; html: string } {
   const emoji = emojiForNotificationTitle(opts.title);
   const linkLabel = opts.linkLabel || "Open";
-  const escapedUrl = opts.url ? escapeTelegramHtml(opts.url) : "";
-  const linkText = opts.url
-    ? `<a href="${escapedUrl}">${escapeTelegramHtml(linkLabel)}</a>`
+  const href = safeTelegramHref(opts.url);
+  const linkText = href
+    ? `<a href="${href}">${escapeTelegramHtml(linkLabel)}</a>`
     : "";
-  const html = `${emoji} <b>${escapeTelegramHtml(opts.title)}</b>\n\n${escapeTelegramHtml(
-    opts.message
-  )}${opts.url ? `\n\n${linkText}` : ""}`;
+  const html = `${emoji} <b>${escapeTelegramHtml(
+    opts.title
+  )}</b>\n\n${escapeTelegramHtml(opts.message)}${
+    href ? `\n\n${linkText}` : ""
+  }`;
   return { emoji, html };
 }

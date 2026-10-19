@@ -8,6 +8,9 @@
  * - NOSTR_NSEC
  * - TELEGRAM_BOT_TOKEN
  * - TELEGRAM_CHAT_ID (for testing - will be used as userId)
+ * - NOTIFICATIONS_TEST_ENABLED=1
+ *
+ * Production always returns 404 for /api/notifications/test.
  */
 
 // Load environment variables from .env.local

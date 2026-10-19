@@ -1,9 +1,15 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import {
+  handlePaymentOptionsRequest,
+  setPaymentCorsHeaders,
+} from "@/lib/api/cors";
 import {
   consentAllowsEvent,
   getNotificationConsent,
 } from "@/lib/notifications/notification-consent-store";
+import { sendPlatformNostrNotification } from "@/lib/notifications/platform-nostr-dm";
 import { DEFAULT_PREFS, type EventKey } from "@/lib/notifications/prefs";
+import { sendTelegramDmToChat } from "@/lib/notifications/telegram-outbound";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -20,13 +26,18 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "method_not_allowed" });
+  }
+
+  const rateLimitResult = await rateLimiters.notifications(req as any);
+  if (rateLimitResult) {
+    return res.status(429).json(JSON.parse(await rateLimitResult.text()));
   }
 
   const { recipientPubkey, eventType, title, message, url } = req.body || {};
@@ -40,6 +51,17 @@ export default async function handler(
 
   if (!EVENT_KEYS.has(String(eventType))) {
     return res.status(400).json({ error: "invalid_event_type" });
+  }
+
+  const titleText = String(title);
+  const messageText = String(message);
+  const urlText = url ? String(url) : undefined;
+  if (
+    titleText.length > 300 ||
+    messageText.length > 3500 ||
+    (urlText && urlText.length > 2000)
+  ) {
+    return res.status(400).json({ error: "payload_too_large" });
   }
 
   const key = String(eventType) as EventKey;
@@ -67,28 +89,29 @@ export default async function handler(
     });
   }
 
-  const proto = (req.headers["x-forwarded-proto"] as string) || "http";
-  const host = req.headers.host || "localhost:3000";
-  const origin = `${proto}://${host}`;
-
   const results: Record<string, unknown> = {};
 
   if (wantNostr) {
     try {
-      const r = await fetch(`${origin}/api/notifications/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipientPubkey,
-          title,
-          message,
-          url,
-        }),
+      const sent = await sendPlatformNostrNotification({
+        recipientPubkey: String(recipientPubkey),
+        title: titleText,
+        message: messageText,
+        url: urlText,
       });
-      results.nostr = {
-        status: r.status,
-        body: await r.json().catch(() => null),
-      };
+      if (sent.ok) {
+        results.nostr = {
+          status: 200,
+          body: {
+            status: sent.mode === "sent" ? "ok" : "use_user_key",
+          },
+        };
+      } else {
+        results.nostr = {
+          status: sent.error === "invalid_recipient" ? 400 : 500,
+          body: { error: sent.error },
+        };
+      }
     } catch (e: any) {
       results.nostr = { error: e?.message || String(e) };
     }
@@ -100,20 +123,25 @@ export default async function handler(
       results.telegram = { skipped: "no_telegram_userid" };
     } else {
       try {
-        const r = await fetch(`${origin}/api/notifications/send-telegram`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId,
-            title,
-            message,
-            url,
-          }),
+        const sent = await sendTelegramDmToChat({
+          chatId: userId,
+          title: titleText,
+          message: messageText,
+          url: urlText,
         });
-        results.telegram = {
-          status: r.status,
-          body: await r.json().catch(() => null),
-        };
+        results.telegram = sent.ok
+          ? {
+              status: 200,
+              body: {
+                status: "ok",
+                message: "Telegram DM sent",
+                messageId: sent.messageId,
+              },
+            }
+          : {
+              status: 500,
+              body: { error: sent.error },
+            };
       } catch (e: any) {
         results.telegram = { error: e?.message || String(e) };
       }

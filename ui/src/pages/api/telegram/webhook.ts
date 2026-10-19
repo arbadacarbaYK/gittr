@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { telegramWebhookAuthorized } from "@/lib/notifications/telegram-webhook-auth";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -25,6 +26,16 @@ export default async function handler(
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "method_not_allowed" });
+  }
+
+  const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
+  const secretValue = Array.isArray(secretHeader)
+    ? secretHeader[0]
+    : secretHeader;
+  if (
+    !telegramWebhookAuthorized(secretValue, process.env.TELEGRAM_WEBHOOK_SECRET)
+  ) {
+    return res.status(401).json({ error: "unauthorized" });
   }
 
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;

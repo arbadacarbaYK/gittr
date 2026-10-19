@@ -10,7 +10,10 @@ This guide explains how to test the notification system to verify that notificat
    TELEGRAM_BOT_TOKEN=...       # Your Telegram bot token
    TELEGRAM_CHAT_ID=...         # Your Telegram chat/user ID for testing
    TEST_RECIPIENT_NPUB=npub1... # Optional: Test recipient npub (defaults to 'npub1test')
+   NOTIFICATIONS_TEST_ENABLED=1 # Required. Without this, /api/notifications/test is 404.
    ```
+
+   Production never opens `/api/notifications/test`, even if that flag is set. `POST /api/notifications/send-telegram` and `send-telegram-channel` always return 401. Personal DMs are sent by `/api/notifications/deliver` using the saved Telegram id.
 
 2. **Next.js Server Running** - The test script requires the Next.js dev server to be running:
    ```bash

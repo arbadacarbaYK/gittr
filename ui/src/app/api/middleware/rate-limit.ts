@@ -245,6 +245,12 @@ export const rateLimiters = {
     windowMs: 60000, // 1 minute
   }),
 
+  // Notification delivery (bot DMs). Separate from general API traffic.
+  notifications: rateLimit({
+    maxRequests: 30,
+    windowMs: 60000,
+  }),
+
   pushChallenge: rateLimit({
     maxRequests: 30,
     windowMs: 60000, // 1 minute per IP

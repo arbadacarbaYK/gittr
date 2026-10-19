@@ -69,6 +69,7 @@ async function main() {
   }
   
   const botToken = envVars.TELEGRAM_BOT_TOKEN;
+  const webhookSecret = envVars.TELEGRAM_WEBHOOK_SECRET;
   
   if (!botToken) {
     console.error('❌ Error: TELEGRAM_BOT_TOKEN not found in .env.local');
@@ -89,7 +90,10 @@ async function main() {
   
   try {
     // Set webhook
-    const setWebhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+    let setWebhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+    if (webhookSecret) {
+      setWebhookUrl += `&secret_token=${encodeURIComponent(webhookSecret)}`;
+    }
     console.log('📤 Setting webhook...');
     const setResponse = await simpleFetch(setWebhookUrl, { method: 'POST' });
     const setResult = await setResponse.json();

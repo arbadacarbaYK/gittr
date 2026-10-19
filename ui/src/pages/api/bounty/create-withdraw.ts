@@ -2,6 +2,7 @@ import {
   handlePaymentOptionsRequest,
   setPaymentCorsHeaders,
 } from "@/lib/api/cors";
+import { announceBountyOnTelegramChannel } from "@/lib/notifications/telegram-outbound";
 import {
   type LNbitsConfig,
   createWithdrawLink,
@@ -197,6 +198,14 @@ export default async function handler(
     if (!withdrawData.lnurl) {
       throw new Error("Invalid response from LNbits: missing lnurl");
     }
+
+    // Funds are already locked in the withdraw link. Announce from here so
+    // the public channel route cannot be called with arbitrary text.
+    void announceBountyOnTelegramChannel({
+      kind: "funded",
+      title: typeof title === "string" ? title : String(issueId),
+      amountSats: Number(amount),
+    });
 
     // Extract withdraw ID directly from response (adapter normalizes this)
     const withdrawId = withdrawData.id;

@@ -1,4 +1,8 @@
-import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  handlePaymentOptionsRequest,
+  setPaymentCorsHeaders,
+} from "@/lib/api/cors";
+import { notificationTestEndpointEnabled } from "@/lib/notifications/notify-route-policy";
 import {
   formatTelegramNotificationHtml,
   telegramSendMessage,
@@ -14,14 +18,19 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Handle OPTIONS request for CORS
+  // Production never opens this. Local only with NOTIFICATIONS_TEST_ENABLED=1.
+  // Checked before CORS, body parsing, the bot token, or the Nostr key.
+  if (!notificationTestEndpointEnabled()) {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.status(404).json({ error: "not_found" });
+  }
+
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res, req);
+    handlePaymentOptionsRequest(res, req);
     return;
   }
 
-  // Set CORS headers
-  setCorsHeaders(res, req);
+  setPaymentCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "method_not_allowed" });

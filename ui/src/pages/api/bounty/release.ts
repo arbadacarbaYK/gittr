@@ -2,6 +2,7 @@ import {
   handlePaymentOptionsRequest,
   setPaymentCorsHeaders,
 } from "@/lib/api/cors";
+import { announceBountyOnTelegramChannel } from "@/lib/notifications/telegram-outbound";
 import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -148,6 +149,11 @@ export default async function handler(
     const paymentResult = await payResponse.json();
     const paymentHash =
       paymentResult.payment_hash || paymentResult.checking_id || "";
+
+    void announceBountyOnTelegramChannel({
+      kind: "released",
+      amountSats: Number(bountyAmount),
+    });
 
     // Payment succeeded - return success
     return res.status(200).json({

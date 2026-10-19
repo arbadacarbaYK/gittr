@@ -55,7 +55,7 @@ No public channel post is required. The webhook ignores channel posts for auth.
 
 **History tip:** Clearing or deleting the chat with `@gittrupdatebot` removes past DMs from Telegram’s view. `/start` only re-shows the User ID onboarding — it does not re-send old alerts. Server logs should include a Telegram `messageId` when a DM was truly accepted.
 
-**Delivery checks:** `POST /api/notifications/send-telegram` requires Telegram’s JSON `ok: true` (not only HTTP status) and returns `messageId`. `POST /api/notifications/deliver` reports `partial` / `failed` when a requested channel errors.
+**Delivery checks:** personal DMs go through `POST /api/notifications/deliver`. The server looks up that person’s saved Telegram id and only treats a send as success when Telegram’s JSON says `ok: true` (it returns `messageId`). `deliver` reports `partial` / `failed` when a requested channel errors.
 
 ---
 
@@ -86,3 +86,12 @@ Then DM `/start` and confirm a clean HTML User ID reply.
 - Never commit real `TELEGRAM_BOT_TOKEN` values
 - Keep live tokens in production env only
 - Do not use the public channel as an auth surface
+- These routes do **not** send Telegram messages. They answer `401` (or `404` for the test route in production) before the bot token is used:
+  - `POST /api/notifications/send-telegram`
+  - `POST /api/notifications/send-telegram-channel`
+  - `POST /api/notifications/test` (local only, and only when `NOTIFICATIONS_TEST_ENABLED=1`; always off when `NODE_ENV=production`)
+  - `POST /api/notifications/send` (platform Nostr key — same rule)
+- A browser cannot choose the Telegram chat id. `deliver` uses the id stored when that person saved Settings → Notifications.
+- Public channel posts happen only after a bounty withdraw link is created or a bounty payment succeeds. The text is plain (HTML-escaped) and there is no caller-supplied link.
+- CORS on these routes is same-origin, not `*`.
+- Set `TELEGRAM_WEBHOOK_SECRET` in production `.env.local` and register it with `node configure-webhook.js gittr.space` (the script sends it as Telegram’s `secret_token` and does not print it). The webhook then rejects posts that omit `X-Telegram-Bot-Api-Secret-Token`. Until that variable is set, `/start` still works and a forged webhook update can ask the bot to reply.
