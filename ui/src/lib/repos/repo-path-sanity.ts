@@ -28,7 +28,7 @@ export const EXTENSIONLESS_REPO_FILE_NAMES = new Set(
 );
 
 const FILE_EXT_RE =
-  /\.(md|mdx|txt|ts|tsx|js|jsx|json|ya?ml|toml|xml|html?|css|scss|svg|png|jpe?g|gif|webp|pdf|rs|go|py|sh|bash|zsh|lock|gitignore|c|h|cpp|hpp|java|kt|swift|rb|php|sql|wasm|bin|exe|dll|so|dylib|zip|tar|gz|tgz|bz2|xz|7z|deb|rpm|apk|aab|dmg|iso|ico|woff2?|ttf|otf|eot|mp[34]|webm|mov|avi|mkv)$/i;
+  /\.(md|mdx|asciidoc|adoc|rst|org|tex|ipynb|txt|ts|tsx|js|jsx|json|ya?ml|toml|xml|html?|css|scss|svg|png|jpe?g|gif|webp|pdf|rs|go|py|sh|bash|zsh|lock|gitignore|c|h|cpp|hpp|java|kt|swift|rb|php|sql|wasm|bin|exe|dll|so|dylib|zip|tar|gz|tgz|bz2|xz|7z|deb|rpm|apk|aab|dmg|iso|ico|woff2?|ttf|otf|eot|mp[34]|webm|mov|avi|mkv)$/i;
 
 export function normalizeRepoPathSegments(path: string): string[] {
   if (!path) return [];
@@ -79,6 +79,12 @@ export function isAbsurdRepoPath(path: string): boolean {
     const next = (hopCounts.get(key) ?? 0) + 1;
     if (next >= 3) return true;
     hopCounts.set(key, next);
+  }
+
+  // A file used as a parent (chapter.asciidoc/other.asciidoc, README.md/images/…).
+  // lnbook's README links rebase under the current folder and crawlers follow forever.
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (looksLikeRepoFileName(segments[i]!)) return true;
   }
 
   return false;

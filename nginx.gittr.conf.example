@@ -31,6 +31,7 @@ server {
         # does not contain "/" — match $request_uri (raw) for both forms.
         # 404 not 429 (retries). Do not limit_req by IP: $remote_addr is CF edge.
         if ($request_uri ~* "nips(%2F|/).+nips(%2F|/).+nips") { return 404; }
+        if ($request_uri ~* "\\.(asciidoc|adoc|md|markdown)(%2F|/)") { return 404; }
         if ($request_uri ~* "src(%2F|/).+src(%2F|/).+src") { return 404; }
         if ($request_uri ~* "docs(%2F|/).+docs(%2F|/).+docs") { return 404; }
         if ($request_uri ~* "contributions(%2F|/).+contributions(%2F|/).+contributions") { return 404; }
@@ -63,6 +64,7 @@ server {
     # Matches: /npub1... or /npub1.../repo-name (user profiles and repositories)
     location ~ ^/(npub|note)[^/]*(/.*)?$ {
         if ($request_uri ~* "nips(%2F|/).+nips(%2F|/).+nips") { return 404; }
+        if ($request_uri ~* "\\.(asciidoc|adoc|md|markdown)(%2F|/)") { return 404; }
         if ($request_uri ~* "src(%2F|/).+src(%2F|/).+src") { return 404; }
         if ($request_uri ~* "docs(%2F|/).+docs(%2F|/).+docs") { return 404; }
         if ($request_uri ~* "contributions(%2F|/).+contributions(%2F|/).+contributions") { return 404; }

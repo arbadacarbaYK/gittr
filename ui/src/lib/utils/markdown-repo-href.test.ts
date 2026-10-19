@@ -27,6 +27,20 @@ describe("resolveRepoMarkdownHref", () => {
     );
   });
 
+  it("opens an asciidoc chapter as a file", () => {
+    const href = resolveRepoMarkdownHref("01_introduction.asciidoc", ctx);
+    expect(href).toContain("file=");
+    expect(href).not.toContain("path=");
+  });
+
+  it("does not nest chapter links under a fake folder", () => {
+    const href = resolveRepoMarkdownHref("08_routing_htlcs.asciidoc", {
+      ...ctx,
+      basePath: "14_encrypted_transport.asciidoc/README.md",
+    });
+    expect(href).toBe("/npub1test/officecli");
+  });
+
   it("refuses absurd nested paths from a deep basePath", () => {
     const deep = resolveRepoMarkdownHref("src/merchant", {
       ...ctx,

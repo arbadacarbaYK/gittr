@@ -42,6 +42,22 @@ describe("repo-path-sanity", () => {
     expect(looksLikeRepoFileName("readme.md")).toBe(true);
   });
 
+  it("rejects a chapter file used as a folder", () => {
+    expect(
+      isAbsurdRepoPath(
+        "14_encrypted_transport.asciidoc/08_routing_htlcs.asciidoc"
+      )
+    ).toBe(true);
+    expect(
+      isAbsurdRepoPath(
+        "14_encrypted_transport.asciidoc/images/cover_thumb.png"
+      )
+    ).toBe(true);
+    expect(isAbsurdRepoPath("01_introduction.asciidoc")).toBe(false);
+    expect(isAbsurdRepoPath("docs/guide.asciidoc")).toBe(false);
+    expect(looksLikeRepoFileName("01_introduction.asciidoc")).toBe(true);
+  });
+
   it("rejects crawler nips/nips/nips nests that src/docs special-case missed", () => {
     expect(
       isAbsurdRepoPath("nips/nip52/nips/nip02/nips/nip5f/nips/nip65/nips/nip58")
