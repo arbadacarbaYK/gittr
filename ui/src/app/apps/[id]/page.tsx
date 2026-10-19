@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { AppsDirectoryClient } from "@/app/apps/AppsDirectoryClient";
+import { appOgImagePath } from "@/lib/seo/app-og-card";
 import { softwareAppJsonLd } from "@/lib/seo/json-ld";
 import { JsonLd } from "@/lib/seo/json-ld-script";
 import {
@@ -40,7 +41,7 @@ export async function generateMetadata({
     path: softwareAppPath(appId || raw),
     title: found ? `${name} — Nostr app` : "Apps",
     description,
-    imagePath: "/apps/opengraph-image",
+    imagePath: appOgImagePath(appId || raw),
     imageAlt: found
       ? `${name} — Nostr app on gittr`
       : "gittr Apps — NIP-82 software on Nostr",
