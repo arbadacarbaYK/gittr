@@ -1326,8 +1326,11 @@ export default function HelpPage() {
                   same as Watch.
                 </li>
                 <li>
-                  <strong>Zaps</strong> — shortcut to tip; totals combine Nostr
-                  zap receipts and this device&apos;s ledger where relevant.
+                  <strong>Zaps</strong> — tip the repo. The total includes Nostr
+                  receipts from gittr and from other apps, plus this
+                  device&apos;s own ledger. Who sent them is listed under the
+                  zap button. A person&apos;s profile lists zaps they received
+                  and zaps they sent.
                 </li>
               </ul>
             </HelpTopic>
@@ -2724,8 +2727,9 @@ export default function HelpPage() {
                         Repo zap — Owner only
                       </td>
                       <td className="p-3 align-top">
-                        NIP-07 extension to sign a zap request when NIP-57 is
-                        available; any Lightning wallet to pay the invoice. Your{" "}
+                        NIP-07 extension signs the zap request when the
+                        Lightning address can publish a Nostr receipt. Any
+                        Lightning wallet pays the invoice. Your{" "}
                         <strong>LNbits / NWC send</strong> in Settings → Account
                         is only for polling when gittr issued the invoice
                         through the fallback server path.
@@ -2743,13 +2747,15 @@ export default function HelpPage() {
                         the NIP-57 path.
                       </td>
                       <td className="p-3 align-top">
-                        <strong>NIP-57:</strong> the page does not auto-detect
-                        your wallet; a kind 9735 receipt may appear in{" "}
-                        <strong>Your Zaps</strong> after relays gossip it.{" "}
-                        <strong>Fallback invoice</strong> (no NIP-57): same
-                        modal notice; LNbits keys in <em>your</em> account may
-                        allow polling when gittr created the invoice
-                        server-side.
+                        <strong>NIP-57:</strong> the request points at the
+                        repository announcement, so the receipt shows on this
+                        repo, on the profile, in <strong>Your Zaps</strong>, and
+                        in other Nostr apps. The window closes when the browser
+                        wallet confirms payment, or when that receipt arrives
+                        after a QR payment. <strong>Fallback invoice</strong>{" "}
+                        (address cannot publish receipts, or the signature was
+                        skipped): LNbits keys in <em>your</em> account may allow
+                        polling when gittr created the invoice server-side.
                       </td>
                     </tr>
                     <tr>

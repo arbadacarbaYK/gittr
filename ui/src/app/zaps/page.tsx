@@ -10,6 +10,8 @@ import {
   type ZapRecord,
   getZapHistory,
   zapReceipt9735ToRecord,
+  zapRecordContextLabel,
+  zapRecordHref,
 } from "@/lib/payments/zap-tracker";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 
@@ -439,19 +441,7 @@ export default function ZapsPage() {
     }
   };
 
-  const getZapContextLink = (zap: ZapRecord) => {
-    if (!zap.contextId) return null;
-
-    if (zap.type === "repo") {
-      return `/${zap.contextId}`;
-    } else if (zap.type === "issue" || zap.type === "pr") {
-      const [entity, repo, type, id] = zap.contextId.split("/");
-      return `/${entity}/${repo}/${
-        type === "issues" ? "issues" : "pulls"
-      }/${id}`;
-    }
-    return null;
-  };
+  const getZapContextLink = (zap: ZapRecord) => zapRecordHref(zap);
 
   if (!mounted) {
     return (
@@ -523,11 +513,11 @@ export default function ZapsPage() {
           <strong>LNbits-style</strong> payments (bounties, pay-to-merge, and
           similar) stay on gittr&apos;s server-side flow so status updates stay
           fast and reliable. <strong>Repository zaps</strong> to owners who
-          support NIP-57 use a real zap request and show up here as{" "}
-          <strong>Nostr receipts</strong> when relays deliver kind 9735. Rows
-          from this browser may stay <em>pending</em> until payment is confirmed
-          (for example via LNbits polling); when a matching Nostr receipt
-          arrives, the duplicate pending row is hidden.
+          support NIP-57 use a real zap request tied to that repository, so the
+          same tip shows here, on the repo, on the profile, and in other Nostr
+          apps. Rows from this browser may stay <em>pending</em> until payment
+          is confirmed; when a matching receipt arrives, the duplicate pending
+          row is hidden.
         </p>
       </div>
 
@@ -724,12 +714,12 @@ export default function ZapsPage() {
                         {zap.comment}
                       </p>
                     )}
-                    {zap.contextId && contextLink && (
+                    {contextLink && zapRecordContextLabel(zap) && (
                       <Link
                         href={contextLink}
                         className="text-sm text-purple-400 hover:underline"
                       >
-                        {zap.contextId}
+                        {zapRecordContextLabel(zap)}
                       </Link>
                     )}
                     <div className="text-xs text-gray-500 mt-1">

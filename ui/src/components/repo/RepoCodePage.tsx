@@ -39,6 +39,7 @@ import { RepoAppAnnouncePanel } from "@/components/ui/repo-app-announce-panel";
 import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
 import { RepoLinks } from "@/components/ui/repo-links";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
+import { RepoZappers } from "@/components/ui/repo-zappers";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
 import { Tooltip } from "@/components/ui/tooltip";
 import { TrustBadge } from "@/components/ui/trust-badge";
@@ -24355,18 +24356,42 @@ export function RepoCodePage() {
               })()
             : null}
 
-          {mounted && showZap && currentUserPubkey && zapRecipientPubkey && (
-            <div className="mb-4 mt-1 pt-3 pb-4 border-t border-b border-lightgray">
-              <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
-              <RepoZapButton
-                repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
-                ownerPubkey={zapRecipientPubkey}
-                contributors={(repoData?.contributors || []).map((c) => ({
-                  ...c,
-                  weight: c.weight ?? 0,
-                }))}
-                comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
-              />
+          {mounted && zapRecipientPubkey && (
+            <div id="repo-zaps">
+              {showZap && currentUserPubkey ? (
+                <div className="mb-4 mt-1 pt-3 pb-4 border-t border-b border-lightgray">
+                  <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
+                  <RepoZapButton
+                    repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
+                    ownerPubkey={zapRecipientPubkey}
+                    contributors={(repoData?.contributors || []).map((c) => ({
+                      ...c,
+                      weight: c.weight ?? 0,
+                    }))}
+                    comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
+                    announcementEventId={nostrEventId}
+                    repoDTag={decodedRepo}
+                    repoRelays={
+                      Array.isArray(
+                        (repoData as { relays?: string[] } | null)?.relays
+                      )
+                        ? (repoData as { relays: string[] }).relays
+                        : undefined
+                    }
+                  />
+                  <RepoZappers
+                    ownerHex={zapRecipientPubkey}
+                    entity={resolvedParams.entity}
+                    repo={resolvedParams.repo}
+                  />
+                </div>
+              ) : (
+                <RepoZappers
+                  ownerHex={zapRecipientPubkey}
+                  entity={resolvedParams.entity}
+                  repo={resolvedParams.repo}
+                />
+              )}
             </div>
           )}
           <Badge className="mr-2">nostr</Badge>

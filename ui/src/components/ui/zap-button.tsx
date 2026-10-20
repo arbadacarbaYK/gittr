@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_RELAY_LIST } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { trimmedKind0String } from "@/lib/nostr/kind0-profile-fields";
+import { readCachedNip65RelayUrls } from "@/lib/nostr/nip65-relay-cache";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
   createInvoiceFromLnurlZapRequest,
@@ -13,7 +16,11 @@ import {
   lnurlPayInputToHttpsUrl,
   resolveLNURL,
 } from "@/lib/payments/lnurl";
-import { buildUnsignedZapRequest9734 } from "@/lib/payments/nip57-zap";
+import {
+  buildUnsignedZapRequest9734,
+  nip65UrlsForMarker,
+  pickZapRelays,
+} from "@/lib/payments/nip57-zap";
 import {
   formatPaymentMessage,
   getPaymentSenderName,
@@ -31,6 +38,57 @@ import { nip19 } from "nostr-tools";
 
 import { PaymentQR } from "./payment-qr";
 
+type SubscribeFn = (
+  filters: { kinds: number[]; authors?: string[]; limit?: number }[],
+  relays: string[],
+  onEvent: (event: { tags?: string[][] }) => void,
+  maxDelayms?: number,
+  onEose?: () => void
+) => (() => void) | undefined;
+
+/** Kind 10002 for the recipient, so the receipt is published where they read. */
+async function readAuthorRelayMarker(
+  subscribe: SubscribeFn | undefined,
+  relays: string[],
+  authorHex: string,
+  marker: "read" | "write"
+): Promise<string[]> {
+  if (!subscribe || !authorHex || relays.length === 0) return [];
+  const event = await new Promise<{ tags?: string[][] } | null>((resolve) => {
+    let unsub: (() => void) | undefined;
+    const finish = (value: { tags?: string[][] } | null) => {
+      window.clearTimeout(timer);
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(null), 1200);
+    try {
+      unsub = subscribe(
+        [{ kinds: [KIND_RELAY_LIST], authors: [authorHex], limit: 1 }],
+        relays,
+        (ev) => finish(ev),
+        undefined,
+        () => finish(null)
+      );
+    } catch {
+      finish(null);
+    }
+  });
+  return nip65UrlsForMarker(event?.tags, marker);
+}
+
+export interface ZapTarget {
+  /** `30617:<owner>:<d>` when tipping a repository announcement */
+  address?: string;
+  eventId?: string | null;
+  eventKind?: number;
+  relays?: string[];
+}
+
 interface ZapButtonProps {
   recipient: string; // npub or pubkey
   amount?: number; // default amount in sats
@@ -43,10 +101,12 @@ interface ZapButtonProps {
   recipientMetadata?: { lud16?: string; lnurl?: string; nwcRecv?: string }; // Pre-resolved wallet (from repo config, etc.)
   label?: string; // Custom button label (defaults to "{amount} sats")
   /**
-   * Repo zaps: allow NIP-57 fallback (NIP-07 signs kind 9734) only if plain invoice
-   * creation fails while the pay endpoint advertises `allowsNostr`.
+   * When true, ask for a signed kind 9734 first if the Lightning address
+   * publishes Nostr receipts. A plain invoice is the fallback.
    */
   nip57ProfileZap?: boolean;
+  /** Points the receipt at a repo, issue, or pull request. */
+  zapTarget?: ZapTarget;
   /** Repo split zaps: resolve LNbits send keys repo-first (see resolveRepoSendWallet) */
   splitSendContext?: { entity: string; repo: string };
 }
@@ -63,6 +123,7 @@ export function ZapButton({
   recipientMetadata: providedMetadata,
   label,
   nip57ProfileZap = false,
+  zapTarget,
   splitSendContext,
 }: ZapButtonProps) {
   const [loading, setLoading] = useState(false);
@@ -75,6 +136,11 @@ export function ZapButton({
   const [paymentTrackHint, setPaymentTrackHint] = useState<"default" | "nip57">(
     "default"
   );
+  const [nip57Watch, setNip57Watch] = useState<{
+    requestId: string;
+    recipientHex: string;
+    relays: string[];
+  } | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number>(amount);
   const [recipientMetadata, setRecipientMetadata] = useState<{
     lud16?: string;
@@ -231,10 +297,11 @@ export function ZapButton({
         // Show QR modal first - NWC payment happens only when user clicks "Pay via NWC".
 
         let lastInvoiceError: string | null = null;
+        setNip57Watch(null);
 
-        // Plain LNURL invoice first — no NIP-07 prompt. Same BOLT11 for paying.
-        // NIP-57 (signed kind 9734) is only a fallback when this path fails but
-        // the pay endpoint advertises allowsNostr (some setups require `nostr`).
+        // Signed NIP-57 first when the address can publish a receipt, so other
+        // clients can see the zap. A plain invoice is the fallback (no signature,
+        // and no public receipt).
         const tryCreateInvoiceViaApi = async (): Promise<{
           invoice: string;
           paymentHash: string;
@@ -330,10 +397,22 @@ export function ZapButton({
             if (!/^[0-9a-f]{64}$/i.test(recipientHex)) return null;
 
             const lnurlBech32 = encodeLnurlPayHttpsToBech32(httpsPay);
-            const relays =
-              defaultRelays && defaultRelays.length > 0
-                ? defaultRelays
+            const relayPool =
+              getAllRelays(defaultRelays).length > 0
+                ? getAllRelays(defaultRelays)
                 : ["wss://relay.damus.io"];
+            const recipientInboxes = await readAuthorRelayMarker(
+              subscribe,
+              relayPool,
+              recipientHex,
+              "read"
+            );
+            const relays = pickZapRelays({
+              recipientInboxes,
+              senderOutboxes: readCachedNip65RelayUrls(),
+              repoRelays: zapTarget?.relays,
+              fallback: relayPool,
+            });
             const zapBody = (comment && comment.trim()) || paymentMessage;
             const unsigned = buildUnsignedZapRequest9734({
               senderPubkeyHex: pubkey,
@@ -342,6 +421,9 @@ export function ZapButton({
               relays,
               lnurlBech32,
               content: zapBody,
+              address: zapTarget?.address,
+              eventId: zapTarget?.eventId || undefined,
+              eventKind: zapTarget?.eventKind,
             });
             const signed = (await (
               window as {
@@ -354,6 +436,15 @@ export function ZapButton({
               signedZapRequest9734: signed,
               lnurlBech32,
             });
+            const requestId =
+              typeof signed.id === "string" ? signed.id.toLowerCase() : "";
+            if (/^[0-9a-f]{64}$/.test(requestId)) {
+              setNip57Watch({
+                requestId,
+                recipientHex,
+                relays,
+              });
+            }
             setPaymentTrackHint("nip57");
             return { invoice, paymentHash: "" };
           } catch (nipErr: unknown) {
@@ -365,9 +456,9 @@ export function ZapButton({
           }
         };
 
-        paymentResult = await tryCreateInvoiceViaApi();
+        paymentResult = await tryNip57Invoice();
         if (!paymentResult) {
-          paymentResult = await tryNip57Invoice();
+          paymentResult = await tryCreateInvoiceViaApi();
         }
         if (!paymentResult) {
           const hint =
@@ -540,6 +631,7 @@ export function ZapButton({
           }}
           onClose={() => {
             pendingZapIdRef.current = null;
+            setNip57Watch(null);
             setShowQR(false);
             setPaymentInvoice(null);
             setPaymentHash(undefined);
@@ -547,6 +639,7 @@ export function ZapButton({
             setError(null);
           }}
           completionHint={paymentTrackHint}
+          nip57Watch={nip57Watch}
         />
       )}
     </div>

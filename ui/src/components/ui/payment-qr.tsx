@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_ZAP } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseNwcConnectionUri } from "@/lib/payments/nwc-uri";
+import { embeddedZapRequestId } from "@/lib/payments/zap-tracker";
 
 import { CheckCircle, Copy, Download, X } from "lucide-react";
 import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
@@ -45,6 +49,12 @@ interface PaymentQRProps {
   };
   /** Extra copy when the invoice was created via NIP-57 (no LNbits hash to poll) */
   completionHint?: "default" | "nip57";
+  /** Close this dialog when the matching kind 9735 receipt arrives. */
+  nip57Watch?: {
+    requestId: string;
+    recipientHex: string;
+    relays: string[];
+  } | null;
 }
 
 export function PaymentQR({
@@ -60,7 +70,9 @@ export function PaymentQR({
   error,
   pushPaymentPoll,
   completionHint = "default",
+  nip57Watch = null,
 }: PaymentQRProps) {
+  const { subscribe, defaultRelays } = useNostrContext();
   const [copied, setCopied] = useState(false);
   const [nwcUri, setNwcUri] = useState<string | null>(propNwcUri || null);
   const [paid, setPaid] = useState(false);
@@ -69,6 +81,70 @@ export function PaymentQR({
   >("pending");
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasTriggeredOnPaidRef = useRef(false);
+
+  const markPaid = () => {
+    setPaid(true);
+    setPaymentStatus("paid");
+    if (!hasTriggeredOnPaidRef.current && onPaid) {
+      hasTriggeredOnPaidRef.current = true;
+      onPaid();
+    }
+  };
+
+  useEffect(() => {
+    if (!paid || completionHint !== "nip57") return;
+    const timer = window.setTimeout(() => onClose(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [paid, completionHint, onClose]);
+
+  useEffect(() => {
+    if (
+      !nip57Watch?.requestId ||
+      !nip57Watch.recipientHex ||
+      paid ||
+      !subscribe
+    ) {
+      return;
+    }
+    const since = Math.floor(Date.now() / 1000) - 120;
+    const relays =
+      nip57Watch.relays.filter((url) => url.startsWith("wss://")).length > 0
+        ? nip57Watch.relays
+        : getAllRelays(defaultRelays);
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_ZAP],
+          "#p": [nip57Watch.recipientHex],
+          since,
+        },
+      ],
+      relays,
+      (event) => {
+        if (
+          embeddedZapRequestId(event as { tags?: string[][] }) ===
+          nip57Watch.requestId
+        ) {
+          markPaid();
+        }
+      }
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    // markPaid closes over the latest onPaid; re-subscribe only when the watch target changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    nip57Watch?.requestId,
+    nip57Watch?.recipientHex,
+    paid,
+    subscribe,
+    defaultRelays,
+  ]);
 
   const cleanInvoice = (invoice || "").replace(/^lightning:/i, "");
 
@@ -336,7 +412,7 @@ export function PaymentQR({
           try {
             await webln.sendPayment(cleanInvoice);
             if (paymentHash) setTimeout(() => checkPaymentStatus(), 1500);
-            else setPaymentStatus("pending");
+            else markPaid();
             return;
           } catch (weblnError: any) {
             // Fall through to NWC
@@ -831,11 +907,10 @@ export function PaymentQR({
                 </p>
                 {completionHint === "nip57" ? (
                   <p className="mt-1 text-slate-400">
-                    This dialog does not watch your wallet. After you pay, a
-                    Nostr zap receipt (kind 9735) may show up on relays and in{" "}
-                    <strong>Your Zaps</strong> once it propagates — that can
-                    take a little time and is not used to auto-close this
-                    window.
+                    Paying with a browser wallet closes this window. If you scan
+                    the QR code, it closes when the Nostr receipt arrives. The
+                    same tip then shows on this repo and on the profile,
+                    including in other Nostr apps.
                   </p>
                 ) : (
                   <p className="mt-1 text-slate-400">

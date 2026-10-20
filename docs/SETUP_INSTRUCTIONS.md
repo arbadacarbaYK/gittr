@@ -422,6 +422,7 @@ sed -i '/^CVE_BOT_SEND_PENDING=/d' /etc/default/gittr-cve-bot
 | Bridge no relays | `relays` in JSON vs `.env.local`; `journalctl -u git-nostr-bridge` |
 | `git` asks for password | Key in Settings → SSH Keys; `authorized_keys` path for `git@`; [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) |
 | Paywall on `git push` | Pay invoice in UI; owner LNbits/Blink in Settings → Account; [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) |
+| Repo zap missing on another Nostr app | Owner-only zaps sign a NIP-57 request tagged to the repo announcement (`30617:<owner>:<name>`). Plain invoices have no public receipt. Details in [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md). |
 | Empty Code tab (GRASP) | [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md), `POST /api/nostr/repo/clone` |
 | Empty Code tab but console shows files fetched (`Keeping local tree`) | Apply-gate treated leftover cache + guessed `main` as a different branch. Git HEAD (any name) must paint unless you picked another branch. See FILE_FETCHING_INSIGHTS “Which tree” |
 | Empty Code tab (home Freebox / NAS `clone[]`) | Same doc — `repo-files` runs on the **app host**; hostname must resolve/reach from Hetzner (LAN-only remotes stay empty until a public clone is published) |

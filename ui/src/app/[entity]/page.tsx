@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProfilePagesAppsSections } from "@/components/profile/ProfilePagesAppsSections";
+import { ProfileZapActivity } from "@/components/profile/ProfileZapActivity";
 import { Button } from "@/components/ui/button";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -3657,6 +3658,10 @@ export default function EntityPage({
           </div>
         </div>
       </div>
+
+      <ProfileZapActivity
+        profileHex={pubkeyForMetadata || fullPubkeyForMeta}
+      />
 
       {/* User Repositories — public for logged-out visitors via profile-repos API */}
       {userRepos.length > 0 ? (

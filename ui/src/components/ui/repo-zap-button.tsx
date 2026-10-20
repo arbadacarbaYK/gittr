@@ -6,6 +6,7 @@ import { ZapButton } from "@/components/ui/zap-button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { trimmedKind0String } from "@/lib/nostr/kind0-profile-fields";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { repoAnnouncementAddress } from "@/lib/payments/nip57-zap";
 import { resolveRepoReceiveWallet } from "@/lib/payments/resolve-repo-wallet";
 import {
   calculateSplitWeights,
@@ -26,6 +27,11 @@ interface RepoZapButtonProps {
   }>;
   amount?: number;
   comment?: string;
+  /** Kind 30617 event id, when the page has already found the announcement */
+  announcementEventId?: string | null;
+  /** `d` tag of the announcement. Defaults to the repo name in `repoId`. */
+  repoDTag?: string;
+  repoRelays?: string[];
 }
 
 export function RepoZapButton({
@@ -34,6 +40,9 @@ export function RepoZapButton({
   contributors = [],
   amount = 21,
   comment,
+  announcementEventId,
+  repoDTag,
+  repoRelays,
 }: RepoZapButtonProps) {
   const { pubkey: currentUserPubkey } = useNostrContext();
   const [zapMode, setZapMode] = useState<"owner-only" | "auto-split">(
@@ -282,6 +291,12 @@ export function RepoZapButton({
     return { ...effectiveReceive };
   }, [effectiveReceive]);
 
+  const announcementAddress = useMemo(
+    () =>
+      repoAnnouncementAddress(ownerHex, repoDTag || repo || "") || undefined,
+    [ownerHex, repoDTag, repo]
+  );
+
   return (
     <div className="space-y-2">
       <ZapButton
@@ -293,6 +308,19 @@ export function RepoZapButton({
         modalExtra={modalExtra}
         recipientMetadata={recipientMetadata}
         nip57ProfileZap={zapMode === "owner-only"}
+        zapTarget={
+          zapMode === "owner-only"
+            ? {
+                address: announcementAddress,
+                eventId: announcementEventId,
+                eventKind:
+                  announcementAddress || announcementEventId
+                    ? 30617
+                    : undefined,
+                relays: repoRelays,
+              }
+            : undefined
+        }
         splitSendContext={entity && repo ? { entity, repo } : undefined}
       />
     </div>

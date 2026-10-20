@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { KIND_ZAP } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { repoAnnouncementAddress } from "@/lib/payments/nip57-zap";
 import { computeRepoZapBadgeTotal } from "@/lib/payments/zap-tracker";
 
 import type { Event, Filter } from "nostr-tools";
@@ -18,8 +19,10 @@ type SubscribeFn = (
 ) => (() => void) | undefined;
 
 /**
- * Live NIP-57 zap receipts (9735) where the repo owner is the zapped pubkey (`#p`),
- * merged with this browser’s gittr_zaps ledger (deduped when a receipt matches a local row).
+ * Live NIP-57 zap receipts (9735) for this repo.
+ * `#a` is the repository announcement (what other clients publish).
+ * `#p` still catches older gittr tips that only wrote `Zap for entity/repo` in the note.
+ * Merged with this browser’s gittr_zaps ledger (deduped when a receipt matches a local row).
  */
 export function useRepoNip57ZapBadgeTotal(opts: {
   ownerHex: string;
@@ -29,7 +32,12 @@ export function useRepoNip57ZapBadgeTotal(opts: {
   defaultRelays: string[];
   /** False on server / before owner pubkey is known */
   enabled: boolean;
-}): { totalSats: number; networkSats: number; localExtraSats: number } {
+}): {
+  totalSats: number;
+  networkSats: number;
+  localExtraSats: number;
+  zappers: { pubkey: string; totalSats: number }[];
+} {
   const [nip57Events, setNip57Events] = useState<Event[]>([]);
   const [localVersion, setLocalVersion] = useState(0);
 
@@ -48,8 +56,12 @@ export function useRepoNip57ZapBadgeTotal(opts: {
     setNip57Events([]);
     const collected = new Map<string, Event>();
     const filters: Filter[] = [
-      { kinds: [KIND_ZAP], "#p": [opts.ownerHex], limit: 800 },
+      { kinds: [KIND_ZAP], "#p": [opts.ownerHex], limit: 500 },
     ];
+    const address = repoAnnouncementAddress(opts.ownerHex, opts.repo);
+    if (address) {
+      filters.push({ kinds: [KIND_ZAP], "#a": [address], limit: 500 });
+    }
     const relays = getAllRelays(opts.defaultRelays);
     const unsub = opts.subscribe(
       filters,
@@ -70,7 +82,13 @@ export function useRepoNip57ZapBadgeTotal(opts: {
         /* ignore */
       }
     };
-  }, [opts.enabled, opts.ownerHex, opts.subscribe, opts.defaultRelays]);
+  }, [
+    opts.enabled,
+    opts.ownerHex,
+    opts.repo,
+    opts.subscribe,
+    opts.defaultRelays,
+  ]);
 
   return useMemo(
     () =>

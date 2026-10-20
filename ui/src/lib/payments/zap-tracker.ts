@@ -3,8 +3,14 @@
 import { type Event } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
+import {
+  parseRepoAddress,
+  repoAddressesEqual,
+  repoAnnouncementAddress,
+} from "./nip57-zap";
+
 // Helper to normalize pubkey/npub for comparison
-function normalizePubkey(pubkey: string): string {
+export function normalizeZapPubkey(pubkey: string): string {
   if (!pubkey) return "";
   try {
     // If it's an npub, decode it
@@ -46,6 +52,10 @@ export interface ZapRecord {
   status: "pending" | "paid" | "failed";
   /** `nip57` = kind 9735 zap receipt from relays; `gittr` or omitted = local gittr_zaps ledger */
   source?: "gittr" | "nip57";
+  /** NIP-34 coordinate when the zap pointed at a repo announcement, e.g. `30617:<hex>:<d>` */
+  targetAddress?: string;
+  /** Event id the zap pointed at (`e` tag), when the receipt has one */
+  targetEventId?: string;
 }
 
 // Store zap in history
@@ -93,12 +103,12 @@ export function getZapCount(
     const zaps = JSON.parse(
       localStorage.getItem("gittr_zaps") || "[]"
     ) as ZapRecord[];
-    const recNorm = normalizePubkey(recipient);
+    const recNorm = normalizeZapPubkey(recipient);
     const ctxNorm = contextId ? contextId.toLowerCase() : "";
     return zaps
       .filter(
         (z) =>
-          normalizePubkey(z.recipient) === recNorm &&
+          normalizeZapPubkey(z.recipient) === recNorm &&
           z.status === "paid" &&
           (!ctxNorm ||
             (z.contextId && z.contextId.toLowerCase() === ctxNorm)) &&
@@ -186,9 +196,12 @@ export function satoshisFromBolt11Invoice(bolt11: string | undefined): number {
   return Math.round(num * Math.pow(10, 8 + e));
 }
 
-function parseEmbeddedZapRequestJson(
-  desc: string
-): { tags: string[][]; content: string; pubkey: string } | null {
+function parseEmbeddedZapRequestJson(desc: string): {
+  id: string;
+  tags: string[][];
+  content: string;
+  pubkey: string;
+} | null {
   let raw: unknown;
   try {
     raw = JSON.parse(desc);
@@ -207,7 +220,34 @@ function parseEmbeddedZapRequestJson(
   const tags = Array.isArray(o.tags) ? (o.tags as string[][]) : [];
   const content = typeof o.content === "string" ? o.content : "";
   const pubkey = typeof o.pubkey === "string" ? o.pubkey : "";
-  return { tags, content, pubkey };
+  const id = typeof o.id === "string" ? o.id : "";
+  return { id, tags, content, pubkey };
+}
+
+function firstRepoAddress(tags: string[][] | undefined): string | undefined {
+  for (const tag of tags || []) {
+    if (tag?.[0] !== "a" || typeof tag[1] !== "string") continue;
+    if (parseRepoAddress(tag[1])) return tag[1].trim();
+  }
+  return undefined;
+}
+
+function firstEventId(tags: string[][] | undefined): string | undefined {
+  for (const tag of tags || []) {
+    if (tag?.[0] !== "e" || typeof tag[1] !== "string") continue;
+    if (/^[0-9a-f]{64}$/i.test(tag[1])) return tag[1].toLowerCase();
+  }
+  return undefined;
+}
+
+/** Id of the kind 9734 request embedded in a kind 9735 receipt, when present. */
+export function embeddedZapRequestId(ev: { tags?: string[][] }): string | null {
+  const desc = ev.tags?.find((t) => t[0] === "description")?.[1];
+  if (!desc) return null;
+  const parsed = parseEmbeddedZapRequestJson(desc);
+  const id = parsed?.id?.trim().toLowerCase();
+  if (!id || !/^[0-9a-f]{64}$/.test(id)) return null;
+  return id;
 }
 
 /** Map NIP-57 zap receipt (kind 9735) to a ZapRecord for the Your Zaps UI */
@@ -235,8 +275,12 @@ export function zapReceipt9735ToRecord(ev: Event): ZapRecord | null {
 
     const senderPub = (zr.pubkey || outerZapper || "").trim();
     const content = zr.content || "";
-    const isRepoZap = /^Zap for .+\/.+/i.test(content.trim());
+    const legacyRepo = /^Zap for .+\/.+/i.test(content.trim());
     const ctx = content.match(/^Zap for (.+)/i)?.[1]?.trim();
+    const targetAddress =
+      firstRepoAddress(ev.tags) || firstRepoAddress(zr.tags);
+    const targetEventId = firstEventId(ev.tags) || firstEventId(zr.tags);
+    const isRepoZap = !!parseRepoAddress(targetAddress) || legacyRepo;
     return {
       id: ev.id,
       recipient: recipientTag,
@@ -245,9 +289,11 @@ export function zapReceipt9735ToRecord(ev: Event): ZapRecord | null {
       comment: content,
       createdAt: ev.created_at * 1000,
       type: isRepoZap ? "repo" : "user",
-      contextId: isRepoZap ? ctx : undefined,
+      contextId: legacyRepo ? ctx : undefined,
       status: "paid",
       source: "nip57",
+      targetAddress,
+      targetEventId,
     };
   } catch {
     return null;
@@ -282,6 +328,95 @@ export function repoZapReceiptMatchesRepo(
   return repoContextVariantsForMatch(entity, repo).includes(c);
 }
 
+/** True when a receipt is a tip for this repo, including ones sent from other Nostr apps. */
+export function zapRecordMatchesRepo(
+  record: ZapRecord,
+  ownerHex: string,
+  entity: string,
+  repo: string
+): boolean {
+  const want = repoAnnouncementAddress(ownerHex, repo);
+  if (want && repoAddressesEqual(record.targetAddress, want)) return true;
+  if (record.type !== "repo") return false;
+  if (!repoZapReceiptMatchesRepo(record.contextId, entity, repo)) return false;
+  if (!record.recipient) return false;
+  return normalizeZapPubkey(record.recipient) === ownerHex.trim().toLowerCase();
+}
+
+export function repoZapNetworkRecords(
+  ownerHex: string,
+  entity: string,
+  repo: string,
+  nip57Events: Event[]
+): ZapRecord[] {
+  const seen = new Set<string>();
+  const out: ZapRecord[] = [];
+  for (const ev of nip57Events) {
+    const record = zapReceipt9735ToRecord(ev);
+    if (!record || record.amount <= 0) continue;
+    if (!zapRecordMatchesRepo(record, ownerHex, entity, repo)) continue;
+    if (seen.has(record.id)) continue;
+    seen.add(record.id);
+    out.push(record);
+  }
+  return out;
+}
+
+export function summarizeRepoZappers(
+  records: ZapRecord[]
+): { pubkey: string; totalSats: number }[] {
+  const bySender = new Map<string, number>();
+  for (const record of records) {
+    if (!record.sender || record.amount <= 0) continue;
+    const pubkey = normalizeZapPubkey(record.sender);
+    if (!/^[0-9a-f]{64}$/.test(pubkey)) continue;
+    bySender.set(pubkey, (bySender.get(pubkey) || 0) + record.amount);
+  }
+  return [...bySender.entries()]
+    .map(([pubkey, totalSats]) => ({ pubkey, totalSats }))
+    .sort((a, b) => b.totalSats - a.totalSats);
+}
+
+/** Link for a zap row. Other clients' repo tips use the announcement coordinate. */
+export function zapRecordHref(
+  zap: Pick<ZapRecord, "type" | "contextId" | "targetAddress">
+): string | null {
+  if (
+    zap.type === "repo" &&
+    zap.contextId &&
+    zap.contextId.includes("/") &&
+    !zap.contextId.startsWith("30617:")
+  ) {
+    return `/${zap.contextId}`;
+  }
+  const address = parseRepoAddress(zap.targetAddress);
+  if (address) {
+    try {
+      return `/${nip19.npubEncode(address.ownerHex)}/${encodeURIComponent(
+        address.dTag
+      )}`;
+    } catch {
+      return null;
+    }
+  }
+  if ((zap.type === "issue" || zap.type === "pr") && zap.contextId) {
+    const [entity, repo, type, id] = zap.contextId.split("/");
+    if (!entity || !repo || !id) return null;
+    return `/${entity}/${repo}/${type === "issues" ? "issues" : "pulls"}/${id}`;
+  }
+  return null;
+}
+
+export function zapRecordContextLabel(
+  zap: Pick<ZapRecord, "contextId" | "targetAddress" | "comment">
+): string | null {
+  if (zap.contextId && !zap.contextId.startsWith("30617:"))
+    return zap.contextId;
+  const address = parseRepoAddress(zap.targetAddress);
+  if (address) return address.dTag;
+  return null;
+}
+
 /**
  * Repo header badge: sum NIP-57 receipts for this repo + local ledger rows that are not
  * already represented by a receipt (same amount, time window, sender when known).
@@ -291,20 +426,17 @@ export function computeRepoZapBadgeTotal(
   entity: string,
   repo: string,
   nip57Events: Event[]
-): { totalSats: number; networkSats: number; localExtraSats: number } {
+): {
+  totalSats: number;
+  networkSats: number;
+  localExtraSats: number;
+  zappers: { pubkey: string; totalSats: number }[];
+} {
   if (!ownerHex) {
-    return { totalSats: 0, networkSats: 0, localExtraSats: 0 };
+    return { totalSats: 0, networkSats: 0, localExtraSats: 0, zappers: [] };
   }
 
-  const recs = nip57Events
-    .map((ev) => zapReceipt9735ToRecord(ev))
-    .filter(
-      (r): r is ZapRecord =>
-        r != null &&
-        r.type === "repo" &&
-        repoZapReceiptMatchesRepo(r.contextId, entity, repo) &&
-        normalizePubkey(r.recipient) === ownerHex
-    );
+  const recs = repoZapNetworkRecords(ownerHex, entity, repo, nip57Events);
   const networkSats = recs.reduce((s, r) => s + r.amount, 0);
 
   /** Pending rows only count toward the badge for a short window (invoice flows often stay pending until relay receipt or manual confirm). */
@@ -324,7 +456,7 @@ export function computeRepoZapBadgeTotal(
       if (!(z.status === "paid" || pendingFresh)) return false;
       return (
         z.type === "repo" &&
-        normalizePubkey(z.recipient) === ownerNorm &&
+        normalizeZapPubkey(z.recipient) === ownerNorm &&
         !!z.contextId &&
         ctxSet.has(z.contextId.trim().toLowerCase())
       );
@@ -339,7 +471,7 @@ export function computeRepoZapBadgeTotal(
       if (Math.abs(R.amount - L.amount) > 1) return false;
       if (Math.abs(R.createdAt - L.createdAt) > 25 * 60 * 1000) return false;
       if (L.sender && R.sender) {
-        return normalizePubkey(L.sender) === normalizePubkey(R.sender);
+        return normalizeZapPubkey(L.sender) === normalizeZapPubkey(R.sender);
       }
       if (!L.sender && !R.sender) return true;
       return false;
@@ -351,5 +483,6 @@ export function computeRepoZapBadgeTotal(
     totalSats: networkSats + localExtraSats,
     networkSats,
     localExtraSats,
+    zappers: summarizeRepoZappers(recs),
   };
 }
