@@ -158,6 +158,18 @@ describe("sign timeout copy", () => {
     expect(msg).toContain("Orbot");
   });
 
+  it("does not claim the phone stayed quiet when relays accepted and no reply came back", () => {
+    const msg = signTimeoutUserMessage({
+      publishedUrls: ["wss://relay.gittr.space", "wss://nos.lol"],
+      uriRelays: uri,
+      attemptedUrls: ["wss://relay.gittr.space"],
+      replyNeverHeard: true,
+    });
+    expect(msg).toContain("Amber received the signing request");
+    expect(msg).not.toContain("did not open a prompt");
+    expect(msg).not.toContain("did not show a prompt");
+  });
+
   it("says the miss is gittr when only one relay was tried", () => {
     const msg = signTimeoutUserMessage({
       publishedUrls: ["wss://nostr.oxtr.dev"],

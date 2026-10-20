@@ -731,7 +731,12 @@ export function signTimeoutUserMessage(opts: {
   publishedUrls: string[];
   uriRelays: string[];
   attemptedUrls: string[];
+  /** Relays accepted the request, and no signer reply arrived. */
+  replyNeverHeard?: boolean;
 }): string {
+  if (opts.replyNeverHeard) {
+    return "Amber received the signing request, but this page never heard the answer. If the prompt is still open, approve it and try again with this tab in front.";
+  }
   const overlap = bunkerRelayPublishOverlap(opts.publishedUrls, opts.uriRelays);
   const wanted = relayUrlSet(opts.uriRelays).size;
   const delivered = overlap.overlap.length;
@@ -2100,6 +2105,9 @@ export class RemoteSignerManager {
             publishedUrls: published,
             uriRelays,
             attemptedUrls: this.lastSignAttempted,
+            replyNeverHeard:
+              this.lastPublishMeta?.acked === true &&
+              this.inboundDuringWait === 0,
           })
         );
       }
@@ -3095,6 +3103,10 @@ export class RemoteSignerManager {
           staleMs >= BUNKER_VISIBILITY_STALE_MS ||
           this.lastBunkerWarmAt === 0
         ) {
+          // A sign_event wait must keep its 24133 listener. Replacing the
+          // pool here drops Amber's reply after the phone already showed
+          // the prompt.
+          if (this.pending.size > 0 || this.signerDialBusy) return;
           console.log(
             "[RemoteSigner] Tab visible — reconnecting bunker transport"
           );
@@ -3376,16 +3388,7 @@ export class RemoteSignerManager {
           uriRelays,
           coveredAllUri: true,
         });
-        if (this.pending.size === 0) {
-          try {
-            await this.startSubscription(session, covered);
-          } catch (error) {
-            console.warn(
-              "[RemoteSigner] Failed to refresh subscription on covered bunker sockets:",
-              error
-            );
-          }
-        }
+        await this.ensureResponseSubscription(session, covered);
         return covered;
       }
       // Cover walked a pool of CLOSED sockets. The fallback dial below used
@@ -3415,16 +3418,7 @@ export class RemoteSignerManager {
         uriRelays,
         reused: preferredAlready.length,
       });
-      if (this.pending.size === 0) {
-        try {
-          await this.startSubscription(session, preferredOpen);
-        } catch (error) {
-          console.warn(
-            "[RemoteSigner] Failed to refresh subscription on reused bunker socket:",
-            error
-          );
-        }
-      }
+      await this.ensureResponseSubscription(session, preferredOpen);
       return preferredOpen;
     }
 
@@ -3457,16 +3451,7 @@ export class RemoteSignerManager {
         uriRelays,
         reused: preferredAlready.length,
       });
-      if (this.pending.size === 0) {
-        try {
-          await this.startSubscription(session, preferredOpen);
-        } catch (error) {
-          console.warn(
-            "[RemoteSigner] Failed to refresh subscription after transport ensure:",
-            error
-          );
-        }
-      }
+      await this.ensureResponseSubscription(session, preferredOpen);
       return preferredOpen;
     }
 
@@ -3502,16 +3487,7 @@ export class RemoteSignerManager {
         usingFallbackOnly,
         reused: preferredAlready.length,
       });
-      if (this.pending.size === 0) {
-        try {
-          await this.startSubscription(session, preferredOpen);
-        } catch (error) {
-          console.warn(
-            "[RemoteSigner] Failed to refresh subscription after transport ensure:",
-            error
-          );
-        }
-      }
+      await this.ensureResponseSubscription(session, preferredOpen);
     } else {
       softWarn(
         "[RemoteSigner] No OPEN bunker sockets",
@@ -4007,9 +3983,35 @@ export class RemoteSignerManager {
     const preferred = preferUriOpenRelays(again, uriRelays);
     const listenOn = preferred.length > 0 ? preferred : again;
     if (listenOn.length === 0) return;
-    // Re-open missing sockets only. Do not unsub the live 24133 listener.
-    if (this.pending.size === 0) {
-      await this.startSubscription(session, listenOn);
+    // Re-open missing sockets only. Do not unsub a live 24133 listener.
+    // Do attach one if the thin-publish retry already destroyed it.
+    await this.ensureResponseSubscription(session, listenOn);
+  }
+
+  /**
+   * Listen for Amber's kind 24133 reply. A live subscription stays put —
+   * replacing it mid-wait drops the answer. If the bunker pool was just
+   * replaced, there is no listener, so attach one even while sign_event
+   * is still pending.
+   */
+  private async ensureResponseSubscription(
+    session: RemoteSignerSession,
+    relays: string[]
+  ) {
+    if (this.directUnsubscribe) return;
+    if (relays.length === 0) return;
+    if (this.pending.size > 0) {
+      console.log(
+        "[RemoteSigner] Listening again for Amber's reply after the bunker pool was replaced"
+      );
+    }
+    try {
+      await this.startSubscription(session, relays);
+    } catch (error) {
+      console.warn(
+        "[RemoteSigner] Failed to listen for the signer reply:",
+        error
+      );
     }
   }
 
