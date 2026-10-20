@@ -27,7 +27,10 @@ import {
   releaseColdBunkerStartHold,
   setBunkerMainPoolBlockedHosts,
 } from "./bunker-main-pool-guard";
-import { shouldAbortSilentSignEvent } from "./bunker-sign-wait";
+import {
+  bunkerListenRelaysToAdd,
+  shouldAbortSilentSignEvent,
+} from "./bunker-sign-wait";
 import { WEB_STORAGE_KEYS } from "./localStorage";
 
 type PublishFn = (event: any, relays: string[]) => void;
@@ -127,6 +130,8 @@ const SIGN_LISTEN_REFRESH_MS = 8000;
  * can still be showing Approve, and a late reply must not be thrown away.
  */
 const SIGN_SILENT_ABORT_MS = 20000;
+/** After the relay accepted sign_event, keep the waiter while missed bunker relays are opened. */
+const SIGN_ACKED_REPLY_GRACE_MS = 15000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 export const DEFAULT_REMOTE_PERMISSIONS = [
@@ -1305,6 +1310,9 @@ export class RemoteSignerManager {
   private unsubscribe?: () => void;
   private directPool = new SimplePool();
   private directUnsubscribe?: () => void;
+  private directUnsubs: Array<() => void> = [];
+  /** Bunker relays that already have a live kind 24133 subscription. */
+  private directListenRelays = new Set<string>();
   private pairingPubkeyHint?: string;
   /** Resolves after first inbound NIP-46 event during nostrconnect pairing. */
   private nostrConnectSignerResolved?: () => void;
@@ -2637,8 +2645,7 @@ export class RemoteSignerManager {
     persistRemoteSignerSession(null);
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    this.directUnsubscribe?.();
-    this.directUnsubscribe = undefined;
+    this.clearDirectResponseSubs();
     this.pending.forEach(({ reject, timeout }) => {
       clearTimeout(timeout);
       reject(new Error("Remote signer disconnected"));
@@ -2708,8 +2715,7 @@ export class RemoteSignerManager {
     } catch {
       /* ignore */
     }
-    this.directUnsubscribe?.();
-    this.directUnsubscribe = undefined;
+    this.clearDirectResponseSubs();
     this.directPool = new SimplePool();
   }
 
@@ -3386,7 +3392,13 @@ export class RemoteSignerManager {
           total: targets.length,
           openUrls: covered.map((u) => normalizeRelayUrl(u)),
           uriRelays,
-          coveredAllUri: true,
+          coveredAllUri:
+            uriRelays.length > 0 &&
+            uriRelays.every((u) =>
+              covered.some(
+                (open) => normalizeRelayUrl(open) === normalizeRelayUrl(u)
+              )
+            ),
         });
         await this.ensureResponseSubscription(session, covered);
         return covered;
@@ -3682,19 +3694,30 @@ export class RemoteSignerManager {
     session: RemoteSignerSession,
     relaysOverride?: string[]
   ) {
-    // Unsub mid-wait drops Amber's 24133 reply in the gap. Keep the live sub.
-    if (this.pending.size > 0 && this.directUnsubscribe) {
-      return;
-    }
-    this.unsubscribe?.();
-    this.directUnsubscribe?.();
-    this.unsubscribe = undefined;
+    // Unsub mid-wait drops Amber's 24133 reply in the gap. Keep every live
+    // sub, and add any bunker relay that was not in the page-load warm.
     const relays =
       relaysOverride && relaysOverride.length > 0
         ? relaysOverride
         : getSessionUriRelays(session).length > 0
         ? getSessionUriRelays(session)
         : session.relays;
+    const wanted = uniqueNormalizedRelays(relays);
+    if (wanted.length === 0) return;
+    if (this.pending.size === 0) {
+      this.clearDirectResponseSubs();
+    }
+    const subscribeRelays =
+      this.directUnsubs.length === 0
+        ? wanted
+        : bunkerListenRelaysToAdd([...this.directListenRelays], wanted);
+    if (subscribeRelays.length === 0) return;
+    if (this.pending.size > 0) {
+      console.log(
+        "[RemoteSigner] Listening on more bunker relays for Amber's reply",
+        subscribeRelays
+      );
+    }
     const wideNostrConnect =
       !!session.nostrConnectPairing &&
       (!session.remotePubkey || session.remotePubkey.length === 0);
@@ -3720,7 +3743,7 @@ export class RemoteSignerManager {
     // NIP-46 responses only on directPool. Do NOT subscribe via the app
     // relaypool — that silently addRelay's bunker hosts and starves Amber.
 
-    const sub: any = this.directPool.sub(relays, filters as any[]);
+    const sub: any = this.directPool.sub(subscribeRelays, filters as any[]);
     const onEvent = (event: any) => {
       const kind = typeof event?.kind === "number" ? event.kind : -1;
       const id = typeof event?.id === "string" ? event.id.slice(0, 12) : "none";
@@ -3733,7 +3756,7 @@ export class RemoteSignerManager {
       void this.handleIncomingEvent(event);
     };
     sub.on("event", onEvent);
-    this.directUnsubscribe = () => {
+    const unsub = () => {
       try {
         sub.off?.("event", onEvent);
         sub.unsub?.();
@@ -3741,6 +3764,26 @@ export class RemoteSignerManager {
         // ignore cleanup errors
       }
     };
+    this.directUnsubs.push(unsub);
+    for (const url of subscribeRelays) {
+      this.directListenRelays.add(normalizeRelayUrl(url));
+    }
+    this.directUnsubscribe = () => this.clearDirectResponseSubs();
+  }
+
+  /** Drop every kind 24133 listener. Safe to call when none exist. */
+  private clearDirectResponseSubs() {
+    const unsubs = this.directUnsubs;
+    this.directUnsubs = [];
+    this.directListenRelays.clear();
+    this.directUnsubscribe = undefined;
+    for (const unsub of unsubs) {
+      try {
+        unsub();
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   private rememberCompletedRpcId(id?: string) {
@@ -3998,9 +4041,13 @@ export class RemoteSignerManager {
     session: RemoteSignerSession,
     relays: string[]
   ) {
-    if (this.directUnsubscribe) return;
     if (relays.length === 0) return;
-    if (this.pending.size > 0) {
+    const adding = bunkerListenRelaysToAdd(
+      [...this.directListenRelays],
+      relays
+    );
+    if (adding.length === 0 && this.directUnsubs.length > 0) return;
+    if (this.pending.size > 0 && this.directUnsubs.length === 0) {
       console.log(
         "[RemoteSigner] Listening again for Amber's reply after the bunker pool was replaced"
       );
@@ -4084,7 +4131,33 @@ export class RemoteSignerManager {
           listenRefresh = null;
         }
       };
+      let settled = false;
       const timeout = setTimeout(() => {
+        if (
+          method === "sign_event" &&
+          signPublishAcked &&
+          this.pending.has(id)
+        ) {
+          console.log(
+            "[RemoteSigner] Relay already accepted the request — checking the other bunker relays for Amber's answer"
+          );
+          void (async () => {
+            try {
+              await this.refreshSignEventListenPath(session);
+            } catch {
+              /* the next line still waits for a reply already on the wire */
+            }
+            await new Promise((r) => setTimeout(r, SIGN_ACKED_REPLY_GRACE_MS));
+            if (settled || !this.pending.has(id)) return;
+            settled = true;
+            finishListen();
+            this.pending.delete(id);
+            reject(new Error(`Remote signer request ${method} timed out`));
+          })();
+          return;
+        }
+        if (settled || !this.pending.has(id)) return;
+        settled = true;
         finishListen();
         this.pending.delete(id);
         reject(new Error(`Remote signer request ${method} timed out`));
@@ -4092,11 +4165,17 @@ export class RemoteSignerManager {
       this.pending.set(id, {
         method,
         resolve: (value) => {
+          if (settled) return;
+          settled = true;
           finishListen();
+          clearTimeout(timeout);
           resolve(value);
         },
         reject: (reason) => {
+          if (settled) return;
+          settled = true;
           finishListen();
+          clearTimeout(timeout);
           reject(reason);
         },
         timeout,
@@ -4135,6 +4214,11 @@ export class RemoteSignerManager {
             );
           }
           if (abortSilent) {
+            if (settled) {
+              finishListen();
+              return;
+            }
+            settled = true;
             finishListen();
             this.pending.delete(id);
             clearTimeout(timeout);

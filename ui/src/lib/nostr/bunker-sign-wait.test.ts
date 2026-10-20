@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldAbortSilentSignEvent } from "./bunker-sign-wait";
+import {
+  bunkerListenRelaysToAdd,
+  shouldAbortSilentSignEvent,
+} from "./bunker-sign-wait";
 
 describe("shouldAbortSilentSignEvent", () => {
   it("keeps waiting when a relay already accepted the request", () => {
@@ -56,5 +59,29 @@ describe("shouldAbortSilentSignEvent", () => {
         publishAcked: false,
       })
     ).toBe(false);
+  });
+});
+
+describe("bunkerListenRelaysToAdd", () => {
+  it("adds the relays Push published on, beside the warm-up socket", () => {
+    expect(
+      bunkerListenRelaysToAdd(
+        ["wss://relay.primal.net/"],
+        [
+          "wss://relay.primal.net",
+          "wss://relay.damus.io",
+          "wss://nos.lol",
+        ]
+      )
+    ).toEqual(["wss://relay.damus.io", "wss://nos.lol"]);
+  });
+
+  it("returns nothing when those relays are already being listened to", () => {
+    expect(
+      bunkerListenRelaysToAdd(
+        ["wss://relay.primal.net", "wss://nos.lol"],
+        ["wss://nos.lol/", "wss://relay.primal.net"]
+      )
+    ).toEqual([]);
   });
 });
