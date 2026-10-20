@@ -1326,11 +1326,13 @@ export default function HelpPage() {
                   same as Watch.
                 </li>
                 <li>
-                  <strong>Zaps</strong> — tip the repo. The total includes Nostr
-                  receipts from gittr and from other apps, plus this
-                  device&apos;s own ledger. Who sent them is listed under the
-                  zap button. A person&apos;s profile lists zaps they received
-                  and zaps they sent.
+                  <strong>Zaps</strong> — tip the repo. The button and the list
+                  of who tipped are on the page whether you are signed in or
+                  not. Sending one needs a sign-in, because the tip is signed
+                  with your Nostr key. The total includes Nostr receipts from
+                  gittr and from other apps, plus this device&apos;s own ledger.
+                  A person&apos;s profile lists zaps they received and zaps they
+                  sent.
                 </li>
               </ul>
             </HelpTopic>
