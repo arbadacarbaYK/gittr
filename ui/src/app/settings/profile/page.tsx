@@ -768,8 +768,9 @@ export default function ProfilePage() {
                 placeholder="yourname@example.com"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Your Lightning address for receiving payments (e.g.,
-                satoshi@lightning.com)
+                Published on your Nostr profile. This is the address other
+                people use when they zap your repos, including visitors who are
+                not signed in (for example satoshi@lightning.com).
               </p>
             </div>
 

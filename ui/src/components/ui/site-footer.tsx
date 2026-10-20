@@ -33,6 +33,7 @@ export function SiteFooter() {
           size="sm"
           className="text-sm"
           label="Donate to this project"
+          nip57ProfileZap
         />
       </div>
       <nav

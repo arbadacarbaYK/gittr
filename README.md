@@ -27,7 +27,7 @@ Help has a search box. It looks through every topic and the writing inside it, i
 | How you use it | site, often an app | command line writes; site mostly reads | site, app, and agents |
 | SSH keys | on their servers | ✗ | ✓ plus a security scan |
 | Themes | ✗ | ✗ | ✓ |
-| Lightning | ✗ | zaps | zaps other Nostr apps can see, plus splits and bounties |
+| Lightning | ✗ | zaps | anyone can tip; signed zaps other apps can see, plus splits and bounties |
 | Dependencies | ✗ | ✗ | per repo, plus a Lab page |
 
 ## What you can do

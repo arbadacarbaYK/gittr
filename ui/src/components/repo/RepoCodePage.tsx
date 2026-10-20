@@ -901,9 +901,6 @@ export function RepoCodePage() {
   const [proposedContent, setProposedContent] = useState<string>("");
   const [mounted, setMounted] = useState(false);
   const hydratedUserPubkey = mounted ? currentUserPubkey : null;
-  const zapSignerPubkey = mounted
-    ? currentUserPubkey || effectiveUserPubkey
-    : undefined;
   const [currentFolderReadme, setCurrentFolderReadme] = useState<string | null>(
     null
   );
@@ -24364,34 +24361,24 @@ export function RepoCodePage() {
               className="mb-4 mt-1 pt-3 pb-4 border-t border-b border-lightgray"
             >
               <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
-              {zapSignerPubkey ? (
-                <RepoZapButton
-                  repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
-                  ownerPubkey={zapRecipientPubkey}
-                  contributors={(repoData?.contributors || []).map((c) => ({
-                    ...c,
-                    weight: c.weight ?? 0,
-                  }))}
-                  comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
-                  announcementEventId={nostrEventId}
-                  repoDTag={decodedRepo}
-                  repoRelays={
-                    Array.isArray(
-                      (repoData as { relays?: string[] } | null)?.relays
-                    )
-                      ? (repoData as { relays: string[] }).relays
-                      : undefined
-                  }
-                />
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push("/login")}
-                >
-                  Sign in to zap
-                </Button>
-              )}
+              <RepoZapButton
+                repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
+                ownerPubkey={zapRecipientPubkey}
+                contributors={(repoData?.contributors || []).map((c) => ({
+                  ...c,
+                  weight: c.weight ?? 0,
+                }))}
+                comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
+                announcementEventId={nostrEventId}
+                repoDTag={decodedRepo}
+                repoRelays={
+                  Array.isArray(
+                    (repoData as { relays?: string[] } | null)?.relays
+                  )
+                    ? (repoData as { relays: string[] }).relays
+                    : undefined
+                }
+              />
               <RepoZappers
                 ownerHex={zapRecipientPubkey}
                 entity={resolvedParams.entity}

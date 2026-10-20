@@ -1326,13 +1326,13 @@ export default function HelpPage() {
                   same as Watch.
                 </li>
                 <li>
-                  <strong>Zaps</strong> — tip the repo. The button and the list
-                  of who tipped are on the page whether you are signed in or
-                  not. Sending one needs a sign-in, because the tip is signed
-                  with your Nostr key. The total includes Nostr receipts from
-                  gittr and from other apps, plus this device&apos;s own ledger.
-                  A person&apos;s profile lists zaps they received and zaps they
-                  sent.
+                  <strong>Zaps</strong> — tip the repo. The button is on the page
+                  whether you are signed in or not. Without a sign-in you still
+                  get a Lightning invoice and can pay from any wallet. If you
+                  are signed in, gittr also signs a Nostr zap so other apps can
+                  see who tipped. The list under the button includes those
+                  public receipts. A person&apos;s profile lists zaps they
+                  received and zaps they sent.
                 </li>
               </ul>
             </HelpTopic>
@@ -2729,12 +2729,13 @@ export default function HelpPage() {
                         Repo zap — Owner only
                       </td>
                       <td className="p-3 align-top">
-                        NIP-07 extension signs the zap request when the
-                        Lightning address can publish a Nostr receipt. Any
-                        Lightning wallet pays the invoice. Your{" "}
-                        <strong>LNbits / NWC send</strong> in Settings → Account
-                        is only for polling when gittr issued the invoice
-                        through the fallback server path.
+                        No sign-in is required to pay. gittr shows a Lightning
+                        invoice either way. When a Nostr signer is available and
+                        the Lightning address can publish a receipt, gittr signs
+                        the zap request first so other apps can see it. Any
+                        Lightning wallet pays the invoice.{" "}
+                        <strong>NWC send</strong> in Settings → Account is
+                        optional: it adds Pay with NWC on this browser.
                       </td>
                       <td className="p-3 align-top">
                         <strong>Receive address priority:</strong> (1) owner
@@ -2863,14 +2864,15 @@ export default function HelpPage() {
 
             <HelpTopic id="bounties" title={<>Bounties</>}>
               <p>
-                Anyone can fund issues with bounties to incentivize
-                contributions. Put sats on a new feature, or leave a bounty
-                sitting on an issue for someone who discloses a security problem
-                — there is no separate “CVE queue”; it is a normal issue with a
-                bounty. Bounties use LNURL-withdraw links created from the
-                bounty creator's LNbits wallet. The funds are reserved in the
-                creator's wallet and will be deducted when the PR author claims
-                the withdraw link.
+                A bounty is not a visitor tip. The person who adds it must be
+                signed in, because the sats are reserved in their own LNbits
+                wallet (Settings → Account). Put sats on a new feature, or leave
+                a bounty sitting on an issue for someone who discloses a
+                security problem — there is no separate “CVE queue”; it is a
+                normal issue with a bounty. Bounties use LNURL-withdraw links
+                created from the bounty creator&apos;s LNbits wallet. The funds
+                are reserved in the creator&apos;s wallet and will be deducted
+                when the PR author claims the withdraw link.
               </p>
 
               <HelpSubTopic title={<>Requirements</>}>

@@ -630,8 +630,10 @@ export default function AccountSettingsPage() {
         <section>
           <h2 className="text-xl font-bold mb-4">Payments - Receiving</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Configure how you receive payments. These will be used when someone
-            zaps your repository or sends you a bounty payment.
+            People can tip your repository without an account on gittr. They
+            pay the Lightning address on your public profile (Settings →
+            Profile). The fields below stay on this browser and are used when
+            you are the owner and that profile has no address yet.
           </p>
           <div className="space-y-4">
             <InputField
@@ -712,8 +714,9 @@ export default function AccountSettingsPage() {
         <section>
           <h2 className="text-xl font-bold mb-4">Payments - Sending</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Configure how you send payments when you zap repositories or
-            contributors.
+            Optional. A tip already works from any Lightning wallet, with or
+            without an account. A send connection here only adds Pay with NWC
+            on this browser.
           </p>
           <div className="space-y-4">
             <InputField
@@ -725,7 +728,7 @@ export default function AccountSettingsPage() {
               isValid={validation.nwcSend}
               showError={showValidation}
               onValidateBlur={() => showValidation && validateAll()}
-              helpText="Required for sending zaps. Used for single-recipient payments. Note: Some wallets (like minibits.cash) may not support balance queries but will still work for payments."
+              helpText="Optional. Adds Pay with NWC on this browser. Scanning the QR code works without it. Some wallets (like minibits.cash) may not support balance queries but will still work for payments."
             />
             {/* Connection status display */}
             {nwcBalance && (
