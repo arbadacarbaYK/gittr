@@ -141,7 +141,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `extension`: File extension (without dot, e.g., "js")
   - `name`: Filename
   - `description`: Description
-  - `runtime`: Runtime environment (e.g., "node v18.15.0")
+  - `runtime`: Runtime environment (e.g., "node v22.23.4")
   - `license[]`: License(s) (SPDX identifiers, can be multiple)
   - `dep[]`: Dependencies (can be multiple)
   - `repo`: Repository reference (URL or NIP-34 format: "30617:<pubkey>:<d tag>")

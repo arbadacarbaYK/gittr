@@ -262,7 +262,7 @@ export interface CodeSnippetEvent {
   extension?: string; // From 'extension' tag (without dot, e.g., "js", "py")
   name?: string; // From 'name' tag (commonly a filename, e.g., "hello-world.js")
   description?: string; // From 'description' tag
-  runtime?: string; // From 'runtime' tag (e.g., "node v18.15.0", "python 3.11")
+  runtime?: string; // From 'runtime' tag (e.g., "node v22.23.4", "python 3.11")
   license?: string[]; // From 'license' tags (SPDX identifiers, can be multiple)
   dependencies?: string[]; // From 'dep' tags (can be repeated)
   repo?: string; // From 'repo' tag (URL or NIP-34 format: "30617:<pubkey>:<d tag>")
