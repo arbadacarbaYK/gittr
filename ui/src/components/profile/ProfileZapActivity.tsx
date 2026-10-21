@@ -127,11 +127,16 @@ export function ProfileZapActivity({
   const shown = rows.slice(0, visible);
 
   return (
-    <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <Zap className="h-5 w-5 text-amber-300" />
+    <div className="mt-6 border border-[#383B42] rounded-lg p-4 bg-[#171B21]">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <h2 className="text-lg font-semibold inline-flex items-center gap-2">
+          <Zap className="h-4 w-4 text-amber-300" />
           Zaps
+          {rows.length > 0 ? (
+            <span className="text-sm font-normal text-gray-500">
+              {rows.length}
+            </span>
+          ) : null}
         </h2>
         <div className="flex gap-2">
           <button
@@ -164,10 +169,8 @@ export function ProfileZapActivity({
           </button>
         </div>
       </div>
-      <p className="text-sm text-gray-400 mb-4">
-        Tips this profile got, and tips they sent, from gittr and from other
-        Nostr apps. A repo tip shows up here when the receipt points at that
-        repository.
+      <p className="text-xs text-gray-400 mb-3">
+        Tips this profile received and sent, on gittr and other Nostr apps.
       </p>
       {!ready && rows.length === 0 ? (
         <p className="text-sm text-gray-500">Looking for zaps…</p>
@@ -178,7 +181,10 @@ export function ProfileZapActivity({
             : "No zaps received by this profile on these relays."}
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul
+          className="max-h-36 space-y-1.5 overflow-y-auto overscroll-contain pr-1"
+          aria-label={direction === "sent" ? "Zaps sent" : "Zaps received"}
+        >
           {shown.map((row) => {
             const otherRaw = direction === "sent" ? row.recipient : row.sender;
             const other = otherRaw ? normalizeZapPubkey(otherRaw) : "";
@@ -187,48 +193,52 @@ export function ProfileZapActivity({
               (other ? `${other.slice(0, 8)}…` : "Someone");
             const contextHref = zapRecordHref(row);
             const contextLabel = zapRecordContextLabel(row);
+            const showComment =
+              !!row.comment &&
+              (!contextLabel ||
+                (row.comment.trim() !== `Zap for ${contextLabel}` &&
+                  !row.comment.trim().toLowerCase().startsWith("zap for ")));
             return (
               <li
                 key={row.id}
-                className="border border-[#383B42] rounded px-3 py-2"
+                className="border border-[#383B42] rounded px-3 py-1.5"
               >
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
                   <span className="font-semibold text-amber-200">
                     {row.amount.toLocaleString()} sats
                   </span>
-                  <span className="text-gray-500 text-sm">
+                  <span className="text-gray-500">
                     {direction === "sent" ? "to" : "from"}
                   </span>
                   {other ? (
                     <Link
                       href={personHref(other)}
-                      className="text-sm text-purple-300 hover:underline"
+                      className="max-w-[14rem] truncate text-purple-300 hover:underline"
                     >
                       {name}
                     </Link>
                   ) : (
-                    <span className="text-sm text-gray-400">{name}</span>
+                    <span className="max-w-[14rem] truncate text-gray-400">
+                      {name}
+                    </span>
                   )}
                   {contextHref && contextLabel ? (
                     <Link
                       href={contextHref}
-                      className="text-sm text-purple-300 hover:underline"
+                      className="max-w-[16rem] truncate text-purple-300 hover:underline"
                     >
                       {contextLabel}
                     </Link>
                   ) : null}
+                  <span className="text-xs text-gray-500 sm:ml-auto">
+                    {formatDateTime24h(row.createdAt)}
+                  </span>
                 </div>
-                {row.comment && !contextLabel ? (
-                  <p className="text-sm text-gray-300 mt-1">{row.comment}</p>
-                ) : row.comment &&
-                  contextLabel &&
-                  row.comment.trim() !== `Zap for ${contextLabel}` &&
-                  !row.comment.trim().toLowerCase().startsWith("zap for ") ? (
-                  <p className="text-sm text-gray-300 mt-1">{row.comment}</p>
+                {showComment ? (
+                  <p className="mt-0.5 truncate text-xs text-gray-400">
+                    {row.comment}
+                  </p>
                 ) : null}
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatDateTime24h(row.createdAt)}
-                </p>
               </li>
             );
           })}

@@ -1332,7 +1332,7 @@ export default function HelpPage() {
                   are signed in, gittr also signs a Nostr zap so other apps can
                   see who tipped. The list under the button includes those
                   public receipts. A person&apos;s profile lists zaps they
-                  received and zaps they sent.
+                  received and zaps they sent in a short scrolling list.
                 </li>
               </ul>
             </HelpTopic>
