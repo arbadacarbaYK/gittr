@@ -6,7 +6,7 @@ Run the Next.js app on your machine. Git over SSH optional.
 
 ## Prerequisites
 
-Node 20.9+, yarn (preferred), git. Optional: Go 1.25+ for the bridge (see `ui/gitnostr/go.mod`).
+Node 22.23.4, 24.22.1, or 26.12.1, or a newer build on those lines. Node 20 has no fix for the 21 Oct 2026 security release. yarn (preferred), git. Optional: Go 1.26.10 or 1.27.3 or newer to build the bridge. Go 1.25 still compiles `ui/gitnostr`, but it does not include the eMudhra certificate block.
 
 ## Steps
 
