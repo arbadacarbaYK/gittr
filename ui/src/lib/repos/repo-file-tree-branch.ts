@@ -65,6 +65,161 @@ export function writeUserPickedRepoBranch(
   }
 }
 
+/**
+ * Shallow `history.replaceState` updates the address bar without telling Next.
+ * `useSearchParams()` stays on the old branch (often master). Tabs listen for
+ * this and read `window.location.search` instead.
+ */
+export const REPO_QUERY_EVENT = "gittr:repo-query";
+
+export function publishRepoQuery(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(REPO_QUERY_EVENT));
+}
+
+export function readLocationBranch(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const branch = new URLSearchParams(window.location.search)
+      .get("branch")
+      ?.trim();
+    return branch || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Address-bar `?branch=` wins over Next's search params when they disagree.
+ * Pass `locationSearch: null` during SSR / first paint so hydration matches.
+ */
+export function preferLiveBranchSearchParams<
+  T extends { get(name: string): string | null }
+>(
+  nextParams: T | null | undefined,
+  locationSearch: string | null | undefined
+): T | URLSearchParams {
+  if (locationSearch == null) return nextParams ?? new URLSearchParams();
+  const raw = locationSearch.startsWith("?")
+    ? locationSearch.slice(1)
+    : locationSearch;
+  const live = new URLSearchParams(raw);
+  if (live.get("branch")?.trim()) return live;
+  return nextParams ?? live;
+}
+
+/** Merge query keys onto a repo href that may already contain `?branch=`. */
+export function joinRepoHref(
+  base: string,
+  updates: Record<string, string | null | undefined>
+): string {
+  const hashIdx = base.indexOf("#");
+  const hash = hashIdx === -1 ? "" : base.slice(hashIdx);
+  const withoutHash = hashIdx === -1 ? base : base.slice(0, hashIdx);
+  const qIdx = withoutHash.indexOf("?");
+  const path = qIdx === -1 ? withoutHash : withoutHash.slice(0, qIdx);
+  const params = new URLSearchParams(
+    qIdx === -1 ? "" : withoutHash.slice(qIdx + 1)
+  );
+  for (const [key, value] of Object.entries(updates)) {
+    const v = (value || "").trim();
+    if (v) params.set(key, v);
+    else params.delete(key);
+  }
+  const q = params.toString();
+  return `${path}${q ? `?${q}` : ""}${hash}`;
+}
+
+const MAIN_MASTER = new Set(["main", "master"]);
+
+/** Commit log tries. A named branch must not silently fall through to master. */
+export function branchesToTryForCommits(
+  requested: string,
+  repo?: { defaultBranch?: string; branches?: string[] } | null
+): string[] {
+  const req = (requested || "").trim() || repoDefaultBranch(repo);
+  const out = [req];
+  // main and master are the same tip on many mirrors. A feature branch is not.
+  if (req === "main") out.push("master");
+  else if (req === "master") out.push("main");
+  return out.filter((b, i, arr) => !!b && arr.indexOf(b) === i);
+}
+
+/** Whether a stored commit row belongs on the branch the viewer asked for. */
+export function commitBelongsToBranch(
+  commitBranch: string | undefined | null,
+  requested: string
+): boolean {
+  const c = (commitBranch || "").trim();
+  if (!c) return false;
+  const req = (requested || "").trim();
+  if (req && c === req) return true;
+  if (MAIN_MASTER.has(req) && MAIN_MASTER.has(c)) return true;
+  return false;
+}
+
+/**
+ * main↔master only. Any other name in the address bar is the branch the
+ * viewer picked — do not swap it for the repo default just because this
+ * chrome's branch list has not caught up yet.
+ */
+function aliasDefaultTip(
+  branch: string,
+  repo?: { defaultBranch?: string; branches?: string[] } | null
+): string {
+  const name = (branch || "").trim();
+  if (!name) return repoDefaultBranch(repo);
+  const branches = (repo?.branches || [])
+    .map((b) => (b || "").trim())
+    .filter(Boolean);
+  if (!branches.length || branches.includes(name)) return name;
+  if (name === "main" && branches.includes("master")) return "master";
+  if (name === "master" && branches.includes("main")) return "main";
+  return name;
+}
+
+/**
+ * Branch to keep in the address bar when `repo.branches` refreshes.
+ * main↔master still aliases. Any other name stays, even if this list is
+ * only the default — that refresh was putting master back after a pick.
+ */
+export function preserveAddressBarBranch(
+  branch: string,
+  repo?: { defaultBranch?: string; branches?: string[] } | null
+): string {
+  return aliasDefaultTip(branch, repo);
+}
+
+/**
+ * Branch for Issues, PRs, Commits, and the other tabs.
+ *
+ * Next's useSearchParams() stays on the old tip until a full reload, because
+ * the Code tab updates the address bar with history.replaceState. The address
+ * bar (then the dropdown pick) is the branch to carry across.
+ */
+export function resolveTabBranch(
+  nextParams: { get(name: string): string | null } | null | undefined,
+  repo?: { defaultBranch?: string; branches?: string[] } | null,
+  route?: { entity: string; repo: string } | null,
+  locationSearch?: string | null
+): string {
+  const fromNext = (nextParams?.get("branch") || "").trim();
+  let live = "";
+  if (locationSearch != null) {
+    const raw = locationSearch.startsWith("?")
+      ? locationSearch.slice(1)
+      : locationSearch;
+    live = new URLSearchParams(raw).get("branch")?.trim() || "";
+  }
+  const picked = route
+    ? (readUserPickedRepoBranch(route.entity, route.repo) || "").trim()
+    : "";
+  if (live) return aliasDefaultTip(live, repo);
+  // Dropdown moved, address bar write has not landed, Next still says master.
+  if (picked && picked !== fromNext) return aliasDefaultTip(picked, repo);
+  return resolveSharedRepoBranch(nextParams, repo, route);
+}
+
 /** Same branch on every repo tab: URL ?branch= if set, else stored repo default.
  * When the URL tip is missing on the mirror (e.g. ?branch=main but only master),
  * fall back to the sibling default or repo default — never keep a dead tip.

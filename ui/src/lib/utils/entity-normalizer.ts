@@ -63,6 +63,17 @@ export function getRepoStorageKey(
   return `${prefix}__${normalizedEntity}__${repo}`;
 }
 
+/** Per-branch commit cache so opening `dev` does not paint master's history. */
+export function getRepoCommitsStorageKey(
+  entity: string,
+  repo: string,
+  branch: string
+): string {
+  const base = getRepoStorageKey("gittr_commits", entity, repo);
+  const b = (branch || "").trim();
+  return b ? `${base}__${encodeURIComponent(b)}` : base;
+}
+
 /**
  * Fuzzy match for repo slug across URL segments, GitHub import names, and bridge:
  * case-insensitive; hyphens and underscores equivalent (e.g. `foo-bar` vs `foo_bar`).

@@ -10,6 +10,16 @@ describe("resolveRepoMarkdownHref", () => {
     entity: "npub1test",
   };
 
+  it("keeps the picked branch when opening a file from the readme", () => {
+    const href = resolveRepoMarkdownHref("LICENSE", {
+      ...ctx,
+      getRepoLink: () => "/npub1test/officecli?branch=dev",
+    });
+    expect(href).toContain("branch=dev");
+    expect(href).toContain("file=LICENSE");
+    expect(href).not.toContain("?branch=dev?");
+  });
+
   it("treats LICENSE as a file not a folder", () => {
     const href = resolveRepoMarkdownHref("LICENSE", ctx);
     expect(href).toContain("file=");

@@ -77,6 +77,7 @@ export default function NewPullRequestPage({
   // URL params for compare page integration
   const baseBranchParam = searchParams?.get("base") || null;
   const compareBranchParam = searchParams?.get("compare") || null;
+  const viewedBranch = searchParams?.get("branch")?.trim() || "";
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -113,11 +114,17 @@ export default function NewPullRequestPage({
           resolvedParams.entity,
           resolvedParams.repo
         );
+        const base = baseBranchParam || repo?.defaultBranch || "main";
         if (repo?.branches && Array.isArray(repo.branches)) {
           setBranches(repo.branches);
           if (!baseBranchParam) {
-            setBaseBranch(repo.defaultBranch || "main");
+            setBaseBranch(base);
           }
+        }
+        // The branch you were reading becomes the PR head. The list of PRs
+        // stays the whole project. Base stays the repo default.
+        if (!compareBranchParam && viewedBranch && viewedBranch !== base) {
+          setHeadBranch(viewedBranch);
         }
 
         // Get repo owner pubkey for display
@@ -329,6 +336,7 @@ export default function NewPullRequestPage({
     isLoggedIn,
     baseBranchParam,
     compareBranchParam,
+    viewedBranch,
     title,
   ]);
 

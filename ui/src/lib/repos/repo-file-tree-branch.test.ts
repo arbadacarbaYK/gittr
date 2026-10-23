@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  branchesToTryForCommits,
   branchesToTryForContent,
+  commitBelongsToBranch,
   fetchedTreeBranchesCompatible,
+  joinRepoHref,
   nestedFilePathCount,
+  preferLiveBranchSearchParams,
+  preserveAddressBarBranch,
   resolveSharedRepoBranch,
+  resolveTabBranch,
   shouldApplyFetchedFileTree,
   shouldWipeCachedFileTreeOnBranchChange,
 } from "./repo-file-tree-branch";
@@ -52,6 +58,118 @@ describe("resolveSharedRepoBranch", () => {
         branches: [],
       })
     ).toBe("main");
+  });
+});
+
+describe("preserveAddressBarBranch", () => {
+  it("keeps a named branch when the refreshed list is only the default", () => {
+    expect(
+      preserveAddressBarBranch("fix/readme-relative-images", {
+        defaultBranch: "main",
+        branches: ["main"],
+      })
+    ).toBe("fix/readme-relative-images");
+  });
+
+  it("maps main to master when the list only has master", () => {
+    expect(
+      preserveAddressBarBranch("main", {
+        defaultBranch: "master",
+        branches: ["master"],
+      })
+    ).toBe("master");
+  });
+});
+
+describe("resolveTabBranch", () => {
+  const params = (branch: string | null) => ({
+    get: (name: string) => (name === "branch" ? branch : null),
+  });
+
+  it("follows the address bar when Next is still on master", () => {
+    expect(
+      resolveTabBranch(
+        params("master"),
+        { defaultBranch: "master", branches: ["master"] },
+        { entity: "npub1", repo: "demo" },
+        "?branch=dev"
+      )
+    ).toBe("dev");
+  });
+
+  it("still maps main onto master when that is the only stored tip", () => {
+    expect(
+      resolveTabBranch(
+        params("main"),
+        { defaultBranch: "master", branches: ["master"] },
+        null,
+        "?branch=main"
+      )
+    ).toBe("master");
+  });
+});
+
+describe("preferLiveBranchSearchParams", () => {
+  const next = {
+    get: (name: string) => (name === "branch" ? "master" : null),
+  };
+
+  it("keeps Next params until the address bar is readable", () => {
+    expect(preferLiveBranchSearchParams(next, null).get("branch")).toBe(
+      "master"
+    );
+  });
+
+  it("uses the address-bar branch when Next is still on master", () => {
+    expect(
+      preferLiveBranchSearchParams(next, "?branch=dev&file=README.md").get(
+        "branch"
+      )
+    ).toBe("dev");
+    expect(
+      preferLiveBranchSearchParams(next, "?branch=dev&file=README.md").get(
+        "file"
+      )
+    ).toBe("README.md");
+  });
+
+  it("keeps Next when the address bar has no branch", () => {
+    expect(
+      preferLiveBranchSearchParams(next, "?file=README.md").get("branch")
+    ).toBe("master");
+  });
+});
+
+describe("joinRepoHref", () => {
+  it("keeps an existing branch when adding a file", () => {
+    expect(joinRepoHref("/npub1a/repo?branch=dev", { file: "README.md" })).toBe(
+      "/npub1a/repo?branch=dev&file=README.md"
+    );
+  });
+});
+
+describe("branchesToTryForCommits", () => {
+  it("does not fall through to master for a named branch", () => {
+    expect(branchesToTryForCommits("dev", { defaultBranch: "master" })).toEqual(
+      ["dev"]
+    );
+  });
+
+  it("still tries the main/master alias", () => {
+    expect(
+      branchesToTryForCommits("main", { defaultBranch: "master" })
+    ).toEqual(["main", "master"]);
+  });
+});
+
+describe("commitBelongsToBranch", () => {
+  it("rejects master commits when the viewer asked for a feature branch", () => {
+    expect(commitBelongsToBranch("master", "dev")).toBe(false);
+    expect(commitBelongsToBranch("dev", "dev")).toBe(true);
+  });
+
+  it("treats main and master as the same default tip", () => {
+    expect(commitBelongsToBranch("master", "main")).toBe(true);
   });
 });
 

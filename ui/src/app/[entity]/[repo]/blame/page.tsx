@@ -4,9 +4,13 @@ import React from "react";
 import { use, useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { resolveSharedRepoBranch } from "@/lib/repos/repo-file-tree-branch";
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { formatDate24h } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoCommitsStorageKey,
+  getRepoStorageKey,
+} from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { File as FileIcon, GitCommit } from "lucide-react";
@@ -54,6 +58,10 @@ export default function BlamePage({
           resolvedParams.entity,
           resolvedParams.repo
         );
+        const branch = resolveSharedRepoBranch(searchParams, repo, {
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+        });
 
         let content =
           (await resolveLocalOverrideBody(
@@ -77,7 +85,6 @@ export default function BlamePage({
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 const [, owner, repoName] = githubMatch;
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                const branch = repo.defaultBranch || "main";
                 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-assignment
                 const response = await fetch(
                   `https://api.github.com/repos/${String(owner)}/${String(
@@ -119,13 +126,22 @@ export default function BlamePage({
         setFileContent(content || "");
 
         // Load commits that touched this file
-        const commitsKey = getRepoStorageKey(
+        const commitsKey = getRepoCommitsStorageKey(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          branch
+        );
+        const legacyCommitsKey = getRepoStorageKey(
           "gittr_commits",
           resolvedParams.entity,
           resolvedParams.repo
         );
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
+        const allCommits = JSON.parse(
+          localStorage.getItem(commitsKey) ||
+            localStorage.getItem(legacyCommitsKey) ||
+            "[]"
+        );
 
         // Find commits that modified this file
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any
@@ -202,7 +218,7 @@ export default function BlamePage({
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     void loadFileContent();
-  }, [filePath, resolvedParams.entity, resolvedParams.repo]);
+  }, [filePath, resolvedParams.entity, resolvedParams.repo, searchParams]);
 
   if (loading) {
     return (

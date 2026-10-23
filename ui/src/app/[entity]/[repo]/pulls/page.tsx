@@ -5,9 +5,9 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
-import { NostrPersonAvatar } from "@/components/ui/nostr-person-avatar";
 import { Button } from "@/components/ui/button";
 import { IssuePrListOrigin } from "@/components/ui/forge-origin-notice";
+import { NostrPersonAvatar } from "@/components/ui/nostr-person-avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_PULL_REQUEST,
@@ -63,7 +63,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 interface IPullsData {
@@ -108,6 +108,11 @@ export default function RepoPullsPage({
   >("idle");
   const { subscribe, defaultRelays } = useNostrContext();
   const pathname = usePathname() || "";
+  const searchParams = useSearchParams();
+  const viewedBranch = searchParams?.get("branch")?.trim() || "";
+  const newPullHref = viewedBranch
+    ? `${pathname}/new?branch=${encodeURIComponent(viewedBranch)}`
+    : `${pathname}/new`;
 
   useEffect(() => {
     setMounted(true);
@@ -884,7 +889,7 @@ export default function RepoPullsPage({
             type="button"
             className="whitespace-nowrap h-8"
           >
-            <Link className="text-white w-full" href={`${pathname}/new`}>
+            <Link className="text-white w-full" href={newPullHref}>
               New pull request
             </Link>
           </Button>

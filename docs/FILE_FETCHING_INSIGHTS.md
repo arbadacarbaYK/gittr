@@ -100,7 +100,7 @@ Clone / import / file-fetch APIs reject private, loopback, link-local, and metad
 
 ## Loading one file or folder README
 
-Same winner as the tree. Branch comes from `?branch=`, then `filesBranch` / `resolvedBranch` from multifetch.
+Same winner as the tree. Branch comes from `?branch=`, then `filesBranch` / `resolvedBranch` from multifetch. Code, Commits, Blame, and the other repo tabs share that address-bar branch. Picking a branch on Code writes `?branch=` and the Commits tab follows it. A named branch is not replaced with `master` when that tip has its own history, and a later refresh of the branch list must not put the default back in the address bar. `main` and `master` still count as the same default tip.
 
 1. Local overrides / IndexedDB (`resolveLocalOverrideBody`) — unpushed Upload drafts win until Push.
 2. Multifetch **`successfulSources`** via `/api/git/file-content`.

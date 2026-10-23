@@ -154,6 +154,8 @@ import {
   hydrateRepoOverrideBlobs,
   idbDeleteOverride,
 } from "@/lib/repos/overrides-idb";
+import { persistForgeSourceCleared } from "@/lib/repos/persist-forge-source-choice";
+import { readProfileOpenHandoff } from "@/lib/repos/profile-open-handoff";
 import {
   descriptionAfterForgeRefetch,
   isPlaceholderRepositoryDescription,
@@ -162,12 +164,18 @@ import {
   sidebarAboutText,
 } from "@/lib/repos/repo-about-text";
 import {
+  REPO_QUERY_EVENT,
   type RepoBranchRoute,
   branchesToTryForContent,
   fetchedTreeBranchesCompatible,
   isBotFeatureBranch,
+  joinRepoHref,
   nestedFilePathCount,
+  preserveAddressBarBranch,
+  publishRepoQuery,
+  readLocationBranch,
   repoDefaultBranch,
+  repoNavHref,
   resolveActiveRepoBranch,
   resolveContentBranch,
   shouldSyncBranchFromFetch,
@@ -185,15 +193,12 @@ import {
   queryNostrForGithubSourceUrl,
   resolveRepoActivityDisplayMs,
 } from "@/lib/repos/repo-github-hub";
-import { persistForgeSourceCleared } from "@/lib/repos/persist-forge-source-choice";
-import { announcementClearsForgeSource } from "@/lib/repos/source-cleared-tag";
 import {
   cloneSourceUrlIsUsable,
   firstSuccessfulSourceKey,
   folderReadmeLoadPath,
 } from "@/lib/repos/repo-page-chrome";
 import { sanitizeRepoNavPath } from "@/lib/repos/repo-path-sanity";
-import { readProfileOpenHandoff } from "@/lib/repos/profile-open-handoff";
 import { resolveLiveRepoAnnouncement } from "@/lib/repos/resolve-live-repo-announcement";
 import { resolveLocalOverrideBody } from "@/lib/repos/resolve-local-override";
 import { selectDisplayRepoFileTree } from "@/lib/repos/select-display-file-tree";
@@ -203,6 +208,7 @@ import {
   sidebarClonesFromAnnouncement,
   sidebarEventCloneUrls,
 } from "@/lib/repos/sidebar-announcement-clones";
+import { announcementClearsForgeSource } from "@/lib/repos/source-cleared-tag";
 import {
   type RepoFileEntry,
   type RepoLink,
@@ -247,8 +253,8 @@ import { markdownRehypePlugins } from "@/lib/security/markdown-rehype-plugins";
 import { markdownRemarkPlugins } from "@/lib/security/markdown-remark-plugins";
 import { useRepoUiMode } from "@/lib/ui/repo-ui-variant-context";
 import { cn } from "@/lib/utils";
-import { isRepoCodePath } from "@/lib/utils/app-navigate";
 import { pushAppUrl, replaceAppUrl } from "@/lib/utils/app-history";
+import { isRepoCodePath } from "@/lib/utils/app-navigate";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   mergeOwnerPubkeyIntoContributors,
@@ -2907,7 +2913,9 @@ export function RepoCodePage() {
     ownerPubkeyForLink,
   ]);
 
-  // Helper function to generate href for repo links (avoids duplication)
+  // Helper function to generate href for repo links (avoids duplication).
+  // Settings stays query-less: ?branch= on that tab left Code mounted while
+  // the address bar said settings. Every other link carries the picked branch.
   const getRepoLink = useCallback(
     (subpath = "", includeSearchParams = false) => {
       const basePath =
@@ -2918,15 +2926,20 @@ export function RepoCodePage() {
           : `/${resolvedParams.entity}/${resolvedParams.repo}${
               subpath ? `/${subpath}` : ""
             }`;
-      return includeSearchParams && searchParams?.toString()
-        ? `${basePath}?${searchParams.toString()}`
-        : basePath;
+      if (subpath === "settings") return basePath;
+      const branch = (selectedBranch || "").trim();
+      return repoNavHref(
+        basePath,
+        branch,
+        includeSearchParams ? searchParams : null
+      );
     },
     [
       ownerPubkeyForLink,
       resolvedParams.entity,
       resolvedParams.repo,
       searchParams,
+      selectedBranch,
     ]
   );
 
@@ -2974,10 +2987,42 @@ export function RepoCodePage() {
   // Update URL with current state (branch, file, path)
   // Use ref to track if we're updating to prevent loops
   const isUpdatingURLRef = useRef(false);
+  const pendingUrlUpdatesRef = useRef<{
+    branch?: string;
+    file?: string | null;
+    path?: string;
+  } | null>(null);
+  const updateURLRef = useRef<
+    (updates: { branch?: string; file?: string | null; path?: string }) => void
+  >(() => undefined);
   const updateURL = useCallback(
     (updates: { branch?: string; file?: string | null; path?: string }) => {
-      if (isUpdatingURLRef.current) return; // Prevent recursive updates
+      if (isUpdatingURLRef.current) {
+        // A branch click during the hydrate write used to be dropped, so the
+        // address bar stayed on master while the dropdown moved on.
+        pendingUrlUpdatesRef.current = {
+          ...(pendingUrlUpdatesRef.current || {}),
+          ...updates,
+        };
+        return;
+      }
       isUpdatingURLRef.current = true;
+      const merged = {
+        ...(pendingUrlUpdatesRef.current || {}),
+        ...updates,
+      };
+      pendingUrlUpdatesRef.current = null;
+      // A click sets selectedBranchRef before this runs. A later fetch or
+      // repo refresh must not queue the default over that pick.
+      if (
+        merged.branch &&
+        userPickedBranchRef.current &&
+        !updatingFromURLRef.current &&
+        selectedBranchRef.current.trim() &&
+        merged.branch !== selectedBranchRef.current.trim()
+      ) {
+        merged.branch = selectedBranchRef.current.trim();
+      }
 
       // Get current search params from window location to avoid dependency on searchParams
       const currentParams =
@@ -2985,16 +3030,16 @@ export function RepoCodePage() {
           ? new URLSearchParams(window.location.search)
           : new URLSearchParams();
 
-      if (updates.branch !== undefined) {
-        if (updates.branch) currentParams.set("branch", updates.branch);
+      if (merged.branch !== undefined) {
+        if (merged.branch) currentParams.set("branch", merged.branch);
         else currentParams.delete("branch");
       }
-      if (updates.file !== undefined) {
-        if (updates.file) currentParams.set("file", updates.file);
+      if (merged.file !== undefined) {
+        if (merged.file) currentParams.set("file", merged.file);
         else currentParams.delete("file");
       }
-      if (updates.path !== undefined) {
-        if (updates.path) currentParams.set("path", updates.path);
+      if (merged.path !== undefined) {
+        if (merged.path) currentParams.set("path", merged.path);
         else currentParams.delete("path");
       }
       const query = currentParams.toString();
@@ -3003,9 +3048,20 @@ export function RepoCodePage() {
         typeof window !== "undefined"
           ? window.location.hash || initialHash || initialHashRef.current
           : "";
-      const newUrl = `/${resolvedParams.entity}/${resolvedParams.repo}${
-        query ? `?${query}` : ""
-      }${currentHash}`;
+      // Keep the path the browser is actually on. Rebuilding
+      // /{entity}/{repo} failed the same-path check (and left ?branch=master)
+      // when the address bar used a different spelling of this repo.
+      const basePath =
+        typeof window !== "undefined"
+          ? window.location.pathname.replace(/\/+$/, "") || "/"
+          : `/${resolvedParams.entity}/${resolvedParams.repo}`;
+      const newUrl = `${basePath}${query ? `?${query}` : ""}${currentHash}`;
+      const finish = () => {
+        isUpdatingURLRef.current = false;
+        const pending = pendingUrlUpdatesRef.current;
+        pendingUrlUpdatesRef.current = null;
+        if (pending) updateURLRef.current(pending);
+      };
       // Keep repo navigation state updates client-only.
       // Using router.replace here can re-trigger route resolution and metadata fetches,
       // which causes request storms and visible UI flicker.
@@ -3014,22 +3070,22 @@ export function RepoCodePage() {
       if (typeof window !== "undefined") {
         if (!replaceAppUrl(newUrl)) {
           window.setTimeout(() => {
-            replaceAppUrl(newUrl);
-            isUpdatingURLRef.current = false;
+            if (replaceAppUrl(newUrl)) publishRepoQuery();
+            finish();
           }, 250);
           return;
         }
+        publishRepoQuery();
       } else {
         router.replace(newUrl, { scroll: false });
       }
 
       // Reset flag after a short delay to allow URL to update
-      setTimeout(() => {
-        isUpdatingURLRef.current = false;
-      }, 100);
+      setTimeout(finish, 100);
     },
     [resolvedParams.entity, resolvedParams.repo, router]
   );
+  updateURLRef.current = updateURL;
 
   const navigateRepoQuery = useCallback((href: string) => {
     try {
@@ -3082,6 +3138,8 @@ export function RepoCodePage() {
       const nextHref = `${u.pathname}${u.search}${u.hash}`;
       if (!pushAppUrl(nextHref)) {
         window.location.assign(nextHref);
+      } else {
+        publishRepoQuery();
       }
       window.setTimeout(() => {
         updatingFromURLRef.current = false;
@@ -5401,11 +5459,11 @@ export function RepoCodePage() {
               }
             : {}),
           sourceUrl: hints.forgeSourceCleared
-                  ? undefined
-                  : hints.sourceUrl || base.sourceUrl,
-                forgeSourceClearedAt: hints.forgeSourceCleared
-                  ? Math.floor(Date.now() / 1000)
-                  : base.forgeSourceClearedAt,
+            ? undefined
+            : hints.sourceUrl || base.sourceUrl,
+          forgeSourceClearedAt: hints.forgeSourceCleared
+            ? Math.floor(Date.now() / 1000)
+            : base.forgeSourceClearedAt,
           lastNostrEventId: nextId,
           syncedFromNostr: true,
           ownerPubkey: ownerPk,
@@ -6351,75 +6409,75 @@ export function RepoCodePage() {
               );
             });
         } else {
-        try {
-          const hints = await hintsPromise;
-          if (hints) {
-            if (hints.clone.length > 0) {
-              nip34AnnouncementCloneStatusRef.current = "present";
-              for (const url of hints.clone) {
-                if (
-                  url &&
-                  !url.includes("localhost") &&
-                  !url.includes("127.0.0.1") &&
-                  !initialCloneUrls.includes(url)
-                ) {
-                  initialCloneUrls.push(url);
+          try {
+            const hints = await hintsPromise;
+            if (hints) {
+              if (hints.clone.length > 0) {
+                nip34AnnouncementCloneStatusRef.current = "present";
+                for (const url of hints.clone) {
+                  if (
+                    url &&
+                    !url.includes("localhost") &&
+                    !url.includes("127.0.0.1") &&
+                    !initialCloneUrls.includes(url)
+                  ) {
+                    initialCloneUrls.push(url);
+                  }
                 }
-              }
-              console.log(
-                `✅ [File Fetch] profile-repos: ${hints.clone.length} announcement clone URL(s)`,
-                hints.clone
-              );
-            }
-            if (hints.sourceUrl) {
-              addUpstreamSourceToCloneUrls(initialCloneUrls, hints.sourceUrl);
-              applyEffectiveSourceUrl(hints.sourceUrl);
-            }
-            setRepoData((prev: any) => {
-              const base =
-                prev ||
-                ({
-                  entity: resolvedParams.entity,
-                  repo: resolvedParams.repo,
-                  name: resolvedParams.repo,
-                  readme: "",
-                  files: [],
-                  description: "",
-                  contributors: [],
-                  defaultBranch: "main",
-                  ownerPubkey,
-                } as StoredRepo);
-              const mergedClone = mergeAnnouncementClonesPreferringEvent(
-                base.clone,
-                hints.clone,
-                resolvedParams.entity,
-                resolvedParams.repo
-              );
-              return {
-                ...base,
-                clone: mergedClone,
-                announcementClone: mergeAnnouncementTagClones(
-                  base.announcementClone,
+                console.log(
+                  `✅ [File Fetch] profile-repos: ${hints.clone.length} announcement clone URL(s)`,
                   hints.clone
-                ),
-                sourceUrl: hints.forgeSourceCleared
-                  ? undefined
-                  : hints.sourceUrl || base.sourceUrl,
-                forgeSourceClearedAt: hints.forgeSourceCleared
-                  ? Math.floor(Date.now() / 1000)
-                  : base.forgeSourceClearedAt,
-                lastNostrEventId:
-                  hints.lastNostrEventId || base.lastNostrEventId,
-                syncedFromNostr: true,
-              };
-            });
+                );
+              }
+              if (hints.sourceUrl) {
+                addUpstreamSourceToCloneUrls(initialCloneUrls, hints.sourceUrl);
+                applyEffectiveSourceUrl(hints.sourceUrl);
+              }
+              setRepoData((prev: any) => {
+                const base =
+                  prev ||
+                  ({
+                    entity: resolvedParams.entity,
+                    repo: resolvedParams.repo,
+                    name: resolvedParams.repo,
+                    readme: "",
+                    files: [],
+                    description: "",
+                    contributors: [],
+                    defaultBranch: "main",
+                    ownerPubkey,
+                  } as StoredRepo);
+                const mergedClone = mergeAnnouncementClonesPreferringEvent(
+                  base.clone,
+                  hints.clone,
+                  resolvedParams.entity,
+                  resolvedParams.repo
+                );
+                return {
+                  ...base,
+                  clone: mergedClone,
+                  announcementClone: mergeAnnouncementTagClones(
+                    base.announcementClone,
+                    hints.clone
+                  ),
+                  sourceUrl: hints.forgeSourceCleared
+                    ? undefined
+                    : hints.sourceUrl || base.sourceUrl,
+                  forgeSourceClearedAt: hints.forgeSourceCleared
+                    ? Math.floor(Date.now() / 1000)
+                    : base.forgeSourceClearedAt,
+                  lastNostrEventId:
+                    hints.lastNostrEventId || base.lastNostrEventId,
+                  syncedFromNostr: true,
+                };
+              });
+            }
+          } catch (e) {
+            console.warn(
+              "⚠️ [File Fetch] profile-repos clone hydrate failed:",
+              e
+            );
           }
-        } catch (e) {
-          console.warn(
-            "⚠️ [File Fetch] profile-repos clone hydrate failed:",
-            e
-          );
-        }
         }
       }
 
@@ -13225,14 +13283,33 @@ export function RepoCodePage() {
     }
   }, []);
 
-  // Update URL params when searchParams change OR when browser navigation occurs
+  // Update URL params when searchParams change OR when browser navigation occurs.
+  // A branch pick writes the address bar with replaceState. Next's searchParams
+  // stay on the old tip, so this effect must not copy that stale branch back.
   useEffect(() => {
-    if (updatingFromURLRef.current || isUpdatingURLRef.current) return; // Skip if we're updating from URL
+    if (updatingFromURLRef.current) return;
+    const liveBranch = readLocationBranch();
     const currentParamsString = searchParams?.toString() || "";
     try {
       const params = new URLSearchParams(currentParamsString);
+      const nextBranch = params.get("branch") || null;
+      if (liveBranch && liveBranch !== nextBranch) {
+        const live = readUrlParams();
+        setUrlParams((prev) => {
+          if (
+            prev.branch === live.branch &&
+            prev.file === live.file &&
+            prev.path === live.path
+          ) {
+            return prev;
+          }
+          return live;
+        });
+        return;
+      }
+      if (isUpdatingURLRef.current) return;
       const newParams = {
-        branch: params.get("branch") || null,
+        branch: nextBranch,
         file: params.get("file") || null,
         path: params.get("path") || null,
       };
@@ -13250,7 +13327,7 @@ export function RepoCodePage() {
     } catch {
       setUrlParams({ branch: null, file: null, path: null });
     }
-  }, [searchParams]);
+  }, [searchParams, readUrlParams]);
 
   // Listen for browser navigation (back/forward buttons) and sync URL params
   useEffect(() => {
@@ -13270,8 +13347,10 @@ export function RepoCodePage() {
     };
 
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener(REPO_QUERY_EVENT, handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener(REPO_QUERY_EVENT, handlePopState);
     };
   }, [readUrlParams]);
 
@@ -13289,7 +13368,15 @@ export function RepoCodePage() {
     // Honor ?branch= deep links (same rule as resolveSharedRepoBranch). Do not
     // strip non-default branches — that forced README/file-content onto main
     // while the tree resolved feat/* via bridge HEAD.
-    if (urlBranch?.trim()) {
+    if (
+      userPickedBranchRef.current &&
+      selectedBranchRef.current.trim() &&
+      urlBranch?.trim() &&
+      urlBranch.trim() !== selectedBranchRef.current.trim()
+    ) {
+      // Dropdown is ahead of Next's search params. Snapping back to master
+      // here made the URL and the commits tab ignore the pick.
+    } else if (urlBranch?.trim()) {
       const fromUrl = urlBranch.trim();
       const allowBot =
         !isBotFeatureBranch(fromUrl) || userPickedBranchRef.current;
@@ -13312,11 +13399,12 @@ export function RepoCodePage() {
         ) {
           // keep cur
         } else if (branchList.length && !branchList.includes(fromUrl)) {
-          let tip = defaultBr;
-          if (fromUrl === "main" && branchList.includes("master"))
-            tip = "master";
-          else if (fromUrl === "master" && branchList.includes("main"))
-            tip = "main";
+          // A late branch list that is only "main" must not put that default
+          // back in the address bar after the viewer picked another branch.
+          const tip = preserveAddressBarBranch(fromUrl, {
+            defaultBranch: defaultBr,
+            branches: branchList,
+          });
           setSelectedBranch((prev) => (prev !== tip ? tip : prev));
           if (tip !== fromUrl) updateURL({ branch: tip });
         } else {
@@ -17155,12 +17243,23 @@ export function RepoCodePage() {
     setLoadingFile(false);
   }
 
-  // Sync URL when branch/path changes - only if different and not updating from URL
+  // Sync URL when branch/path changes - only if different and not updating from URL.
+  // Compare the address bar, not Next's search params: those stay on master
+  // after a shallow replace, which used to skip the write or write master back.
   useEffect(() => {
     if (updatingFromURLRef.current || isUpdatingURLRef.current) return;
-    if (selectedBranch && urlBranch !== selectedBranch) {
-      updateURL({ branch: selectedBranch });
+    if (!selectedBranch) return;
+    // State can be reset to the default while the click's ref still holds
+    // the branch the viewer chose. Writing state here put master back.
+    if (
+      userPickedBranchRef.current &&
+      selectedBranchRef.current.trim() &&
+      selectedBranch !== selectedBranchRef.current.trim()
+    ) {
+      return;
     }
+    if (readLocationBranch() === selectedBranch) return;
+    updateURL({ branch: selectedBranch });
   }, [selectedBranch, urlBranch, updateURL]);
 
   // Sync path → URL only when state is ahead (UI folder clicks that forgot updateURL).
@@ -17361,6 +17460,7 @@ export function RepoCodePage() {
     (branch: string) => {
       console.log("🔄 [Branch Switch] Switching to branch:", branch);
       userPickedBranchRef.current = true;
+      selectedBranchRef.current = branch;
       writeUserPickedRepoBranch(
         resolvedParams.entity,
         resolvedParams.repo,
@@ -17415,6 +17515,7 @@ export function RepoCodePage() {
           repos[idx].branches = Array.from(set);
           saveStoredRepos(repos);
           userPickedBranchRef.current = true;
+          selectedBranchRef.current = branchName;
           writeUserPickedRepoBranch(
             resolvedParams.entity,
             resolvedParams.repo,
@@ -18987,13 +19088,7 @@ export function RepoCodePage() {
                   </a>
                   <span className="text-gray-500">/</span>
                   <a
-                    href={
-                      getRepoLink() +
-                      (selectedBranch &&
-                      selectedBranch !== (repoData?.defaultBranch || "main")
-                        ? `?branch=${selectedBranch}`
-                        : "")
-                    }
+                    href={getRepoLink()}
                     onClick={(e) => {
                       e.preventDefault();
                       goToRepoCodeRoot();
@@ -19296,18 +19391,20 @@ export function RepoCodePage() {
                 </div>
               </div>
             </div>
-            {mounted && fetchingFilesFromGit.source && safeFiles.length === 0 && (
-              <div className="rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray bg-[#171B21] p-4">
-                <div className="flex items-center gap-3 text-sm text-gray-300">
-                  <div className="animate-spin h-4 w-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-                  <span>
-                    {fetchingFilesFromGit.source === "github" && "🐙 "}
-                    {fetchingFilesFromGit.source === "gitlab" && "🦊 "}
-                    {fetchingFilesFromGit.message}
-                  </span>
+            {mounted &&
+              fetchingFilesFromGit.source &&
+              safeFiles.length === 0 && (
+                <div className="rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray bg-[#171B21] p-4">
+                  <div className="flex items-center gap-3 text-sm text-gray-300">
+                    <div className="animate-spin h-4 w-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+                    <span>
+                      {fetchingFilesFromGit.source === "github" && "🐙 "}
+                      {fetchingFilesFromGit.source === "gitlab" && "🦊 "}
+                      {fetchingFilesFromGit.message}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             {mounted &&
               fetchStatuses.length > 0 &&
               !hashtreeOnlyEmpty &&
@@ -19942,30 +20039,30 @@ export function RepoCodePage() {
                         ) : null;
                       })()}
                     <a
-                      href={
-                        getRepoLink("commits") +
-                        `?file=${encodeURIComponent(selectedFile || "")}`
-                      }
+                      href={joinRepoHref(getRepoLink("commits"), {
+                        file: selectedFile || null,
+                      })}
                       onClick={(e) => {
                         e.preventDefault();
-                        window.location.href =
-                          getRepoLink("commits") +
-                          `?file=${encodeURIComponent(selectedFile || "")}`;
+                        window.location.href = joinRepoHref(
+                          getRepoLink("commits"),
+                          { file: selectedFile || null }
+                        );
                       }}
                       className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
                     >
                       History
                     </a>
                     <a
-                      href={
-                        getRepoLink("blame") +
-                        `?file=${encodeURIComponent(selectedFile || "")}`
-                      }
+                      href={joinRepoHref(getRepoLink("blame"), {
+                        file: selectedFile || null,
+                      })}
                       onClick={(e) => {
                         e.preventDefault();
-                        window.location.href =
-                          getRepoLink("blame") +
-                          `?file=${encodeURIComponent(selectedFile || "")}`;
+                        window.location.href = joinRepoHref(
+                          getRepoLink("blame"),
+                          { file: selectedFile || null }
+                        );
                       }}
                       className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
                     >

@@ -57,8 +57,10 @@ import {
 import { isRenderableRepoName } from "@/lib/repos/renderable-repo-name";
 import { RepoChromeStatsContext } from "@/lib/repos/repo-chrome-stats";
 import {
+  REPO_QUERY_EVENT,
+  preferLiveBranchSearchParams,
   repoNavHref,
-  resolveSharedRepoBranch,
+  resolveTabBranch,
 } from "@/lib/repos/repo-file-tree-branch";
 import {
   findStoredRepoForRoute,
@@ -229,6 +231,10 @@ export default function RepoLayoutClient({
   const [repo, setRepo] = useState<any>(null);
   const [repoLogo, setRepoLogo] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  // Bumps when the Code tab writes ?branch= via history.replaceState.
+  // Next's useSearchParams() does not see that write, so tab hrefs would
+  // stay on master until something else re-rendered the chrome.
+  const [branchQueryRev, setBranchQueryRev] = useState(0);
   // First paint must match SSR (logged-out). Pubkey from localStorage on the
   // first client render was React #418 on Watch/Fork/Star titles.
   const hydratedPubkey = mounted ? pubkey : null;
@@ -493,17 +499,33 @@ export default function RepoLayoutClient({
           : `/${resolvedParams.entity}/${resolvedParams.repo}${
               subpath ? `/${subpath}` : ""
             }`;
-      const sharedBranch = resolveSharedRepoBranch(searchParams, repo, {
-        entity: resolvedParams.entity,
-        repo: resolvedParams.repo,
-      });
-      if (preserveCodeSearchParams && isRepoCodePath() && searchParams) {
-        return repoNavHref(basePath, sharedBranch, searchParams);
+      // After mount, the address bar is the branch the viewer picked. Next's
+      // search params stay on the previous tip until a full reload.
+      const locationSearch =
+        mounted && typeof window !== "undefined"
+          ? window.location.search
+          : null;
+      const sharedBranch = resolveTabBranch(
+        searchParams,
+        repo,
+        {
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+        },
+        locationSearch
+      );
+      const sharedParams = preferLiveBranchSearchParams(
+        searchParams,
+        locationSearch
+      );
+      if (preserveCodeSearchParams && isRepoCodePath() && sharedParams) {
+        return repoNavHref(basePath, sharedBranch, sharedParams);
       }
       return repoNavHref(basePath, sharedBranch);
     },
     [
       mounted,
+      branchQueryRev,
       ownerPubkey,
       resolvedParams.entity,
       resolvedParams.repo,
@@ -535,14 +557,12 @@ export default function RepoLayoutClient({
       event?: { preventDefault: () => void } | null
     ) => {
       const href = repoTabHref(link, name);
-      if (link === "settings") {
-        event?.preventDefault();
-        window.location.assign(href);
-        return;
-      }
-      appNavigate(href, router, pathname, event);
+      // Full load so the next tab cannot keep Next's pre-reload search
+      // params (those stay on master until the document reloads).
+      event?.preventDefault();
+      window.location.assign(href);
     },
-    [pathname, repoTabHref, router]
+    [repoTabHref]
   );
 
   /** Code URL with zap modal flag (append correctly when ?branch= is already present). */
@@ -554,6 +574,16 @@ export default function RepoLayoutClient({
   // Track mount state to prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const bump = () => setBranchQueryRev((n) => n + 1);
+    window.addEventListener(REPO_QUERY_EVENT, bump);
+    window.addEventListener("popstate", bump);
+    return () => {
+      window.removeEventListener(REPO_QUERY_EVENT, bump);
+      window.removeEventListener("popstate", bump);
+    };
   }, []);
 
   // Code tab file-fetch often resolves 30617 before this layout’s relay query finishes.
@@ -2128,7 +2158,10 @@ export default function RepoLayoutClient({
                       if (item.link === "settings") {
                         // Radix closes the menu in this tick and swallows a
                         // synchronous navigation, which left you on Code.
-                        window.setTimeout(() => window.location.assign(href), 0);
+                        window.setTimeout(
+                          () => window.location.assign(href),
+                          0
+                        );
                         return;
                       }
                       appNavigate(href, router, pathname);

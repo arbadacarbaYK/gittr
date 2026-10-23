@@ -12,8 +12,10 @@ import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { fetchRepoCloneHintsFromProfile } from "@/lib/repos/hydrate-clone-from-profile-repos";
 import {
-  repoDefaultBranch,
-  resolveSharedRepoBranch,
+  branchesToTryForCommits,
+  commitBelongsToBranch,
+  repoNavHref,
+  resolveTabBranch,
 } from "@/lib/repos/repo-file-tree-branch";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
@@ -22,7 +24,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoCommitsStorageKey,
+  getRepoStorageKey,
+} from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -68,9 +73,7 @@ async function fetchGithubCommitsForBranch(
   const spec = ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
   if (!spec) return [];
 
-  const branchesToTry = [branch, "main", "master"].filter(
-    (b, i, arr) => b && arr.indexOf(b) === i
-  );
+  const branchesToTry = branchesToTryForCommits(branch, storedRepo);
   for (const tryBranch of branchesToTry) {
     const endpoint = `/repos/${spec.owner}/${
       spec.repo
@@ -225,10 +228,12 @@ export default function CommitsPage({
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const [storedRepo, setStoredRepo] = useState<StoredRepo | null>(null);
-  const branch = resolveSharedRepoBranch(searchParams, storedRepo, {
-    entity,
-    repo,
-  });
+  const branch = resolveTabBranch(
+    searchParams,
+    storedRepo,
+    { entity, repo },
+    mounted && typeof window !== "undefined" ? window.location.search : null
+  );
   const fileFilter = searchParams?.get("file") || null;
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,7 +271,7 @@ export default function CommitsPage({
     if (!mounted) return;
     setLoading(true);
     try {
-      const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
+      const commitsKey = getRepoCommitsStorageKey(entity, repo, branch);
       const cached = (() => {
         try {
           const raw = JSON.parse(
@@ -398,12 +403,20 @@ export default function CommitsPage({
         rec
       );
 
-      // Prefer the richest source so a 1-commit GRASP tip does not wipe a fuller
-      // GitHub/cache list (and browsers with different caches converge upward).
-      const ranked = [ghCommits, bridgeCommits, cached]
+      const matching = (list: Commit[]) =>
+        list.filter((c) => commitBelongsToBranch(c.branch, branch));
+      // Prefer the richest list that is actually this branch. A long master
+      // cache used to win over a short feature branch and look like the
+      // switch never happened.
+      const ranked = [
+        matching(ghCommits),
+        matching(bridgeCommits),
+        matching(cached),
+      ]
         .filter((list) => list.length > 0)
         .sort((a, b) => b.length - a.length);
-      const allCommits: Commit[] = ranked[0] || [];
+      const allCommits: Commit[] =
+        ranked[0] || cached.filter((c) => !(c.branch || "").trim());
 
       if (
         allCommits.length > 0 &&
@@ -411,22 +424,22 @@ export default function CommitsPage({
           JSON.stringify(cached.map((c) => c.id))
       ) {
         try {
-          localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+          const payload = JSON.stringify(allCommits);
+          localStorage.setItem(commitsKey, payload);
+          // Other tabs still read the unscoped key (blame, compare, commit page).
+          localStorage.setItem(
+            getRepoStorageKey("gittr_commits", entity, repo),
+            payload
+          );
         } catch {
           /* ignore quota */
         }
       }
 
-      const defBr = repoDefaultBranch(rec);
-      const branchAliases = new Set(
-        [branch, defBr, "main", "master", rec?.defaultBranch]
-          .map((b) => (typeof b === "string" ? b.trim() : ""))
-          .filter(Boolean)
-      );
       let branchCommits = allCommits.filter(
-        (c) => !c.branch || branchAliases.has((c.branch || "").trim())
+        (c) =>
+          !(c.branch || "").trim() || commitBelongsToBranch(c.branch, branch)
       );
-      // Refetch from GitHub stores commits with defaultBranch (often master); UI may show main.
       if (branchCommits.length === 0 && allCommits.length > 0) {
         branchCommits = allCommits;
       }
@@ -465,7 +478,7 @@ export default function CommitsPage({
 
   // Listen for new commits
   useEffect(() => {
-    const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
+    const commitsKey = getRepoCommitsStorageKey(entity, repo, branch);
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === commitsKey) {
@@ -484,7 +497,7 @@ export default function CommitsPage({
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("gittr:commit-created", handleCommitCreated);
     };
-  }, [entity, repo, loadCommits]);
+  }, [entity, repo, branch, loadCommits]);
 
   const filteredCommits = useMemo(() => {
     if (!searchQuery.trim()) return commits;
@@ -581,7 +594,10 @@ export default function CommitsPage({
                       <div className="flex items-start justify-between gap-4 mb-2">
                         <div className="flex-1 min-w-0">
                           <Link
-                            href={`/${entity}/${repo}/commits/${commit.id}`}
+                            href={repoNavHref(
+                              `/${entity}/${repo}/commits/${commit.id}`,
+                              branch
+                            )}
                             className="text-lg font-semibold text-purple-400 hover:text-purple-300 hover:underline block truncate"
                           >
                             {commit.message}
@@ -674,7 +690,10 @@ export default function CommitsPage({
                       </div>
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/${entity}/${repo}/commits/${commit.id}`}
+                          href={repoNavHref(
+                            `/${entity}/${repo}/commits/${commit.id}`,
+                            branch
+                          )}
                           className="text-xs font-mono text-gray-500 hover:text-gray-400"
                         >
                           {commit.id.slice(0, 7)}

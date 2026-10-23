@@ -7,14 +7,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import {
+  repoNavHref,
+  resolveSharedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { formatDateTime24h } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoCommitsStorageKey,
+  getRepoStorageKey,
+} from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { Calendar, FileDiff, GitBranch, GitCommit, User } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 interface Commit {
   id: string;
@@ -98,6 +106,22 @@ export default function CommitDetailPage({
   params: Promise<{ entity: string; repo: string; id: string }>;
 }) {
   const resolvedParams = use(params);
+  const searchParams = useSearchParams();
+  const branch = searchParams?.get("branch")?.trim()
+    ? resolveSharedRepoBranch(searchParams, null, {
+        entity: resolvedParams.entity,
+        repo: resolvedParams.repo,
+      })
+    : "";
+  const commitsHref = branch
+    ? repoNavHref(
+        `/${resolvedParams.entity}/${resolvedParams.repo}/commits`,
+        branch
+      )
+    : `/${resolvedParams.entity}/${resolvedParams.repo}/commits`;
+  const codeHref = branch
+    ? repoNavHref(`/${resolvedParams.entity}/${resolvedParams.repo}`, branch)
+    : `/${resolvedParams.entity}/${resolvedParams.repo}`;
   const [commit, setCommit] = useState<Commit | null>(null);
   const [loading, setLoading] = useState(true);
   const [fileDiffs, setFileDiffs] = useState<FileDiff[]>([]);
@@ -109,14 +133,21 @@ export default function CommitDetailPage({
     const load = async () => {
       setLoading(true);
       try {
-        const commitsKey = getRepoStorageKey(
+        const scopedKey = getRepoCommitsStorageKey(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          branch
+        );
+        const legacyKey = getRepoStorageKey(
           "gittr_commits",
           resolvedParams.entity,
           resolvedParams.repo
         );
-        const commits = JSON.parse(
-          localStorage.getItem(commitsKey) || "[]"
-        ) as Commit[];
+        const raw =
+          localStorage.getItem(scopedKey) ||
+          localStorage.getItem(legacyKey) ||
+          "[]";
+        const commits = JSON.parse(raw) as Commit[];
         let commitData =
           commits.find(
             (c) =>
@@ -250,7 +281,7 @@ export default function CommitDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
+  }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id, branch]);
 
   if (loading) {
     return (
@@ -264,10 +295,7 @@ export default function CommitDetailPage({
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">Commit not found</p>
-        <Link
-          href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits`}
-          className="text-purple-500 hover:underline"
-        >
+        <Link href={commitsHref} className="text-purple-500 hover:underline">
           Back to commits
         </Link>
       </div>
@@ -283,17 +311,11 @@ export default function CommitDetailPage({
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       {/* Breadcrumbs */}
       <nav className="mb-4 text-sm text-gray-400">
-        <Link
-          href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
-          className="hover:text-purple-400"
-        >
+        <Link href={codeHref} className="hover:text-purple-400">
           {resolvedParams.entity}/{resolvedParams.repo}
         </Link>
         {" / "}
-        <Link
-          href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits`}
-          className="hover:text-purple-400"
-        >
+        <Link href={commitsHref} className="hover:text-purple-400">
           Commits
         </Link>
         {" / "}

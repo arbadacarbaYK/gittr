@@ -1,3 +1,4 @@
+import { joinRepoHref } from "../repos/repo-file-tree-branch";
 import {
   isAbsurdRepoPath,
   looksLikeRepoFileName,
@@ -101,24 +102,24 @@ function rewriteGittrRepoPath(href: string, ctx?: MarkdownHrefContext): string {
       const filePath = normalizeRepoPath(
         `${wrongRepoPath[1]}/${wrongRepoPath[2]}`
       );
-      working = `${ctx.getRepoLink()}?path=${encodeURIComponent(filePath)}`;
+      working = joinRepoHref(ctx.getRepoLink(), { path: filePath });
     } else if (
       wrongRepoPath?.[1] &&
       wrongRepoPath[1] !== ctx.repoName &&
       !wrongRepoPath[2]
     ) {
-      working = `${ctx.getRepoLink()}?path=${encodeURIComponent(
-        normalizeRepoPath(wrongRepoPath[1])
-      )}`;
+      working = joinRepoHref(ctx.getRepoLink(), {
+        path: normalizeRepoPath(wrongRepoPath[1]),
+      });
     }
 
     const correctRepoExtra = working.match(
       new RegExp(`^\\/(?:${entityEsc})\\/${repoEsc}\\/(.+)$`)
     );
     if (correctRepoExtra?.[1] && !working.includes("?")) {
-      working = `${ctx.getRepoLink()}?path=${encodeURIComponent(
-        normalizeRepoPath(correctRepoExtra[1])
-      )}`;
+      working = joinRepoHref(ctx.getRepoLink(), {
+        path: normalizeRepoPath(correctRepoExtra[1]),
+      });
     }
   }
 
@@ -172,13 +173,11 @@ export function resolveRepoMarkdownHref(
     const pathParts = resolved.split("/");
     const dirPath =
       pathParts.length > 1 ? pathParts.slice(0, -1).join("/") : "";
-    const encodedFile = encodeURIComponent(resolved);
-    const encodedPath = dirPath ? encodeURIComponent(dirPath) : "";
-    url = encodedPath
-      ? `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`
-      : `${repoBasePath}?file=${encodedFile}`;
+    url = dirPath
+      ? joinRepoHref(repoBasePath, { path: dirPath, file: resolved })
+      : joinRepoHref(repoBasePath, { file: resolved });
   } else {
-    url = `${repoBasePath}?path=${encodeURIComponent(resolved)}`;
+    url = joinRepoHref(repoBasePath, { path: resolved });
   }
 
   return url + hash;
