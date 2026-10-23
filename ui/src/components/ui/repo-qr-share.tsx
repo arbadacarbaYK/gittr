@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { telegramShareUrl } from "@/components/ui/telegram-share";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -146,31 +147,20 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
   };
 
   const shareToTelegram = () => {
-    // Telegram automatically adds the URL as a link preview, so we only include descriptive text
-    // Don't include the URL in text - Telegram will add it automatically from the url parameter
-    const params = new URLSearchParams({
-      url: fullUrl,
-      text: `📦 ${repoName}\n\nBuilt on Nostr ⚡`,
-    });
-    const shareUrl = `https://t.me/share/url?${params.toString()}`;
-    const tgShareUrl = `tg://msg_url?${params.toString()}`;
-    const isMobile =
-      typeof navigator !== "undefined" &&
-      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (isMobile) {
-      window.location.href = tgShareUrl;
-      setTimeout(() => {
-        window.location.href = shareUrl;
-      }, 500);
+    const shareUrl = telegramShareUrl(fullUrl, repoName);
+    if (!shareUrl) return;
+    // Do not pass noopener here. Chrome then returns null even when the tab
+    // opened, and the fallback would also leave the repo page.
+    const popup = window.open(shareUrl, "_blank");
+    if (popup) {
+      try {
+        popup.opener = null;
+      } catch {
+        // The new tab can refuse opener changes.
+      }
       return;
     }
-
-    // Use only the url parameter - Telegram will create the link preview automatically
-    const popup = window.open(shareUrl, "_blank", "noopener,noreferrer");
-    if (!popup) {
-      window.location.href = shareUrl;
-    }
+    window.location.assign(shareUrl);
   };
 
   const shareToNostr = async () => {
