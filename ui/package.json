@@ -32,7 +32,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.122.0",
     "mermaid": "^11.16.1",
-    "next": "^16.3.8",
+    "next": "^16.4.3",
     "node-fetch": "^3.3.1",
     "nostr-relaypool": "^0.5.5",
     "nostr-tools": "^1.7.4",
@@ -50,7 +50,7 @@
     "tailwindcss-animate": "^1.0.5",
     "utf-8-validate": "^6.0.5",
     "ws": "^8.21.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.9",
@@ -64,7 +64,7 @@
     "@typescript-eslint/parser": "^5.53.0",
     "autoprefixer": "^10.4.7",
     "eslint": "^8.34.0",
-    "eslint-config-next": "^16.3.8",
+    "eslint-config-next": "^16.4.3",
     "postcss": "^8.5.23",
     "prettier": "^2.8.4",
     "prettier-plugin-tailwindcss": "^0.2.4",
@@ -93,6 +93,7 @@
     "sharp": "0.35.5",
     "source-map-js": "1.2.2",
     "postcss-selector-parser": "7.1.6",
-    "katex": "0.18.4"
+    "katex": "0.18.4",
+    "zod": "4.6.7"
   }
 }

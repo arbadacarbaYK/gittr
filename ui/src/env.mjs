@@ -34,7 +34,7 @@ const merged = server.merge(client);
 
 /** @typedef {z.input<typeof merged>} MergedInput */
 /** @typedef {z.infer<typeof merged>} MergedOutput */
-/** @typedef {z.SafeParseReturnType<MergedInput, MergedOutput>} MergedSafeParseReturn */
+/** @typedef {ReturnType<typeof merged.safeParse>} MergedSafeParseReturn */
 
 let env = /** @type {MergedOutput} */ (process.env);
 

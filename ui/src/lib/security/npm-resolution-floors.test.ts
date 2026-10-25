@@ -158,16 +158,37 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     expect(gte(resolutionFloor(resolved![1]!), [3, 4, 16])).toBe(true);
   });
 
-  it("keeps next at the GHSA-vcvr-r3jv-pc5j ImageResponse floor", () => {
+  it("keeps next at the October 2026 security floor", () => {
     const declared = pkg.dependencies?.next;
+    const eslintNext = pkg.devDependencies?.["eslint-config-next"];
     expect(declared).toBeTruthy();
-    // 16.3.6 patches next/og ImageResponse RCE; 16.3.8 is the September
-    // security release that also covers the follow-on advisories.
-    expect(gte(resolutionFloor(declared!), [16, 3, 8])).toBe(true);
+    expect(eslintNext).toBeTruthy();
+    // 16.4.1 patches GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr, and
+    // CVE-2026-94482. 16.3.8 remains below that range.
+    expect(gte(resolutionFloor(declared!), [16, 4, 1])).toBe(true);
+    expect(gte(resolutionFloor(eslintNext!), [16, 4, 1])).toBe(true);
 
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = lock.match(/^next@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m);
     expect(resolved?.[1]).toBeTruthy();
-    expect(gte(resolutionFloor(resolved![1]!), [16, 3, 8])).toBe(true);
+    expect(gte(resolutionFloor(resolved![1]!), [16, 4, 1])).toBe(true);
+  });
+
+  it("pins every zod copy at the CVE-2023-54404 floor", () => {
+    // Zod 3 is inside the advisory and will not be patched. 4.6.6 is the
+    // first release that stops walking an oversized array after .max().
+    expect(gte(resolutionFloor(pkg.dependencies?.zod || ""), [4, 6, 6])).toBe(
+      true
+    );
+    expect(gte(resolutionFloor(resolutions.zod), [4, 6, 6])).toBe(true);
+
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    const resolved = [
+      ...lock.matchAll(/^"?zod@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/gm),
+    ];
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const match of resolved) {
+      expect(gte(resolutionFloor(match[1]!), [4, 6, 6])).toBe(true);
+    }
   });
 });
