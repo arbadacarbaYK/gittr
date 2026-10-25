@@ -158,6 +158,8 @@ Wrong default branch is common (`main` vs `develop`). Files, file-content, and t
 
 The gittr bridge **404s** `GET /api/nostr/repo/files` when this host is not in `clone[]`. That is expected: the UI then reads the owner’s announced clone host. Foreign GRASP is not permanently copied onto `git.gittr.space`. The **Commits** tab uses the same rule: `GET /api/nostr/repo/commits?cloneUrl=` temp-fetches git log; do not `POST /clone` ngit/Shakespeare onto the bridge (that 400s and used to paint “No commits found”).
 
+A commit’s **file diff** is `GET /api/nostr/repo/commit-diff?sha=&branch=`. The SHA must be reachable from `refs/heads/<branch>` on the mirror. A missing branch does not fall back to master. GitHub is only used when this host has no copy of that commit. Opening `ban-descendants` used to ask GitHub by SHA and then say “no file changes” for commits that exist only on the mirror.
+
 ## What “newest” means
 
 | Question | Behaviour |

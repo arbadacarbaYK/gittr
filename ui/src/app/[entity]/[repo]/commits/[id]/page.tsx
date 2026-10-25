@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   repoNavHref,
@@ -18,6 +19,11 @@ import {
   getRepoCommitsStorageKey,
   getRepoStorageKey,
 } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+  resolveEntityToPubkeyAsync,
+} from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { Calendar, FileDiff, GitBranch, GitCommit, User } from "lucide-react";
@@ -50,6 +56,88 @@ interface FileDiff {
   deletions?: number;
   before?: string;
   after?: string;
+  isBinary?: boolean;
+}
+
+type MirrorDiff =
+  | { kind: "files"; files: FileDiff[] }
+  | { kind: "not_on_branch" }
+  | { kind: "too_large" }
+  | { kind: "miss" };
+
+/** Patch from the git mirror for this branch. GitHub is only a fallback. */
+async function fetchMirrorCommitDiff(
+  entity: string,
+  repo: string,
+  sha: string,
+  branch: string
+): Promise<MirrorDiff> {
+  const rec =
+    findRepoByEntityAndName<StoredRepo>(loadStoredRepos(), entity, repo) ??
+    null;
+  let ownerPk =
+    (rec ? getRepoOwnerPubkey(rec, entity) : null) ||
+    resolveEntityToPubkey(entity, rec ?? undefined);
+  if (!ownerPk) {
+    ownerPk = await resolveEntityToPubkeyAsync(entity, rec ?? undefined);
+  }
+  const ownerParam =
+    (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && ownerPk) ||
+    (entity.startsWith("npub") ? entity : null);
+  const repoName =
+    (rec as StoredRepo & { repositoryName?: string })?.repositoryName ||
+    rec?.repo ||
+    rec?.name ||
+    repo;
+  if (!ownerParam || !repoName) return { kind: "miss" };
+
+  const branchQs = branch ? `&branch=${encodeURIComponent(branch)}` : "";
+  const res = await fetchBridgeRead(
+    `/api/nostr/repo/commit-diff?ownerPubkey=${encodeURIComponent(
+      ownerParam
+    )}&repo=${encodeURIComponent(repoName)}&sha=${encodeURIComponent(
+      sha
+    )}${branchQs}`
+  );
+  if (res.status === 404 || res.status === 413) {
+    let code = "";
+    try {
+      code = ((await res.json()) as { code?: string }).code || "";
+    } catch {
+      code = "";
+    }
+    if (code === "not_on_branch") return { kind: "not_on_branch" };
+    if (code === "too_large" || res.status === 413)
+      return { kind: "too_large" };
+    return { kind: "miss" };
+  }
+  if (!res.ok) return { kind: "miss" };
+
+  const data = (await res.json()) as {
+    ok?: boolean;
+    files?: Array<{
+      path?: string;
+      status?: string;
+      additions?: number;
+      deletions?: number;
+      patch?: string;
+      isBinary?: boolean;
+    }>;
+  };
+  if (!data.ok || !Array.isArray(data.files)) return { kind: "miss" };
+  return {
+    kind: "files",
+    files: data.files
+      .filter((f) => f.path)
+      .map((f) => ({
+        path: f.path!,
+        status: mapGithubFileStatus(f.status),
+        additions: f.additions,
+        deletions: f.deletions,
+        after: f.isBinary ? undefined : f.patch,
+        isBinary: !!f.isBinary,
+      })),
+  };
 }
 
 function mapGithubFileStatus(
@@ -57,7 +145,7 @@ function mapGithubFileStatus(
 ): "added" | "modified" | "deleted" {
   const s = (status || "").toLowerCase();
   if (s === "added" || s === "copied") return "added";
-  if (s === "removed") return "deleted";
+  if (s === "removed" || s === "deleted") return "deleted";
   return "modified";
 }
 
@@ -126,6 +214,9 @@ export default function CommitDetailPage({
   const [loading, setLoading] = useState(true);
   const [fileDiffs, setFileDiffs] = useState<FileDiff[]>([]);
   const [loadingDiffs, setLoadingDiffs] = useState(false);
+  const [diffNote, setDiffNote] = useState<
+    "" | "not_on_branch" | "too_large" | "empty"
+  >("");
 
   useEffect(() => {
     let cancelled = false;
@@ -236,37 +327,86 @@ export default function CommitDetailPage({
           } catch {}
         }
 
+        const hasPatchBody = diffs.some(
+          (d) =>
+            (d.before && d.before.length > 0) || (d.after && d.after.length > 0)
+        );
+
         if (!cancelled) {
           setFileDiffs(diffs);
+          setDiffNote("");
           setLoading(false);
         }
 
-        // Soft-fetch file list from GitHub when list/cache had no diffs
-        if (diffs.length === 0) {
+        // Mirror first: the commit list is this branch's git log. GitHub does
+        // not have feature-branch commits that only exist on the mirror.
+        if (!hasPatchBody) {
           if (!cancelled) setLoadingDiffs(true);
           try {
-            const ghDiffs = await fetchGithubCommitFiles(
+            const mirror = await fetchMirrorCommitDiff(
               resolvedParams.entity,
               resolvedParams.repo,
-              resolvedParams.id
+              resolvedParams.id,
+              branch
             );
-            if (!cancelled && ghDiffs.length > 0) {
-              setFileDiffs(ghDiffs);
+            if (cancelled) return;
+            if (mirror.kind === "files") {
+              const additions = mirror.files.reduce(
+                (n, f) => n + (f.additions || 0),
+                0
+              );
+              const deletions = mirror.files.reduce(
+                (n, f) => n + (f.deletions || 0),
+                0
+              );
+              setFileDiffs(mirror.files);
+              setDiffNote(mirror.files.length === 0 ? "empty" : "");
               setCommit((prev) =>
                 prev
                   ? {
                       ...prev,
-                      filesChanged: ghDiffs.length,
-                      changedFiles: ghDiffs.map((d) => ({
+                      filesChanged: mirror.files.length,
+                      insertions: additions,
+                      deletions: deletions,
+                      changedFiles: mirror.files.map((d) => ({
                         path: d.path,
                         status: d.status,
                       })),
                     }
                   : prev
               );
+            } else if (mirror.kind === "not_on_branch") {
+              setFileDiffs([]);
+              setDiffNote("not_on_branch");
+            } else if (mirror.kind === "too_large") {
+              setFileDiffs([]);
+              setDiffNote("too_large");
+            } else {
+              const ghDiffs = await fetchGithubCommitFiles(
+                resolvedParams.entity,
+                resolvedParams.repo,
+                resolvedParams.id
+              );
+              if (cancelled) return;
+              if (ghDiffs.length > 0) {
+                setFileDiffs(ghDiffs);
+                setDiffNote("");
+                setCommit((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        filesChanged: ghDiffs.length,
+                        changedFiles: ghDiffs.map((d) => ({
+                          path: d.path,
+                          status: d.status,
+                        })),
+                      }
+                    : prev
+                );
+              }
             }
           } catch (e) {
-            console.warn("[Commit] GitHub file list fetch failed:", e);
+            console.warn("[Commit] file diff fetch failed:", e);
           } finally {
             if (!cancelled) setLoadingDiffs(false);
           }
@@ -430,6 +570,7 @@ export default function CommitDetailPage({
                 status={diff.status}
                 before={diff.before}
                 after={diff.after}
+                isBinary={diff.isBinary}
               />
             </div>
           ))}
@@ -438,7 +579,13 @@ export default function CommitDetailPage({
       {fileDiffs.length === 0 && (
         <div className="border border-gray-700 rounded p-8 text-center text-gray-400">
           {loadingDiffs
-            ? "Loading file changes from GitHub…"
+            ? "Loading file changes…"
+            : diffNote === "not_on_branch"
+            ? `This commit is not on ${branch || "this branch"}.`
+            : diffNote === "too_large"
+            ? "This commit's diff is too large to show here."
+            : diffNote === "empty"
+            ? "This commit does not change any files."
             : "No file changes available for this commit."}
         </div>
       )}
