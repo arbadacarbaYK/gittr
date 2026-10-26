@@ -123,6 +123,7 @@ export default function ClientLayout({
     // Helper function to check if message should be suppressed
     const shouldSuppress = (raw: string): boolean => {
       const fullMessage = raw.toLowerCase();
+      if (fullMessage.includes("[remotesigner]")) return false;
       return (
         fullMessage.includes("error connecting relay") ||
         fullMessage.includes("websocket connection to") ||

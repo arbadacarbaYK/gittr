@@ -341,6 +341,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Initialize remote signer manager
   const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
+  const signerMountGen = useRef(0);
   const [remoteSigner, setRemoteSigner] = useState<RemoteSignerManager | null>(
     null
   );
@@ -355,56 +356,74 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     });
   }, [addRelay]);
 
-  // Initialize remote signer manager with dependencies
+  // Initialize remote signer manager with dependencies.
+  // Strict Mode and hydration recovery (#418) run this cleanup and then mount
+  // again. Releasing immediately left Push holding a signer whose dedicated
+  // pool refused every dial. Wait a tick: a remount keeps the same instance.
   useEffect(() => {
-    if (remoteSignerRef.current) return; // Already initialized
+    const generation = ++signerMountGen.current;
+    let manager = remoteSignerRef.current;
+    if (!manager || manager.isReleased()) {
+      if (manager?.isReleased()) {
+        manager.reviveForDial();
+      } else {
+        const publishFn = (event: any, relays: string[]) => {
+          const safeRelays = filterMainPoolRelays(relays);
+          if (safeRelays.length === 0) return;
+          relayPool.publish(event, safeRelays);
+        };
 
-    const publishFn = (event: any, relays: string[]) => {
-      const safeRelays = filterMainPoolRelays(relays);
-      if (safeRelays.length === 0) return;
-      relayPool.publish(event, safeRelays);
-    };
+        const subscribeFn = (
+          filters: any[],
+          relays: string[],
+          onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+          maxDelayms?: number,
+          onEose?: (relayUrl: string, minCreatedAt: number) => void,
+          options?: any
+        ) => {
+          // Keep behavior aligned with main subscribe wrapper (strip bunker + LAN).
+          return subscribeWhenMainPoolFree(
+            filters,
+            relays,
+            onEvent,
+            maxDelayms,
+            onEose,
+            options
+          );
+        };
 
-    const subscribeFn = (
-      filters: any[],
-      relays: string[],
-      onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
-      maxDelayms?: number,
-      onEose?: (relayUrl: string, minCreatedAt: number) => void,
-      options?: any
-    ) => {
-      // Keep behavior aligned with main subscribe wrapper (strip bunker + LAN).
-      return subscribeWhenMainPoolFree(
-        filters,
-        relays,
-        onEvent,
-        maxDelayms,
-        onEose,
-        options
-      );
-    };
-
-    remoteSignerRef.current = new RemoteSignerManager({
-      publish: publishFn,
-      subscribe: subscribeFn,
-      addRelay,
-      removeRelay,
-      getRelayStatuses: () => relayPool.getRelayStatuses(),
-    });
-    setRemoteSigner(remoteSignerRef.current);
-
-    setRemoteSignerInitialized(true);
-    // Hydrate + await short URI-first bunker warm in this parent effect, before
-    // child file-fetch HTTP storms steal browser WebSocket slots.
-    const manager = remoteSignerRef.current;
-    void manager.ensureBootstrapped().catch((error) => {
-      console.error("[NostrContext] Failed to bootstrap remote signer:", error);
-    });
-    return () => {
-      manager.releaseOnUnmount();
-      if (remoteSignerRef.current === manager) {
-        remoteSignerRef.current = null;
+        manager = new RemoteSignerManager({
+          publish: publishFn,
+          subscribe: subscribeFn,
+          addRelay,
+          removeRelay,
+          getRelayStatuses: () => relayPool.getRelayStatuses(),
+        });
+        remoteSignerRef.current = manager;
       }
+      setRemoteSigner(manager);
+      setRemoteSignerInitialized(true);
+      // Hydrate + await short URI-first bunker warm in this parent effect, before
+      // child file-fetch HTTP storms steal browser WebSocket slots.
+      void manager.ensureBootstrapped().catch((error) => {
+        console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+      });
+    }
+    const held = manager;
+    return () => {
+      if (!held) return;
+      const token = generation;
+      setTimeout(() => {
+        if (signerMountGen.current !== token) {
+          // Remount adopted this instance, or a new one replaced it.
+          if (remoteSignerRef.current !== held) held.releaseOnUnmount();
+          return;
+        }
+        held.releaseOnUnmount();
+        if (remoteSignerRef.current === held) {
+          remoteSignerRef.current = null;
+        }
+      }, 0);
     };
   }, [addRelay, removeRelay]);
 

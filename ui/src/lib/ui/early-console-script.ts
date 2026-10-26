@@ -22,6 +22,7 @@ export function gittrConsoleBootScript(): string {
       return (allMessages + ' ' + stackTrace).toLowerCase();
     };
     var shouldSuppress = function(fullMessage) {
+      if (fullMessage.indexOf('[remotesigner]') !== -1) return false;
       return fullMessage.indexOf('error connecting relay') !== -1 ||
         fullMessage.indexOf('websocket connection to') !== -1 ||
         fullMessage.indexOf('websocket') !== -1 ||

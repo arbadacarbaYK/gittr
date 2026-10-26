@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MAIN_POOL_PAUSE_WAIT_MS,
@@ -8,13 +8,17 @@ import {
   collectMainPoolUrlsToSuspend,
   consumeDeferredMainPoolRelays,
   filterBunkerBlockedRelays,
+  coldBunkerHoldShouldRelease,
   holdMainPoolForColdBunkerStart,
   isBunkerMainPoolBlocked,
+  isDedicatedBunkerDialActive,
   isMainPoolPausedForBunker,
   listBunkerMainPoolBlockedHosts,
   mainPoolSubscribeShouldWait,
   onMainPoolUnpaused,
+  popDedicatedBunkerDial,
   popMainPoolBunkerPause,
+  pushDedicatedBunkerDial,
   pushMainPoolBunkerPause,
   releaseColdBunkerStartHold,
   resetMainPoolBunkerPauseForTests,
@@ -178,5 +182,40 @@ describe("bunker-main-pool-guard", () => {
       "wss://git.shakespeare.diy",
     ]);
     stop();
+  });
+
+  it("keeps page relays closed while the dedicated signer pool is dialing", () => {
+    vi.useFakeTimers();
+    const seen: string[] = [];
+    const stop = onMainPoolUnpaused(() => {
+      seen.push(...consumeDeferredMainPoolRelays());
+    });
+    holdMainPoolForColdBunkerStart(["wss://relay.gittr.space"]);
+    pushDedicatedBunkerDial();
+    expect(isDedicatedBunkerDialActive()).toBe(true);
+    expect(coldBunkerHoldShouldRelease()).toBe(false);
+    vi.advanceTimersByTime(12_000);
+    expect(isMainPoolPausedForBunker()).toBe(true);
+    expect(seen).toEqual([]);
+    popDedicatedBunkerDial();
+    expect(coldBunkerHoldShouldRelease()).toBe(true);
+    vi.advanceTimersByTime(12_000);
+    expect(isMainPoolPausedForBunker()).toBe(false);
+    expect(seen).toEqual(["wss://relay.gittr.space"]);
+    stop();
+    vi.useRealTimers();
+  });
+
+  it("does not open page relays on the cold timer while a sign is also holding them", () => {
+    vi.useFakeTimers();
+    holdMainPoolForColdBunkerStart(["wss://relay.gittr.space"]);
+    pushMainPoolBunkerPause();
+    expect(coldBunkerHoldShouldRelease()).toBe(false);
+    vi.advanceTimersByTime(12_000);
+    expect(isMainPoolPausedForBunker()).toBe(true);
+    popMainPoolBunkerPause();
+    vi.advanceTimersByTime(12_000);
+    expect(isMainPoolPausedForBunker()).toBe(false);
+    vi.useRealTimers();
   });
 });

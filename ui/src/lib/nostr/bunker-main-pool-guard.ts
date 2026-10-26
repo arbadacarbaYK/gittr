@@ -21,7 +21,10 @@ let pauseDepth = 0;
 let coldStartHold = false;
 let coldTimer: ReturnType<typeof setTimeout> | null = null;
 let deferredMainPoolRelays: string[] = [];
+/** Dedicated signer-pool dials (SimplePool). Not the page relay pool. */
+let dedicatedDialDepth = 0;
 const unpausedListeners = new Set<() => void>();
+const COLD_BUNKER_HOLD_MS = 12000;
 
 export function isMainPoolPausedForBunker(): boolean {
   return pauseDepth > 0;
@@ -77,27 +80,61 @@ export function popMainPoolBunkerPause(): void {
   }
 }
 
+/** The Amber signer is dialing its own pool. Page relays must stay down. */
+export function pushDedicatedBunkerDial(): void {
+  dedicatedDialDepth += 1;
+}
+
+export function popDedicatedBunkerDial(): void {
+  if (dedicatedDialDepth > 0) dedicatedDialDepth -= 1;
+}
+
+export function isDedicatedBunkerDialActive(): boolean {
+  return dedicatedDialDepth > 0;
+}
+
+/**
+ * The 12s cold timer may open the page pool only when nothing is using the
+ * dedicated signer pool. A sign pauses the page pool a second time (depth > 1).
+ */
+export function coldBunkerHoldShouldRelease(): boolean {
+  return dedicatedDialDepth === 0 && pauseDepth <= 1;
+}
+
 /** Remember page relays and keep the main pool from dialing until Amber warms. */
 export function holdMainPoolForColdBunkerStart(relays: string[]): void {
   deferredMainPoolRelays = [...relays];
   if (coldStartHold) return;
   coldStartHold = true;
   pushMainPoolBunkerPause();
-  if (coldTimer) clearTimeout(coldTimer);
-  const timer = setTimeout(() => {
-    console.warn(
-      "[RemoteSigner] Amber bunker warm held the relay list too long — opening page relays anyway"
-    );
-    releaseColdBunkerStartHold();
-  }, 12000);
-  coldTimer = timer;
-  if (typeof timer === "object" && timer && "unref" in timer) {
-    timer.unref();
-  }
+  armColdBunkerHoldTimer();
   console.log(
     "[RemoteSigner] Holding page relays until Amber's first bunker socket can open",
     { relays: deferredMainPoolRelays.length }
   );
+}
+
+function armColdBunkerHoldTimer(): void {
+  if (coldTimer) clearTimeout(coldTimer);
+  const timer = setTimeout(() => {
+    coldTimer = null;
+    if (!coldStartHold) return;
+    if (!coldBunkerHoldShouldRelease()) {
+      console.warn(
+        "[RemoteSigner] Dedicated signer pool is still dialing — keeping page relays closed"
+      );
+      armColdBunkerHoldTimer();
+      return;
+    }
+    console.warn(
+      "[RemoteSigner] Amber bunker warm held the relay list too long — opening page relays anyway"
+    );
+    releaseColdBunkerStartHold();
+  }, COLD_BUNKER_HOLD_MS);
+  coldTimer = timer;
+  if (typeof timer === "object" && timer && "unref" in timer) {
+    timer.unref();
+  }
 }
 
 export function releaseColdBunkerStartHold(): void {
@@ -125,6 +162,7 @@ export function onMainPoolUnpaused(listener: () => void): () => void {
 
 export function resetMainPoolBunkerPauseForTests(): void {
   pauseDepth = 0;
+  dedicatedDialDepth = 0;
   coldStartHold = false;
   if (coldTimer) clearTimeout(coldTimer);
   coldTimer = null;
