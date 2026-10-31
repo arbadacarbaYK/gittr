@@ -721,16 +721,18 @@ export function uriPreferredOpenRelays(
  * Amber's bunker URI often lists 7+ relays. Publishing (and listening) on only
  * the 1–2 that opened first leaves her reply on a host we never subscribed to
  * — acked:true, phone signed, inboundDuringWait stays 0.
+ *
+ * Only currently OPEN sockets count as covered. Published-but-CLOSED hosts must
+ * be redialed — treating acked URLs as covered left the page deaf on the relays
+ * Amber answers on.
  */
 export function signEventReplyListenExpandTargets(opts: {
   uriRelays: string[];
   openRelays: string[];
+  /** @deprecated Ignored for coverage — use openRelays only. */
   publishedUrls?: string[];
 }): string[] {
-  const covered = relayUrlSet([
-    ...(opts.openRelays || []),
-    ...(opts.publishedUrls || []),
-  ]);
+  const covered = relayUrlSet(opts.openRelays || []);
   return uniqueNormalizedRelays(opts.uriRelays || []).filter(
     (u) => !covered.has(u)
   );
@@ -745,6 +747,20 @@ export function signEventListenRefreshShouldDialMissing(opts: {
   missingCount: number;
 }): boolean {
   return opts.missingCount > 0;
+}
+
+/**
+ * Kind 24133 reply filters. Helper-tools / Amber path: `#p` = client pubkey only.
+ * Requiring `authors:[remotePubkey]` made SimplePool drop Amber's reply before
+ * onEvent (inboundDuringWait stayed 0 while the phone had already signed).
+ */
+export function nip46ReplySubscriptionFilters(clientPubkey: string): {
+  kinds: number[];
+  "#p": string[];
+}[] {
+  const p = (clientPubkey || "").toLowerCase();
+  if (!HEX_64_RE.test(p)) return [];
+  return [{ kinds: [24133], "#p": [p] }];
 }
 
 export function bunkerRelayPublishOverlap(
@@ -1414,6 +1430,8 @@ export class RemoteSignerManager {
   private rpcHealthy = false;
   private healthProbeInFlight: Promise<void> | null = null;
   private bunkerWarmInFlight: Promise<void> | null = null;
+  /** Single-flight expand so cover + sendRequest + refresh do not thrash Damus. */
+  private bunkerListenExpandInFlight: Promise<void> | null = null;
   private bunkerKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private bunkerVisibilityHandler: (() => void) | null = null;
   private bunkerOnlineHandler: (() => void) | null = null;
@@ -3436,30 +3454,58 @@ export class RemoteSignerManager {
     missing: string[],
     order: string[]
   ): Promise<void> {
-    try {
-      if (!missing.length) return;
-      await this.dialRelaysWithConcurrency(
-        missing,
-        BUNKER_URI_DIAL_CONCURRENCY,
-        BUNKER_SIGN_RELAY_BUDGET_MS,
-        Math.min(4, missing.length)
-      );
-      // Subscribe even when pending is not registered yet — sendRequest sets
-      // the waiter right after cover returns. Skipping that left sockets OPEN
-      // without a kind 24133 listener for Amber's reply.
-      const open = await this.listDirectOpenRelays(order);
-      if (open.length === 0) return;
-      await this.ensureResponseSubscription(session, open);
-      console.log(
-        "[RemoteSigner] Listening on more bunker relays for Amber's reply",
-        open.map((u) => normalizeRelayUrl(u))
-      );
-    } catch (error) {
-      console.warn(
-        "[RemoteSigner] Could not open more bunker relays for Amber's reply:",
-        error instanceof Error ? error.message : error
-      );
+    if (!missing.length) return;
+    if (this.bunkerListenExpandInFlight) {
+      try {
+        await this.bunkerListenExpandInFlight;
+      } catch {
+        /* prior expand logged its own failure */
+      }
+      const openNow = await this.listDirectOpenRelays(order);
+      const stillMissing = signEventReplyListenExpandTargets({
+        uriRelays: missing,
+        openRelays: openNow,
+      });
+      if (stillMissing.length === 0) {
+        await this.ensureResponseSubscription(session, openNow);
+        return;
+      }
+      missing = stillMissing;
     }
+    const run = (async () => {
+      try {
+        await this.dialRelaysWithConcurrency(
+          missing,
+          BUNKER_URI_DIAL_CONCURRENCY,
+          BUNKER_SIGN_RELAY_BUDGET_MS,
+          Math.min(4, missing.length)
+        );
+        // Subscribe even when pending is not registered yet — sendRequest sets
+        // the waiter right after cover returns. Skipping that left sockets OPEN
+        // without a kind 24133 listener for Amber's reply.
+        const open = await this.listDirectOpenRelays(order);
+        if (open.length === 0) return;
+        const added = await this.ensureResponseSubscription(session, open);
+        console.log(
+          "[RemoteSigner] Listening on more bunker relays for Amber's reply",
+          {
+            open: open.map((u) => normalizeRelayUrl(u)),
+            subscribedExtra: added,
+          }
+        );
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] Could not open more bunker relays for Amber's reply:",
+          error instanceof Error ? error.message : error
+        );
+      }
+    })();
+    this.bunkerListenExpandInFlight = run.finally(() => {
+      if (this.bunkerListenExpandInFlight === run) {
+        this.bunkerListenExpandInFlight = null;
+      }
+    });
+    await run;
   }
 
   /**
@@ -3925,13 +3971,28 @@ export class RemoteSignerManager {
         : session.relays;
     const wanted = uniqueNormalizedRelays(relays);
     if (wanted.length === 0) return;
-    if (this.pending.size === 0) {
+    // Never tear down listeners while a sign/cover dial is in flight or a
+    // waiter is armed — that was the gap Amber's ephemeral reply fell into.
+    if (
+      this.pending.size === 0 &&
+      !this.signerDialBusy &&
+      this.signingSessionDepth === 0
+    ) {
       this.clearDirectResponseSubs();
+    }
+    // Optimistic listen markers lied when SimplePool kept a CLOSED cache.
+    // Only skip relays that are still OPEN and already subscribed.
+    const openWanted = await this.listDirectOpenRelays(wanted);
+    const openSet = new Set(openWanted.map((u) => normalizeRelayUrl(u)));
+    for (const marked of [...this.directListenRelays]) {
+      if (!openSet.has(marked)) this.directListenRelays.delete(marked);
     }
     const subscribeRelays =
       this.directUnsubs.length === 0
-        ? wanted
-        : bunkerListenRelaysToAdd([...this.directListenRelays], wanted);
+        ? openWanted.length > 0
+          ? openWanted
+          : wanted
+        : bunkerListenRelaysToAdd([...this.directListenRelays], openWanted);
     if (subscribeRelays.length === 0) return;
     if (this.pending.size > 0) {
       console.log(
@@ -3939,27 +4000,9 @@ export class RemoteSignerManager {
         subscribeRelays
       );
     }
-    const wideNostrConnect =
-      !!session.nostrConnectPairing &&
-      (!session.remotePubkey || session.remotePubkey.length === 0);
-    const filters = wideNostrConnect
-      ? [
-          {
-            kinds: [24133],
-            "#p": [session.clientPubkey],
-          },
-        ]
-      : [
-          {
-            kinds: [24133],
-            authors: [session.remotePubkey],
-            "#p": [session.clientPubkey],
-          },
-          {
-            kinds: [24133],
-            authors: [session.remotePubkey],
-          },
-        ];
+    // Helper-tools + Amber: `#p` = client only. authors:[remote] dropped replies.
+    const filters = nip46ReplySubscriptionFilters(session.clientPubkey);
+    if (filters.length === 0) return;
 
     // NIP-46 responses only on directPool. Do NOT subscribe via the app
     // relaypool — that silently addRelay's bunker hosts and starves Amber.
@@ -4024,15 +4067,25 @@ export class RemoteSignerManager {
       (!session.remotePubkey || session.remotePubkey.length === 0);
     const pTags = event.tags
       ?.filter((tag: any) => Array.isArray(tag) && tag[0] === "p")
-      .map((tag: any) => tag[1]);
-    const isForClient = !!pTags?.includes(session.clientPubkey);
+      .map((tag: any) =>
+        typeof tag[1] === "string" ? tag[1].toLowerCase() : tag[1]
+      );
+    const clientPk = (session.clientPubkey || "").toLowerCase();
+    const remotePk = (session.remotePubkey || "").toLowerCase();
+    const eventPk =
+      typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
+    const isForClient = !!pTags?.includes(clientPk);
+    // Helper-tools: trust `#p` = client. Author mismatch used to drop Amber's
+    // signed reply after SimplePool already delivered it.
     if (wideNostrConnect) {
       if (!isForClient) return;
-    } else {
-      const isExpectedAuthor = event.pubkey === session.remotePubkey;
-      if (!isExpectedAuthor) {
-        return;
-      }
+    } else if (!isForClient && eventPk !== remotePk) {
+      return;
+    } else if (isForClient && remotePk && eventPk && eventPk !== remotePk) {
+      console.warn(
+        "[RemoteSigner] Amber reply author differs from bunker URI pubkey — still decrypting",
+        { event: eventPk.slice(0, 12), expected: remotePk.slice(0, 12) }
+      );
     }
     // Some signers omit the client p-tag on connect ACK only.
     if (!isForClient) {
@@ -4235,11 +4288,25 @@ export class RemoteSignerManager {
     const published = this.lastPublishMeta?.urls || [];
     const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
     if (targets.length === 0) return;
-    const open = await this.listDirectOpenRelays(targets);
+    let open = await this.listDirectOpenRelays(targets);
+    // Aciked publish hosts that later went CLOSED must be redialed — Amber
+    // answers there and ephemeral 24133 will not wait for a late REQ.
+    const publishedDead = signEventReplyListenExpandTargets({
+      uriRelays: published,
+      openRelays: open,
+    });
+    if (publishedDead.length > 0) {
+      for (const url of publishedDead) this.dropDirectRelay(url);
+      await Promise.all(
+        publishedDead.map((url) =>
+          this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS)
+        )
+      );
+      open = await this.listDirectOpenRelays(targets);
+    }
     const missing = signEventReplyListenExpandTargets({
       uriRelays: targets,
       openRelays: open,
-      publishedUrls: published,
     });
     // Having 1–2 OPEN is not enough when Amber replies on another URI host.
     // Dial the rest beside the live sockets — never resetDirectPool here.
@@ -4273,29 +4340,47 @@ export class RemoteSignerManager {
    * replacing it mid-wait drops the answer. If the bunker pool was just
    * replaced, there is no listener, so attach one even while sign_event
    * is still pending.
+   * @returns relays newly passed to pool.sub (empty when already covered)
    */
   private async ensureResponseSubscription(
     session: RemoteSignerSession,
     relays: string[]
-  ) {
-    if (relays.length === 0) return;
+  ): Promise<string[]> {
+    if (relays.length === 0) return [];
+    const open = await this.listDirectOpenRelays(relays);
+    const listenTargets = open.length > 0 ? open : relays;
+    for (const marked of [...this.directListenRelays]) {
+      if (!listenTargets.some((u) => relayUrlsMatch(u, marked))) {
+        /* keep markers for other open hosts */
+      }
+    }
+    const openListen = new Set(
+      (await this.listDirectOpenRelays([...this.directListenRelays])).map((u) =>
+        normalizeRelayUrl(u)
+      )
+    );
+    for (const marked of [...this.directListenRelays]) {
+      if (!openListen.has(marked)) this.directListenRelays.delete(marked);
+    }
     const adding = bunkerListenRelaysToAdd(
       [...this.directListenRelays],
-      relays
+      listenTargets
     );
-    if (adding.length === 0 && this.directUnsubs.length > 0) return;
+    if (adding.length === 0 && this.directUnsubs.length > 0) return [];
     if (this.pending.size > 0 && this.directUnsubs.length === 0) {
       console.log(
         "[RemoteSigner] Listening again for Amber's reply after the bunker pool was replaced"
       );
     }
     try {
-      await this.startSubscription(session, relays);
+      await this.startSubscription(session, listenTargets);
+      return adding.length > 0 ? adding : listenTargets;
     } catch (error) {
       console.warn(
         "[RemoteSigner] Failed to listen for the signer reply:",
         error
       );
+      return [];
     }
   }
 

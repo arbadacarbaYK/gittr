@@ -24,6 +24,7 @@ import {
   primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
+  nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
   signEventRedialKeepsListener,
@@ -605,6 +606,14 @@ describe("Primal nostrconnect relays", () => {
       "wss://relay.nip46.com",
       "wss://bucket.coracle.social",
     ]);
+    // Published-but-CLOSED must still be dialed (acked URL is not coverage).
+    expect(
+      signEventReplyListenExpandTargets({
+        uriRelays: ["wss://relay.gittr.space", "wss://relay.primal.net"],
+        openRelays: [],
+        publishedUrls: ["wss://relay.gittr.space"],
+      })
+    ).toEqual(["wss://relay.gittr.space", "wss://relay.primal.net"]);
     expect(
       signEventListenRefreshShouldDialMissing({
         openCount: openRelays.length,
@@ -623,6 +632,15 @@ describe("Primal nostrconnect relays", () => {
         openRelays: uriRelays,
       })
     ).toEqual([]);
+  });
+
+  it("subscribes for Amber replies with #p=client only (helper-tools)", () => {
+    const client =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    expect(nip46ReplySubscriptionFilters(client)).toEqual([
+      { kinds: [24133], "#p": [client] },
+    ]);
+    expect(nip46ReplySubscriptionFilters("not-hex")).toEqual([]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
