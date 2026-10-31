@@ -182,6 +182,19 @@ export const AMBER_CONNECTED_RELAYS = [
 ];
 
 /**
+ * Relays Amber's phone actually keeps online for bunker (operator-confirmed).
+ * `relay.gittr.space` is listed too, but Pyramid OK's kind 24133 with
+ * "handled internally" and is not enough by itself — NIP-46 must also hit
+ * these public signer relays in the same publish.
+ */
+export const AMBER_PHONE_DELIVERY_RELAYS = [
+  "wss://relay.primal.net",
+  "wss://theforest.nostr1.com",
+  "wss://bucket.coracle.social",
+  "wss://relay.ditto.pub",
+];
+
+/**
  * Primal's phone signer watches these. The login QR used to fill every slot
  * with profile indexers, so a Primal session could pair and then never see
  * sign_event. nrs.primal.net is Primal's NIP-46 relay and an Amber default.
@@ -786,6 +799,20 @@ export function preferGittrBunkerFirst(relays: string[]): string[] {
   ]);
 }
 
+/** Put Amber's real phone relays first so gittr is never the only delivery. */
+export function preferAmberPhonePublishRelays(relays: string[]): string[] {
+  const list = uniqueNormalizedRelays(relays);
+  const phone = relayUrlSet(AMBER_PHONE_DELIVERY_RELAYS);
+  const first = list.filter((u) => phone.has(u));
+  const rest = list.filter((u) => !phone.has(u));
+  return [...first, ...rest];
+}
+
+export function signEventOpenRelaysReachAmberPhone(openRelays: string[]): boolean {
+  const phone = relayUrlSet(AMBER_PHONE_DELIVERY_RELAYS);
+  return uniqueNormalizedRelays(openRelays).some((u) => phone.has(u));
+}
+
 /**
  * OPEN sockets that intersect the Amber-reachable set (URI ∪ Amber defaults).
  */
@@ -883,14 +910,16 @@ export function bunkerRpcEventIsStale(
 }
 
 /**
- * Publish sign_event as soon as one Amber bunker socket is OPEN.
- * Waiting for 3+ hosts (then fanning the same note) ages created_at past
- * strfry's ~8s window — Amber shows "invalid: ephemeral event expired".
+ * Gittr-only is not enough. Pyramid acks 24133 internally; Amber's phone
+ * watches primal / theforest / bucket / ditto. Publish once those are OPEN.
  */
 export function signEventShouldPublishOnOpenSockets(
-  alreadyOpenCount: number
+  alreadyOpenCount: number,
+  openRelays: string[] = []
 ): boolean {
-  return alreadyOpenCount > 0;
+  if (alreadyOpenCount <= 0) return false;
+  if (openRelays.length === 0) return alreadyOpenCount > 0;
+  return signEventOpenRelaysReachAmberPhone(openRelays);
 }
 
 /**
@@ -3655,7 +3684,7 @@ export class RemoteSignerManager {
       const openNow = await this.listDirectOpenRelays(
         uniqueNormalizedRelays([...order, ...publishReach])
       );
-      let alreadyOpen = preferGittrBunkerFirst(
+      let alreadyOpen = preferAmberPhonePublishRelays(
         pickSignEventCoverOpenRelays(
           openNow,
           publishReach,
@@ -3666,18 +3695,19 @@ export class RemoteSignerManager {
       let missingPublish = publishReach.filter(
         (u) => !have.has(normalizeRelayUrl(u))
       );
-      if (signEventShouldPublishOnOpenSockets(alreadyOpen.length)) {
+      const missingPhone = AMBER_PHONE_DELIVERY_RELAYS.filter(
+        (u) => !have.has(normalizeRelayUrl(u))
+      );
+      if (
+        signEventShouldPublishOnOpenSockets(alreadyOpen.length, alreadyOpen)
+      ) {
         this.lastSignAttempted = order;
         console.log(
-          "[RemoteSigner] Publishing on already-open Amber bunker relays — opening the rest only to listen",
+          "[RemoteSigner] Publishing on Amber phone relays — opening the rest only to listen",
           {
             open: alreadyOpen,
-            publishReach,
+            phone: AMBER_PHONE_DELIVERY_RELAYS,
             remaining: missingPublish,
-            includesGittr: alreadyOpen.some(
-              (u) =>
-                normalizeRelayUrl(u) === normalizeRelayUrl(GITTR_BUNKER_RELAY)
-            ),
             uri: uriRelays,
             nostrConnect,
           }
@@ -3692,7 +3722,22 @@ export class RemoteSignerManager {
         }
         return alreadyOpen;
       }
-      if (publishReach.length > 0) {
+      // gittr-only (or nothing) is not a delivery path. Open Amber's real
+      // phone relays in parallel — 2.5s, stop at 2 — then one fresh publish.
+      if (missingPhone.length > 0) {
+        await this.replaceDirectPoolIfFullyClosed(
+          uniqueNormalizedRelays([...alreadyOpen, ...missingPhone, ...openNow])
+        );
+        console.log(
+          "[RemoteSigner] gittr-only is not enough — opening Amber phone relays before publish",
+          {
+            already: alreadyOpen,
+            phone: missingPhone,
+            wantAtLeast: 2,
+          }
+        );
+        await this.dialRelaysWithConcurrency(missingPhone, 4, 2500, 2);
+      } else if (publishReach.length > 0) {
         await this.replaceDirectPoolIfFullyClosed(
           uniqueNormalizedRelays([...publishReach, ...openNow])
         );
@@ -3703,23 +3748,31 @@ export class RemoteSignerManager {
           {
             already: alreadyOpen.length,
             remaining: dialList,
-            wantAtLeast: 1,
+            wantAtLeast: 2,
             openNow,
             nostrConnect,
           }
         );
         await this.dialRelaysWithConcurrency(
           dialList,
-          Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
-          BUNKER_SIGN_RELAY_BUDGET_MS,
-          1
+          4,
+          2500,
+          2
         );
       }
       this.lastSignAttempted = order;
-      const open = preferGittrBunkerFirst(
+      const open = preferAmberPhonePublishRelays(
         pickSignEventCoverOpenRelays(
-          await this.listDirectOpenRelays(publishReach),
-          publishReach,
+          await this.listDirectOpenRelays(
+            uniqueNormalizedRelays([
+              ...publishReach,
+              ...AMBER_PHONE_DELIVERY_RELAYS,
+            ])
+          ),
+          uniqueNormalizedRelays([
+            ...AMBER_PHONE_DELIVERY_RELAYS,
+            ...publishReach,
+          ]),
           BUNKER_PUBLISH_MAX_RELAYS
         )
       );
@@ -4732,37 +4785,50 @@ export class RemoteSignerManager {
           });
           let publishTargets =
             method === "sign_event"
-              ? preferGittrBunkerFirst(
+              ? preferAmberPhonePublishRelays(
                   pickSignEventCoverOpenRelays(
                     openDirect.length > 0 ? openDirect : [],
-                    amberReach
+                    uniqueNormalizedRelays([
+                      ...AMBER_PHONE_DELIVERY_RELAYS,
+                      ...amberReach,
+                    ])
                   )
                 )
               : preferUriOpenRelays(
                   openDirect.length > 0 ? openDirect : [],
                   uriRelays
                 );
-          if (publishTargets.length === 0 && method === "sign_event") {
-            if (amberReach.length > 0) {
-              console.warn(
-                "[RemoteSigner] No Amber bunker socket open for sign_event — dialing before publish",
-                { amberReach, openDirect }
-              );
-              await this.dialRelaysWithConcurrency(
-                amberReach,
-                Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
-                BUNKER_SIGN_RELAY_BUDGET_MS,
-                Math.min(4, Math.max(1, amberReach.length))
-              );
-              publishTargets = preferGittrBunkerFirst(
-                pickSignEventCoverOpenRelays(
-                  await this.listDirectOpenRelays(amberReach),
-                  amberReach
-                )
-              );
-              requestEvent = buildRpcEvent(encrypted.primary);
-              this.lastSignEventEnvelopes = [requestEvent];
-            }
+          if (
+            method === "sign_event" &&
+            !signEventOpenRelaysReachAmberPhone(publishTargets)
+          ) {
+            console.warn(
+              "[RemoteSigner] No Amber phone relay open for sign_event — dialing primal/theforest/bucket/ditto",
+              { publishTargets, openDirect }
+            );
+            await this.dialRelaysWithConcurrency(
+              AMBER_PHONE_DELIVERY_RELAYS,
+              4,
+              2500,
+              2
+            );
+            publishTargets = preferAmberPhonePublishRelays(
+              pickSignEventCoverOpenRelays(
+                await this.listDirectOpenRelays(
+                  uniqueNormalizedRelays([
+                    ...AMBER_PHONE_DELIVERY_RELAYS,
+                    ...amberReach,
+                    ...openDirect,
+                  ])
+                ),
+                uniqueNormalizedRelays([
+                  ...AMBER_PHONE_DELIVERY_RELAYS,
+                  ...amberReach,
+                ])
+              )
+            );
+            requestEvent = buildRpcEvent(encrypted.primary);
+            this.lastSignEventEnvelopes = [requestEvent];
           }
           if (publishTargets.length === 0) {
             if (method === "sign_event") {
@@ -4777,10 +4843,9 @@ export class RemoteSignerManager {
                 ? uriRelays
                 : session.relays;
           }
-          // Stamp late; listen on publish + gittr BEFORE the note leaves so
-          // Amber's reply on our relay cannot land in a subscription gap.
+          // Stamp late; listen on phone relays BEFORE the note leaves.
           if (method === "sign_event") {
-            publishTargets = preferGittrBunkerFirst(
+            publishTargets = preferAmberPhonePublishRelays(
               uniqueNormalizedRelays(publishTargets)
             );
             if (publishTargets.length === 0) {
@@ -4791,17 +4856,7 @@ export class RemoteSignerManager {
             const listenBefore = uniqueNormalizedRelays([
               ...publishTargets,
               ...openDirect,
-              GITTR_BUNKER_RELAY,
             ]);
-            const gittrOpen = (
-              await this.listDirectOpenRelays([GITTR_BUNKER_RELAY])
-            ).length;
-            if (gittrOpen === 0) {
-              await this.openDirectRelay(
-                GITTR_BUNKER_RELAY,
-                BUNKER_RELAY_OPEN_BUDGET_MS
-              );
-            }
             await this.ensureResponseSubscription(session, listenBefore);
             requestEvent = buildRpcEvent(encrypted.primary);
             this.lastSignEventEnvelopes = [requestEvent];
