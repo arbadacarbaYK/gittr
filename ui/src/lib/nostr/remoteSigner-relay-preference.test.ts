@@ -29,11 +29,8 @@ import {
   bunkerReplyListenDialTargets,
   pickSignEventCoverOpenRelays,
   preferGittrBunkerFirst,
-  preferAmberPhonePublishRelays,
-  AMBER_PHONE_DELIVERY_RELAYS,
   signEventAmberPublishRelays,
   signEventAmberReachRelays,
-  signEventOpenRelaysReachAmberPhone,
   nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
@@ -665,87 +662,49 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
   });
 
-  it("reaches Amber connected hosts even when the bunker URI is mostly indexers", () => {
+  it("publishes only on the session bunker URI, not Amber's personal relay screen", () => {
     const reach = signEventAmberReachRelays([
       "wss://relay.damus.io",
       "wss://purplepag.es",
       "wss://theforest.nostr1.com",
     ]);
-    expect(reach).toContain("wss://theforest.nostr1.com");
-    expect(reach).toContain("wss://relay.gittr.space");
-    expect(reach).toContain("wss://relay.primal.net");
-    expect(reach).toContain("wss://nrs.primal.net");
+    expect(reach).toEqual(["wss://theforest.nostr1.com"]);
+    expect(reach).not.toContain("wss://relay.primal.net");
+    expect(reach).not.toContain("wss://nrs.primal.net");
     expect(reach).not.toContain("wss://relay.damus.io");
     expect(reach).not.toContain("wss://purplepag.es");
-    expect(
-      pickSignEventCoverOpenRelays(
-        ["wss://relay.gittr.space", "wss://nos.lol"],
-        reach,
-        8
-      )
-    ).toEqual(["wss://relay.gittr.space"]);
   });
 
-  it("keeps relay.gittr.space for Amber publish+listen (live broadcast works)", () => {
+  it("keeps relay.gittr.space for publish+listen when it is on the bunker URI", () => {
     const publish = signEventAmberPublishRelays([
       GITTR_BUNKER_RELAY,
       "wss://relay.damus.io",
       "wss://theforest.nostr1.com",
     ]);
-    expect(publish).toContain(GITTR_BUNKER_RELAY);
-    expect(publish).toContain("wss://theforest.nostr1.com");
-    expect(publish).toContain("wss://relay.primal.net");
+    expect(publish).toEqual([GITTR_BUNKER_RELAY, "wss://theforest.nostr1.com"]);
+    expect(publish).not.toContain("wss://relay.primal.net");
     expect(
       preferGittrBunkerFirst(
         pickSignEventCoverOpenRelays(
-          [
-            "wss://relay.primal.net",
-            GITTR_BUNKER_RELAY,
-            "wss://theforest.nostr1.com",
-          ],
+          [GITTR_BUNKER_RELAY, "wss://theforest.nostr1.com"],
           publish,
           8
         )
       )
-    ).toEqual([
-      GITTR_BUNKER_RELAY,
-      "wss://relay.primal.net",
-      "wss://theforest.nostr1.com",
-    ]);
+    ).toEqual([GITTR_BUNKER_RELAY, "wss://theforest.nostr1.com"]);
   });
 
-  it("does not treat gittr-only as Amber phone delivery", () => {
-    expect(signEventOpenRelaysReachAmberPhone([GITTR_BUNKER_RELAY])).toBe(
-      false
-    );
-    expect(
-      signEventOpenRelaysReachAmberPhone([
-        GITTR_BUNKER_RELAY,
-        "wss://relay.primal.net",
-      ])
-    ).toBe(true);
+  it("publishes as soon as one URI bunker socket is open", () => {
     expect(signEventShouldPublishOnOpenSockets(1, [GITTR_BUNKER_RELAY])).toBe(
-      false
+      true
     );
+    expect(signEventShouldPublishOnOpenSockets(0, [])).toBe(false);
     expect(
       signEventShouldPublishOnOpenSockets(2, [
         GITTR_BUNKER_RELAY,
         "wss://theforest.nostr1.com",
       ])
     ).toBe(true);
-    expect(
-      preferAmberPhonePublishRelays([
-        GITTR_BUNKER_RELAY,
-        "wss://relay.primal.net",
-        "wss://bucket.coracle.social",
-      ])
-    ).toEqual([
-      "wss://relay.primal.net",
-      "wss://bucket.coracle.social",
-      GITTR_BUNKER_RELAY,
-    ]);
-    expect(AMBER_PHONE_DELIVERY_RELAYS).toContain("wss://relay.primal.net");
-    expect(AMBER_PHONE_DELIVERY_RELAYS).not.toContain(GITTR_BUNKER_RELAY);
   });
 
   it("never fans an already-accepted ephemeral sign_event to later-dialed relays", () => {
