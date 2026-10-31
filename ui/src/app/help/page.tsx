@@ -3836,6 +3836,19 @@ export default function HelpPage() {
                 to <code className="text-purple-200">space.gittr.app</code>.
               </p>
               <p className="mt-3 text-sm text-gray-300">
+                Zapstore only lists an Android app when you can prove the APK
+                signing certificate is yours. That proof is once per
+                certificate: on your computer run{" "}
+                <code className="text-purple-200">zsp</code> and choose{" "}
+                <strong className="text-white">Prove it’s yours</strong>. The
+                keystore stays on that machine. Then check the file in gittr
+                and publish. gittr reads the certificate from the APK, writes
+                it onto the file event, and stops the publish if the proof is
+                missing, expired, or for a different key. Publishing the same
+                version again also removes older file events so a leftover file
+                is not left on its own.
+              </p>
+              <p className="mt-3 text-sm text-gray-300">
                 Optional Zapstore catalog: add{" "}
                 <code className="text-purple-200">zapstore.yaml</code> at the
                 source repo root (

@@ -9,6 +9,7 @@ import type {
 import { KIND_SOFTWARE_ASSET } from "./nip82-software";
 import {
   buildSoftwareAnnounceEvents,
+  orphanSoftwareAssetIds,
   pickAnnouncePrimaryAsset,
   pickSiblingNip82Assets,
 } from "./software-announce-build";
@@ -327,5 +328,55 @@ describe("buildSoftwareAnnounceEvents", () => {
       iconUrl: "javascript:alert(1)",
     });
     expect(noIcon.app.tags.find((t) => t[0] === "icon")).toBeUndefined();
+  });
+
+  it("puts the APK signing certificate hash on the file event", () => {
+    const forge = sampleForge({ includeMsi: false });
+    const hash = "ab".repeat(32);
+    forge.release.assets[0]!.apkCertificateHash = hash;
+    forge.release.apkAssets[0]!.apkCertificateHash = hash;
+    const built = buildSoftwareAnnounceEvents({
+      forge,
+      appId: "space.gittr.demo",
+      appName: "Demo",
+    });
+    expect(
+      built.asset.tags.find((t) => t[0] === "apk_certificate_hash")?.[1]
+    ).toBe(hash);
+  });
+
+  it("leaves an excluded installer off the release", () => {
+    const forge = sampleForge();
+    const msi = forge.release.assets.find((a) => a.name.endsWith(".msi"))!;
+    const built = buildSoftwareAnnounceEvents({
+      forge,
+      appId: "space.gittr.demo",
+      appName: "Demo",
+      excludeAssetUrls: [msi.downloadUrl],
+    });
+    expect(built.extraAssets).toHaveLength(0);
+  });
+});
+
+describe("orphanSoftwareAssetIds", () => {
+  const keep = "a".repeat(64);
+  const oldSame = "b".repeat(64);
+  const otherVersion = "c".repeat(64);
+  const loose = "d".repeat(64);
+
+  it("drops same-version file events that this publish replaces, and unlinked ones", () => {
+    expect(
+      orphanSoftwareAssetIds({
+        version: "1.2.3",
+        keepIds: [keep],
+        assets: [
+          { id: keep, version: "1.2.3" },
+          { id: oldSame, version: "1.2.3" },
+          { id: otherVersion, version: "1.0.0" },
+          { id: loose, version: "1.0.0" },
+        ],
+        referencedIds: [otherVersion],
+      })
+    ).toEqual([oldSame, loose]);
   });
 });

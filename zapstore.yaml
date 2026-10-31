@@ -4,7 +4,10 @@
 #
 # First publish (whitelist): commit this file, then from a machine with your
 # signer run:  SIGN_WITH=nsec1…  zsp publish -y zapstore.yaml
-# Or announce the same GitHub tag from gittr.space Releases / Nostr Apps.
+# Zapstore also requires a one-time proof that this APK’s signing certificate
+# is yours (`zsp`, “Prove it’s yours”, same keystore that signs the release).
+# After that, announce the GitHub tag from gittr.space Releases / Nostr Apps.
+# gittr attaches the certificate hash and will not list the APK without the proof.
 # Do not put an nsec in CI.
 
 name: gittr
