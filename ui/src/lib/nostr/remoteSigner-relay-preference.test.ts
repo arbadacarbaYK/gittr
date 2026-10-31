@@ -26,6 +26,7 @@ import {
   sessionUsesNostrConnect,
   bunkerReplyListenDialTargets,
   pickSignEventCoverOpenRelays,
+  signEventAmberReachRelays,
   nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
@@ -657,25 +658,25 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
   });
 
-  it("refuses expanded-only opens so Amber URI hosts get the sign_event", () => {
+  it("reaches Amber connected hosts even when the bunker URI is mostly indexers", () => {
+    const reach = signEventAmberReachRelays([
+      "wss://relay.damus.io",
+      "wss://purplepag.es",
+      "wss://theforest.nostr1.com",
+    ]);
+    expect(reach).toContain("wss://theforest.nostr1.com");
+    expect(reach).toContain("wss://relay.gittr.space");
+    expect(reach).toContain("wss://relay.primal.net");
+    expect(reach).toContain("wss://nrs.primal.net");
+    expect(reach).not.toContain("wss://relay.damus.io");
+    expect(reach).not.toContain("wss://purplepag.es");
     expect(
       pickSignEventCoverOpenRelays(
-        ["wss://relay.gittr.space"],
-        [
-          "wss://relay.damus.io",
-          "wss://nos.lol",
-          "wss://theforest.nostr1.com",
-        ],
-        2
+        ["wss://relay.gittr.space", "wss://nos.lol"],
+        reach,
+        8
       )
-    ).toEqual([]);
-    expect(
-      pickSignEventCoverOpenRelays(
-        ["wss://theforest.nostr1.com", "wss://relay.gittr.space"],
-        ["wss://theforest.nostr1.com", "wss://relay.damus.io"],
-        2
-      )
-    ).toEqual(["wss://theforest.nostr1.com"]);
+    ).toEqual(["wss://relay.gittr.space"]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
