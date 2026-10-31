@@ -1,22 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUNKER_EPHEMERAL_MAX_AGE_SEC,
   GITTR_BUNKER_RELAY,
   PRIMAL_BUNKER_RELAYS,
   bunkerPublishIsThin,
-  bunkerRpcEventIsStale,
-  BUNKER_EPHEMERAL_MAX_AGE_SEC,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
+  bunkerReplyListenDialTargets,
   bunkerRescueRelays,
   bunkerRetryAfterMiss,
+  bunkerRpcEventIsStale,
   confirmedPublishUrls,
   expandBunkerRelays,
   getNip46PairingRelays,
   getSessionUriRelays,
   mergeSignerPublishRelays,
   nip46PrimaryEncryption,
+  nip46ReplySubscriptionFilters,
   nip46ShouldDualPublish,
   planBunkerDialWaves,
   planSignEventDialOrder,
@@ -24,16 +26,15 @@ import {
   primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
-  bunkerReplyListenDialTargets,
-  nip46ReplySubscriptionFilters,
+  signEventCoverPublishRelays,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
   signEventRedialKeepsListener,
   signEventReplyListenExpandTargets,
-  uriPreferredOpenRelays,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
   signerBunkerRelays,
+  uriPreferredOpenRelays,
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
@@ -579,6 +580,28 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual([]);
   });
 
+  it("publishes on the warm gittr socket even when it is not in the bunker URI", () => {
+    expect(
+      signEventCoverPublishRelays(
+        ["wss://relay.gittr.space"],
+        [
+          "wss://relay.primal.net",
+          "wss://theforest.nostr1.com",
+          "wss://bucket.coracle.social",
+        ]
+      )
+    ).toEqual(["wss://relay.gittr.space"]);
+  });
+
+  it("prefers URI overlap over gittr when both are open", () => {
+    expect(
+      signEventCoverPublishRelays(
+        ["wss://relay.gittr.space", "wss://theforest.nostr1.com"],
+        ["wss://theforest.nostr1.com", "wss://relay.primal.net"]
+      )
+    ).toEqual(["wss://theforest.nostr1.com"]);
+  });
+
   it("expands listen to URI hosts that did not open for the publish", () => {
     // Live failure: cover opened 2 of 8, Amber signed, inboundDuringWait stayed 0
     // because her reply was on a URI relay we never subscribed to.
@@ -655,15 +678,27 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
   });
 
+  it("does not dial purplepag.es while waiting for Amber's reply", () => {
+    expect(
+      bunkerReplyListenDialTargets([
+        "wss://relay.gittr.space",
+        "wss://purplepag.es",
+        "wss://profiles.nostr1.com",
+        "wss://user.kindpag.es",
+        "wss://theforest.nostr1.com",
+      ])
+    ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
+  });
+
   it("treats a bunker note as expired once it is older than the relay window", () => {
     const now = 1_700_000_000;
     expect(bunkerRpcEventIsStale(now, now)).toBe(false);
     expect(
       bunkerRpcEventIsStale(now - (BUNKER_EPHEMERAL_MAX_AGE_SEC - 1), now)
     ).toBe(false);
-    expect(
-      bunkerRpcEventIsStale(now - BUNKER_EPHEMERAL_MAX_AGE_SEC, now)
-    ).toBe(true);
+    expect(bunkerRpcEventIsStale(now - BUNKER_EPHEMERAL_MAX_AGE_SEC, now)).toBe(
+      true
+    );
     expect(bunkerRpcEventIsStale(Number.NaN, now)).toBe(true);
   });
 
