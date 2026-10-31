@@ -1,24 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BUNKER_EPHEMERAL_MAX_AGE_SEC,
   GITTR_BUNKER_RELAY,
   PRIMAL_BUNKER_RELAYS,
   bunkerPublishIsThin,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
-  bunkerReplyListenDialTargets,
   bunkerRescueRelays,
   bunkerRetryAfterMiss,
-  bunkerRpcEventIsStale,
   confirmedPublishUrls,
   expandBunkerRelays,
   getNip46PairingRelays,
   getSessionUriRelays,
   mergeSignerPublishRelays,
   nip46PrimaryEncryption,
-  nip46ReplySubscriptionFilters,
   nip46ShouldDualPublish,
   planBunkerDialWaves,
   planSignEventDialOrder,
@@ -26,15 +22,10 @@ import {
   primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
-  signEventCoverPublishRelays,
-  signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
-  signEventRedialKeepsListener,
-  signEventReplyListenExpandTargets,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
   signerBunkerRelays,
-  uriPreferredOpenRelays,
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
@@ -516,192 +507,6 @@ describe("Primal nostrconnect relays", () => {
     ).toBe(false);
   });
 
-  it("keeps Amber's reply after any relay accepted the request", () => {
-    expect(
-      signEventRedialKeepsListener({
-        acked: true,
-        hasUriOverlap: true,
-      })
-    ).toBe(true);
-    expect(
-      signEventRedialKeepsListener({
-        acked: true,
-        hasUriOverlap: false,
-      })
-    ).toBe(true);
-    expect(
-      signEventRedialKeepsListener({
-        acked: false,
-        signatureAlreadyInHand: true,
-      })
-    ).toBe(true);
-    expect(signEventRedialKeepsListener({ acked: false })).toBe(false);
-  });
-
-  it("does not redial after any relay accepted a bunker:// request", () => {
-    expect(
-      signEventPublishNeedsAnotherDial({
-        method: "sign_event",
-        acked: true,
-        publishedUrls: ["wss://relay.gittr.space"],
-        uriRelays: [
-          "wss://relay.gittr.space",
-          "wss://bucket.coracle.social",
-          "wss://nrs.primal.net",
-          "wss://relay.primal.net",
-          "wss://relay.nip46.com",
-          "wss://theforest.nostr1.com",
-          "wss://relay.ditto.pub",
-        ],
-      })
-    ).toBe(false);
-    expect(
-      signEventPublishNeedsAnotherDial({
-        method: "sign_event",
-        acked: true,
-        publishedUrls: ["wss://nos.lol"],
-        uriRelays: ["wss://relay.gittr.space", "wss://relay.primal.net"],
-      })
-    ).toBe(false);
-  });
-
-  it("publishes early only on Amber URI hosts, not expanded fallbacks", () => {
-    expect(
-      uriPreferredOpenRelays(
-        ["wss://nos.lol", "wss://relay.gittr.space"],
-        ["wss://relay.gittr.space", "wss://relay.primal.net"]
-      )
-    ).toEqual(["wss://relay.gittr.space"]);
-    expect(
-      uriPreferredOpenRelays(
-        ["wss://nos.lol"],
-        ["wss://relay.gittr.space", "wss://relay.primal.net"]
-      )
-    ).toEqual([]);
-  });
-
-  it("does not publish on gittr when Amber's bunker URI does not include it", () => {
-    expect(
-      signEventCoverPublishRelays(
-        ["wss://relay.gittr.space"],
-        [
-          "wss://relay.primal.net",
-          "wss://theforest.nostr1.com",
-          "wss://bucket.coracle.social",
-        ]
-      )
-    ).toEqual([]);
-  });
-
-  it("prefers URI overlap over gittr when both are open", () => {
-    expect(
-      signEventCoverPublishRelays(
-        ["wss://relay.gittr.space", "wss://theforest.nostr1.com"],
-        ["wss://theforest.nostr1.com", "wss://relay.primal.net"]
-      )
-    ).toEqual(["wss://theforest.nostr1.com"]);
-  });
-
-  it("expands listen to URI hosts that did not open for the publish", () => {
-    // Live failure: cover opened 2 of 8, Amber signed, inboundDuringWait stayed 0
-    // because her reply was on a URI relay we never subscribed to.
-    const uriRelays = [
-      "wss://relay.gittr.space",
-      "wss://relay.primal.net",
-      "wss://theforest.nostr1.com",
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-      "wss://relay.nip46.com",
-      "wss://bucket.coracle.social",
-    ];
-    const openRelays = [
-      "wss://relay.gittr.space",
-      "wss://theforest.nostr1.com",
-    ];
-    const missing = signEventReplyListenExpandTargets({
-      uriRelays,
-      openRelays,
-      publishedUrls: openRelays,
-    });
-    expect(missing).toEqual([
-      "wss://relay.primal.net",
-      "wss://relay.damus.io",
-      "wss://nos.lol",
-      "wss://relay.nip46.com",
-      "wss://bucket.coracle.social",
-    ]);
-    // Published-but-CLOSED must still be dialed (acked URL is not coverage).
-    expect(
-      signEventReplyListenExpandTargets({
-        uriRelays: ["wss://relay.gittr.space", "wss://relay.primal.net"],
-        openRelays: [],
-        publishedUrls: ["wss://relay.gittr.space"],
-      })
-    ).toEqual(["wss://relay.gittr.space", "wss://relay.primal.net"]);
-    expect(
-      signEventListenRefreshShouldDialMissing({
-        openCount: openRelays.length,
-        missingCount: missing.length,
-      })
-    ).toBe(true);
-    expect(
-      signEventListenRefreshShouldDialMissing({
-        openCount: uriRelays.length,
-        missingCount: 0,
-      })
-    ).toBe(false);
-    expect(
-      signEventReplyListenExpandTargets({
-        uriRelays,
-        openRelays: uriRelays,
-      })
-    ).toEqual([]);
-  });
-
-  it("subscribes for Amber replies with #p=client only (helper-tools)", () => {
-    const client =
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    expect(nip46ReplySubscriptionFilters(client)).toEqual([
-      { kinds: [24133], "#p": [client] },
-    ]);
-    expect(nip46ReplySubscriptionFilters("not-hex")).toEqual([]);
-  });
-
-  it("does not dial Damus while waiting for Amber's reply", () => {
-    expect(
-      bunkerReplyListenDialTargets([
-        "wss://relay.gittr.space",
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://theforest.nostr1.com",
-      ])
-    ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
-  });
-
-  it("does not dial purplepag.es while waiting for Amber's reply", () => {
-    expect(
-      bunkerReplyListenDialTargets([
-        "wss://relay.gittr.space",
-        "wss://purplepag.es",
-        "wss://profiles.nostr1.com",
-        "wss://user.kindpag.es",
-        "wss://theforest.nostr1.com",
-      ])
-    ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
-  });
-
-  it("treats a bunker note as expired once it is older than the relay window", () => {
-    const now = 1_700_000_000;
-    expect(bunkerRpcEventIsStale(now, now)).toBe(false);
-    expect(
-      bunkerRpcEventIsStale(now - (BUNKER_EPHEMERAL_MAX_AGE_SEC - 1), now)
-    ).toBe(false);
-    expect(bunkerRpcEventIsStale(now - BUNKER_EPHEMERAL_MAX_AGE_SEC, now)).toBe(
-      true
-    );
-    expect(bunkerRpcEventIsStale(Number.NaN, now)).toBe(true);
-  });
-
   it("does not redial after Amber already returned the signature", () => {
     expect(
       signEventPublishNeedsAnotherDial({
@@ -718,6 +523,25 @@ describe("Primal nostrconnect relays", () => {
           "wss://relay.ditto.pub",
         ],
         signatureAlreadyInHand: true,
+      })
+    ).toBe(false);
+  });
+
+  it("never resets or republishes after any relay accepted a bunker:// sign_event", () => {
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: ["wss://relay.gittr.space"],
+        uriRelays: [
+          "wss://relay.gittr.space",
+          "wss://bucket.coracle.social",
+          "wss://nrs.primal.net",
+          "wss://relay.primal.net",
+          "wss://relay.nip46.com",
+          "wss://theforest.nostr1.com",
+          "wss://relay.ditto.pub",
+        ],
       })
     ).toBe(false);
   });

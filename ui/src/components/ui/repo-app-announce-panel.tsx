@@ -444,81 +444,73 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         setForge(data);
       }
 
-      const publishAnnounce = async () => {
-        let assetUrlOverrides: Record<string, string> | undefined;
-        if (pinToNgitBlossom) {
-          const signer = await resolveNostrSigner({
-            remoteSigner,
-            waitForRemote: true,
-          });
-          if (!signer) {
-            throw new Error(
-              "No signing method available. Use a NIP-07 extension or pair a remote signer."
-            );
-          }
-          const pin = await pinReleaseAssetsToNgitBlossom({
-            sourceUrl: source,
-            tag: tagForQuery || null,
-            forge: forgeForPublish,
-            selectedUrl: selectedAssetUrl || undefined,
-            ownerPubkeyHex,
-            signEvent: (event) => signer.signEvent(event),
-          });
-          if (Object.keys(pin.overrides).length > 0) {
-            assetUrlOverrides = pin.overrides;
-          }
-          if (pin.warnings.length > 0) {
-            setPinWarning(pin.warnings.join(" "));
-          }
-        }
-
-        return publishSoftwareAnnounce({
-          input: {
-            forge: forgeForPublish,
-            appId: appId.trim(),
-            appName: appName.trim(),
-            summary: summaryForNip82Announce({
-              repo: repoName,
-              ownerPubkeyHex,
-              repoSummary,
-            }),
-            selectedAssetUrl: selectedAssetUrl || undefined,
-            selectedApkUrl: selectedAssetUrl || undefined,
-            nip34Address: nip34Address || undefined,
-            assetUrlOverrides,
-            ownerPubkeyHex,
-            topics: topicsForNip82Announce({
-              repoTopics,
-              repo: repoName,
-              ownerPubkeyHex,
-            }),
-            iconUrl: iconUrlForNip82Announce({
-              repo: repoName,
-              ownerPubkeyHex,
-              repoLogoUrl,
-              sourceUrl,
-              cloneUrls,
-              files: repoFiles,
-              defaultBranch,
-              yamlIconUrl,
-            }),
-            screenshotUrls,
-            license: isOfficialGittr ? GITTR_ANDROID_LICENSE : undefined,
-          },
-          ownerPubkeyHex,
-          defaultRelays: defaultRelays || [],
-          resolveSigner: () =>
-            resolveNostrSigner({ remoteSigner, waitForRemote: true }),
-          publish: publish as any,
-          subscribe: subscribe as any,
+      let assetUrlOverrides: Record<string, string> | undefined;
+      if (pinToNgitBlossom) {
+        const signer = await resolveNostrSigner({
+          remoteSigner,
+          waitForRemote: true,
         });
-      };
+        if (!signer) {
+          throw new Error(
+            "No signing method available. Use a NIP-07 extension or pair a remote signer."
+          );
+        }
+        const pin = await pinReleaseAssetsToNgitBlossom({
+          sourceUrl: source,
+          tag: tagForQuery || null,
+          forge: forgeForPublish,
+          selectedUrl: selectedAssetUrl || undefined,
+          ownerPubkeyHex,
+          signEvent: (event) => signer.signEvent(event),
+        });
+        if (Object.keys(pin.overrides).length > 0) {
+          assetUrlOverrides = pin.overrides;
+        }
+        if (pin.warnings.length > 0) {
+          setPinWarning(pin.warnings.join(" "));
+        }
+      }
 
-      // One Amber dial for the Blossom pin and every NIP-82 event. Releasing
-      // the bunker between approvals was what left Amber with an expired note.
-      const result = remoteSigner?.withSigningSession
-        ? await remoteSigner.withSigningSession(publishAnnounce)
-        : await publishAnnounce();
+      const result = await publishSoftwareAnnounce({
+        input: {
+          forge: forgeForPublish,
+          appId: appId.trim(),
+          appName: appName.trim(),
+          summary: summaryForNip82Announce({
+            repo: repoName,
+            ownerPubkeyHex,
+            repoSummary,
+          }),
+          selectedAssetUrl: selectedAssetUrl || undefined,
+          selectedApkUrl: selectedAssetUrl || undefined,
+          nip34Address: nip34Address || undefined,
+          assetUrlOverrides,
+          ownerPubkeyHex,
+          topics: topicsForNip82Announce({
+            repoTopics,
+            repo: repoName,
+            ownerPubkeyHex,
+          }),
+          iconUrl: iconUrlForNip82Announce({
+            repo: repoName,
+            ownerPubkeyHex,
+            repoLogoUrl,
+            sourceUrl,
+            cloneUrls,
+            files: repoFiles,
+            defaultBranch,
+            yamlIconUrl,
+          }),
+          screenshotUrls,
+          license: isOfficialGittr ? GITTR_ANDROID_LICENSE : undefined,
+        },
+        ownerPubkeyHex,
+        defaultRelays: defaultRelays || [],
+        resolveSigner: () =>
+          resolveNostrSigner({ remoteSigner, waitForRemote: true }),
+        publish: publish as any,
+        subscribe: subscribe as any,
+      });
       setPublishResult({
         appId: result.appId,
         version: result.version,

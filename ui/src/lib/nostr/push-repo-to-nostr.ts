@@ -330,11 +330,6 @@ export async function pushRepoToNostr(
     throw new Error(NO_SIGNING_METHOD_MESSAGE);
   };
 
-  // Hold Amber's bunker dial across repo + state sign_event so page relays
-  // do not rush back between the two approvals.
-  let endRemoteSigningSession: (() => void) | undefined;
-  let remoteSigningSession: Promise<unknown> | undefined;
-
   try {
     // Step 1: Set status to "pushing" and record timestamp
     setRepoStatus(repoSlug, entity, "pushing");
@@ -2432,31 +2427,6 @@ export async function pushRepoToNostr(
         );
       }
 
-      // Hold page relays, then WAIT until that hold finishes before signEvent.
-      // Firing withSigningSession without await let the pool sweep finish
-      // *after* publish and kill Amber's reply sockets (ephemeral expired).
-      if (
-        resolvedSource === "remote" &&
-        remoteSigner &&
-        typeof remoteSigner.withSigningSession === "function" &&
-        !endRemoteSigningSession
-      ) {
-        let release!: () => void;
-        const sessionHeld = new Promise<void>((resolveHeld) => {
-          remoteSigningSession = remoteSigner.withSigningSession(async () => {
-            resolveHeld();
-            await new Promise<void>((r) => {
-              release = r;
-            });
-          });
-        });
-        endRemoteSigningSession = () => {
-          release();
-          endRemoteSigningSession = undefined;
-        };
-        await sessionHeld;
-      }
-
       // Sign via resolved NIP-07 / remote signer / nsec bridge
       console.log(
         `✍️ [Push Repo] Signing event with ${
@@ -3871,14 +3841,5 @@ export async function pushRepoToNostr(
       error: isUserCancel ? "Push canceled" : errorMessage,
       filesForBridge: [],
     };
-  } finally {
-    endRemoteSigningSession?.();
-    if (remoteSigningSession) {
-      try {
-        await remoteSigningSession;
-      } catch {
-        /* session hold only */
-      }
-    }
   }
 }
