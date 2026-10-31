@@ -510,12 +510,19 @@ describe("Primal nostrconnect relays", () => {
     ).toBe(false);
   });
 
-  it("keeps Amber's reply when a relay already accepted the request", () => {
+  it("keeps Amber's reply when a bunker relay already accepted the request", () => {
     expect(
       signEventRedialKeepsListener({
         acked: true,
+        hasUriOverlap: true,
       })
     ).toBe(true);
+    expect(
+      signEventRedialKeepsListener({
+        acked: true,
+        hasUriOverlap: false,
+      })
+    ).toBe(false);
     expect(
       signEventRedialKeepsListener({
         acked: false,
@@ -523,6 +530,25 @@ describe("Primal nostrconnect relays", () => {
       })
     ).toBe(true);
     expect(signEventRedialKeepsListener({ acked: false })).toBe(false);
+  });
+
+  it("does not redial after a bunker URI relay accepted the request", () => {
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: ["wss://relay.gittr.space", "wss://relay.primal.net"],
+        uriRelays: [
+          "wss://relay.gittr.space",
+          "wss://bucket.coracle.social",
+          "wss://nrs.primal.net",
+          "wss://relay.primal.net",
+          "wss://relay.nip46.com",
+          "wss://theforest.nostr1.com",
+          "wss://relay.ditto.pub",
+        ],
+      })
+    ).toBe(false);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
