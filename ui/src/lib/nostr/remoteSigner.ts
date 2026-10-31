@@ -883,6 +883,28 @@ export function bunkerRpcEventIsStale(
 }
 
 /**
+ * Publish sign_event as soon as one Amber bunker socket is OPEN.
+ * Waiting for 3+ hosts (then fanning the same note) ages created_at past
+ * strfry's ~8s window — Amber shows "invalid: ephemeral event expired".
+ */
+export function signEventShouldPublishOnOpenSockets(
+  alreadyOpenCount: number
+): boolean {
+  return alreadyOpenCount > 0;
+}
+
+/**
+ * Never re-EVENT an already-accepted ephemeral envelope on newly dialed hosts.
+ * Those extra dials take longer than the relay expiry window; Amber then
+ * surfaces the reject string as the prompt.
+ */
+export function signEventShouldFanSameEnvelope(opts: {
+  acked: boolean;
+}): boolean {
+  return !opts.acked;
+}
+
+/**
  * Once any relay accepted the note, or Amber already returned the signature,
  * keep the listener. Resetting after acked:true published a second note that
  * Amber then rejected as an expired ephemeral event.
@@ -3633,7 +3655,6 @@ export class RemoteSignerManager {
       const openNow = await this.listDirectOpenRelays(
         uniqueNormalizedRelays([...order, ...publishReach])
       );
-      const MIN_SIGN_PUBLISH_OPEN = 3;
       let alreadyOpen = preferGittrBunkerFirst(
         pickSignEventCoverOpenRelays(
           openNow,
@@ -3645,12 +3666,10 @@ export class RemoteSignerManager {
       let missingPublish = publishReach.filter(
         (u) => !have.has(normalizeRelayUrl(u))
       );
-      const needMore =
-        alreadyOpen.length < MIN_SIGN_PUBLISH_OPEN && missingPublish.length > 0;
-      if (alreadyOpen.length > 0 && !needMore) {
+      if (signEventShouldPublishOnOpenSockets(alreadyOpen.length)) {
         this.lastSignAttempted = order;
         console.log(
-          "[RemoteSigner] Publishing on Amber bunker relays — opening the rest for her reply",
+          "[RemoteSigner] Publishing on already-open Amber bunker relays — opening the rest only to listen",
           {
             open: alreadyOpen,
             publishReach,
@@ -3684,7 +3703,7 @@ export class RemoteSignerManager {
           {
             already: alreadyOpen.length,
             remaining: dialList,
-            wantAtLeast: MIN_SIGN_PUBLISH_OPEN,
+            wantAtLeast: 1,
             openNow,
             nostrConnect,
           }
@@ -3693,7 +3712,7 @@ export class RemoteSignerManager {
           dialList,
           Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
           BUNKER_SIGN_RELAY_BUDGET_MS,
-          Math.min(MIN_SIGN_PUBLISH_OPEN, Math.max(1, dialList.length))
+          1
         );
       }
       this.lastSignAttempted = order;
@@ -4981,8 +5000,9 @@ export class RemoteSignerManager {
             }
             await this.ensureResponseSubscription(session, reachOpen);
           }
-          // Same event id to newly opened Amber-reachable hosts (no restamp).
-          // Listen-only expand used to leave primal/gittr without the request.
+          // Listen on the rest — do not EVENT the same envelope again.
+          // Extra dials age created_at; strfry then returns "invalid:
+          // ephemeral event expired" and Amber shows that as the prompt.
           if (
             method === "sign_event" &&
             published.acked &&
@@ -4994,53 +5014,11 @@ export class RemoteSignerManager {
               (u) => !publishedSet.has(normalizeRelayUrl(u))
             );
             if (stillMissing.length > 0) {
-              // Await this wave. Fire-and-forget left Amber on gittr.space
-              // (ack-then-drop) while primal/theforest got the note too late
-              // for her subscription race — she kept a stale ephemeral error.
-              try {
-                await this.dialRelaysWithConcurrency(
-                  stillMissing,
-                  Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
-                  BUNKER_SIGN_RELAY_BUDGET_MS,
-                  Math.min(4, stillMissing.length)
-                );
-                if (this.pending.has(id)) {
-                  const extraOpen = pickSignEventCoverOpenRelays(
-                    await this.listDirectOpenRelays(stillMissing),
-                    stillMissing
-                  ).filter((u) => !publishedSet.has(normalizeRelayUrl(u)));
-                  if (extraOpen.length > 0) {
-                    const fan = await this.publishDirectConfirmed(
-                      extraOpen,
-                      requestEvent,
-                      4000
-                    );
-                    console.log(
-                      `[RemoteSigner] Fanned same sign_event to more Amber relays acked=${fan.acked} relays=${fan.urls.join(",")}`
-                    );
-                    if (fan.acked) signPublishAcked = true;
-                    published = {
-                      urls: uniqueNormalizedRelays([
-                        ...published.urls,
-                        ...fan.urls,
-                      ]),
-                      acked: published.acked || fan.acked,
-                    };
-                    this.lastPublishMeta = {
-                      method,
-                      urls: published.urls,
-                      acked: published.acked,
-                      uriRelays,
-                    };
-                    await this.ensureResponseSubscription(session, published.urls);
-                  }
-                }
-              } catch (err) {
-                console.warn(
-                  "[RemoteSigner] Fan-out publish to extra Amber relays failed",
-                  err instanceof Error ? err.message : err
-                );
-              }
+              void this.expandBunkerListenInBackground(
+                session,
+                stillMissing,
+                amberReach
+              );
             }
           }
           if (shouldDualPublish && dualEvent) {

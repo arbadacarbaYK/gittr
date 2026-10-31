@@ -6,6 +6,8 @@ import {
   bunkerPublishIsThin,
   bunkerRpcEventIsStale,
   BUNKER_EPHEMERAL_MAX_AGE_SEC,
+  signEventShouldFanSameEnvelope,
+  signEventShouldPublishOnOpenSockets,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
@@ -707,6 +709,17 @@ describe("Primal nostrconnect relays", () => {
       "wss://relay.primal.net",
       "wss://theforest.nostr1.com",
     ]);
+  });
+
+  it("publishes sign_event on the first open bunker socket instead of waiting for three", () => {
+    expect(signEventShouldPublishOnOpenSockets(0)).toBe(false);
+    expect(signEventShouldPublishOnOpenSockets(1)).toBe(true);
+    expect(signEventShouldPublishOnOpenSockets(5)).toBe(true);
+  });
+
+  it("never fans an already-accepted ephemeral sign_event to later-dialed relays", () => {
+    expect(signEventShouldFanSameEnvelope({ acked: true })).toBe(false);
+    expect(signEventShouldFanSameEnvelope({ acked: false })).toBe(true);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
