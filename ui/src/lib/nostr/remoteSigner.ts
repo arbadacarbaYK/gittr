@@ -717,6 +717,36 @@ export function uriPreferredOpenRelays(
   ].slice(0, max);
 }
 
+/**
+ * Amber's bunker URI often lists 7+ relays. Publishing (and listening) on only
+ * the 1–2 that opened first leaves her reply on a host we never subscribed to
+ * — acked:true, phone signed, inboundDuringWait stays 0.
+ */
+export function signEventReplyListenExpandTargets(opts: {
+  uriRelays: string[];
+  openRelays: string[];
+  publishedUrls?: string[];
+}): string[] {
+  const covered = relayUrlSet([
+    ...(opts.openRelays || []),
+    ...(opts.publishedUrls || []),
+  ]);
+  return uniqueNormalizedRelays(opts.uriRelays || []).filter(
+    (u) => !covered.has(u)
+  );
+}
+
+/**
+ * While waiting for Approve, keep dialing URI hosts we are not listening on
+ * yet — even when some bunker sockets are already OPEN.
+ */
+export function signEventListenRefreshShouldDialMissing(opts: {
+  openCount: number;
+  missingCount: number;
+}): boolean {
+  return opts.missingCount > 0;
+}
+
 export function bunkerRelayPublishOverlap(
   publishedUrls: string[],
   uriRelays: string[]
@@ -3407,13 +3437,16 @@ export class RemoteSignerManager {
     order: string[]
   ): Promise<void> {
     try {
+      if (!missing.length) return;
       await this.dialRelaysWithConcurrency(
         missing,
         BUNKER_URI_DIAL_CONCURRENCY,
         BUNKER_SIGN_RELAY_BUDGET_MS,
         Math.min(4, missing.length)
       );
-      if (!this.pending.size) return;
+      // Subscribe even when pending is not registered yet — sendRequest sets
+      // the waiter right after cover returns. Skipping that left sockets OPEN
+      // without a kind 24133 listener for Amber's reply.
       const open = await this.listDirectOpenRelays(order);
       if (open.length === 0) return;
       await this.ensureResponseSubscription(session, open);
@@ -3525,6 +3558,11 @@ export class RemoteSignerManager {
           missed,
           uri: order.length,
         });
+      }
+      // Partial cover used to return here without expanding — Amber then
+      // answered on a URI host we never opened, and the page timed out.
+      if (open.length > 0 && missed.length > 0) {
+        void this.expandBunkerListenInBackground(session, missed, order);
       }
       return open;
     } finally {
@@ -4198,9 +4236,21 @@ export class RemoteSignerManager {
     const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
     if (targets.length === 0) return;
     const open = await this.listDirectOpenRelays(targets);
-    // A live socket already accepted the request. Opening the closed ones
-    // (Damus in particular) aborts that socket, and Amber's reply is an
-    // ephemeral event — once the listener is gone, it does not come back.
+    const missing = signEventReplyListenExpandTargets({
+      uriRelays: targets,
+      openRelays: open,
+      publishedUrls: published,
+    });
+    // Having 1–2 OPEN is not enough when Amber replies on another URI host.
+    // Dial the rest beside the live sockets — never resetDirectPool here.
+    if (
+      signEventListenRefreshShouldDialMissing({
+        openCount: open.length,
+        missingCount: missing.length,
+      })
+    ) {
+      void this.expandBunkerListenInBackground(session, missing, targets);
+    }
     let again = open;
     if (open.length === 0) {
       await Promise.all(
@@ -4368,6 +4418,23 @@ export class RemoteSignerManager {
         timeout,
       });
       if (method === "sign_event") {
+        // Cover may have only opened 1–2 of Amber's URI relays. Start dialing
+        // the rest now that the waiter exists — her reply often lands on a
+        // host that was still CLOSED at publish time.
+        const expandForReply = signEventReplyListenExpandTargets({
+          uriRelays: getSessionUriRelays(session),
+          openRelays: openDirect,
+        });
+        if (expandForReply.length > 0) {
+          void this.expandBunkerListenInBackground(
+            session,
+            expandForReply,
+            uniqueNormalizedRelays([
+              ...getSessionUriRelays(session),
+              ...openDirect,
+            ])
+          );
+        }
         listenRefresh = setInterval(() => {
           if (!this.pending.has(id)) {
             finishListen();

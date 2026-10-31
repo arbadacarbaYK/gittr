@@ -330,6 +330,11 @@ export async function pushRepoToNostr(
     throw new Error(NO_SIGNING_METHOD_MESSAGE);
   };
 
+  // Hold Amber's bunker dial across repo + state sign_event so page relays
+  // do not rush back between the two approvals.
+  let endRemoteSigningSession: (() => void) | undefined;
+  let remoteSigningSession: Promise<unknown> | undefined;
+
   try {
     // Step 1: Set status to "pushing" and record timestamp
     setRepoStatus(repoSlug, entity, "pushing");
@@ -2017,6 +2022,24 @@ export async function pushRepoToNostr(
       const signWithResolved = getBridgeSigner();
       if (!signWithResolved) {
         throw new Error(NO_SIGNING_METHOD_MESSAGE);
+      }
+      if (
+        resolvedSource === "remote" &&
+        remoteSigner &&
+        typeof remoteSigner.withSigningSession === "function" &&
+        !endRemoteSigningSession
+      ) {
+        let release!: () => void;
+        const holdOpen = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        endRemoteSigningSession = () => {
+          release();
+          endRemoteSigningSession = undefined;
+        };
+        remoteSigningSession = remoteSigner.withSigningSession(async () => {
+          await holdOpen;
+        });
       }
       const signerPubkey = await getSignerPublicKey();
 
@@ -3841,5 +3864,14 @@ export async function pushRepoToNostr(
       error: isUserCancel ? "Push canceled" : errorMessage,
       filesForBridge: [],
     };
+  } finally {
+    endRemoteSigningSession?.();
+    if (remoteSigningSession) {
+      try {
+        await remoteSigningSession;
+      } catch {
+        /* session hold only */
+      }
+    }
   }
 }

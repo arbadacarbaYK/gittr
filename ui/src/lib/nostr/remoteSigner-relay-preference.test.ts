@@ -24,8 +24,10 @@ import {
   primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
+  signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
   signEventRedialKeepsListener,
+  signEventReplyListenExpandTargets,
   uriPreferredOpenRelays,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
@@ -572,6 +574,54 @@ describe("Primal nostrconnect relays", () => {
         ["wss://nos.lol"],
         ["wss://relay.gittr.space", "wss://relay.primal.net"]
       )
+    ).toEqual([]);
+  });
+
+  it("expands listen to URI hosts that did not open for the publish", () => {
+    // Live failure: cover opened 2 of 8, Amber signed, inboundDuringWait stayed 0
+    // because her reply was on a URI relay we never subscribed to.
+    const uriRelays = [
+      "wss://relay.gittr.space",
+      "wss://relay.primal.net",
+      "wss://theforest.nostr1.com",
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://relay.nip46.com",
+      "wss://bucket.coracle.social",
+    ];
+    const openRelays = [
+      "wss://relay.gittr.space",
+      "wss://theforest.nostr1.com",
+    ];
+    const missing = signEventReplyListenExpandTargets({
+      uriRelays,
+      openRelays,
+      publishedUrls: openRelays,
+    });
+    expect(missing).toEqual([
+      "wss://relay.primal.net",
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://relay.nip46.com",
+      "wss://bucket.coracle.social",
+    ]);
+    expect(
+      signEventListenRefreshShouldDialMissing({
+        openCount: openRelays.length,
+        missingCount: missing.length,
+      })
+    ).toBe(true);
+    expect(
+      signEventListenRefreshShouldDialMissing({
+        openCount: uriRelays.length,
+        missingCount: 0,
+      })
+    ).toBe(false);
+    expect(
+      signEventReplyListenExpandTargets({
+        uriRelays,
+        openRelays: uriRelays,
+      })
     ).toEqual([]);
   });
 
