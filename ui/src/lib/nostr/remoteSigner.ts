@@ -3606,14 +3606,21 @@ export class RemoteSignerManager {
       const openNow = await this.listDirectOpenRelays(
         uniqueNormalizedRelays([...order, ...reach])
       );
-      const alreadyOpen = pickSignEventCoverOpenRelays(
+      // relay.gittr.space often acks kind 24133 then drops it (REQ empty).
+      // Publishing to that single warm socket first meant Amber missed the
+      // note unless she was subscribed at that exact instant. Open several
+      // Amber-reachable hosts, then publish to all of them in one shot.
+      const MIN_SIGN_PUBLISH_OPEN = 3;
+      let alreadyOpen = pickSignEventCoverOpenRelays(
         openNow,
         reach,
         BUNKER_PUBLISH_MAX_RELAYS
       );
       const have = new Set(alreadyOpen.map((u) => normalizeRelayUrl(u)));
-      const missingReach = reach.filter((u) => !have.has(normalizeRelayUrl(u)));
-      if (alreadyOpen.length > 0) {
+      let missingReach = reach.filter((u) => !have.has(normalizeRelayUrl(u)));
+      const needMore =
+        alreadyOpen.length < MIN_SIGN_PUBLISH_OPEN && missingReach.length > 0;
+      if (alreadyOpen.length > 0 && !needMore) {
         this.lastSignAttempted = order;
         console.log(
           "[RemoteSigner] Publishing on Amber-reachable bunker relays — opening the rest for her reply",
@@ -3640,20 +3647,25 @@ export class RemoteSignerManager {
         await this.replaceDirectPoolIfFullyClosed(
           uniqueNormalizedRelays([...reach, ...openNow])
         );
+        const dialList = missingReach.length > 0 ? missingReach : reach;
         console.log(
           "[RemoteSigner] Opening Amber-reachable bunker relays before the signing request",
           {
-            already: have.size,
-            remaining: reach,
+            already: alreadyOpen.length,
+            remaining: dialList,
+            wantAtLeast: MIN_SIGN_PUBLISH_OPEN,
             openNow,
             nostrConnect,
           }
         );
         await this.dialRelaysWithConcurrency(
-          reach,
+          dialList,
           Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
           BUNKER_SIGN_RELAY_BUDGET_MS,
-          Math.min(4, Math.max(1, reach.length))
+          Math.min(
+            MIN_SIGN_PUBLISH_OPEN,
+            Math.max(1, dialList.length)
+          )
         );
       }
       this.lastSignAttempted = order;
@@ -4694,6 +4706,18 @@ export class RemoteSignerManager {
           }
           // Stamp as late as possible so dial/cover delay cannot age the note.
           if (method === "sign_event") {
+            // Prefer non-gittr hosts first: gittr.space acks 24133 then drops
+            // the note, so a gittr-only first publish is invisible to Amber
+            // if her socket blips. Still include gittr when it is open.
+            const preferStored = publishTargets.filter(
+              (u) => normalizeRelayUrl(u) !== normalizeRelayUrl(GITTR_BUNKER_RELAY)
+            );
+            if (preferStored.length > 0) {
+              publishTargets = uniqueNormalizedRelays([
+                ...preferStored,
+                ...publishTargets,
+              ]);
+            }
             requestEvent = buildRpcEvent(encrypted.primary);
             this.lastSignEventEnvelopes = [requestEvent];
           }
@@ -4901,40 +4925,53 @@ export class RemoteSignerManager {
               (u) => !publishedSet.has(normalizeRelayUrl(u))
             );
             if (stillMissing.length > 0) {
-              void (async () => {
-                try {
-                  await this.dialRelaysWithConcurrency(
-                    stillMissing,
-                    Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
-                    BUNKER_SIGN_RELAY_BUDGET_MS,
-                    Math.min(4, stillMissing.length)
-                  );
-                  if (!this.pending.has(id)) return;
+              // Await this wave. Fire-and-forget left Amber on gittr.space
+              // (ack-then-drop) while primal/theforest got the note too late
+              // for her subscription race — she kept a stale ephemeral error.
+              try {
+                await this.dialRelaysWithConcurrency(
+                  stillMissing,
+                  Math.min(2, BUNKER_URI_DIAL_CONCURRENCY + 1),
+                  BUNKER_SIGN_RELAY_BUDGET_MS,
+                  Math.min(4, stillMissing.length)
+                );
+                if (this.pending.has(id)) {
                   const extraOpen = pickSignEventCoverOpenRelays(
                     await this.listDirectOpenRelays(stillMissing),
                     stillMissing
                   ).filter((u) => !publishedSet.has(normalizeRelayUrl(u)));
-                  if (extraOpen.length === 0) return;
-                  const fan = await this.publishDirectConfirmed(
-                    extraOpen,
-                    requestEvent,
-                    4000
-                  );
-                  console.log(
-                    `[RemoteSigner] Fanned same sign_event to more Amber relays acked=${fan.acked} relays=${fan.urls.join(",")}`
-                  );
-                  if (fan.acked) signPublishAcked = true;
-                  await this.ensureResponseSubscription(session, [
-                    ...published.urls,
-                    ...extraOpen,
-                  ]);
-                } catch (err) {
-                  console.warn(
-                    "[RemoteSigner] Fan-out publish to extra Amber relays failed",
-                    err instanceof Error ? err.message : err
-                  );
+                  if (extraOpen.length > 0) {
+                    const fan = await this.publishDirectConfirmed(
+                      extraOpen,
+                      requestEvent,
+                      4000
+                    );
+                    console.log(
+                      `[RemoteSigner] Fanned same sign_event to more Amber relays acked=${fan.acked} relays=${fan.urls.join(",")}`
+                    );
+                    if (fan.acked) signPublishAcked = true;
+                    published = {
+                      urls: uniqueNormalizedRelays([
+                        ...published.urls,
+                        ...fan.urls,
+                      ]),
+                      acked: published.acked || fan.acked,
+                    };
+                    this.lastPublishMeta = {
+                      method,
+                      urls: published.urls,
+                      acked: published.acked,
+                      uriRelays,
+                    };
+                    await this.ensureResponseSubscription(session, published.urls);
+                  }
                 }
-              })();
+              } catch (err) {
+                console.warn(
+                  "[RemoteSigner] Fan-out publish to extra Amber relays failed",
+                  err instanceof Error ? err.message : err
+                );
+              }
             }
           }
           if (shouldDualPublish && dualEvent) {
