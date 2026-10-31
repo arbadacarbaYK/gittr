@@ -742,18 +742,17 @@ export function uriPreferredOpenRelays(
 }
 
 /**
- * Hosts to publish sign_event on. Prefer Amber URI opens; if the warm socket
- * is only on an expanded host, use it instead of dialing Damus/indexers
- * (that path logged already:0 and aged the note past Amber's ephemeral window).
+ * Hosts allowed for the sign_event *publish*. Amber only watches her bunker
+ * URI relays. Expanded-only opens (gittr defaults) used to get an OK with
+ * "no overlap vs Amber URI" — Amber never saw the fresh note and showed
+ * "invalid: ephemeral event expired" on a stale prompt.
  */
 export function pickSignEventCoverOpenRelays(
   openRelays: string[],
   uriRelays: string[],
   max = 2
 ): string[] {
-  const uriOpen = uriPreferredOpenRelays(openRelays, uriRelays, max);
-  if (uriOpen.length > 0) return uriOpen;
-  return preferUriOpenRelays(openRelays, uriRelays, max);
+  return uriPreferredOpenRelays(openRelays, uriRelays, max);
 }
 
 /**
@@ -3584,9 +3583,8 @@ export class RemoteSignerManager {
       // looked OPEN. The page relays stayed up, the publish was acked, and
       // Primal/Amber never showed a prompt.
       await this.holdPageRelaysForBunkerDial();
-      // Prefer URI opens; fall back to any warm expanded socket. Requiring
-      // URI-only used to log already:0 while open:1 (expanded), then dial
-      // Damus until the note was too old for Amber.
+      // URI-only. An expanded warm socket (open:1, already:0 URI) must not
+      // become the publish target — Amber never sees that note.
       const openNow = await this.listDirectOpenRelays(order);
       const alreadyOpen = pickSignEventCoverOpenRelays(
         openNow,
@@ -3595,17 +3593,15 @@ export class RemoteSignerManager {
       );
       const have = new Set(alreadyOpen.map((u) => normalizeRelayUrl(u)));
       const missing = order.filter((u) => !have.has(u));
-      // A warm socket is enough to send the request now. Opening the rest in
-      // the background keeps the reply path wide without aging the note.
       if (alreadyOpen.length > 0) {
         this.lastSignAttempted = order;
         console.log(
-          "[RemoteSigner] Publishing on open bunker relays — opening the rest for Amber's reply",
+          "[RemoteSigner] Publishing on Amber URI bunker relays — opening the rest for her reply",
           {
             open: alreadyOpen,
             openNow,
             remaining: missing,
-            uri: order,
+            uri: uriRelays,
             nostrConnect,
           }
         );
@@ -3619,34 +3615,40 @@ export class RemoteSignerManager {
         }
         return alreadyOpen;
       }
-      if (missing.length > 0) {
-        await this.replaceDirectPoolIfFullyClosed(order);
-        // Stop at 2 OPEN browser-viable hosts. Dialing Damus/indexers until
-        // missing.length used to burn 20–40s before created_at was stamped —
-        // Amber then showed "invalid: ephemeral event expired".
-        const dialList = bunkerReplyListenDialTargets(missing);
+      // Dial Amber's URI list (skip Damus/indexers), not expanded defaults.
+      const uriDialList = bunkerReplyListenDialTargets(
+        uniqueNormalizedRelays([
+          ...uriRelays,
+          ...signerBunkerRelays(uriRelays, nostrConnect),
+        ])
+      );
+      if (uriDialList.length > 0) {
+        await this.replaceDirectPoolIfFullyClosed(uriDialList);
         console.log(
-          "[RemoteSigner] Opening bunker relays before the signing request",
+          "[RemoteSigner] Opening Amber URI bunker relays before the signing request",
           {
             already: have.size,
-            remaining: dialList,
-            skipped: missing.length - dialList.length,
-            uri: order.length,
+            remaining: uriDialList,
+            openNowNonUri: openNow.filter(
+              (u) => !relayUrlSet(uriRelays).has(normalizeRelayUrl(u))
+            ),
             nostrConnect,
           }
         );
         await this.dialRelaysWithConcurrency(
-          dialList,
+          uriDialList,
           BUNKER_URI_DIAL_CONCURRENCY,
           BUNKER_SIGN_RELAY_BUDGET_MS,
-          Math.min(2, Math.max(1, dialList.length))
+          Math.min(2, Math.max(1, uriDialList.length))
         );
       }
       this.lastSignAttempted = order;
-      const open = preferUriOpenRelays(
-        await this.listDirectOpenRelays(order),
+      const open = pickSignEventCoverOpenRelays(
+        await this.listDirectOpenRelays(
+          uniqueNormalizedRelays([...uriDialList, ...order])
+        ),
         uriRelays,
-        BUNKER_PUBLISH_MAX_RELAYS
+        Math.min(2, BUNKER_PUBLISH_MAX_RELAYS)
       );
       const openSet = new Set(open.map((u) => normalizeRelayUrl(u)));
       const missed = order.filter((u) => !openSet.has(u));
@@ -4631,16 +4633,51 @@ export class RemoteSignerManager {
         try {
           // Publish NIP-46 only on directPool — app relaypool publish would
           // dial bunker hosts again and fight for the same browser sockets.
-          // Prefer Amber URI/signer relays among OPEN sockets.
+          // sign_event MUST land on Amber URI relays. preferUriOpenRelays
+          // falls back to any open host — that produced acked:true with
+          // "no overlap vs Amber URI" and Amber's stale ephemeral prompt.
           const uriRelays = signerBunkerRelays(
             getSessionUriRelays(session),
             sessionUsesNostrConnect(session)
           );
-          let publishTargets = preferUriOpenRelays(
-            openDirect.length > 0 ? openDirect : [],
-            uriRelays
-          );
+          let publishTargets =
+            method === "sign_event"
+              ? pickSignEventCoverOpenRelays(
+                  openDirect.length > 0 ? openDirect : [],
+                  uriRelays
+                )
+              : preferUriOpenRelays(
+                  openDirect.length > 0 ? openDirect : [],
+                  uriRelays
+                );
+          if (publishTargets.length === 0 && method === "sign_event") {
+            const uriDial = bunkerReplyListenDialTargets(uriRelays);
+            if (uriDial.length > 0) {
+              console.warn(
+                "[RemoteSigner] No Amber URI socket open for sign_event — dialing her bunker relays before publish",
+                { uriDial, openDirect }
+              );
+              await this.dialRelaysWithConcurrency(
+                uriDial,
+                BUNKER_URI_DIAL_CONCURRENCY,
+                BUNKER_SIGN_RELAY_BUDGET_MS,
+                Math.min(2, Math.max(1, uriDial.length))
+              );
+              publishTargets = pickSignEventCoverOpenRelays(
+                await this.listDirectOpenRelays(uriDial),
+                uriRelays
+              );
+              // Restamp — the dial above would age a note built earlier.
+              requestEvent = buildRpcEvent(encrypted.primary);
+              this.lastSignEventEnvelopes = [requestEvent];
+            }
+          }
           if (publishTargets.length === 0) {
+            if (method === "sign_event") {
+              throw new Error(
+                "Could not open any of Amber's bunker relays from this browser. Unlock Amber, keep it online on the relays from your login QR, then try again."
+              );
+            }
             publishTargets =
               openDirect.length > 0
                 ? openDirect
@@ -4706,7 +4743,10 @@ export class RemoteSignerManager {
               if (!this.pending.has(id)) {
                 /* Amber answered the first note while the relays were reopening */
               } else {
-                publishTargets = preferUriOpenRelays(reopened, uriRelays);
+                publishTargets =
+                  method === "sign_event"
+                    ? pickSignEventCoverOpenRelays(reopened, uriRelays)
+                    : preferUriOpenRelays(reopened, uriRelays);
                 if (publishTargets.length === 0) {
                   throw new Error(
                     "Could not reopen bunker relays after publish without OK. Open Amber and try again."
@@ -4787,16 +4827,54 @@ export class RemoteSignerManager {
           if (
             method === "sign_event" &&
             uriRelays.length > 0 &&
-            !bunkerRelayPublishOverlap(published.urls, uriRelays).hasOverlap
+            !overlap.hasOverlap &&
+            this.pending.has(id)
           ) {
+            // Wrong relays got the OK. Amber still shows a stale prompt —
+            // dial her URI list and send a fresh note there (restamped).
             console.warn(
-              "[RemoteSigner] sign_event published with no overlap vs Amber URI relays — Amber may not see this request",
+              "[RemoteSigner] sign_event had no Amber URI overlap — republishing on her bunker relays",
               {
                 published: published.urls,
                 uriRelays,
                 publishedOnly: overlap.publishedOnly,
               }
             );
+            const uriDial = bunkerReplyListenDialTargets(uriRelays);
+            await this.dialRelaysWithConcurrency(
+              uriDial,
+              BUNKER_URI_DIAL_CONCURRENCY,
+              BUNKER_SIGN_RELAY_BUDGET_MS,
+              Math.min(2, Math.max(1, uriDial.length || 1))
+            );
+            const uriOpen = pickSignEventCoverOpenRelays(
+              await this.listDirectOpenRelays(uriDial),
+              uriRelays
+            );
+            if (uriOpen.length === 0) {
+              throw new Error(
+                "The signing request only reached relays Amber is not watching. Unlock Amber on its bunker relays (from the login QR), then try again."
+              );
+            }
+            requestEvent = buildRpcEvent(encrypted.primary);
+            this.lastSignEventEnvelopes = [requestEvent];
+            published = await this.publishDirectConfirmed(
+              uriOpen,
+              requestEvent,
+              4000
+            );
+            publishTargets = uriOpen;
+            this.lastPublishMeta = {
+              method,
+              urls: published.urls,
+              acked: published.acked,
+              uriRelays,
+            };
+            if (published.acked) {
+              signPublishSettled = true;
+              signPublishAcked = true;
+            }
+            await this.ensureResponseSubscription(session, uriOpen);
           }
           if (shouldDualPublish && dualEvent) {
             // Same JSON-RPC id, other encryption (NIP-04 vs NIP-44).

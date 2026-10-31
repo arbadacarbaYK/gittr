@@ -657,7 +657,7 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
   });
 
-  it("publishes on a warm expanded socket instead of logging already:0", () => {
+  it("refuses expanded-only opens so Amber URI hosts get the sign_event", () => {
     expect(
       pickSignEventCoverOpenRelays(
         ["wss://relay.gittr.space"],
@@ -668,7 +668,7 @@ describe("Primal nostrconnect relays", () => {
         ],
         2
       )
-    ).toEqual(["wss://relay.gittr.space"]);
+    ).toEqual([]);
     expect(
       pickSignEventCoverOpenRelays(
         ["wss://theforest.nostr1.com", "wss://relay.gittr.space"],
