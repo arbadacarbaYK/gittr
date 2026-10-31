@@ -2432,8 +2432,9 @@ export async function pushRepoToNostr(
         );
       }
 
-      // Hold page relays only for the Amber approvals — starting earlier
-      // (while building tags / euc) killed the warm bunker socket.
+      // Hold page relays, then WAIT until that hold finishes before signEvent.
+      // Firing withSigningSession without await let the pool sweep finish
+      // *after* publish and kill Amber's reply sockets (ephemeral expired).
       if (
         resolvedSource === "remote" &&
         remoteSigner &&
@@ -2441,16 +2442,19 @@ export async function pushRepoToNostr(
         !endRemoteSigningSession
       ) {
         let release!: () => void;
-        const holdOpen = new Promise<void>((resolve) => {
-          release = resolve;
+        const sessionHeld = new Promise<void>((resolveHeld) => {
+          remoteSigningSession = remoteSigner.withSigningSession(async () => {
+            resolveHeld();
+            await new Promise<void>((r) => {
+              release = r;
+            });
+          });
         });
         endRemoteSigningSession = () => {
           release();
           endRemoteSigningSession = undefined;
         };
-        remoteSigningSession = remoteSigner.withSigningSession(async () => {
-          await holdOpen;
-        });
+        await sessionHeld;
       }
 
       // Sign via resolved NIP-07 / remote signer / nsec bridge

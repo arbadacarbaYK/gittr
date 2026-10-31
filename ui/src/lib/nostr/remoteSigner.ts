@@ -204,13 +204,18 @@ const BUNKER_RELAYS_DOWN = new Set([
 ]);
 
 /**
- * Do not dial these while waiting for Amber's reply. Damus never opens in
- * this browser; hammering it every listen-refresh kills the OPEN sockets
- * that already carry the signing request.
+ * Do not dial these for sign_event cover/reply. Damus never opens here;
+ * profile indexers are not where Amber answers. Dialing them before publish
+ * delayed created_at delivery and Amber showed "ephemeral event expired".
  */
 const BUNKER_RELAYS_LISTEN_SKIP = new Set([
   ...BUNKER_RELAYS_DOWN,
   "wss://relay.damus.io",
+  "wss://purplepag.es",
+  "wss://profiles.nostr1.com",
+  "wss://user.kindpag.es",
+  "wss://directory.yabu.me",
+  "wss://auth.nostr1.com",
 ]);
 
 /** Relays worth opening while waiting for Amber's reply (skip known-dead). */
@@ -734,6 +739,21 @@ export function uriPreferredOpenRelays(
       openRelays.map(normalizeRelayUrl).filter((u) => preferred.has(u))
     ),
   ].slice(0, max);
+}
+
+/**
+ * Hosts to publish sign_event on. Prefer Amber URI opens; if the warm socket
+ * is only on an expanded host, use it instead of dialing Damus/indexers
+ * (that path logged already:0 and aged the note past Amber's ephemeral window).
+ */
+export function pickSignEventCoverOpenRelays(
+  openRelays: string[],
+  uriRelays: string[],
+  max = 2
+): string[] {
+  const uriOpen = uriPreferredOpenRelays(openRelays, uriRelays, max);
+  if (uriOpen.length > 0) return uriOpen;
+  return preferUriOpenRelays(openRelays, uriRelays, max);
 }
 
 /**
@@ -2498,7 +2518,11 @@ export class RemoteSignerManager {
     }
     this.pageRelaysHeld = [];
     pushMainPoolBunkerPause();
-    await waitForGitSourceHttpIdle(5000);
+    // Signing session already claims the bunker path — do not wait out
+    // clone-heads / file-fetch HTTP (up to 5s) before Amber can be dialed.
+    if (this.signingSessionDepth === 0) {
+      await waitForGitSourceHttpIdle(5000);
+    }
     const urls = this.suspendMainPoolForBunkerDial();
     await this.waitForMainPoolIdle();
     const settleMs = bunkerDialSettleMs(urls.length);
@@ -3560,24 +3584,26 @@ export class RemoteSignerManager {
       // looked OPEN. The page relays stayed up, the publish was acked, and
       // Primal/Amber never showed a prompt.
       await this.holdPageRelaysForBunkerDial();
-      // Only Amber's URI hosts — an expanded fallback host used to get an OK,
-      // then the redial path sent a second note Amber called expired.
-      const alreadyOpen = uriPreferredOpenRelays(
-        await this.listDirectOpenRelays(order),
+      // Prefer URI opens; fall back to any warm expanded socket. Requiring
+      // URI-only used to log already:0 while open:1 (expanded), then dial
+      // Damus until the note was too old for Amber.
+      const openNow = await this.listDirectOpenRelays(order);
+      const alreadyOpen = pickSignEventCoverOpenRelays(
+        openNow,
         uriRelays,
-        BUNKER_PUBLISH_MAX_RELAYS
+        Math.min(2, BUNKER_PUBLISH_MAX_RELAYS)
       );
       const have = new Set(alreadyOpen.map((u) => normalizeRelayUrl(u)));
       const missing = order.filter((u) => !have.has(u));
-      // A warm socket on Amber's list is enough to send the request now.
-      // Opening the rest in the background keeps the reply path wide without
-      // aging the note while Damus fails.
+      // A warm socket is enough to send the request now. Opening the rest in
+      // the background keeps the reply path wide without aging the note.
       if (alreadyOpen.length > 0) {
         this.lastSignAttempted = order;
         console.log(
           "[RemoteSigner] Publishing on open bunker relays — opening the rest for Amber's reply",
           {
             open: alreadyOpen,
+            openNow,
             remaining: missing,
             uri: order,
             nostrConnect,
@@ -3595,20 +3621,25 @@ export class RemoteSignerManager {
       }
       if (missing.length > 0) {
         await this.replaceDirectPoolIfFullyClosed(order);
+        // Stop at 2 OPEN browser-viable hosts. Dialing Damus/indexers until
+        // missing.length used to burn 20–40s before created_at was stamped —
+        // Amber then showed "invalid: ephemeral event expired".
+        const dialList = bunkerReplyListenDialTargets(missing);
         console.log(
-          "[RemoteSigner] Opening every bunker relay before the signing request",
+          "[RemoteSigner] Opening bunker relays before the signing request",
           {
             already: have.size,
-            remaining: missing,
-            uri: order,
+            remaining: dialList,
+            skipped: missing.length - dialList.length,
+            uri: order.length,
             nostrConnect,
           }
         );
         await this.dialRelaysWithConcurrency(
-          missing,
+          dialList,
           BUNKER_URI_DIAL_CONCURRENCY,
           BUNKER_SIGN_RELAY_BUDGET_MS,
-          missing.length
+          Math.min(2, Math.max(1, dialList.length))
         );
       }
       this.lastSignAttempted = order;

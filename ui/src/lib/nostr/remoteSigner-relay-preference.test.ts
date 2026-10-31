@@ -25,6 +25,7 @@ import {
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
   bunkerReplyListenDialTargets,
+  pickSignEventCoverOpenRelays,
   nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
@@ -644,15 +645,37 @@ describe("Primal nostrconnect relays", () => {
     expect(nip46ReplySubscriptionFilters("not-hex")).toEqual([]);
   });
 
-  it("does not dial Damus while waiting for Amber's reply", () => {
+  it("does not dial Damus/indexers while covering or waiting for Amber", () => {
     expect(
       bunkerReplyListenDialTargets([
         "wss://relay.gittr.space",
         "wss://relay.damus.io",
         "wss://nos.lol",
+        "wss://purplepag.es",
         "wss://theforest.nostr1.com",
       ])
     ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
+  });
+
+  it("publishes on a warm expanded socket instead of logging already:0", () => {
+    expect(
+      pickSignEventCoverOpenRelays(
+        ["wss://relay.gittr.space"],
+        [
+          "wss://relay.damus.io",
+          "wss://nos.lol",
+          "wss://theforest.nostr1.com",
+        ],
+        2
+      )
+    ).toEqual(["wss://relay.gittr.space"]);
+    expect(
+      pickSignEventCoverOpenRelays(
+        ["wss://theforest.nostr1.com", "wss://relay.gittr.space"],
+        ["wss://theforest.nostr1.com", "wss://relay.damus.io"],
+        2
+      )
+    ).toEqual(["wss://theforest.nostr1.com"]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
