@@ -26,6 +26,7 @@ import {
   sessionUsesNostrConnect,
   bunkerReplyListenDialTargets,
   pickSignEventCoverOpenRelays,
+  signEventAmberPublishRelays,
   signEventAmberReachRelays,
   nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
@@ -677,6 +678,24 @@ describe("Primal nostrconnect relays", () => {
         8
       )
     ).toEqual(["wss://relay.gittr.space"]);
+  });
+
+  it("never publishes sign_event to relay.gittr.space (ack-then-drop)", () => {
+    const publish = signEventAmberPublishRelays([
+      GITTR_BUNKER_RELAY,
+      "wss://relay.damus.io",
+      "wss://theforest.nostr1.com",
+    ]);
+    expect(publish).not.toContain(GITTR_BUNKER_RELAY);
+    expect(publish).toContain("wss://theforest.nostr1.com");
+    expect(publish).toContain("wss://relay.primal.net");
+    expect(
+      pickSignEventCoverOpenRelays(
+        [GITTR_BUNKER_RELAY, "wss://relay.primal.net", "wss://theforest.nostr1.com"],
+        publish,
+        8
+      )
+    ).toEqual(["wss://relay.primal.net", "wss://theforest.nostr1.com"]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
