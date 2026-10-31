@@ -24,6 +24,7 @@ import {
   primalSignRelayTargets,
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
+  bunkerReplyListenDialTargets,
   nip46ReplySubscriptionFilters,
   signEventListenRefreshShouldDialMissing,
   signEventPublishNeedsAnotherDial,
@@ -641,6 +642,17 @@ describe("Primal nostrconnect relays", () => {
       { kinds: [24133], "#p": [client] },
     ]);
     expect(nip46ReplySubscriptionFilters("not-hex")).toEqual([]);
+  });
+
+  it("does not dial Damus while waiting for Amber's reply", () => {
+    expect(
+      bunkerReplyListenDialTargets([
+        "wss://relay.gittr.space",
+        "wss://relay.damus.io",
+        "wss://nos.lol",
+        "wss://theforest.nostr1.com",
+      ])
+    ).toEqual(["wss://relay.gittr.space", "wss://theforest.nostr1.com"]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {

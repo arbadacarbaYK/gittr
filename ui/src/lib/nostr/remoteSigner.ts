@@ -203,6 +203,25 @@ const BUNKER_RELAYS_DOWN = new Set([
   "wss://relay.azzamo.net",
 ]);
 
+/**
+ * Do not dial these while waiting for Amber's reply. Damus never opens in
+ * this browser; hammering it every listen-refresh kills the OPEN sockets
+ * that already carry the signing request.
+ */
+const BUNKER_RELAYS_LISTEN_SKIP = new Set([
+  ...BUNKER_RELAYS_DOWN,
+  "wss://relay.damus.io",
+]);
+
+/** Relays worth opening while waiting for Amber's reply (skip known-dead). */
+export function bunkerReplyListenDialTargets(urls: string[]): string[] {
+  return uniqueNormalizedRelays(urls).filter(
+    (u) =>
+      bunkerMayUseRelay(u) &&
+      !BUNKER_RELAYS_LISTEN_SKIP.has(normalizeRelayUrl(u))
+  );
+}
+
 /** Old Amber profile-indexer hosts. Not where the phone waits for sign_event. */
 const AMBER_INDEXER_RELAYS = [
   "wss://purplepag.es",
@@ -2471,10 +2490,14 @@ export class RemoteSignerManager {
    */
   private async holdPageRelaysForBunkerDial(): Promise<void> {
     const alreadyHeld = this.pageRelaysHeld != null;
-    if (!alreadyHeld) {
-      this.pageRelaysHeld = [];
-      pushMainPoolBunkerPause();
+    // withSigningSession already paused the page pool. Sweeping again here
+    // closed the warm bunker socket (cover then logged already:0) and forced
+    // a slow 8-relay redial that aged the signing note.
+    if (alreadyHeld) {
+      return;
     }
+    this.pageRelaysHeld = [];
+    pushMainPoolBunkerPause();
     await waitForGitSourceHttpIdle(5000);
     const urls = this.suspendMainPoolForBunkerDial();
     await this.waitForMainPoolIdle();
@@ -2487,12 +2510,10 @@ export class RemoteSignerManager {
     for (const url of urls) {
       if (!held.includes(url)) held.push(url);
     }
-    if (!alreadyHeld || urls.length > 0) {
-      console.log(
-        "[RemoteSigner] Page relays stay closed until Amber's signing dial finishes",
-        { held: held.length, swept: urls.length }
-      );
-    }
+    console.log(
+      "[RemoteSigner] Page relays stay closed until Amber's signing dial finishes",
+      { held: held.length, swept: urls.length }
+    );
   }
 
   /** Put the Code tab's relays back. Safe to call more than once. */
@@ -3562,8 +3583,13 @@ export class RemoteSignerManager {
             nostrConnect,
           }
         );
-        if (missing.length > 0) {
-          void this.expandBunkerListenInBackground(session, missing, order);
+        const expandTargets = bunkerReplyListenDialTargets(missing);
+        if (expandTargets.length > 0) {
+          void this.expandBunkerListenInBackground(
+            session,
+            expandTargets,
+            order
+          );
         }
         return alreadyOpen;
       }
@@ -3605,10 +3631,15 @@ export class RemoteSignerManager {
           uri: order.length,
         });
       }
-      // Partial cover used to return here without expanding — Amber then
-      // answered on a URI host we never opened, and the page timed out.
-      if (open.length > 0 && missed.length > 0) {
-        void this.expandBunkerListenInBackground(session, missed, order);
+      // Expand only browser-viable hosts. Damus/nos thrash closed the sockets
+      // we just published on and Amber's ephemeral reply was never heard.
+      const expandTargets = bunkerReplyListenDialTargets(missed);
+      if (open.length > 0 && expandTargets.length > 0) {
+        void this.expandBunkerListenInBackground(
+          session,
+          expandTargets,
+          order
+        );
       }
       return open;
     } finally {
@@ -4286,13 +4317,16 @@ export class RemoteSignerManager {
   private async refreshSignEventListenPath(session: RemoteSignerSession) {
     const uriRelays = getSessionUriRelays(session);
     const published = this.lastPublishMeta?.urls || [];
-    const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
-    if (targets.length === 0) return;
-    let open = await this.listDirectOpenRelays(targets);
-    // Aciked publish hosts that later went CLOSED must be redialed — Amber
-    // answers there and ephemeral 24133 will not wait for a late REQ.
+    // While Approve is open, ONLY heal the relays that already accepted the
+    // note. Re-dialing Damus/nos every 8s was killing those live sockets —
+    // Amber signed, inboundDuringWait stayed 0, then "ephemeral expired".
+    const healTargets = bunkerReplyListenDialTargets(
+      published.length > 0 ? published : uriRelays
+    );
+    if (healTargets.length === 0) return;
+    let open = await this.listDirectOpenRelays(healTargets);
     const publishedDead = signEventReplyListenExpandTargets({
-      uriRelays: published,
+      uriRelays: healTargets,
       openRelays: open,
     });
     if (publishedDead.length > 0) {
@@ -4302,37 +4336,18 @@ export class RemoteSignerManager {
           this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS)
         )
       );
-      open = await this.listDirectOpenRelays(targets);
+      open = await this.listDirectOpenRelays(healTargets);
     }
-    const missing = signEventReplyListenExpandTargets({
-      uriRelays: targets,
-      openRelays: open,
-    });
-    // Having 1–2 OPEN is not enough when Amber replies on another URI host.
-    // Dial the rest beside the live sockets — never resetDirectPool here.
-    if (
-      signEventListenRefreshShouldDialMissing({
-        openCount: open.length,
-        missingCount: missing.length,
-      })
-    ) {
-      void this.expandBunkerListenInBackground(session, missing, targets);
-    }
-    let again = open;
     if (open.length === 0) {
       await Promise.all(
-        targets
+        healTargets
           .slice(0, 2)
           .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
       );
-      again = await this.listDirectOpenRelays(targets);
+      open = await this.listDirectOpenRelays(healTargets);
     }
-    const preferred = preferUriOpenRelays(again, uriRelays);
-    const listenOn = preferred.length > 0 ? preferred : again;
-    if (listenOn.length === 0) return;
-    // Re-open missing sockets only. Do not unsub a live 24133 listener.
-    // Do attach one if the thin-publish retry already destroyed it.
-    await this.ensureResponseSubscription(session, listenOn);
+    if (open.length === 0) return;
+    await this.ensureResponseSubscription(session, open);
   }
 
   /**
@@ -4506,10 +4521,12 @@ export class RemoteSignerManager {
         // Cover may have only opened 1–2 of Amber's URI relays. Start dialing
         // the rest now that the waiter exists — her reply often lands on a
         // host that was still CLOSED at publish time.
-        const expandForReply = signEventReplyListenExpandTargets({
-          uriRelays: getSessionUriRelays(session),
-          openRelays: openDirect,
-        });
+        const expandForReply = bunkerReplyListenDialTargets(
+          signEventReplyListenExpandTargets({
+            uriRelays: getSessionUriRelays(session),
+            openRelays: openDirect,
+          })
+        );
         if (expandForReply.length > 0) {
           void this.expandBunkerListenInBackground(
             session,

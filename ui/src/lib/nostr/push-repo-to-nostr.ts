@@ -2023,24 +2023,6 @@ export async function pushRepoToNostr(
       if (!signWithResolved) {
         throw new Error(NO_SIGNING_METHOD_MESSAGE);
       }
-      if (
-        resolvedSource === "remote" &&
-        remoteSigner &&
-        typeof remoteSigner.withSigningSession === "function" &&
-        !endRemoteSigningSession
-      ) {
-        let release!: () => void;
-        const holdOpen = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        endRemoteSigningSession = () => {
-          release();
-          endRemoteSigningSession = undefined;
-        };
-        remoteSigningSession = remoteSigner.withSigningSession(async () => {
-          await holdOpen;
-        });
-      }
       const signerPubkey = await getSignerPublicKey();
 
       // NIP-34: Build tags array with required metadata
@@ -2448,6 +2430,27 @@ export async function pushRepoToNostr(
         onProgress?.(
           `⚠️ Event size is ${eventSizeKB.toFixed(1)}KB (close to 100KB limit)`
         );
+      }
+
+      // Hold page relays only for the Amber approvals — starting earlier
+      // (while building tags / euc) killed the warm bunker socket.
+      if (
+        resolvedSource === "remote" &&
+        remoteSigner &&
+        typeof remoteSigner.withSigningSession === "function" &&
+        !endRemoteSigningSession
+      ) {
+        let release!: () => void;
+        const holdOpen = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        endRemoteSigningSession = () => {
+          release();
+          endRemoteSigningSession = undefined;
+        };
+        remoteSigningSession = remoteSigner.withSigningSession(async () => {
+          await holdOpen;
+        });
       }
 
       // Sign via resolved NIP-07 / remote signer / nsec bridge
