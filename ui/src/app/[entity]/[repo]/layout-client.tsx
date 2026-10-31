@@ -220,8 +220,6 @@ export default function RepoLayoutClient({
   const [isWatching, setIsWatching] = useState(false);
   const [isStarring, setIsStarring] = useState(false);
   const starringInFlightRef = useRef(false);
-  /** Kind 10018 we just signed. An older relay list must not flip Watch off. */
-  const watchPublishedAtRef = useRef(0);
   const [githubStarCount, setGithubStarCount] = useState<number | null>(null);
   /** GitHub URL discovered via Nostr hydrate (session/LS may lag behind). */
   const [hydratedGithubUrl, setHydratedGithubUrl] = useState<string>("");
@@ -948,6 +946,7 @@ export default function RepoLayoutClient({
     if (!mounted || !subscribe || !defaultRelays?.length) {
       return;
     }
+    const collected = new Map<string, NostrEvent>();
     const relays = getAllRelays(defaultRelays);
     const unsub = subscribe(
       [
@@ -960,13 +959,8 @@ export default function RepoLayoutClient({
       relays,
       (event) => {
         if (!isRepoStarReaction(event as NostrEvent, repoNostrEventId)) return;
-        const incoming = event as NostrEvent;
-        // Keep a star we just signed. Replacing the list with only what this
-        // subscription has seen dropped that star before the relay echoed it.
-        setNostrStarEvents((prev) => {
-          if (prev.some((existing) => existing.id === incoming.id)) return prev;
-          return [...prev, incoming];
-        });
+        collected.set(event.id, event as NostrEvent);
+        setNostrStarEvents(Array.from(collected.values()));
       },
       undefined,
       undefined,
@@ -1078,7 +1072,6 @@ export default function RepoLayoutClient({
       ],
       defaultRelays,
       (event) => {
-        if ((event.created_at || 0) < watchPublishedAtRef.current) return;
         if (
           !latestEvent ||
           (event.created_at || 0) >= (latestEvent.created_at || 0)
@@ -1089,7 +1082,6 @@ export default function RepoLayoutClient({
       3000,
       () => {
         if (!latestEvent) return;
-        if ((latestEvent.created_at || 0) < watchPublishedAtRef.current) return;
         const followed = parseGitRepositoriesListEvent(latestEvent);
         const isFollowed = followed.includes(repoAddress);
         setIsWatching(isFollowed);
@@ -1436,7 +1428,6 @@ export default function RepoLayoutClient({
       }
 
       const createdAt = Math.floor(Date.now() / 1000);
-      watchPublishedAtRef.current = createdAt;
       const unsignedEvent = {
         kind: KIND_GIT_REPOSITORIES_LIST,
         created_at: createdAt,
@@ -1456,7 +1447,6 @@ export default function RepoLayoutClient({
           warmMsg
         );
         showToast(warmMsg, "error");
-        watchPublishedAtRef.current = 0;
         return;
       }
       const resolved = await resolveNostrSigner({
@@ -1464,7 +1454,6 @@ export default function RepoLayoutClient({
         waitForRemote: true,
       });
       if (!resolved) {
-        watchPublishedAtRef.current = 0;
         showToast(
           "Watch saved here, but open Amber (or a NIP-07 extension) to publish to relays.",
           "error"
@@ -1477,7 +1466,6 @@ export default function RepoLayoutClient({
         );
         publish(signedEvent, defaultRelays);
       } catch (error) {
-        watchPublishedAtRef.current = 0;
         console.warn("[Repo Watch] Failed to publish kind 10018 list:", error);
         showToast(
           error instanceof Error

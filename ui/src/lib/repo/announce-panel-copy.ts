@@ -63,61 +63,6 @@ export function announceScreenshotHelpCopy(args: {
   return "Put images: in zapstore.yaml at the source repo root (same file Zapstore already reads). Paths like ./screenshots/home.png or https links. Optional extra URLs below.";
 }
 
-export function shortCertificateHash(hash: string): string {
-  const value = hash.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(value)) return value;
-  return `${value.slice(0, 8)}…${value.slice(-4)}`;
-}
-
-export function announceCertificateRowTitle(hash?: string): string {
-  if (!hash) return "Signing certificate (check the file)";
-  return `Certificate ${shortCertificateHash(hash)}`;
-}
-
-export function announceZapstoreProofMessage(args: {
-  reason:
-    | "missing"
-    | "expired"
-    | "revoked"
-    | "mismatch"
-    | "unreachable"
-    | "unreadable-cert"
-    | "relay-rejected";
-  certificateHash?: string;
-}): string {
-  const cert = args.certificateHash
-    ? ` Certificate ${shortCertificateHash(args.certificateHash)}.`
-    : "";
-  switch (args.reason) {
-    case "unreadable-cert":
-      return "Zapstore needs the signing certificate inside this APK. This file’s signature block could not be read. Use a release APK signed with Android signature scheme v2 or v3, check the file again, then publish.";
-    case "missing":
-      return `Zapstore will not list this app until you prove this signing certificate is yours. On your computer, run zsp and choose “Prove it’s yours”. The keystore stays on that machine.${cert} When that proof is on Nostr, publish this release again from here.`;
-    case "expired":
-      return `The proof that this signing certificate is yours has expired. Run zsp again and choose “Prove it’s yours”, then publish this release again.${cert}`;
-    case "revoked":
-      return `The proof that this signing certificate is yours was revoked. Run zsp again and choose “Prove it’s yours”, then publish this release again.${cert}`;
-    case "mismatch":
-      return `A proof is on the relays for this certificate, but it does not match this APK’s signing key. Run zsp and prove the keystore that signed this exact file, then publish again.${cert}`;
-    case "unreachable":
-      return "gittr could not reach the relays to check your ownership proof. Wait a moment and publish again.";
-    case "relay-rejected":
-      return "Zapstore’s relay did not keep this listing, so the file event was removed. A file event left without its release is dropped. If this is the first publish, commit zapstore.yaml at the repo root with your pubkey and repository URL, then publish again.";
-  }
-}
-
-export function announceZapstoreFooterCopy(): string {
-  return "Zapstore lists an Android app only after a one-time proof that the signing certificate is yours (run zsp and choose “Prove it’s yours”; the keystore stays on your computer). Also commit zapstore.yaml at the source repo root with pubkey, repository, and images: for screenshots.";
-}
-
-export function announceSkippedApkNote(names: string[]): string {
-  return `Left out ${names
-    .filter(Boolean)
-    .join(
-      ", "
-    )}. Zapstore accepts an APK only when its signing certificate is already proven as yours.`;
-}
-
 export function announcePanelBlossomCopy(isOfficialGittr: boolean): string {
   if (isOfficialGittr) {
     return "This is gittr’s own Android app — pin the APK to gittr’s Blossom.";

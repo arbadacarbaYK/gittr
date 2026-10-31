@@ -23,4 +23,4 @@ To use a private keystore, set GitHub Actions secrets (they override the committ
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-Changing the cert later means Zapstore’s NIP-C1 ownership proof and `assetlinks.json` must be updated. Prefer doing that **before** the first public Zapstore listing. gittr’s Publish on Nostr reads this certificate from the APK and waits until a kind 30509 proof for it is on Zapstore’s relay.
+Changing the cert later means Zapstore NIP-C1 cert-linking and `assetlinks.json` must be updated. Prefer doing that **before** the first public Zapstore listing.

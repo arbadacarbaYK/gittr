@@ -8,22 +8,11 @@
  */
 import type { Event as NostrEvent } from "nostr-tools";
 
-import {
-  announceSkippedApkNote,
-  announceZapstoreProofMessage,
-} from "../repo/announce-panel-copy";
-import { type ForgeReleaseAsset, isApkAssetName } from "../repo/forge-releases";
-
-import { findAuthorizingApkProof, standardBase64ToBytes } from "./nip-c1-proof";
 import { publishWithConfirmation } from "./publish-with-confirmation";
 import {
   type SoftwareAnnounceInput,
   type UnsignedAnnounceEvent,
   buildSoftwareAnnounceEvents,
-  orphanSoftwareAssetIds,
-  pickAnnouncePrimaryAsset,
-  pickSiblingNip82Assets,
-  validApkCertificateHash,
 } from "./software-announce-build";
 import {
   RELAY_ZAPSTORE,
@@ -72,160 +61,7 @@ export type PublishSoftwareAnnounceResult = {
   extraAssetEventIds: string[];
   confirmedRelays: string[];
   whitelistHint?: string;
-  /** APKs left off this announce because Zapstore would reject them. */
-  notice?: string;
 };
-
-const APK_MIME = "application/vnd.android.package-archive";
-
-function relayIsZapstore(url: string): boolean {
-  return url.toLowerCase().includes("zapstore");
-}
-
-function eventIsApk(event: { tags?: string[][] }): boolean {
-  return (event.tags || []).some(
-    (tag) => tag[0] === "m" && tag[1] === APK_MIME
-  );
-}
-
-async function confirmOnRelays(args: {
-  publish: PublishSoftwareAnnounceArgs["publish"];
-  subscribe: PublishSoftwareAnnounceArgs["subscribe"];
-  event: NostrEvent;
-  relays: string[];
-  requireZapstore: boolean;
-  timeoutMs?: number;
-}): Promise<string[]> {
-  const timeoutMs = args.timeoutMs ?? (args.requireZapstore ? 15_000 : 12_000);
-  return new Promise((resolve) => {
-    const confirmed: string[] = [];
-    let settled = false;
-    let unsub: (() => void) | undefined;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        unsub?.();
-      } catch {
-        /* ignore */
-      }
-      resolve(confirmed);
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    try {
-      unsub = args.subscribe(
-        [{ ids: [args.event.id], kinds: [args.event.kind] }],
-        args.relays,
-        (_event, _after, relayURL) => {
-          if (relayURL && !confirmed.includes(relayURL))
-            confirmed.push(relayURL);
-          const done = args.requireZapstore
-            ? confirmed.some(relayIsZapstore)
-            : confirmed.length > 0;
-          if (done) finish();
-        }
-      );
-    } catch {
-      finish();
-      return;
-    }
-    try {
-      args.publish(args.event, args.relays);
-    } catch {
-      /* still watch for an echo */
-    }
-  });
-}
-
-async function requireApkOwnershipProof(args: {
-  file: ForgeReleaseAsset;
-  signerPubkeyHex: string;
-  relays: string[];
-  subscribe: PublishSoftwareAnnounceArgs["subscribe"];
-}): Promise<void> {
-  const hash = validApkCertificateHash(args.file.apkCertificateHash);
-  const der = standardBase64ToBytes(args.file.apkCertificateDerBase64 || "");
-  if (!hash || !der) {
-    throw new Error(
-      announceZapstoreProofMessage({ reason: "unreadable-cert" })
-    );
-  }
-  const check = await findAuthorizingApkProof({
-    subscribe: args.subscribe,
-    relays: args.relays,
-    signerPubkeyHex: args.signerPubkeyHex,
-    certificateDer: der,
-    certificateHash: hash,
-  });
-  if (!check.ok) {
-    throw new Error(
-      announceZapstoreProofMessage({
-        reason: check.reason,
-        certificateHash: hash,
-      })
-    );
-  }
-}
-
-type ListedEvent = { id?: string; kind?: number; tags?: string[][] };
-
-function collectListedEvents(args: {
-  subscribe: PublishSoftwareAnnounceArgs["subscribe"];
-  relays: string[];
-  pubkey: string;
-  appId: string;
-}): Promise<ListedEvent[]> {
-  return new Promise((resolve) => {
-    const byId = new Map<string, ListedEvent>();
-    let settled = false;
-    let unsub: (() => void) | undefined;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        unsub?.();
-      } catch {
-        /* ignore */
-      }
-      resolve([...byId.values()]);
-    };
-    const timer = setTimeout(finish, 8_000);
-    try {
-      unsub = args.subscribe(
-        [
-          {
-            kinds: [3063],
-            authors: [args.pubkey],
-            "#i": [args.appId],
-            limit: 100,
-          },
-          {
-            kinds: [30063],
-            authors: [args.pubkey],
-            "#i": [args.appId],
-            limit: 40,
-          },
-        ],
-        args.relays,
-        (event) => {
-          const ev = event as ListedEvent;
-          if (ev?.id) byId.set(ev.id, ev);
-        },
-        undefined,
-        (relayUrl) => {
-          if (relayUrl && relayUrl.includes("zapstore")) {
-            setTimeout(finish, 400);
-          }
-        }
-      );
-    } catch {
-      clearTimeout(timer);
-      finish();
-    }
-  });
-}
 
 /**
  * Sign as the logged-in owner and publish app + asset(s) + release to catalog relays.
@@ -250,60 +86,11 @@ export async function publishSoftwareAnnounce(
     );
   }
 
-  const relays = relaysForSoftwareCatalog(args.defaultRelays);
-  const selectedUrl = args.input.selectedAssetUrl || args.input.selectedApkUrl;
-  const primaryPreview = pickAnnouncePrimaryAsset(
-    args.input.forge,
-    selectedUrl
-  );
-  const primaryIsApk = isApkAssetName(
-    primaryPreview.name,
-    primaryPreview.contentType
-  );
-  if (primaryIsApk) {
-    await requireApkOwnershipProof({
-      file: primaryPreview,
-      signerPubkeyHex: signerPubkey,
-      relays,
-      subscribe: args.subscribe,
-    });
-  }
-
-  const excludeAssetUrls = [...(args.input.excludeAssetUrls || [])];
-  const skippedApkNames: string[] = [];
-  if (!primaryIsApk) {
-    for (const extra of pickSiblingNip82Assets(
-      args.input.forge,
-      primaryPreview
-    )) {
-      if (!isApkAssetName(extra.name, extra.contentType)) continue;
-      if (excludeAssetUrls.includes(extra.downloadUrl)) continue;
-      const hash = validApkCertificateHash(extra.apkCertificateHash);
-      const der = standardBase64ToBytes(extra.apkCertificateDerBase64 || "");
-      if (!hash || !der) {
-        excludeAssetUrls.push(extra.downloadUrl);
-        skippedApkNames.push(extra.name);
-        continue;
-      }
-      try {
-        await requireApkOwnershipProof({
-          file: extra,
-          signerPubkeyHex: signerPubkey,
-          relays,
-          subscribe: args.subscribe,
-        });
-      } catch {
-        excludeAssetUrls.push(extra.downloadUrl);
-        skippedApkNames.push(extra.name);
-      }
-    }
-  }
-
   const built = buildSoftwareAnnounceEvents({
     ...args.input,
     ownerPubkeyHex: args.input.ownerPubkeyHex || args.ownerPubkeyHex,
-    excludeAssetUrls,
   });
+  const relays = relaysForSoftwareCatalog(args.defaultRelays);
 
   const sign = async (unsigned: UnsignedAnnounceEvent): Promise<NostrEvent> => {
     const withPubkey = { ...unsigned, pubkey: signerPubkey };
@@ -327,138 +114,21 @@ export async function publishSoftwareAnnounce(
   });
   const signedApp = await sign(built.app);
 
-  const zapstoreListing =
-    primaryIsApk ||
-    eventIsApk(signedPrimary) ||
-    signedExtras.some((ev) => eventIsApk(ev));
-  const publishedAssets = [signedPrimary, ...signedExtras];
-
-  const withdraw = async (ids: string[]) => {
-    try {
-      const unique = [
-        ...new Set(ids.filter((id) => /^[0-9a-f]{64}$/i.test(id))),
-      ];
-      if (unique.length === 0) return;
-      const signed = await sign({
-        kind: 5,
-        created_at: Math.floor(Date.now() / 1000),
-        content:
-          "Remove a file event Zapstore did not accept with its release.",
-        tags: unique.map((id) => ["e", id]),
-        pubkey: "",
-      });
-      await confirmOnRelays({
-        publish: args.publish,
-        subscribe: args.subscribe,
-        event: signed,
-        relays,
-        requireZapstore: false,
-        timeoutMs: 8_000,
-      });
-    } catch (error) {
-      console.warn("Could not remove an unlinked Zapstore file event", error);
-    }
-  };
-
   const confirmed: string[] = [];
-  const remember = (urls: string[]) => {
-    for (const url of urls) {
-      if (!confirmed.includes(url)) confirmed.push(url);
-    }
-  };
-  const landed: string[] = [];
-  for (const ev of publishedAssets) {
-    const mustLand = zapstoreListing && eventIsApk(ev);
-    const urls = await confirmOnRelays({
-      publish: args.publish,
-      subscribe: args.subscribe,
-      event: ev,
+  for (const ev of [signedPrimary, ...signedExtras, signedRelease, signedApp]) {
+    const result = await publishWithConfirmation(
+      args.publish as any,
+      args.subscribe as any,
+      ev,
       relays,
-      requireZapstore: mustLand,
-    });
-    remember(urls);
-    if (mustLand && !urls.some(relayIsZapstore)) {
-      await withdraw([...landed, ev.id]);
-      throw new Error(
-        announceZapstoreProofMessage({ reason: "relay-rejected" })
-      );
+      12_000
+    );
+    for (const r of result.confirmedRelays) {
+      if (!confirmed.includes(r)) confirmed.push(r);
     }
-    landed.push(ev.id);
   }
 
-  const releaseUrls = await confirmOnRelays({
-    publish: args.publish,
-    subscribe: args.subscribe,
-    event: signedRelease,
-    relays,
-    requireZapstore: zapstoreListing,
-  });
-  remember(releaseUrls);
-  if (zapstoreListing && !releaseUrls.some(relayIsZapstore)) {
-    await withdraw([signedRelease.id, ...landed]);
-    throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
-  }
-
-  const appUrls = await confirmOnRelays({
-    publish: args.publish,
-    subscribe: args.subscribe,
-    event: signedApp,
-    relays,
-    requireZapstore: zapstoreListing,
-  });
-  remember(appUrls);
-  if (zapstoreListing && !appUrls.some(relayIsZapstore)) {
-    await withdraw([signedApp.id, signedRelease.id, ...landed]);
-    throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
-  }
-
-  try {
-    const existing = await collectListedEvents({
-      subscribe: args.subscribe,
-      relays,
-      pubkey: signerPubkey,
-      appId: built.appId,
-    });
-    const referenced = new Set<string>(landed);
-    for (const event of existing) {
-      if (event.kind !== 30063) continue;
-      for (const tag of event.tags || []) {
-        if (tag[0] === "e" && tag[1]) referenced.add(tag[1]);
-      }
-    }
-    const retire = orphanSoftwareAssetIds({
-      version: built.version,
-      keepIds: landed,
-      assets: existing
-        .filter((event) => event.kind === 3063 && event.id)
-        .map((event) => ({
-          id: event.id as string,
-          version: event.tags?.find((tag) => tag[0] === "version")?.[1],
-        })),
-      referencedIds: referenced,
-    });
-    if (retire.length > 0) {
-      const signed = await sign({
-        kind: 5,
-        created_at: Math.floor(Date.now() / 1000),
-        content: "Remove a file event that is no longer part of this release.",
-        tags: retire.map((id) => ["e", id]),
-        pubkey: "",
-      });
-      await confirmOnRelays({
-        publish: args.publish,
-        subscribe: args.subscribe,
-        event: signed,
-        relays,
-        requireZapstore: false,
-        timeoutMs: 8_000,
-      });
-    }
-  } catch (error) {
-    console.warn("Could not clear an older unlinked file event", error);
-  }
-
-  const zapstoreOk = confirmed.some(relayIsZapstore);
+  const zapstoreOk = confirmed.some((r) => r.includes("zapstore"));
   return {
     ok: true,
     appId: built.appId,
@@ -468,13 +138,9 @@ export async function publishSoftwareAnnounce(
     assetEventId: signedPrimary.id,
     extraAssetEventIds: signedExtras.map((e) => e.id),
     confirmedRelays: confirmed,
-    notice: skippedApkNames.length
-      ? announceSkippedApkNote(skippedApkNames)
-      : undefined,
-    whitelistHint:
-      zapstoreListing || zapstoreOk
-        ? undefined
-        : "If Zapstore’s relay rejected the events, commit a zapstore.yaml in the forge repo root with repository + your pubkey (npub), then publish again — Zapstore’s free auto-whitelist path. See https://zapstore.dev/docs/publish",
+    whitelistHint: zapstoreOk
+      ? undefined
+      : "If Zapstore’s relay rejected the events, commit a zapstore.yaml in the forge repo root with repository + your pubkey (npub), then publish again — Zapstore’s free auto-whitelist path. See https://zapstore.dev/docs/publish",
   };
 }
 

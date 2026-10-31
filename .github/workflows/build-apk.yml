@@ -127,7 +127,7 @@ jobs:
             Standalone wrapper around **https://gittr.space** (same hosted forge as the PWA). Not an offline self-hosted copy.
 
             - Sign in with **Amber / NIP-46** — browser extensions are not available in this APK.
-            - Install the `.apk` below, or announce this tag from the gittr repo **Releases** tab (NIP-82 / Zapstore). Zapstore also needs the one-time “Prove it’s yours” step for this signing certificate (`zsp`) before that announce will list.
+            - Install the `.apk` below, or announce this tag from the gittr repo **Releases** tab (NIP-82 / Zapstore).
             - Self-hosters still clone the git repo; this package always opens gittr.space.
 
             See `android-app/README.md` and `zapstore.yaml`.

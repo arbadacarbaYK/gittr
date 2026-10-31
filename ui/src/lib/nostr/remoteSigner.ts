@@ -210,16 +210,6 @@ const AMBER_INDEXER_RELAYS = [
   "wss://user.kindpag.es",
 ];
 
-/**
- * Skip these during sign_event cover and listen-refresh so failed browser
- * handshakes (Damus, profile indexers) do not close live bunker sockets.
- */
-const BUNKER_RELAYS_SIGN_SKIP = new Set([
-  ...BUNKER_RELAYS_DOWN,
-  ...AMBER_INDEXER_RELAYS,
-  "wss://relay.damus.io",
-]);
-
 const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
 
@@ -556,9 +546,7 @@ export function signEventPublishNeedsAnotherDial(opts: {
     if (primalReached) return false;
     if (wanted.length > 0) return true;
   }
-  // Never reset the pool and republish the same note after a relay already
-  // said OK — that second note is what relays reject as "invalid: ephemeral event expired".
-  return false;
+  return bunkerPublishIsThin(opts.publishedUrls, opts.uriRelays);
 }
 
 /**
@@ -3363,9 +3351,7 @@ export class RemoteSignerManager {
           normalizeRelayUrl(u)
         )
       );
-      const missing = order.filter(
-        (u) => !have.has(u) && !BUNKER_RELAYS_SIGN_SKIP.has(u)
-      );
+      const missing = order.filter((u) => !have.has(u));
       if (missing.length > 0) {
         if (have.size === 0) {
           await this.replaceDirectPoolIfFullyClosed(order);
@@ -3405,14 +3391,11 @@ export class RemoteSignerManager {
         }
       }
       this.lastSignAttempted = order;
-      const open = uniqueNormalizedRelays([
-        ...preferUriOpenRelays(
-          await this.listDirectOpenRelays(order),
-          uriRelays,
-          BUNKER_PUBLISH_MAX_RELAYS
-        ),
-        ...(await this.listDirectOpenRelays(order)),
-      ]).slice(0, BUNKER_PUBLISH_MAX_RELAYS);
+      const open = preferUriOpenRelays(
+        await this.listDirectOpenRelays(order),
+        uriRelays,
+        BUNKER_PUBLISH_MAX_RELAYS
+      );
       const openSet = new Set(open.map((u) => normalizeRelayUrl(u)));
       const missed = order.filter((u) => !openSet.has(u));
       if (open.length === 0) {
@@ -3791,17 +3774,10 @@ export class RemoteSignerManager {
     if (this.pending.size === 0) {
       this.clearDirectResponseSubs();
     }
-    const openWanted = await this.listDirectOpenRelays(wanted);
-    const openSet = new Set(openWanted.map((u) => normalizeRelayUrl(u)));
-    for (const marked of [...this.directListenRelays]) {
-      if (!openSet.has(marked)) this.directListenRelays.delete(marked);
-    }
     const subscribeRelays =
       this.directUnsubs.length === 0
-        ? openWanted.length > 0
-          ? openWanted
-          : wanted
-        : bunkerListenRelaysToAdd([...this.directListenRelays], openWanted);
+        ? wanted
+        : bunkerListenRelaysToAdd([...this.directListenRelays], wanted);
     if (subscribeRelays.length === 0) return;
     if (this.pending.size > 0) {
       console.log(
@@ -3809,12 +3785,27 @@ export class RemoteSignerManager {
         subscribeRelays
       );
     }
-    const filters = [
-      {
-        kinds: [24133],
-        "#p": [session.clientPubkey],
-      },
-    ];
+    const wideNostrConnect =
+      !!session.nostrConnectPairing &&
+      (!session.remotePubkey || session.remotePubkey.length === 0);
+    const filters = wideNostrConnect
+      ? [
+          {
+            kinds: [24133],
+            "#p": [session.clientPubkey],
+          },
+        ]
+      : [
+          {
+            kinds: [24133],
+            authors: [session.remotePubkey],
+            "#p": [session.clientPubkey],
+          },
+          {
+            kinds: [24133],
+            authors: [session.remotePubkey],
+          },
+        ];
 
     // NIP-46 responses only on directPool. Do NOT subscribe via the app
     // relaypool — that silently addRelay's bunker hosts and starves Amber.
@@ -3879,18 +3870,15 @@ export class RemoteSignerManager {
       (!session.remotePubkey || session.remotePubkey.length === 0);
     const pTags = event.tags
       ?.filter((tag: any) => Array.isArray(tag) && tag[0] === "p")
-      .map((tag: any) =>
-        typeof tag[1] === "string" ? tag[1].toLowerCase() : tag[1]
-      );
-    const clientPk = (session.clientPubkey || "").toLowerCase();
-    const remotePk = (session.remotePubkey || "").toLowerCase();
-    const eventPk =
-      typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
-    const isForClient = !!pTags?.includes(clientPk);
+      .map((tag: any) => tag[1]);
+    const isForClient = !!pTags?.includes(session.clientPubkey);
     if (wideNostrConnect) {
       if (!isForClient) return;
-    } else if (!isForClient && eventPk !== remotePk) {
-      return;
+    } else {
+      const isExpectedAuthor = event.pubkey === session.remotePubkey;
+      if (!isExpectedAuthor) {
+        return;
+      }
     }
     // Some signers omit the client p-tag on connect ACK only.
     if (!isForClient) {
@@ -4091,23 +4079,23 @@ export class RemoteSignerManager {
   private async refreshSignEventListenPath(session: RemoteSignerSession) {
     const uriRelays = getSessionUriRelays(session);
     const published = this.lastPublishMeta?.urls || [];
-    const targets = uniqueNormalizedRelays([...uriRelays, ...published]).filter(
-      (u) => !BUNKER_RELAYS_SIGN_SKIP.has(u)
-    );
+    const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
     if (targets.length === 0) return;
-    let open = await this.listDirectOpenRelays(targets);
-    // Keep live sockets untouched while waiting for Amber's reply.
-    // Only redial if every socket dropped.
-    if (open.length === 0) {
-      await Promise.all(
-        targets
-          .slice(0, 2)
-          .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
-      );
-      open = await this.listDirectOpenRelays(targets);
-    }
-    if (open.length === 0) return;
-    await this.ensureResponseSubscription(session, open);
+    const open = await this.listDirectOpenRelays(targets);
+    const openNorm = new Set(open.map((u) => normalizeRelayUrl(u)));
+    const missing = targets.filter((t) => !openNorm.has(normalizeRelayUrl(t)));
+    await Promise.all(
+      missing
+        .slice(0, 4)
+        .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
+    );
+    const again = await this.listDirectOpenRelays(targets);
+    const preferred = preferUriOpenRelays(again, uriRelays);
+    const listenOn = preferred.length > 0 ? preferred : again;
+    if (listenOn.length === 0) return;
+    // Re-open missing sockets only. Do not unsub a live 24133 listener.
+    // Do attach one if the thin-publish retry already destroyed it.
+    await this.ensureResponseSubscription(session, listenOn);
   }
 
   /**
@@ -4121,14 +4109,6 @@ export class RemoteSignerManager {
     relays: string[]
   ) {
     if (relays.length === 0) return;
-    const openListen = new Set(
-      (await this.listDirectOpenRelays([...this.directListenRelays])).map((u) =>
-        normalizeRelayUrl(u)
-      )
-    );
-    for (const marked of [...this.directListenRelays]) {
-      if (!openListen.has(marked)) this.directListenRelays.delete(marked);
-    }
     const adding = bunkerListenRelaysToAdd(
       [...this.directListenRelays],
       relays
@@ -4192,7 +4172,7 @@ export class RemoteSignerManager {
       event.sig = signEvent(event, session.clientSecretKey);
       return event;
     };
-    let requestEvent = buildRpcEvent(encrypted.primary);
+    const requestEvent = buildRpcEvent(encrypted.primary);
     const dualEvent = encrypted.dual ? buildRpcEvent(encrypted.dual) : null;
     if (method === "sign_event") {
       this.lastSignEventEnvelopes = dualEvent
@@ -4336,13 +4316,10 @@ export class RemoteSignerManager {
             getSessionUriRelays(session),
             sessionUsesNostrConnect(session)
           );
-          let publishTargets = uniqueNormalizedRelays([
-            ...preferUriOpenRelays(
-              openDirect.length > 0 ? openDirect : [],
-              uriRelays
-            ),
-            ...openDirect,
-          ]).slice(0, BUNKER_PUBLISH_MAX_RELAYS);
+          let publishTargets = preferUriOpenRelays(
+            openDirect.length > 0 ? openDirect : [],
+            uriRelays
+          );
           if (publishTargets.length === 0) {
             publishTargets =
               openDirect.length > 0
@@ -4350,12 +4327,6 @@ export class RemoteSignerManager {
                 : uriRelays.length > 0
                 ? uriRelays
                 : session.relays;
-          }
-          if (method === "sign_event") {
-            requestEvent = buildRpcEvent(encrypted.primary);
-            this.lastSignEventEnvelopes = dualEvent
-              ? [requestEvent, dualEvent]
-              : [requestEvent];
           }
           let published = await this.publishDirectConfirmed(
             publishTargets,
@@ -4400,12 +4371,6 @@ export class RemoteSignerManager {
               throw new Error(
                 "Could not reopen bunker relays after publish without OK. Open Amber and try again."
               );
-            }
-            requestEvent = buildRpcEvent(encrypted.primary);
-            if (method === "sign_event") {
-              this.lastSignEventEnvelopes = dualEvent
-                ? [requestEvent, dualEvent]
-                : [requestEvent];
             }
             published = await this.publishDirectConfirmed(
               publishTargets,

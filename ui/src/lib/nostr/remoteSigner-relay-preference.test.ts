@@ -526,25 +526,6 @@ describe("Primal nostrconnect relays", () => {
       })
     ).toBe(false);
   });
-
-  it("never resets or republishes after any relay accepted a bunker:// sign_event", () => {
-    expect(
-      signEventPublishNeedsAnotherDial({
-        method: "sign_event",
-        acked: true,
-        publishedUrls: ["wss://relay.gittr.space"],
-        uriRelays: [
-          "wss://relay.gittr.space",
-          "wss://bucket.coracle.social",
-          "wss://nrs.primal.net",
-          "wss://relay.primal.net",
-          "wss://relay.nip46.com",
-          "wss://theforest.nostr1.com",
-          "wss://relay.ditto.pub",
-        ],
-      })
-    ).toBe(false);
-  });
 });
 
 describe("nip46 encryption preference", () => {

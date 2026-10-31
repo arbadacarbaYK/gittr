@@ -77,11 +77,6 @@ export type SoftwareAnnounceInput = {
    * Keyed by the original forge downloadUrl.
    */
   assetUrlOverrides?: Record<string, string>;
-  /**
-   * Download URLs to leave off this announce. Used when an extra APK has no
-   * Zapstore ownership proof — publishing it would be an unproven listing.
-   */
-  excludeAssetUrls?: string[];
 };
 
 export type BuiltSoftwareAnnounce = {
@@ -183,13 +178,6 @@ function isSameApkFamily(
   return isApkFile(a) && isApkFile(primary);
 }
 
-export function validApkCertificateHash(
-  value: string | undefined
-): string | undefined {
-  const hash = (value || "").trim().toLowerCase();
-  return /^[0-9a-f]{64}$/.test(hash) ? hash : undefined;
-}
-
 function buildAssetEvent(
   appId: string,
   version: string,
@@ -211,10 +199,6 @@ function buildAssetEvent(
   ];
   if (nip.f) tags.push(["f", nip.f]);
   if (file.size > 0) tags.push(["size", String(file.size)]);
-  const certHash = isApkFile(file)
-    ? validApkCertificateHash(file.apkCertificateHash)
-    : undefined;
-  if (certHash) tags.push(["apk_certificate_hash", certHash]);
   return {
     kind: KIND_SOFTWARE_ASSET,
     created_at: now,
@@ -222,30 +206,6 @@ function buildAssetEvent(
     tags,
     pubkey: "",
   };
-}
-
-/**
- * Kind 3063 ids that would be left unlinked after this version is republished.
- * Zapstore drops a listing that has a lone file event.
- */
-export function orphanSoftwareAssetIds(args: {
-  version: string;
-  keepIds: string[];
-  assets: Array<{ id: string; version?: string }>;
-  referencedIds: Iterable<string>;
-}): string[] {
-  const keep = new Set(args.keepIds.map((id) => id.toLowerCase()));
-  const referenced = new Set(
-    [...args.referencedIds].map((id) => id.toLowerCase())
-  );
-  const out: string[] = [];
-  for (const asset of args.assets) {
-    const id = asset.id.toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(id) || keep.has(id)) continue;
-    const sameVersion = (asset.version || "") === args.version;
-    if (sameVersion || !referenced.has(id)) out.push(asset.id);
-  }
-  return out;
 }
 
 /**
@@ -268,11 +228,8 @@ export function buildSoftwareAnnounceEvents(
   }
 
   const includeSiblings = input.includeSiblingAssets !== false;
-  const excluded = new Set(input.excludeAssetUrls || []);
   const extraAssetFiles = includeSiblings
-    ? pickSiblingNip82Assets(input.forge, primary).filter(
-        (file) => !excluded.has(file.downloadUrl)
-      )
+    ? pickSiblingNip82Assets(input.forge, primary)
     : [];
 
   const name = (input.appName || input.forge.repo).trim() || input.forge.repo;

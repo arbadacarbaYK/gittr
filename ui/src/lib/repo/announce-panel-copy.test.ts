@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  announceCertificateRowTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
-  announceSkippedApkNote,
-  announceZapstoreFooterCopy,
-  announceZapstoreProofMessage,
   formatAppAnnounceErrorCopy,
   formatAppAnnounceSuccessCopy,
   missingForgeSourceAnnounceMessage,
@@ -108,23 +104,6 @@ describe("announcePanelBlossomCopy", () => {
     expect(announcePanelBlossomCopy(false)).toMatch(
       /not gittr’s Pages Blossom/
     );
-  });
-});
-
-describe("zapstore ownership proof copy", () => {
-  it("names the one-time zsp step and the certificate", () => {
-    const hash = "ab".repeat(32);
-    expect(announceCertificateRowTitle(hash)).toBe("Certificate abababab…abab");
-    expect(announceCertificateRowTitle()).toMatch(/check the file/i);
-    const missing = announceZapstoreProofMessage({
-      reason: "missing",
-      certificateHash: hash,
-    });
-    expect(missing).toMatch(/Prove it’s yours/);
-    expect(missing).toMatch(/abababab…abab/);
-    expect(missing).toMatch(/keystore stays on that machine/);
-    expect(announceZapstoreFooterCopy()).toMatch(/zapstore\.yaml/);
-    expect(announceSkippedApkNote(["app-debug.apk"])).toMatch(/app-debug.apk/);
   });
 });
 

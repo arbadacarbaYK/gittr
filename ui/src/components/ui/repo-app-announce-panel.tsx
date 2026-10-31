@@ -6,10 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ZAPSTORE_PUBLISH_DOCS } from "@/lib/gittr-repo-links";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import {
-  findAuthorizingApkProof,
-  standardBase64ToBytes,
-} from "@/lib/nostr/nip-c1-proof";
 import { pinReleaseAssetsToNgitBlossom } from "@/lib/nostr/pin-release-assets-to-blossom";
 import { publishSoftwareAnnounce } from "@/lib/nostr/publish-software-announce";
 import { resolveNostrSigner } from "@/lib/nostr/signer";
@@ -17,15 +13,11 @@ import {
   pickAnnouncePrimaryAsset,
   pickSiblingNip82Assets,
 } from "@/lib/nostr/software-announce-build";
-import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import {
-  announceCertificateRowTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
-  announceZapstoreFooterCopy,
-  announceZapstoreProofMessage,
   formatAppAnnounceErrorCopy,
   missingForgeSourceAnnounceMessage,
 } from "@/lib/repo/announce-panel-copy";
@@ -35,7 +27,6 @@ import type {
 } from "@/lib/repo/forge-releases";
 import {
   announceableForgeAssets,
-  isApkAssetName,
   resolveAnnounceAppId,
 } from "@/lib/repo/forge-releases";
 import {
@@ -158,12 +149,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     appId: string;
     version: string;
     whitelistHint?: string;
-    notice?: string;
   } | null>(null);
-  const [proofState, setProofState] = useState<
-    "idle" | "checking" | "ok" | "needed"
-  >("idle");
-  const [proofHint, setProofHint] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(defaultOpen);
   const [pinToNgitBlossom, setPinToNgitBlossom] = useState(isOfficialGittr);
   const [pinWarning, setPinWarning] = useState<string | null>(null);
@@ -362,63 +348,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       appName.trim() &&
       isOwnerSession
   );
-  const selectedIsApk = Boolean(
-    selectedAsset &&
-      isApkAssetName(selectedAsset.name, selectedAsset.contentType)
-  );
-  const relayKey = (defaultRelays || []).join("|");
-
-  useEffect(() => {
-    if (!isOwnerSession) return;
-    const hash = selectedAsset?.apkCertificateHash;
-    const derB64 = selectedAsset?.apkCertificateDerBase64;
-    if (!selectedIsApk || !hash || !derB64) {
-      setProofState("idle");
-      setProofHint(null);
-      return;
-    }
-    const der = standardBase64ToBytes(derB64);
-    if (!der) {
-      setProofState("needed");
-      setProofHint(announceZapstoreProofMessage({ reason: "unreadable-cert" }));
-      return;
-    }
-    let cancel = false;
-    setProofState("checking");
-    setProofHint(null);
-    void findAuthorizingApkProof({
-      subscribe: subscribe as never,
-      relays: relaysForSoftwareCatalog(defaultRelays || []),
-      signerPubkeyHex: ownerPubkeyHex,
-      certificateDer: der,
-      certificateHash: hash,
-    }).then((check) => {
-      if (cancel) return;
-      if (check.ok) {
-        setProofState("ok");
-        setProofHint(null);
-        return;
-      }
-      setProofState("needed");
-      setProofHint(
-        announceZapstoreProofMessage({
-          reason: check.reason,
-          certificateHash: hash,
-        })
-      );
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [
-    isOwnerSession,
-    selectedIsApk,
-    selectedAsset?.apkCertificateHash,
-    selectedAsset?.apkCertificateDerBase64,
-    ownerPubkeyHex,
-    relayKey,
-    subscribe,
-  ]);
 
   const onPublish = async () => {
     if (!forge || !readyToPublish) return;
@@ -515,7 +444,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         appId: result.appId,
         version: result.version,
         whitelistHint: result.whitelistHint,
-        notice: result.notice,
       });
       onAnnounced?.(result.appId);
     } catch (e) {
@@ -648,30 +576,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 : "Verify file (one download)"
             }
           />
-          {selectedIsApk ? (
-            <ChecklistRow
-              ok={Boolean(selectedAsset?.apkCertificateHash)}
-              warning={Boolean(
-                selectedAsset?.sha256 && !selectedAsset.apkCertificateHash
-              )}
-              title={announceCertificateRowTitle(
-                selectedAsset?.apkCertificateHash
-              )}
-            />
-          ) : null}
-          {selectedIsApk && selectedAsset?.apkCertificateHash ? (
-            <ChecklistRow
-              ok={proofState === "ok"}
-              warning={proofState === "needed"}
-              title={
-                proofState === "ok"
-                  ? "Ownership proof matches this APK"
-                  : proofState === "checking"
-                  ? "Checking ownership proof…"
-                  : "Ownership proof still needed"
-              }
-            />
-          ) : null}
           <ChecklistRow
             ok={screenshotUrls.length > 0}
             warning={Boolean(hasSource && screenshotUrls.length === 0)}
@@ -684,15 +588,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             }
           />
         </div>
-
-        {proofHint && !error ? (
-          <div
-            className="rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
-            role="status"
-          >
-            {proofHint}
-          </div>
-        ) : null}
 
         {error ? (
           <div
@@ -936,11 +831,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 Apps
               </Link>
               .
-              {publishResult.notice ? (
-                <p className="mt-1.5 text-amber-100/95">
-                  {publishResult.notice}
-                </p>
-              ) : null}
               {publishResult.whitelistHint ? (
                 <p className="mt-1.5 text-amber-100/95">
                   For Zapstore catalog indexing, add{" "}
@@ -965,7 +855,11 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           </div>
         ) : (
           <p className="text-[10px] leading-snug text-zinc-500">
-            {announceZapstoreFooterCopy()}{" "}
+            Optional Zapstore: commit{" "}
+            <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code> in
+            that source repo — pubkey, repository, and{" "}
+            <code className="rounded bg-zinc-900 px-1">images:</code> screenshot
+            paths or https links. gittr copies those onto the Nostr listing. See{" "}
             <a
               href={ZAPSTORE_PUBLISH_DOCS}
               target="_blank"
