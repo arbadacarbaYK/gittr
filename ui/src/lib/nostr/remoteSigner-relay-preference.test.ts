@@ -26,6 +26,7 @@ import {
   sessionUsesNostrConnect,
   signEventPublishNeedsAnotherDial,
   signEventRedialKeepsListener,
+  uriPreferredOpenRelays,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
   signerBunkerRelays,
@@ -510,7 +511,7 @@ describe("Primal nostrconnect relays", () => {
     ).toBe(false);
   });
 
-  it("keeps Amber's reply when a bunker relay already accepted the request", () => {
+  it("keeps Amber's reply after any relay accepted the request", () => {
     expect(
       signEventRedialKeepsListener({
         acked: true,
@@ -522,7 +523,7 @@ describe("Primal nostrconnect relays", () => {
         acked: true,
         hasUriOverlap: false,
       })
-    ).toBe(false);
+    ).toBe(true);
     expect(
       signEventRedialKeepsListener({
         acked: false,
@@ -532,12 +533,12 @@ describe("Primal nostrconnect relays", () => {
     expect(signEventRedialKeepsListener({ acked: false })).toBe(false);
   });
 
-  it("does not redial after a bunker URI relay accepted the request", () => {
+  it("does not redial after any relay accepted a bunker:// request", () => {
     expect(
       signEventPublishNeedsAnotherDial({
         method: "sign_event",
         acked: true,
-        publishedUrls: ["wss://relay.gittr.space", "wss://relay.primal.net"],
+        publishedUrls: ["wss://relay.gittr.space"],
         uriRelays: [
           "wss://relay.gittr.space",
           "wss://bucket.coracle.social",
@@ -549,6 +550,29 @@ describe("Primal nostrconnect relays", () => {
         ],
       })
     ).toBe(false);
+    expect(
+      signEventPublishNeedsAnotherDial({
+        method: "sign_event",
+        acked: true,
+        publishedUrls: ["wss://nos.lol"],
+        uriRelays: ["wss://relay.gittr.space", "wss://relay.primal.net"],
+      })
+    ).toBe(false);
+  });
+
+  it("publishes early only on Amber URI hosts, not expanded fallbacks", () => {
+    expect(
+      uriPreferredOpenRelays(
+        ["wss://nos.lol", "wss://relay.gittr.space"],
+        ["wss://relay.gittr.space", "wss://relay.primal.net"]
+      )
+    ).toEqual(["wss://relay.gittr.space"]);
+    expect(
+      uriPreferredOpenRelays(
+        ["wss://nos.lol"],
+        ["wss://relay.gittr.space", "wss://relay.primal.net"]
+      )
+    ).toEqual([]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {

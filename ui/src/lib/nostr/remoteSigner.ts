@@ -546,11 +546,9 @@ export function signEventPublishNeedsAnotherDial(opts: {
     if (primalReached) return false;
     if (wanted.length > 0) return true;
   }
-  // One OK on any bunker URI host is enough. A "thin" redial used to close
-  // that socket, miss Amber's reply, and republish a note relays then call
-  // an expired ephemeral event.
-  return !bunkerRelayPublishOverlap(opts.publishedUrls, opts.uriRelays)
-    .hasOverlap;
+  // Any relay OK is enough for bunker://. A second note after acked:true is
+  // what Amber then shows as "invalid: ephemeral event expired".
+  return false;
 }
 
 /**
@@ -699,6 +697,26 @@ export function preferUriOpenRelays(
   return [...new Set(openRelays.map(normalizeRelayUrl))].slice(0, max);
 }
 
+/**
+ * OPEN sockets that are on Amber's bunker URI list only — no expanded fallback.
+ * Early sign_event publish must use this so we do not OK a random host and then
+ * treat that as "no URI overlap" and send a second note.
+ */
+export function uriPreferredOpenRelays(
+  openRelays: string[],
+  preferredRelays: string[],
+  max = BUNKER_PUBLISH_MAX_RELAYS
+): string[] {
+  if (!openRelays.length) return [];
+  const preferred = relayUrlSet(preferredRelays);
+  if (preferred.size === 0) return [];
+  return [
+    ...new Set(
+      openRelays.map(normalizeRelayUrl).filter((u) => preferred.has(u))
+    ),
+  ].slice(0, max);
+}
+
 export function bunkerRelayPublishOverlap(
   publishedUrls: string[],
   uriRelays: string[]
@@ -739,11 +757,9 @@ export function bunkerRpcEventIsStale(
 }
 
 /**
- * A relay Amber is paired with already accepted this sign_event, or Amber
- * already returned the signature. Replacing the bunker pool drops that reply,
- * and republishing the same note later is what relays call an expired
- * ephemeral event. An OK on a host outside the bunker URI still needs a
- * fresh note on Amber's own relays.
+ * Once any relay accepted the note, or Amber already returned the signature,
+ * keep the listener. Resetting after acked:true published a second note that
+ * Amber then rejected as an expired ephemeral event.
  */
 export function signEventRedialKeepsListener(opts: {
   acked: boolean;
@@ -751,9 +767,7 @@ export function signEventRedialKeepsListener(opts: {
   hasUriOverlap?: boolean;
 }): boolean {
   if (opts.signatureAlreadyInHand) return true;
-  if (!opts.acked) return false;
-  if (opts.hasUriOverlap === false) return false;
-  return true;
+  return !!opts.acked;
 }
 
 /** True when we published to Amber's list but left most of her relays unused. */
@@ -3446,7 +3460,9 @@ export class RemoteSignerManager {
       // looked OPEN. The page relays stayed up, the publish was acked, and
       // Primal/Amber never showed a prompt.
       await this.holdPageRelaysForBunkerDial();
-      const alreadyOpen = preferUriOpenRelays(
+      // Only Amber's URI hosts — an expanded fallback host used to get an OK,
+      // then the redial path sent a second note Amber called expired.
+      const alreadyOpen = uriPreferredOpenRelays(
         await this.listDirectOpenRelays(order),
         uriRelays,
         BUNKER_PUBLISH_MAX_RELAYS
@@ -4447,35 +4463,34 @@ export class RemoteSignerManager {
           // note again. That dropped Amber's reply, and by then relays
           // rejected the note as "invalid: ephemeral event expired".
           const signatureAlreadyInHand = !this.pending.has(id);
-          const hasUriOverlap = bunkerRelayPublishOverlap(
-            published.urls,
-            uriRelays
-          ).hasOverlap;
+          const needsAnotherDial = signEventPublishNeedsAnotherDial({
+            method,
+            acked: published.acked,
+            publishedUrls: published.urls,
+            uriRelays,
+            nostrConnect: sessionUsesNostrConnect(session),
+            // The phone already answered. Resetting the bunker pool now
+            // closes the page relays, and the manifest publish never hears
+            // a relay echo ("awaiting relay confirmation").
+            signatureAlreadyInHand,
+          });
           if (
-            signEventPublishNeedsAnotherDial({
-              method,
-              acked: published.acked,
-              publishedUrls: published.urls,
-              uriRelays,
-              nostrConnect: sessionUsesNostrConnect(session),
-              // The phone already answered. Resetting the bunker pool now
-              // closes the page relays, and the manifest publish never hears
-              // a relay echo ("awaiting relay confirmation").
+            published.acked &&
+            signEventRedialKeepsListener({
+              acked: true,
               signatureAlreadyInHand,
             })
           ) {
-            if (
-              signEventRedialKeepsListener({
-                acked: published.acked,
-                signatureAlreadyInHand,
-                hasUriOverlap,
-              })
-            ) {
+            // Do not reset after any OK. The previous "no URI overlap" path
+            // closed the live socket and published a second note — Amber then
+            // showed "invalid: ephemeral event expired" on that second note.
+            if (needsAnotherDial) {
               console.warn(
-                "[RemoteSigner] sign_event already reached a bunker relay — keeping Amber's reply path open",
+                "[RemoteSigner] sign_event reached a relay — keeping Amber's reply path open (no second note)",
                 { acked: published.acked, urls: published.urls, uriRelays }
               );
-            } else if (this.pending.has(id)) {
+            }
+          } else if (needsAnotherDial && this.pending.has(id)) {
               console.warn(
                 "[RemoteSigner] sign_event did not reach a relay — resetting bunker transport and sending a fresh request",
                 { acked: published.acked, urls: published.urls, uriRelays }
@@ -4529,7 +4544,6 @@ export class RemoteSignerManager {
                   uriRelays,
                 };
               }
-            }
           }
           if (method === "sign_event" && published.acked) {
             signPublishSettled = true;
