@@ -580,7 +580,7 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual([]);
   });
 
-  it("publishes on the warm gittr socket even when it is not in the bunker URI", () => {
+  it("does not publish on gittr when Amber's bunker URI does not include it", () => {
     expect(
       signEventCoverPublishRelays(
         ["wss://relay.gittr.space"],
@@ -590,7 +590,7 @@ describe("Primal nostrconnect relays", () => {
           "wss://bucket.coracle.social",
         ]
       )
-    ).toEqual(["wss://relay.gittr.space"]);
+    ).toEqual([]);
   });
 
   it("prefers URI overlap over gittr when both are open", () => {

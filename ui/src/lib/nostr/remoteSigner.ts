@@ -741,22 +741,16 @@ export function uriPreferredOpenRelays(
 /**
  * Relays we can publish the signing request on right now.
  *
- * URI overlap wins. If the page-load warm already opened gittr (or any
- * bunker socket) and that host is not in the saved URI, still use it —
- * waiting for Damus/indexers instead closed the live socket and aged the
- * note until Amber called it expired.
+ * Only Amber's bunker URI. A warm gittr socket is not enough: Pyramid acks
+ * kind 24133 internally, Amber never sees it, and the phone then shows an
+ * old leftover note as "ephemeral event expired".
  */
 export function signEventCoverPublishRelays(
   poolOpen: string[],
   uriRelays: string[],
   max = BUNKER_PUBLISH_MAX_RELAYS
 ): string[] {
-  const uriOpen = uriPreferredOpenRelays(poolOpen, uriRelays, max);
-  if (uriOpen.length > 0) return uriOpen;
-  const open = uniqueNormalizedRelays(poolOpen);
-  const gittrOpen = open.filter((u) => u === GITTR_BUNKER_RELAY);
-  if (gittrOpen.length > 0) return gittrOpen.slice(0, max);
-  return preferUriOpenRelays(open, uriRelays, max);
+  return uriPreferredOpenRelays(poolOpen, uriRelays, max);
 }
 
 /**
@@ -3626,48 +3620,43 @@ export class RemoteSignerManager {
         BUNKER_PUBLISH_MAX_RELAYS
       );
       const have = new Set(alreadyOpen.map((u) => normalizeRelayUrl(u)));
-      const missing = bunkerReplyListenDialTargets(
-        order.filter((u) => !have.has(normalizeRelayUrl(u)))
+      const uriMissing = bunkerReplyListenDialTargets(
+        uriRelays.filter((u) => !have.has(normalizeRelayUrl(u)))
       );
-      // A warm bunker socket is enough to send the request now.
-      // Opening Damus/indexers in the same tick closed that socket.
       if (alreadyOpen.length > 0) {
         this.lastSignAttempted = order;
         console.log(
           "[RemoteSigner] Publishing on open bunker relays — opening the rest for Amber's reply",
           {
             open: alreadyOpen,
-            remaining: missing,
-            uri: order,
+            remaining: uriMissing,
+            uri: uriRelays,
             nostrConnect,
           }
         );
-        const expandTargets = bunkerReplyListenDialTargets(missing);
-        if (expandTargets.length > 0) {
-          void this.expandBunkerListenInBackground(
-            session,
-            expandTargets,
-            order
-          );
+        if (uriMissing.length > 0) {
+          void this.expandBunkerListenInBackground(session, uriMissing, order);
         }
         return alreadyOpen;
       }
-      if (missing.length > 0) {
-        await this.replaceDirectPoolIfFullyClosed(order);
+      // Warm gittr is not on Amber's bunker URI. Open one of her relays
+      // before the note exists — publishing only to gittr is acked here and
+      // invisible on the phone.
+      if (uriMissing.length > 0) {
         console.log(
-          "[RemoteSigner] Opening every bunker relay before the signing request",
+          "[RemoteSigner] Amber is not watching the warm relay — opening her bunker URI before signing",
           {
-            already: have.size,
-            remaining: missing,
-            uri: order,
+            warm: poolOpen,
+            remaining: uriMissing,
+            uri: uriRelays,
             nostrConnect,
           }
         );
         await this.dialRelaysWithConcurrency(
-          missing,
-          BUNKER_URI_DIAL_CONCURRENCY,
+          uriMissing,
+          Math.min(2, uriMissing.length),
           BUNKER_SIGN_RELAY_BUDGET_MS,
-          missing.length
+          BUNKER_PROCEED_WHEN_OPEN
         );
       }
       this.lastSignAttempted = order;
@@ -4674,17 +4663,18 @@ export class RemoteSignerManager {
             getSessionUriRelays(session),
             sessionUsesNostrConnect(session)
           );
-          let publishTargets = preferUriOpenRelays(
+          let publishTargets = uriPreferredOpenRelays(
             openDirect.length > 0 ? openDirect : [],
             uriRelays
           );
           if (publishTargets.length === 0) {
-            publishTargets =
-              openDirect.length > 0
-                ? openDirect
-                : uriRelays.length > 0
-                ? uriRelays
-                : session.relays;
+            publishTargets = preferUriOpenRelays(
+              openDirect.length > 0 ? openDirect : [],
+              uriRelays
+            );
+          }
+          if (publishTargets.length === 0) {
+            publishTargets = uriRelays.length > 0 ? uriRelays : session.relays;
           }
           let published = await this.publishDirectConfirmed(
             publishTargets,
