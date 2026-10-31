@@ -760,20 +760,30 @@ export function signEventAmberReachRelays(
 }
 
 /**
- * Relays safe to *publish* sign_event on. `relay.gittr.space` acks kind 24133
- * then drops it (REQ by id is empty). Amber replies only on the relay that
- * delivered the request — so a gittr delivery loses the signed reply, the
- * page times out ("never heard the answer"), and Amber may show
- * "invalid: ephemeral event expired" from that relay.
+ * Relays used to publish + listen for sign_event.
+ *
+ * `relay.gittr.space` does not *store* kind 24133 (historical REQ is empty /
+ * OK message is "handled internally"), but it **does** live-broadcast to
+ * open subscribers. Amber on our own relay answers there — excluding gittr
+ * from listen left acked:true with inboundDuringWait:0 after she approved.
  */
 export function signEventAmberPublishRelays(
   uriRelays: string[],
   opts?: { nostrConnect?: boolean }
 ): string[] {
+  return signEventAmberReachRelays(uriRelays, opts);
+}
+
+/** Prefer gittr first among OPEN publish targets when the warm already has it. */
+export function preferGittrBunkerFirst(relays: string[]): string[] {
   const gittr = normalizeRelayUrl(GITTR_BUNKER_RELAY);
-  return signEventAmberReachRelays(uriRelays, opts).filter(
-    (u) => normalizeRelayUrl(u) !== gittr
-  );
+  const list = uniqueNormalizedRelays(relays);
+  const hit = list.filter((u) => normalizeRelayUrl(u) === gittr);
+  if (hit.length === 0) return list;
+  return uniqueNormalizedRelays([
+    ...hit,
+    ...list.filter((u) => normalizeRelayUrl(u) !== gittr),
+  ]);
 }
 
 /**
@@ -3615,22 +3625,21 @@ export class RemoteSignerManager {
       // looked OPEN. The page relays stayed up, the publish was acked, and
       // Primal/Amber never showed a prompt.
       await this.holdPageRelaysForBunkerDial();
-      // Publish set excludes relay.gittr.space (ack-then-drop). Amber replies
-      // only on the delivery relay — gittr delivery = lost signed reply.
+      // Include relay.gittr.space: live #p subscribers receive 24133 even though
+      // historical REQ is empty. Amber on our relay answers there.
       const publishReach = signEventAmberPublishRelays(uriRelays, {
         nostrConnect,
       });
-      const listenReach = signEventAmberReachRelays(uriRelays, {
-        nostrConnect,
-      });
       const openNow = await this.listDirectOpenRelays(
-        uniqueNormalizedRelays([...order, ...publishReach, ...listenReach])
+        uniqueNormalizedRelays([...order, ...publishReach])
       );
       const MIN_SIGN_PUBLISH_OPEN = 3;
-      let alreadyOpen = pickSignEventCoverOpenRelays(
-        openNow,
-        publishReach,
-        BUNKER_PUBLISH_MAX_RELAYS
+      let alreadyOpen = preferGittrBunkerFirst(
+        pickSignEventCoverOpenRelays(
+          openNow,
+          publishReach,
+          BUNKER_PUBLISH_MAX_RELAYS
+        )
       );
       const have = new Set(alreadyOpen.map((u) => normalizeRelayUrl(u)));
       let missingPublish = publishReach.filter(
@@ -3641,16 +3650,20 @@ export class RemoteSignerManager {
       if (alreadyOpen.length > 0 && !needMore) {
         this.lastSignAttempted = order;
         console.log(
-          "[RemoteSigner] Publishing on Amber publish-safe bunker relays — opening the rest for her reply",
+          "[RemoteSigner] Publishing on Amber bunker relays — opening the rest for her reply",
           {
             open: alreadyOpen,
             publishReach,
             remaining: missingPublish,
-            skippedGittr: true,
+            includesGittr: alreadyOpen.some(
+              (u) =>
+                normalizeRelayUrl(u) === normalizeRelayUrl(GITTR_BUNKER_RELAY)
+            ),
             uri: uriRelays,
             nostrConnect,
           }
         );
+        await this.ensureResponseSubscription(session, alreadyOpen);
         if (missingPublish.length > 0) {
           void this.expandBunkerListenInBackground(
             session,
@@ -3667,12 +3680,11 @@ export class RemoteSignerManager {
         const dialList =
           missingPublish.length > 0 ? missingPublish : publishReach;
         console.log(
-          "[RemoteSigner] Opening Amber publish-safe bunker relays before the signing request",
+          "[RemoteSigner] Opening Amber bunker relays before the signing request",
           {
             already: alreadyOpen.length,
             remaining: dialList,
             wantAtLeast: MIN_SIGN_PUBLISH_OPEN,
-            skippedGittr: true,
             openNow,
             nostrConnect,
           }
@@ -3685,10 +3697,12 @@ export class RemoteSignerManager {
         );
       }
       this.lastSignAttempted = order;
-      const open = pickSignEventCoverOpenRelays(
-        await this.listDirectOpenRelays(publishReach),
-        publishReach,
-        BUNKER_PUBLISH_MAX_RELAYS
+      const open = preferGittrBunkerFirst(
+        pickSignEventCoverOpenRelays(
+          await this.listDirectOpenRelays(publishReach),
+          publishReach,
+          BUNKER_PUBLISH_MAX_RELAYS
+        )
       );
       const openSet = new Set(open.map((u) => normalizeRelayUrl(u)));
       const missed = publishReach.filter(
@@ -3696,15 +3710,22 @@ export class RemoteSignerManager {
       );
       if (open.length === 0) {
         console.warn(
-          "[RemoteSigner] Amber publish-safe bunker relays still closed after cover",
+          "[RemoteSigner] Amber bunker relays still closed after cover",
           { missed, publishReach: publishReach.length }
         );
       } else {
-        console.log("[RemoteSigner] Amber publish-safe bunker relays covered", {
+        console.log("[RemoteSigner] Amber bunker relays covered", {
           open,
           missed,
           publishReach: publishReach.length,
+          includesGittr: open.some(
+            (u) =>
+              normalizeRelayUrl(u) === normalizeRelayUrl(GITTR_BUNKER_RELAY)
+          ),
         });
+      }
+      if (open.length > 0) {
+        await this.ensureResponseSubscription(session, open);
       }
       if (open.length > 0 && missed.length > 0) {
         void this.expandBunkerListenInBackground(
@@ -4389,19 +4410,18 @@ export class RemoteSignerManager {
   private async refreshSignEventListenPath(session: RemoteSignerSession) {
     const uriRelays = getSessionUriRelays(session);
     const published = this.lastPublishMeta?.urls || [];
-    // While Approve is open, ONLY heal the relays that already accepted the
-    // note. Re-dialing Damus/nos every 8s was killing those live sockets —
-    // Amber signed, inboundDuringWait stayed 0, then "ephemeral expired".
-    // Heal only relays that could carry the reply (publish-safe set). Never
-    // re-dial gittr.space mid-wait — it acks-then-drops and steals sockets.
-    const gittr = normalizeRelayUrl(GITTR_BUNKER_RELAY);
+    // While Approve is open, heal published hosts plus gittr (Amber often
+    // answers on our relay even when the request also went to primal).
     const healTargets = bunkerReplyListenDialTargets(
-      published.length > 0
-        ? published
-        : signEventAmberPublishRelays(uriRelays, {
-            nostrConnect: sessionUsesNostrConnect(session),
-          })
-    ).filter((u) => normalizeRelayUrl(u) !== gittr);
+      uniqueNormalizedRelays([
+        ...(published.length > 0
+          ? published
+          : signEventAmberPublishRelays(uriRelays, {
+              nostrConnect: sessionUsesNostrConnect(session),
+            })),
+        GITTR_BUNKER_RELAY,
+      ])
+    );
     if (healTargets.length === 0) return;
     let open = await this.listDirectOpenRelays(healTargets);
     const publishedDead = signEventReplyListenExpandTargets({
@@ -4599,29 +4619,23 @@ export class RemoteSignerManager {
       if (method === "sign_event") {
         // Cover may have only opened 1–2 of Amber's URI relays. Start dialing
         // the rest now that the waiter exists — her reply often lands on a
-        // host that was still CLOSED at publish time. Never expand-dial
-        // gittr.space: we do not publish there (ack-then-drop), so her reply
-        // will not land there either — opening it only steals a browser socket.
-        const gittr = normalizeRelayUrl(GITTR_BUNKER_RELAY);
+        // host that was still CLOSED at publish time (especially gittr.space
+        // when she is connected to our relay).
+        const expandOrder = signEventAmberPublishRelays(
+          getSessionUriRelays(session),
+          { nostrConnect: sessionUsesNostrConnect(session) }
+        );
         const expandForReply = bunkerReplyListenDialTargets(
           signEventReplyListenExpandTargets({
-            uriRelays: signEventAmberPublishRelays(
-              getSessionUriRelays(session),
-              { nostrConnect: sessionUsesNostrConnect(session) }
-            ),
+            uriRelays: expandOrder,
             openRelays: openDirect,
           })
-        ).filter((u) => normalizeRelayUrl(u) !== gittr);
+        );
         if (expandForReply.length > 0) {
           void this.expandBunkerListenInBackground(
             session,
             expandForReply,
-            uniqueNormalizedRelays([
-              ...signEventAmberPublishRelays(getSessionUriRelays(session), {
-                nostrConnect: sessionUsesNostrConnect(session),
-              }),
-              ...openDirect,
-            ]).filter((u) => normalizeRelayUrl(u) !== gittr)
+            uniqueNormalizedRelays([...expandOrder, ...openDirect])
           );
         }
         listenRefresh = setInterval(() => {
@@ -4699,9 +4713,11 @@ export class RemoteSignerManager {
           });
           let publishTargets =
             method === "sign_event"
-              ? pickSignEventCoverOpenRelays(
-                  openDirect.length > 0 ? openDirect : [],
-                  amberReach
+              ? preferGittrBunkerFirst(
+                  pickSignEventCoverOpenRelays(
+                    openDirect.length > 0 ? openDirect : [],
+                    amberReach
+                  )
                 )
               : preferUriOpenRelays(
                   openDirect.length > 0 ? openDirect : [],
@@ -4710,7 +4726,7 @@ export class RemoteSignerManager {
           if (publishTargets.length === 0 && method === "sign_event") {
             if (amberReach.length > 0) {
               console.warn(
-                "[RemoteSigner] No Amber publish-safe socket open for sign_event — dialing before publish",
+                "[RemoteSigner] No Amber bunker socket open for sign_event — dialing before publish",
                 { amberReach, openDirect }
               );
               await this.dialRelaysWithConcurrency(
@@ -4719,9 +4735,11 @@ export class RemoteSignerManager {
                 BUNKER_SIGN_RELAY_BUDGET_MS,
                 Math.min(4, Math.max(1, amberReach.length))
               );
-              publishTargets = pickSignEventCoverOpenRelays(
-                await this.listDirectOpenRelays(amberReach),
-                amberReach
+              publishTargets = preferGittrBunkerFirst(
+                pickSignEventCoverOpenRelays(
+                  await this.listDirectOpenRelays(amberReach),
+                  amberReach
+                )
               );
               requestEvent = buildRpcEvent(encrypted.primary);
               this.lastSignEventEnvelopes = [requestEvent];
@@ -4740,23 +4758,36 @@ export class RemoteSignerManager {
                 ? uriRelays
                 : session.relays;
           }
-          // Stamp late; listen on publish relays BEFORE the note leaves so
-          // Amber's single-relay reply cannot land in a subscription gap.
+          // Stamp late; listen on publish + gittr BEFORE the note leaves so
+          // Amber's reply on our relay cannot land in a subscription gap.
           if (method === "sign_event") {
-            publishTargets = uniqueNormalizedRelays(publishTargets).filter(
-              (u) =>
-                normalizeRelayUrl(u) !== normalizeRelayUrl(GITTR_BUNKER_RELAY)
+            publishTargets = preferGittrBunkerFirst(
+              uniqueNormalizedRelays(publishTargets)
             );
             if (publishTargets.length === 0) {
               throw new Error(
-                "Amber publish-safe bunker relays are closed. Unlock Amber and try again."
+                "Amber bunker relays are closed. Unlock Amber and try again."
               );
             }
-            await this.ensureResponseSubscription(session, publishTargets);
+            const listenBefore = uniqueNormalizedRelays([
+              ...publishTargets,
+              ...openDirect,
+              GITTR_BUNKER_RELAY,
+            ]);
+            const gittrOpen = (
+              await this.listDirectOpenRelays([GITTR_BUNKER_RELAY])
+            ).length;
+            if (gittrOpen === 0) {
+              await this.openDirectRelay(
+                GITTR_BUNKER_RELAY,
+                BUNKER_RELAY_OPEN_BUDGET_MS
+              );
+            }
+            await this.ensureResponseSubscription(session, listenBefore);
             requestEvent = buildRpcEvent(encrypted.primary);
             this.lastSignEventEnvelopes = [requestEvent];
             console.log(
-              `[RemoteSigner] sign_event listen armed before publish relays=${publishTargets.join(",")}`
+              `[RemoteSigner] sign_event listen armed before publish relays=${listenBefore.join(",")}`
             );
           }
           let published = await this.publishDirectConfirmed(

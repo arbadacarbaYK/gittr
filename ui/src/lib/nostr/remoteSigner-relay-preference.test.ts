@@ -26,6 +26,7 @@ import {
   sessionUsesNostrConnect,
   bunkerReplyListenDialTargets,
   pickSignEventCoverOpenRelays,
+  preferGittrBunkerFirst,
   signEventAmberPublishRelays,
   signEventAmberReachRelays,
   nip46ReplySubscriptionFilters,
@@ -680,22 +681,32 @@ describe("Primal nostrconnect relays", () => {
     ).toEqual(["wss://relay.gittr.space"]);
   });
 
-  it("never publishes sign_event to relay.gittr.space (ack-then-drop)", () => {
+  it("keeps relay.gittr.space for Amber publish+listen (live broadcast works)", () => {
     const publish = signEventAmberPublishRelays([
       GITTR_BUNKER_RELAY,
       "wss://relay.damus.io",
       "wss://theforest.nostr1.com",
     ]);
-    expect(publish).not.toContain(GITTR_BUNKER_RELAY);
+    expect(publish).toContain(GITTR_BUNKER_RELAY);
     expect(publish).toContain("wss://theforest.nostr1.com");
     expect(publish).toContain("wss://relay.primal.net");
     expect(
-      pickSignEventCoverOpenRelays(
-        [GITTR_BUNKER_RELAY, "wss://relay.primal.net", "wss://theforest.nostr1.com"],
-        publish,
-        8
+      preferGittrBunkerFirst(
+        pickSignEventCoverOpenRelays(
+          [
+            "wss://relay.primal.net",
+            GITTR_BUNKER_RELAY,
+            "wss://theforest.nostr1.com",
+          ],
+          publish,
+          8
+        )
       )
-    ).toEqual(["wss://relay.primal.net", "wss://theforest.nostr1.com"]);
+    ).toEqual([
+      GITTR_BUNKER_RELAY,
+      "wss://relay.primal.net",
+      "wss://theforest.nostr1.com",
+    ]);
   });
 
   it("treats a bunker note as expired once it is older than the relay window", () => {
