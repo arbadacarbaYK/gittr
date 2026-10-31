@@ -717,6 +717,36 @@ export function bunkerRelayPublishOverlap(
   };
 }
 
+/**
+ * Kind 24133 is ephemeral. strfry rejects a note whose created_at is older
+ * than its window (often 60s, on some relays 10s) with
+ * "invalid: ephemeral event expired". Amber shows that string on the prompt.
+ * A bunker note older than this is not sent again.
+ */
+export const BUNKER_EPHEMERAL_MAX_AGE_SEC = 8;
+
+export function bunkerRpcEventIsStale(
+  createdAt: number,
+  nowSec: number,
+  maxAgeSec = BUNKER_EPHEMERAL_MAX_AGE_SEC
+): boolean {
+  if (!Number.isFinite(createdAt) || !Number.isFinite(nowSec)) return true;
+  return nowSec - createdAt >= maxAgeSec;
+}
+
+/**
+ * A relay already accepted this sign_event, or Amber already returned the
+ * signature. Replacing the bunker pool drops that reply, and republishing
+ * the same note later is what relays call an expired ephemeral event.
+ */
+export function signEventRedialKeepsListener(opts: {
+  acked: boolean;
+  signatureAlreadyInHand?: boolean;
+}): boolean {
+  if (opts.signatureAlreadyInHand) return true;
+  return opts.acked;
+}
+
 /** True when we published to Amber's list but left most of her relays unused. */
 export function bunkerPublishIsThin(
   publishedUrls: string[],
@@ -4082,14 +4112,18 @@ export class RemoteSignerManager {
     const targets = uniqueNormalizedRelays([...uriRelays, ...published]);
     if (targets.length === 0) return;
     const open = await this.listDirectOpenRelays(targets);
-    const openNorm = new Set(open.map((u) => normalizeRelayUrl(u)));
-    const missing = targets.filter((t) => !openNorm.has(normalizeRelayUrl(t)));
-    await Promise.all(
-      missing
-        .slice(0, 4)
-        .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
-    );
-    const again = await this.listDirectOpenRelays(targets);
+    // A live socket already accepted the request. Opening the closed ones
+    // (Damus in particular) aborts that socket, and Amber's reply is an
+    // ephemeral event — once the listener is gone, it does not come back.
+    let again = open;
+    if (open.length === 0) {
+      await Promise.all(
+        targets
+          .slice(0, 2)
+          .map((url) => this.openDirectRelay(url, BUNKER_RELAY_OPEN_BUDGET_MS))
+      );
+      again = await this.listDirectOpenRelays(targets);
+    }
     const preferred = preferUriOpenRelays(again, uriRelays);
     const listenOn = preferred.length > 0 ? preferred : again;
     if (listenOn.length === 0) return;
@@ -4172,7 +4206,7 @@ export class RemoteSignerManager {
       event.sig = signEvent(event, session.clientSecretKey);
       return event;
     };
-    const requestEvent = buildRpcEvent(encrypted.primary);
+    let requestEvent = buildRpcEvent(encrypted.primary);
     const dualEvent = encrypted.dual ? buildRpcEvent(encrypted.dual) : null;
     if (method === "sign_event") {
       this.lastSignEventEnvelopes = dualEvent
@@ -4339,8 +4373,10 @@ export class RemoteSignerManager {
             uriRelays,
           };
           // One OK used to count as every relay. Primal never saw that request.
-          // Reset + republish once when the ack missed Primal's relays or
-          // no relay accepted it.
+          // A thin or missing ack used to reset the pool and send the same
+          // note again. That dropped Amber's reply, and by then relays
+          // rejected the note as "invalid: ephemeral event expired".
+          const signatureAlreadyInHand = !this.pending.has(id);
           if (
             signEventPublishNeedsAnotherDial({
               method,
@@ -4351,38 +4387,74 @@ export class RemoteSignerManager {
               // The phone already answered. Resetting the bunker pool now
               // closes the page relays, and the manifest publish never hears
               // a relay echo ("awaiting relay confirmation").
-              signatureAlreadyInHand: !this.pending.has(id),
+              signatureAlreadyInHand,
             })
           ) {
-            console.warn(
-              "[RemoteSigner] sign_event did not reach enough signer relays — resetting bunker transport and retrying once",
-              { acked: published.acked, urls: published.urls, uriRelays }
-            );
-            this.resetDirectPool();
-            const reopened = await this.ensureDirectTransport(
-              session,
-              undefined,
-              {
-                coverUri: true,
-              }
-            );
-            publishTargets = preferUriOpenRelays(reopened, uriRelays);
-            if (publishTargets.length === 0) {
-              throw new Error(
-                "Could not reopen bunker relays after publish without OK. Open Amber and try again."
+            if (
+              signEventRedialKeepsListener({
+                acked: published.acked,
+                signatureAlreadyInHand,
+              })
+            ) {
+              console.warn(
+                "[RemoteSigner] sign_event already reached a relay — keeping Amber's reply path open",
+                { acked: published.acked, urls: published.urls, uriRelays }
               );
+            } else if (this.pending.has(id)) {
+              console.warn(
+                "[RemoteSigner] sign_event did not reach a relay — resetting bunker transport and sending a fresh request",
+                { acked: published.acked, urls: published.urls, uriRelays }
+              );
+              this.resetDirectPool();
+              const reopened = await this.ensureDirectTransport(
+                session,
+                undefined,
+                {
+                  coverUri: true,
+                }
+              );
+              if (!this.pending.has(id)) {
+                /* Amber answered the first note while the relays were reopening */
+              } else {
+                publishTargets = preferUriOpenRelays(reopened, uriRelays);
+                if (publishTargets.length === 0) {
+                  throw new Error(
+                    "Could not reopen bunker relays after publish without OK. Open Amber and try again."
+                  );
+                }
+                // Stamp created_at after the redial. The note built before
+                // this wait is what relays reject as an expired ephemeral event.
+                const previousCreatedAt = requestEvent.created_at;
+                requestEvent = buildRpcEvent(encrypted.primary);
+                if (
+                  bunkerRpcEventIsStale(
+                    previousCreatedAt,
+                    Math.floor(Date.now() / 1000)
+                  )
+                ) {
+                  console.warn(
+                    "[RemoteSigner] Dropped the bunker note — relays would reject it as ephemeral event expired",
+                    { created_at: previousCreatedAt }
+                  );
+                }
+                if (method === "sign_event") {
+                  this.lastSignEventEnvelopes = dualEvent
+                    ? [requestEvent, dualEvent]
+                    : [requestEvent];
+                }
+                published = await this.publishDirectConfirmed(
+                  publishTargets,
+                  requestEvent,
+                  4000
+                );
+                this.lastPublishMeta = {
+                  method,
+                  urls: published.urls,
+                  acked: published.acked,
+                  uriRelays,
+                };
+              }
             }
-            published = await this.publishDirectConfirmed(
-              publishTargets,
-              requestEvent,
-              4000
-            );
-            this.lastPublishMeta = {
-              method,
-              urls: published.urls,
-              acked: published.acked,
-              uriRelays,
-            };
           }
           if (method === "sign_event" && published.acked) {
             signPublishSettled = true;

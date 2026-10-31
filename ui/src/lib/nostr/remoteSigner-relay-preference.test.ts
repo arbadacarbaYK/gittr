@@ -4,6 +4,8 @@ import {
   GITTR_BUNKER_RELAY,
   PRIMAL_BUNKER_RELAYS,
   bunkerPublishIsThin,
+  bunkerRpcEventIsStale,
+  BUNKER_EPHEMERAL_MAX_AGE_SEC,
   bunkerRelayIsOpen,
   bunkerRelayPublishOverlap,
   bunkerRelayShouldKeepWaiting,
@@ -23,6 +25,7 @@ import {
   recoverUriRelaysFromPossiblyExpanded,
   sessionUsesNostrConnect,
   signEventPublishNeedsAnotherDial,
+  signEventRedialKeepsListener,
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
   signerBunkerRelays,
@@ -505,6 +508,33 @@ describe("Primal nostrconnect relays", () => {
         nostrConnect: true,
       })
     ).toBe(false);
+  });
+
+  it("keeps Amber's reply when a relay already accepted the request", () => {
+    expect(
+      signEventRedialKeepsListener({
+        acked: true,
+      })
+    ).toBe(true);
+    expect(
+      signEventRedialKeepsListener({
+        acked: false,
+        signatureAlreadyInHand: true,
+      })
+    ).toBe(true);
+    expect(signEventRedialKeepsListener({ acked: false })).toBe(false);
+  });
+
+  it("treats a bunker note as expired once it is older than the relay window", () => {
+    const now = 1_700_000_000;
+    expect(bunkerRpcEventIsStale(now, now)).toBe(false);
+    expect(
+      bunkerRpcEventIsStale(now - (BUNKER_EPHEMERAL_MAX_AGE_SEC - 1), now)
+    ).toBe(false);
+    expect(
+      bunkerRpcEventIsStale(now - BUNKER_EPHEMERAL_MAX_AGE_SEC, now)
+    ).toBe(true);
+    expect(bunkerRpcEventIsStale(Number.NaN, now)).toBe(true);
   });
 
   it("does not redial after Amber already returned the signature", () => {
