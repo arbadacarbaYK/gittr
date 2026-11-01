@@ -120,6 +120,19 @@ describe("planSignEventDialOrder", () => {
       "wss://relay.ditto.pub",
     ]);
   });
+
+  it("keeps custom URI relays like nostr.mom ahead of non-URI extras", () => {
+    const order = planSignEventDialOrder([
+      "wss://relay.primal.net",
+      "wss://theforest.nostr1.com",
+      "wss://nostr.oxtr.dev",
+      "wss://relay.gittr.space",
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://nostr.mom",
+    ]);
+    expect(order).toContain("wss://nostr.mom");
+  });
 });
 
 describe("sign timeout copy", () => {
