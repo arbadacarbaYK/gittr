@@ -1939,10 +1939,21 @@ export default function HelpPage() {
                 (same events, local nsec, no SSH).
               </p>
               <p className="mt-2 text-sm text-gray-400">
-                Amber must stay open/unlocked on your phone. Push first opens
-                sockets to Amber&apos;s bunker relays; if that fails, nothing is
-                published. Hard-refresh once if a previous page load left those
-                relays stuck, then try Push again.
+                Amber must stay open/unlocked on your phone. Push signs two
+                events in a row (kind <strong>30617</strong> repository
+                announcement, then kind <strong>30618</strong> state). If Amber
+                shows <code className="bg-black/40 px-1 rounded text-xs">invalid: ephemeral event expired</code>{" "}
+                after the first signature or never shows the second prompt, make
+                sure automatic network time is enabled on your phone, add{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  wss://relay.gittr.space
+                </code>{" "}
+                in Amber, and create a <strong>new</strong>{" "}
+                <code className="bg-black/40 px-1 rounded text-xs">
+                  bunker://
+                </code>{" "}
+                connection string in Amber (Amber freezes each connected
+                app&apos;s relay list when it is first paired).
               </p>
               <p className="mt-2 text-sm text-gray-400">
                 That does two different things — and it does{" "}

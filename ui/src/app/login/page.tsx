@@ -830,8 +830,18 @@ export default function Login() {
                 >
                   NIP-46 (Remote Signing)
                 </a>
-                . Pairing stores only the ephemeral client key for reconnecting;
-                sign out to fully remove it.
+                . Amber freezes a connected app&apos;s relay list when you first
+                pair — if you add{" "}
+                <code className="font-mono text-purple-300">
+                  wss://relay.gittr.space
+                </code>{" "}
+                in Amber later or see{" "}
+                <code className="font-mono text-purple-300">
+                  ephemeral event expired
+                </code>
+                , create a new{" "}
+                <code className="font-mono text-purple-300">bunker://</code>{" "}
+                token in Amber and paste it here.
               </p>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
