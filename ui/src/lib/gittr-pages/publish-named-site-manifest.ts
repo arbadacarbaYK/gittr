@@ -1,3 +1,4 @@
+import { blossomAuthHashBatches } from "@/lib/gittr-pages/blossom-auth-batches";
 import {
   isStrictJsonUtf8Document,
   manifestUploadContentType,
@@ -40,9 +41,9 @@ const MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** One publish run: sum of all uploaded static bytes (browser + JSON payload budget). */
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 /**
- * One publish run: how many static paths we attempt. Blossom uploads reuse one
- * signed kind 24242 auth (all `x` tags in that event). Large values still mean
- * more PUTs and time, not more NIP-07 prompts for uploads.
+ * One publish run: how many static paths we attempt. Blossom uploads reuse a
+ * signed kind 24242 auth per batch of `BLOSSOM_AUTH_MAX_HASHES` blobs, so the
+ * signer prompts once per batch, not once per file.
  */
 const MAX_FILES = 2000;
 const KIND_BLOSSOM_SERVER_LIST = 10063;
@@ -286,32 +287,34 @@ async function removeReplacedPageFiles(args: {
   args.onProgress?.(
     `Removing ${args.stale.length} file(s) the new version replaced…`
   );
-  const unsigned = buildUnsignedBlossomDeleteAuth({
-    pubkeyHex: args.pubkeyHex,
-    sha256Hex: args.stale,
-  });
-  unsigned.id = getEventHash(unsigned);
-  let signed: NostrEvent;
-  try {
-    signed = await args.signEvent(unsigned);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    args.onProgress?.(
-      `Left the previous files in place: delete approval was cancelled (${msg})`
-    );
-    return;
-  }
   let removed = 0;
-  for (const sha256 of args.stale) {
+  for (const batch of blossomAuthHashBatches(args.stale)) {
+    const unsigned = buildUnsignedBlossomDeleteAuth({
+      pubkeyHex: args.pubkeyHex,
+      sha256Hex: batch,
+    });
+    unsigned.id = getEventHash(unsigned);
+    let signed: NostrEvent;
     try {
-      const res = await fetch("/api/gittr-pages/blossom-proxy-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authEvent: signed, sha256 }),
-      });
-      if (res.ok) removed++;
-    } catch {
-      /* one file failing must not undo the new page */
+      signed = await args.signEvent(unsigned);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      args.onProgress?.(
+        `Left the previous files in place: delete approval was cancelled (${msg})`
+      );
+      break;
+    }
+    for (const sha256 of batch) {
+      try {
+        const res = await fetch("/api/gittr-pages/blossom-proxy-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ authEvent: signed, sha256 }),
+        });
+        if (res.ok) removed++;
+      } catch {
+        /* one file failing must not undo the new page */
+      }
     }
   }
   args.onProgress?.(
@@ -850,30 +853,43 @@ export async function publishNamedSiteManifest(
     };
   }
 
-  const allHashes = staged.map((s) => s.sha256);
-  const distinctHashCount = new Set(allHashes).size;
-  onProgress?.(
-    `Signing one Blossom upload token (kind 24242) for ${staged.length} file(s)…`
+  // One auth event per batch keeps the Authorization header under nginx's 8 KB
+  const authBatches = blossomAuthHashBatches(staged.map((s) => s.sha256));
+  const batchOfHash = new Map<string, number>();
+  authBatches.forEach((batch, i) =>
+    batch.forEach((h) => batchOfHash.set(h, i))
   );
-  const auth = buildUnsignedBlossomUploadAuth({
-    pubkeyHex: signerPk,
-    sha256Hex: allHashes,
-    expiresInSeconds: blossomBatchAuthTtlSeconds(distinctHashCount),
-  });
-  auth.id = getEventHash(auth);
-  let signedAuth: typeof auth;
-  try {
-    signedAuth = (await signEvent(auth)) as typeof auth;
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      error: `Blossom auth signing cancelled or failed: ${msg}`,
-    };
-  }
+  type SignedUploadAuth = ReturnType<typeof buildUnsignedBlossomUploadAuth>;
+  const signedAuths = new Map<number, SignedUploadAuth>();
+  onProgress?.(
+    authBatches.length <= 1
+      ? `Signing one Blossom upload token (kind 24242) for ${staged.length} file(s)…`
+      : `Signing ${authBatches.length} Blossom upload tokens (kind 24242) for ${staged.length} file(s)…`
+  );
 
   let uploadOrdinal = 0;
   for (const { file, bytes, sha256, webPath } of staged) {
+    const batchIndex = batchOfHash.get(sha256.toLowerCase()) ?? 0;
+    let signedAuth = signedAuths.get(batchIndex);
+    if (!signedAuth) {
+      const batch = authBatches[batchIndex] ?? [sha256];
+      const auth = buildUnsignedBlossomUploadAuth({
+        pubkeyHex: signerPk,
+        sha256Hex: batch,
+        expiresInSeconds: blossomBatchAuthTtlSeconds(batch.length),
+      });
+      auth.id = getEventHash(auth);
+      try {
+        signedAuth = (await signEvent(auth)) as SignedUploadAuth;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return {
+          ok: false,
+          error: `Blossom auth signing cancelled or failed: ${msg}`,
+        };
+      }
+      signedAuths.set(batchIndex, signedAuth);
+    }
     let contentType = manifestUploadContentType(file.path, bytes);
     let blossomJsonMimeRetried = false;
 
