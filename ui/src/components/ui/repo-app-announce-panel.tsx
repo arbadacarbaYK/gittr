@@ -23,6 +23,7 @@ import {
   announceOwnershipProofTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
+  announcePublishOutcomeCopy,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
   announceZapstoreFooterCopy,
@@ -161,6 +162,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     version: string;
     whitelistHint?: string;
     notice?: string;
+    zapstoreAccepted: boolean;
   } | null>(null);
   const [proofState, setProofState] = useState<
     "idle" | "checking" | "ok" | "needed"
@@ -521,6 +523,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         version: result.version,
         whitelistHint: result.whitelistHint,
         notice: result.notice,
+        zapstoreAccepted: result.zapstoreAccepted,
       });
       onAnnounced?.(result.appId);
     } catch (e) {
@@ -866,34 +869,22 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 />
               ) : null}
             </div>
-            <label className="flex cursor-pointer items-start gap-2 pt-1 text-[11px] leading-snug text-zinc-300">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={pinToNgitBlossom}
-                onChange={(e) => setPinToNgitBlossom(e.target.checked)}
-              />
-              <span>
-                {isOfficialGittr ? (
-                  <>
-                    Host this APK on gittr’s Blossom (
-                    <code className="rounded bg-zinc-900 px-1">
-                      blossom.gittr.space
-                    </code>
-                    ). Other apps cannot do that. If pin fails, announce still
-                    uses the GitHub URL.
-                  </>
-                ) : (
-                  <>
-                    Also pin a copy on public Blossom hosts (Primal, Ditto,
-                    Haven) — not gittr’s Pages Blossom. Default stays the forge
-                    download. Your signer will approve a Blossom upload, then
-                    the app events. If pin fails, announce still uses the forge
-                    URL.
-                  </>
-                )}
-              </span>
-            </label>
+            {isOfficialGittr ? null : (
+              <label className="flex cursor-pointer items-start gap-2 pt-1 text-[11px] leading-snug text-zinc-300">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={pinToNgitBlossom}
+                  onChange={(e) => setPinToNgitBlossom(e.target.checked)}
+                />
+                <span>
+                  Also pin a copy on public Blossom hosts (Primal, Ditto,
+                  Haven). gittr’s own Blossom is not used. The forge download
+                  stays the listing unless the pin succeeds. If the pin fails,
+                  the forge URL is kept.
+                </span>
+              </label>
+            )}
           </div>
         ) : null}
 
@@ -950,9 +941,13 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               aria-hidden
             />
             <div>
-              ✅ Live as {publishResult.appId}@{publishResult.version}. See{" "}
+              {announcePublishOutcomeCopy({
+                appId: publishResult.appId,
+                version: publishResult.version,
+                zapstoreAccepted: publishResult.zapstoreAccepted,
+              })}{" "}
               <Link href="/apps" className="underline underline-offset-2">
-                Apps
+                Open Apps
               </Link>
               .
               {publishResult.notice ? (

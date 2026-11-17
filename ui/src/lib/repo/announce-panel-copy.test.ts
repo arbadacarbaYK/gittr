@@ -5,6 +5,7 @@ import {
   announceOwnershipProofTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
+  announcePublishOutcomeCopy,
   announceScreenshotExtrasFieldVisible,
   announceScreenshotHelpCopy,
   announceSkippedApkNote,
@@ -101,14 +102,25 @@ describe("announce screenshot extras field", () => {
 });
 
 describe("announcePanelBlossomCopy", () => {
-  it("does not mix gittr Pages Blossom with the official pin sentence", () => {
-    expect(announcePanelBlossomCopy(true)).toMatch(/gittr’s Blossom/);
-    expect(announcePanelBlossomCopy(true)).not.toMatch(
-      /not gittr’s Pages Blossom/
-    );
+  it("does not mention gittr Blossom on the official listing", () => {
+    expect(announcePanelBlossomCopy(true)).toBe("");
     expect(announcePanelBlossomCopy(false)).toMatch(
       /not gittr’s Pages Blossom/
     );
+    expect(
+      announcePublishOutcomeCopy({
+        appId: "space.gittr.app",
+        version: "1.0.2",
+        zapstoreAccepted: false,
+      })
+    ).toMatch(/still listed on Apps|still published|gittr Apps/);
+    expect(
+      announcePublishOutcomeCopy({
+        appId: "space.gittr.app",
+        version: "1.0.2",
+        zapstoreAccepted: true,
+      })
+    ).toMatch(/Zapstore accepted/);
   });
 });
 

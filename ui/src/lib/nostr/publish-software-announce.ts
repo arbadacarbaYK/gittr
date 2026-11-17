@@ -81,6 +81,8 @@ export type PublishSoftwareAnnounceResult = {
   whitelistHint?: string;
   /** APKs left off this announce because Zapstore would reject them. */
   notice?: string;
+  /** False when gittr Apps has the listing and Zapstore’s relay did not keep it. */
+  zapstoreAccepted: boolean;
 };
 
 const APK_MIME = "application/vnd.android.package-archive";
@@ -581,14 +583,16 @@ export async function publishSoftwareAnnounce(
     });
     remember(togetherResult.relays);
     const zapstoreKept = new Set(togetherResult.zapstoreEventIds);
+    const zapstoreHasRelease =
+      zapstoreKept.has(signedPrimary.id) &&
+      zapstoreKept.has(signedRelease.id) &&
+      zapstoreKept.has(proofWithRelease.id);
     if (
-      !zapstoreKept.has(signedPrimary.id) ||
-      !zapstoreKept.has(signedRelease.id) ||
-      !zapstoreKept.has(proofWithRelease.id)
+      !zapstoreHasRelease &&
+      !togetherResult.relays.some((url) => !relayIsZapstore(url))
     ) {
-      await withdraw(together.map((event) => event.id));
       throw new Error(
-        "Zapstore’s relay did not keep this release with its ownership proof. Publish again in a moment."
+        "No relay kept this publish, so it is not on Apps. Try again in a moment."
       );
     }
     landed.push(...publishedAssets.map((event) => event.id));
@@ -603,10 +607,10 @@ export async function publishSoftwareAnnounce(
       requireZapstore: mustLand,
     });
     remember(urls);
-    if (mustLand && !urls.some(relayIsZapstore)) {
+    if (mustLand && urls.length === 0) {
       await withdraw([...landed, ev.id]);
       throw new Error(
-        announceZapstoreProofMessage({ reason: "relay-rejected" })
+        "No relay kept this file, so it is not on Apps. Try again in a moment."
       );
     }
     landed.push(ev.id);
@@ -622,13 +626,11 @@ export async function publishSoftwareAnnounce(
         requireZapstore: zapstoreListing,
       });
   remember(releaseUrls);
-  if (
-    !proofWithRelease &&
-    zapstoreListing &&
-    !releaseUrls.some(relayIsZapstore)
-  ) {
+  if (!proofWithRelease && zapstoreListing && releaseUrls.length === 0) {
     await withdraw([signedRelease.id, ...landed]);
-    throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
+    throw new Error(
+      "No relay kept this release, so it is not on Apps. Try again in a moment."
+    );
   }
 
   const appUrls = proofWithRelease
@@ -641,9 +643,11 @@ export async function publishSoftwareAnnounce(
         requireZapstore: zapstoreListing,
       });
   remember(appUrls);
-  if (!proofWithRelease && zapstoreListing && !appUrls.some(relayIsZapstore)) {
+  if (!proofWithRelease && zapstoreListing && appUrls.length === 0) {
     await withdraw([signedApp.id, signedRelease.id, ...landed]);
-    throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
+    throw new Error(
+      "No relay kept this app, so it is not on Apps. Try again in a moment."
+    );
   }
 
   try {
@@ -692,7 +696,10 @@ export async function publishSoftwareAnnounce(
     console.warn("Could not clear an older unlinked file event", error);
   }
 
-  const zapstoreOk = confirmed.some(relayIsZapstore);
+  const zapstoreAccepted = !zapstoreListing || confirmed.some(relayIsZapstore);
+  const notes = [
+    skippedApkNames.length ? announceSkippedApkNote(skippedApkNames) : "",
+  ].filter(Boolean);
   return {
     ok: true,
     appId: built.appId,
@@ -702,13 +709,9 @@ export async function publishSoftwareAnnounce(
     assetEventId: signedPrimary.id,
     extraAssetEventIds: signedExtras.map((e) => e.id),
     confirmedRelays: confirmed,
-    notice: skippedApkNames.length
-      ? announceSkippedApkNote(skippedApkNames)
-      : undefined,
-    whitelistHint:
-      zapstoreListing || zapstoreOk
-        ? undefined
-        : "If Zapstore’s relay rejected the events, commit a zapstore.yaml in the forge repo root with repository + your pubkey (npub), then publish again — Zapstore’s free auto-whitelist path. See https://zapstore.dev/docs/publish",
+    zapstoreAccepted,
+    notice: notes.length ? notes.join(" ") : undefined,
+    whitelistHint: undefined,
   };
 }
 

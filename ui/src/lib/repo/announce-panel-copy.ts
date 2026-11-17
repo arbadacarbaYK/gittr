@@ -140,8 +140,18 @@ export function announceSkippedApkNote(names: string[]): string {
 }
 
 export function announcePanelBlossomCopy(isOfficialGittr: boolean): string {
-  if (isOfficialGittr) {
-    return "This is gittr’s own Android app — pin the APK to gittr’s Blossom.";
-  }
+  if (isOfficialGittr) return "";
   return "Optional: pin a copy onto public Blossom hosts (not gittr’s Pages Blossom).";
+}
+
+export function announcePublishOutcomeCopy(args: {
+  appId: string;
+  version: string;
+  zapstoreAccepted: boolean;
+}): string {
+  const listed = `Live on Apps as ${args.appId}@${args.version}.`;
+  if (args.zapstoreAccepted) {
+    return `${listed} Zapstore accepted this publish.`;
+  }
+  return `${listed} Zapstore did not accept it, so that store may not show you as the author. The gittr Apps listing is still published.`;
 }
