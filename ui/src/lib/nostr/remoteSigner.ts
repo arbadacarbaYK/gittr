@@ -142,6 +142,8 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
   "sign_event:30617",
   "sign_event:30618",
   "sign_event:10317",
+  "sign_event:30301",
+  "sign_event:30302",
   "sign_event:5",
   "nip04_encrypt",
   "nip04_decrypt",
@@ -857,12 +859,23 @@ function buildConnectParams(session: RemoteSignerSession): string[] {
   return [session.remotePubkey, session.secret || "", perms, metadata];
 }
 
-function toSignEventTemplate(event: UnsignedEvent): string {
+/**
+ * Unsigned event Amber can attach to the logged-in account.
+ * The pubkey has to be the user's key. Leaving it off makes Amber skip the
+ * approval screen (empty key does not match any account). id and sig stay
+ * off: Amber hashes the event itself, and a blank sig is not a signature.
+ */
+export function toSignEventTemplate(event: UnsignedEvent): string {
+  const pubkey =
+    typeof event.pubkey === "string" && HEX_64_RE.test(event.pubkey)
+      ? event.pubkey.toLowerCase()
+      : undefined;
   return JSON.stringify({
     kind: event.kind,
-    content: event.content,
+    content: event.content ?? "",
     tags: event.tags,
     created_at: event.created_at,
+    ...(pubkey ? { pubkey } : {}),
   });
 }
 const extractHexPubkey = (value: unknown): string | undefined => {

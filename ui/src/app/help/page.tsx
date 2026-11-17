@@ -3958,8 +3958,10 @@ export default function HelpPage() {
                 Each repo has a <strong>ToDo</strong> tab. It is the kanban
                 for that repo, with a <strong>Roadmap</strong> view beside it.
                 Owners and maintainers edit the board. The board stays in this
-                browser until you press <strong>Push to Nostr</strong>. Everyone
-                else can read it once that push has finished.
+                browser until you press <strong>Push to Nostr</strong>. If you
+                signed in with Amber, the approval shows on the phone, not in a
+                browser extension. Everyone else can read the board once that
+                push has finished.
               </p>
               <p className="mt-2">
                 <strong>Push to Nostr</strong> publishes the board (kind 30301)

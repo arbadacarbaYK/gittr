@@ -26,6 +26,7 @@ import {
   signRequestLeftTheBrowser,
   signTimeoutUserMessage,
   signerBunkerRelays,
+  toSignEventTemplate,
 } from "./remoteSigner";
 
 describe("planBunkerDialWaves", () => {
@@ -538,6 +539,25 @@ describe("Primal nostrconnect relays", () => {
         signatureAlreadyInHand: true,
       })
     ).toBe(false);
+  });
+});
+
+describe("toSignEventTemplate", () => {
+  it("includes the user pubkey and leaves off a blank signature", () => {
+    const pubkey = "ab".repeat(32);
+    const payload = JSON.parse(
+      toSignEventTemplate({
+        kind: 30301,
+        created_at: 1,
+        tags: [["d", "board"]],
+        content: "",
+        pubkey,
+      })
+    );
+    expect(payload.pubkey).toBe(pubkey);
+    expect(payload.kind).toBe(30301);
+    expect(payload.id).toBeUndefined();
+    expect(payload.sig).toBeUndefined();
   });
 });
 

@@ -20,6 +20,7 @@ import {
 } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
+  hasStoredRemoteSignerSession,
   resolveNostrSigner,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
@@ -538,7 +539,9 @@ export default function ProjectsPage() {
       pushInFlight.current = true;
       setPushing(true);
       setPushNote(
-        "Waiting for your signer. Approve it on your phone or in the extension."
+        hasStoredRemoteSignerSession()
+          ? "Request sent. Open Amber and approve it there. A browser extension is not asked while Amber is paired."
+          : "Approve the prompt in your browser extension."
       );
       try {
         const stored = loadProjects(entity, repo);
@@ -1742,7 +1745,9 @@ export default function ProjectsPage() {
           {(syncingGithub || githubImportNote || pushNote) && (
             <p className="mt-1 text-xs text-gray-400">
               {pushing
-                ? "Waiting for your signer. Approve it on your phone or in the extension."
+                ? hasStoredRemoteSignerSession()
+                  ? "Request sent. Open Amber and approve it there. A browser extension is not asked while Amber is paired."
+                  : "Approve the prompt in your browser extension."
                 : pushNote ||
                   (syncingGithub
                     ? "Syncing GitHub Projects…"
