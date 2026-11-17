@@ -134,7 +134,7 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
 
   it("pins brace-expansion off CVE-2026-102276 / 102277 / 102278", () => {
     // Yarn can only force one version of a package name. minimatch still
-    // needs 1.x, 2.x, and 5.x, so the floor lives in yarn.lock, not resolutions.
+    // needs 1.x and 5.x, so the floor lives in yarn.lock, not resolutions.
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = [
       ...lock.matchAll(
@@ -143,19 +143,45 @@ describe("npm resolution floors (Dependencies tab / OSV)", () => {
     ];
     const byRange = Object.fromEntries(resolved.map((m) => [m[1], m[2]]));
     expect(byRange["^1.1.7"]).toBe("1.1.21");
-    expect(byRange["^2.0.2"]).toBe("2.1.7");
-    expect(byRange["^5.0.8"]).toBe("5.0.12");
+    // 2.x existed only for minimatch 7. That copy is gone.
+    if (byRange["^2.0.2"]) expect(byRange["^2.0.2"]).toBe("2.1.7");
+    const five = byRange["^5.0.12"] || byRange["^5.0.8"];
+    expect(five).toBeTruthy();
+    expect(gte(resolutionFloor(five!), [5, 0, 12])).toBe(true);
   });
 
-  it("pins dompurify at the GHSA-p98j-92pf-mc4p floor", () => {
-    expect(gte(resolutionFloor(resolutions.dompurify), [3, 4, 16])).toBe(true);
+  it("pins dompurify past CVE-2026-116802 / 116803 / 116804", () => {
+    // 3.4.16 still includes the shadow-root template bypass, the IN_PLACE
+    // hook leftover, and the XHTML SMIL href skip. 3.4.17 is the first fix.
+    expect(gte(resolutionFloor(resolutions.dompurify), [3, 4, 17])).toBe(true);
 
     const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
     const resolved = lock.match(
       /^dompurify@[^:\n]+:\n  version "(\d+\.\d+\.\d+)"/m
     );
     expect(resolved?.[1]).toBeTruthy();
-    expect(gte(resolutionFloor(resolved![1]!), [3, 4, 16])).toBe(true);
+    expect(gte(resolutionFloor(resolved![1]!), [3, 4, 17])).toBe(true);
+  });
+
+  it("keeps glob 9 and minimatch 7/10 out of the lockfile", () => {
+    // CVE-2026-118773 is glob 9.0.0 through 14.0.1 (fixed in 14.0.2).
+    // CVE-2026-118764 is minimatch 7.0.0 through 11.0.0 (fixed in 11.0.1).
+    // rimraf 6 pulls glob 14, which pulls minimatch 11. The eslint parser's
+    // own minimatch 10 is overridden to 11. minimatch 3 stays for eslint.
+    const lock = readFileSync(join(uiRoot, "yarn.lock"), "utf8");
+    expect(lock).not.toMatch(/^glob@\^9\./m);
+    expect(lock).not.toMatch(/^minimatch@\^7\./m);
+    expect(lock).not.toMatch(/^minimatch@\^10\./m);
+    const glob14 = lock.match(
+      /^glob@\^14\.[^\n]*:\n  version "(\d+\.\d+\.\d+)"/m
+    );
+    expect(glob14?.[1]).toBeTruthy();
+    expect(gte(resolutionFloor(glob14![1]!), [14, 0, 2])).toBe(true);
+    const mm11 = [
+      ...lock.matchAll(/^minimatch@[^\n]*:\n  version "(\d+\.\d+\.\d+)"/gm),
+    ].map((m) => resolutionFloor(m[1]!));
+    expect(mm11.some((v) => gte(v, [11, 0, 1]))).toBe(true);
+    expect(mm11.some((v) => v[0] === 7 || v[0] === 10)).toBe(false);
   });
 
   it("keeps next at the October 2026 security floor", () => {
