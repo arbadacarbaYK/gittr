@@ -218,6 +218,50 @@ async function confirmTogether(args: {
   });
 }
 
+/** Zapstore often stores an event without echoing it into the publish subscription. */
+async function idsStoredOnRelay(args: {
+  subscribe: PublishSoftwareAnnounceArgs["subscribe"];
+  relay: string;
+  ids: string[];
+  timeoutMs?: number;
+}): Promise<Set<string>> {
+  const want = new Set(args.ids.filter((id) => /^[0-9a-f]{64}$/i.test(id)));
+  const seen = new Set<string>();
+  if (want.size === 0) return seen;
+  const timeoutMs = args.timeoutMs ?? 8_000;
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsub: (() => void) | undefined;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      resolve(seen);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    try {
+      unsub = args.subscribe(
+        [{ ids: [...want] }],
+        [args.relay],
+        (event, _after, relayURL) => {
+          if (!relayURL || !relayIsZapstore(relayURL)) return;
+          const id = (event as { id?: string })?.id;
+          if (!id || !want.has(id)) return;
+          seen.add(id);
+          if (seen.size === want.size) finish();
+        }
+      );
+    } catch {
+      finish();
+    }
+  });
+}
+
 async function requireApkOwnershipProof(args: {
   file: ForgeReleaseAsset;
   signerPubkeyHex: string;
@@ -700,7 +744,21 @@ export async function publishSoftwareAnnounce(
     console.warn("Could not clear an older unlinked file event", error);
   }
 
-  const zapstoreAccepted = !zapstoreListing || confirmed.some(relayIsZapstore);
+  let zapstoreAccepted = !zapstoreListing || confirmed.some(relayIsZapstore);
+  if (zapstoreListing && !zapstoreAccepted) {
+    const wanted = [
+      signedPrimary.id,
+      signedRelease.id,
+      proofWithRelease?.id,
+    ].filter((id): id is string => Boolean(id));
+    const stored = await idsStoredOnRelay({
+      subscribe: args.subscribe,
+      relay: RELAY_ZAPSTORE,
+      ids: wanted,
+    });
+    zapstoreAccepted = wanted.every((id) => stored.has(id));
+    if (zapstoreAccepted) remember([RELAY_ZAPSTORE]);
+  }
   const notes = [
     skippedApkNames.length ? announceSkippedApkNote(skippedApkNames) : "",
   ].filter(Boolean);
