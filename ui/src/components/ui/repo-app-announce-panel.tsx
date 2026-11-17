@@ -20,6 +20,7 @@ import {
 import { relaysForSoftwareCatalog } from "@/lib/nostr/software-catalog-relays";
 import {
   announceCertificateRowTitle,
+  announceOwnershipProofTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
@@ -41,6 +42,7 @@ import {
 import {
   GITTR_ANDROID_APP_ID,
   GITTR_ANDROID_LICENSE,
+  GITTR_CI_CERT_SHA256,
   iconUrlForNip82Announce,
   isOfficialGittrAndroidRepo,
   screenshotUrlsForNip82Announce,
@@ -404,6 +406,8 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         announceZapstoreProofMessage({
           reason: check.reason,
           certificateHash: hash,
+          officialGittr:
+            isOfficialGittr && hash.toLowerCase() === GITTR_CI_CERT_SHA256,
         })
       );
     });
@@ -415,6 +419,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     selectedIsApk,
     selectedAsset?.apkCertificateHash,
     selectedAsset?.apkCertificateDerBase64,
+    isOfficialGittr,
     ownerPubkeyHex,
     relayKey,
     subscribe,
@@ -662,14 +667,21 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           {selectedIsApk && selectedAsset?.apkCertificateHash ? (
             <ChecklistRow
               ok={proofState === "ok"}
-              warning={proofState === "needed"}
-              title={
-                proofState === "ok"
-                  ? "Ownership proof matches this APK"
-                  : proofState === "checking"
-                  ? "Checking ownership proof…"
-                  : "Ownership proof still needed"
+              warning={
+                proofState === "needed" &&
+                !(
+                  isOfficialGittr &&
+                  selectedAsset.apkCertificateHash.toLowerCase() ===
+                    GITTR_CI_CERT_SHA256
+                )
               }
+              title={announceOwnershipProofTitle({
+                state: proofState,
+                officialGittr:
+                  isOfficialGittr &&
+                  selectedAsset.apkCertificateHash?.toLowerCase() ===
+                    GITTR_CI_CERT_SHA256,
+              })}
             />
           ) : null}
           <ChecklistRow
@@ -687,7 +699,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
 
         {proofHint && !error ? (
           <div
-            className="rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
+            className={cn(
+              "rounded-md border px-2.5 py-2 text-[11px] leading-snug",
+              isOfficialGittr &&
+                selectedAsset?.apkCertificateHash?.toLowerCase() ===
+                  GITTR_CI_CERT_SHA256
+                ? "border-zinc-700 bg-zinc-900/40 text-zinc-300"
+                : "border-amber-500/40 bg-amber-950/30 text-amber-100"
+            )}
             role="status"
           >
             {proofHint}

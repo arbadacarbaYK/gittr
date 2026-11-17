@@ -84,10 +84,18 @@ export function announceZapstoreProofMessage(args: {
     | "unreadable-cert"
     | "relay-rejected";
   certificateHash?: string;
+  /** gittr’s own release certificate. Publish signs the proof; do not send them to zsp. */
+  officialGittr?: boolean;
 }): string {
   const cert = args.certificateHash
     ? ` Certificate ${shortCertificateHash(args.certificateHash)}.`
     : "";
+  if (
+    args.officialGittr &&
+    (args.reason === "missing" || args.reason === "expired")
+  ) {
+    return "Nothing else to install. Press Publish on Nostr. Amber asks you to approve the ownership proof first, then the app listing. That is the certificate step. The repo Push button does not send the app to Zapstore.";
+  }
   switch (args.reason) {
     case "unreadable-cert":
       return "Zapstore needs the signing certificate inside this APK. This file’s signature block could not be read. Use a release APK signed with Android signature scheme v2 or v3, check the file again, then publish.";
@@ -104,6 +112,16 @@ export function announceZapstoreProofMessage(args: {
     case "relay-rejected":
       return "Zapstore’s relay did not keep this listing, so the file event was removed. A file event left without its release is dropped. If this is the first publish, commit zapstore.yaml at the repo root with your pubkey and repository URL, then publish again.";
   }
+}
+
+export function announceOwnershipProofTitle(args: {
+  state: "idle" | "checking" | "ok" | "needed";
+  officialGittr?: boolean;
+}): string {
+  if (args.state === "ok") return "Ownership proof matches this APK";
+  if (args.state === "checking") return "Checking ownership proof…";
+  if (args.officialGittr) return "Ownership proof signs when you publish";
+  return "Ownership proof still needed";
 }
 
 export function announceZapstoreFooterCopy(officialGittr = false): string {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   announceCertificateRowTitle,
+  announceOwnershipProofTitle,
   announcePanelBlossomCopy,
   announcePanelSummaryLabel,
   announceScreenshotExtrasFieldVisible,
@@ -121,6 +122,16 @@ describe("zapstore ownership proof copy", () => {
       certificateHash: hash,
     });
     expect(missing).toMatch(/Prove it’s yours/);
+    const official = announceZapstoreProofMessage({
+      reason: "missing",
+      certificateHash: hash,
+      officialGittr: true,
+    });
+    expect(official).toMatch(/Press Publish on Nostr/);
+    expect(official).not.toMatch(/Prove it’s yours/);
+    expect(
+      announceOwnershipProofTitle({ state: "needed", officialGittr: true })
+    ).toMatch(/when you publish/);
     expect(missing).toMatch(/abababab…abab/);
     expect(missing).toMatch(/keystore stays on that machine/);
     expect(announceZapstoreFooterCopy()).toMatch(/zapstore\.yaml/);
