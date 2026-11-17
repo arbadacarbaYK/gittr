@@ -34,7 +34,7 @@ Signing uses `keystore/gittr-ci.p12` unless you set `ANDROID_KEYSTORE_FILE` and 
 
 After a GitHub Release has the APK:
 
-1. Open the gittr repo on gittr.space → **Releases** → **Announce on Nostr**, or Code sidebar **Nostr Apps**.
+1. Open the gittr repo on gittr.space → **Releases** → **Announce on Nostr**, or Code sidebar **Nostr Apps**. That publish signs the Zapstore ownership proof for `keystore/gittr-ci.p12` and then publishes the listing. A private GitHub keystore still needs `zsp` → **Prove it’s yours** once, on the machine that holds that keystore.
 2. Or run `zsp publish -y zapstore.yaml` locally with `SIGN_WITH` (nsec or bunker). Do not put an nsec in GitHub Actions.
 
 Other publishers: put screenshot files in *your* git repo and list them under `images:` in *your* `zapstore.yaml` (repo-relative paths or https URLs). gittr’s **Publish on Nostr** copies those onto the listing. You can also paste extra https URLs in the announce panel. gittr’s own announce has no paste box — those shots always come from `ui/public/zapstore/`.

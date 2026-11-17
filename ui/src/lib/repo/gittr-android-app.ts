@@ -17,6 +17,14 @@ import { ZAPSTORE_SCREENSHOT_MAX } from "./zapstore-yaml-media";
 /** Android `applicationId` / Zapstore `d` tag. Not `space.gittr.gittr`. */
 export const GITTR_ANDROID_APP_ID = "space.gittr.app";
 
+/**
+ * SHA-256 of the DER bytes in `android-app/keystore/gittr-ci.p12`.
+ * GitHub Release APKs are signed with this certificate. Zapstore's ownership
+ * proof (`d` on kind 30509) is this value.
+ */
+export const GITTR_CI_CERT_SHA256 =
+  "98456fb8cff2f07124862b41433db0b6a7092d8f2c3b638aa8f20aea98e50517";
+
 /** Slug of the operator gittr repo on gittr.space / GitHub. */
 export const GITTR_ANDROID_REPO_SLUG = "gittr";
 

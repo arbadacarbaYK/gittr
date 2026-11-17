@@ -6,6 +6,12 @@
 import { parseGiteaCompatibleRepo } from "../repos/gitea-forge";
 
 import {
+  apkCertificateHashHex,
+  apkSigningCertificateFromBlock,
+  centralDirectoryOffsetFromSuffix,
+  signingBlockByteRange,
+} from "./apk-signing-cert";
+import {
   GITTR_ANDROID_APP_ID,
   isOfficialGittrAndroidRepo,
 } from "./gittr-android-app";
@@ -19,6 +25,13 @@ export type ForgeReleaseAsset = {
   downloadUrl: string;
   /** Present when the client requested hashing and the download succeeded. */
   sha256?: string;
+  /**
+   * SHA-256 of the APK v2/v3 signing certificate (DER). Zapstore matches this
+   * to the publisher’s NIP-C1 proof. Public; the signing key is not here.
+   */
+  apkCertificateHash?: string;
+  /** Same certificate, standard base64, so the browser can check the proof. */
+  apkCertificateDerBase64?: string;
 };
 
 export type ForgeRelease = {
@@ -60,6 +73,8 @@ export type ForgeReleasesResult = ForgeReleasesOk | ForgeReleasesErr;
 /** Hash / pin cap — gittr never stores the bytes. */
 export const FORGE_ASSET_HASH_MAX_BYTES = 200 * 1024 * 1024;
 const MAX_APK_HASH_BYTES = FORGE_ASSET_HASH_MAX_BYTES;
+/** Enough of the APK tail to reach a normal central directory and signing block. */
+const APK_TAIL_BYTES = 4 * 1024 * 1024;
 
 export function isApkAssetName(name: string, contentType?: string): boolean {
   const n = (name || "").toLowerCase();
@@ -270,10 +285,18 @@ export function forgeAssetDownloadHeaders(
   return headers;
 }
 
-async function sha256OfUrl(
+type DigestedDownload = {
+  sha256: string;
+  size: number;
+  tail: Uint8Array;
+  tailStart: number;
+};
+
+async function digestUrl(
   url: string,
+  opts: { keepTail: boolean },
   maxBytes = MAX_APK_HASH_BYTES
-): Promise<string | undefined> {
+): Promise<DigestedDownload | undefined> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 120_000);
   try {
@@ -289,6 +312,8 @@ async function sha256OfUrl(
     const crypto = await import("crypto");
     const hash = crypto.createHash("sha256");
     const reader = res.body.getReader();
+    const tailChunks: Uint8Array[] = [];
+    let buffered = 0;
     let total = 0;
     while (true) {
       const { done, value } = await reader.read();
@@ -299,13 +324,120 @@ async function sha256OfUrl(
         return undefined;
       }
       hash.update(value);
+      if (!opts.keepTail) continue;
+      tailChunks.push(value);
+      buffered += value.byteLength;
+      while (buffered > APK_TAIL_BYTES && tailChunks.length > 1) {
+        const first = tailChunks[0]!;
+        if (buffered - first.byteLength < APK_TAIL_BYTES) break;
+        tailChunks.shift();
+        buffered -= first.byteLength;
+      }
     }
-    return hash.digest("hex");
+    let tail = new Uint8Array(0);
+    let tailStart = total;
+    if (opts.keepTail && tailChunks.length > 0) {
+      const joined = new Uint8Array(buffered);
+      let offset = 0;
+      for (const chunk of tailChunks) {
+        joined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      if (joined.length > APK_TAIL_BYTES) {
+        tail = joined.subarray(joined.length - APK_TAIL_BYTES);
+        tailStart = total - tail.length;
+      } else {
+        tail = joined;
+        tailStart = total - joined.length;
+      }
+    }
+    return { sha256: hash.digest("hex"), size: total, tail, tailStart };
   } catch {
     return undefined;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readUrlByteRange(
+  url: string,
+  start: number,
+  endInclusive: number
+): Promise<Uint8Array | undefined> {
+  const wanted = endInclusive - start + 1;
+  if (wanted <= 0 || wanted > 8 * 1024 * 1024) return undefined;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: {
+        ...forgeAssetDownloadHeaders(url),
+        Range: `bytes=${start}-${endInclusive}`,
+      },
+    });
+    if (!res.ok) return undefined;
+    if (res.status !== 206) {
+      const len = Number(res.headers.get("content-length") || 0);
+      if (len > 8 * 1024 * 1024) {
+        res.body?.cancel().catch(() => undefined);
+        return undefined;
+      }
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (res.status === 206) return buf;
+    if (start >= buf.length) return undefined;
+    return buf.subarray(start, Math.min(buf.length, endInclusive + 1));
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readApkCertificate(
+  url: string,
+  digested: DigestedDownload
+): Promise<
+  { apkCertificateHash: string; apkCertificateDerBase64: string } | undefined
+> {
+  const cdOffset = centralDirectoryOffsetFromSuffix({
+    tail: digested.tail,
+    tailStart: digested.tailStart,
+    fileSize: digested.size,
+  });
+  if (cdOffset == null || cdOffset < 24 || cdOffset > digested.size) {
+    return undefined;
+  }
+  const footerStart = cdOffset - 24;
+  const footer =
+    footerStart >= digested.tailStart
+      ? digested.tail.subarray(
+          footerStart - digested.tailStart,
+          cdOffset - digested.tailStart
+        )
+      : await readUrlByteRange(url, footerStart, cdOffset - 1);
+  if (!footer) return undefined;
+  const range = signingBlockByteRange(cdOffset, footer);
+  if (!range) return undefined;
+  const tailEnd = digested.tailStart + digested.tail.length;
+  const block =
+    range.start >= digested.tailStart && range.endInclusive < tailEnd
+      ? digested.tail.subarray(
+          range.start - digested.tailStart,
+          range.endInclusive + 1 - digested.tailStart
+        )
+      : await readUrlByteRange(url, range.start, range.endInclusive);
+  if (!block) return undefined;
+  const der = apkSigningCertificateFromBlock(block);
+  if (!der) return undefined;
+  let binary = "";
+  for (const byte of der) binary += String.fromCharCode(byte);
+  return {
+    apkCertificateHash: await apkCertificateHashHex(der),
+    apkCertificateDerBase64: btoa(binary),
+  };
 }
 
 async function maybeHashApks(
@@ -319,8 +451,19 @@ async function maybeHashApks(
       out.push(a);
       continue;
     }
-    const sha256 = await sha256OfUrl(a.downloadUrl);
-    out.push(sha256 ? { ...a, sha256 } : a);
+    const digested = await digestUrl(a.downloadUrl, { keepTail: true });
+    if (!digested) {
+      out.push(a);
+      continue;
+    }
+    const cert = await readApkCertificate(a.downloadUrl, digested).catch(
+      () => undefined
+    );
+    out.push({
+      ...a,
+      sha256: digested.sha256,
+      ...(cert || {}),
+    });
   }
   return out;
 }
@@ -657,7 +800,17 @@ export async function fetchForgeReleasesForAnnounce(options: {
       const hashed = apkAssets.find(
         (h) => h.downloadUrl === a.downloadUrl && h.sha256
       );
-      return hashed ? { ...a, sha256: hashed.sha256 } : a;
+      if (!hashed) return a;
+      return {
+        ...a,
+        sha256: hashed.sha256,
+        ...(hashed.apkCertificateHash
+          ? { apkCertificateHash: hashed.apkCertificateHash }
+          : {}),
+        ...(hashed.apkCertificateDerBase64
+          ? { apkCertificateDerBase64: hashed.apkCertificateDerBase64 }
+          : {}),
+      };
     });
 
     // Optional: hash other NIP-82-publishable binaries for multi-asset announce.
@@ -706,8 +859,8 @@ async function maybeHashPublishableAssets(
       out.push(a);
       continue;
     }
-    const sha256 = await sha256OfUrl(a.downloadUrl);
-    out.push(sha256 ? { ...a, sha256 } : a);
+    const digested = await digestUrl(a.downloadUrl, { keepTail: false });
+    out.push(digested ? { ...a, sha256: digested.sha256 } : a);
   }
   return out;
 }

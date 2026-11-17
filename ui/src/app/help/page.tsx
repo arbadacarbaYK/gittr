@@ -3841,7 +3841,13 @@ export default function HelpPage() {
                 to <code className="text-purple-200">space.gittr.app</code>.
               </p>
               <p className="mt-3 text-sm text-gray-300">
-                Optional Zapstore catalog: add{" "}
+                Zapstore shows you as the author only after an ownership proof
+                for the APK signing certificate. Publishing gittr signs that
+                proof with the release certificate, then publishes the listing.
+                Other apps still do that once with{" "}
+                <code className="text-purple-200">zsp</code> (“Prove it’s
+                yours”); the keystore stays on that computer. Optional Zapstore
+                catalog: add{" "}
                 <code className="text-purple-200">zapstore.yaml</code> at the
                 source repo root (
                 <code className="text-purple-200">pubkey</code>,{" "}

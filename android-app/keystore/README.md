@@ -23,4 +23,4 @@ To use a private keystore, set GitHub Actions secrets (they override the committ
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-Changing the cert later means Zapstore NIP-C1 cert-linking and `assetlinks.json` must be updated. Prefer doing that **before** the first public Zapstore listing.
+Changing the cert later means Zapstore’s NIP-C1 ownership proof and `assetlinks.json` must be updated. Prefer doing that **before** the first public Zapstore listing. Publish on Nostr signs that proof for this committed certificate. A private keystore is not on the server, so that one still needs `zsp` (“Prove it’s yours”) once.
