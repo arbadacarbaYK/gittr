@@ -117,16 +117,10 @@ export function resolveAnnounceAppId(args: {
 }): string {
   const suggested = suggestAppIdFromRepo(args.repo, args.ownerPubkeyHex);
   const existing = (args.existingAppId || "").trim();
+  // Listing id for gittr’s own app is `gittr`. `space.gittr.app` is only the
+  // package name inside the APK, and the old saved id kept refilling the form.
+  if (isOfficialGittrAndroidRepo(args)) return "gittr";
   if (!existing) return suggested;
-  // All-caps display name accidentally stored as an id. A real published
-  // id such as `gittr` is kept so the next publish does not fork the old package.
-  if (
-    isOfficialGittrAndroidRepo(args) &&
-    existing === existing.toUpperCase() &&
-    existing.toLowerCase() === (args.repo || "").trim().toLowerCase()
-  ) {
-    return suggested;
-  }
   return existing;
 }
 

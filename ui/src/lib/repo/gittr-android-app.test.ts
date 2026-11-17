@@ -79,17 +79,17 @@ describe("official gittr Android announce", () => {
     );
   });
 
-  it("ignores an all-caps display name, and keeps a published gittr id", () => {
+  it("uses gittr as the listing id even when an older package is stored", () => {
     expect(
       resolveAnnounceAppId({
         existingAppId: "GITTR",
         repo: "gittr",
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
-    ).toBe(GITTR_ANDROID_APP_ID);
+    ).toBe("gittr");
     expect(
       resolveAnnounceAppId({
-        existingAppId: "gittr",
+        existingAppId: "space.gittr.app",
         repo: "gittr",
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
@@ -100,7 +100,7 @@ describe("official gittr Android announce", () => {
         repo: "gittr",
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
-    ).toBe(GITTR_LEGACY_SUGGESTED_APP_ID);
+    ).toBe("gittr");
   });
 
   it("lists official Zapstore screenshots separately from the icon", () => {

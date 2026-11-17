@@ -41,7 +41,6 @@ import {
   resolveAnnounceAppId,
 } from "@/lib/repo/forge-releases";
 import {
-  GITTR_ANDROID_APP_ID,
   GITTR_ANDROID_LICENSE,
   GITTR_CI_CERT_SHA256,
   iconUrlForNip82Announce,
@@ -619,14 +618,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
           file. Extra files on the same tag are linked when verified. Files stay
           on the forge.
           {isOfficialGittr ? (
-            <>
-              {" "}
-              {announcePanelBlossomCopy(true)} App id stays{" "}
-              <code className="rounded bg-zinc-900 px-0.5">
-                {GITTR_ANDROID_APP_ID}
-              </code>
-              .
-            </>
+            <> The listing id is gittr.</>
           ) : (
             <> {announcePanelBlossomCopy(false)}</>
           )}
