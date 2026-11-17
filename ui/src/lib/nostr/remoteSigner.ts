@@ -1375,6 +1375,16 @@ export class RemoteSignerManager {
   private bunkerDialInFlight: Promise<string[]> | null = null;
   /** Set when NostrProvider unmounts so a leftover instance stops dialing. */
   private released = false;
+  /**
+   * Bumped when a remount releases the pool or a sign takes over.
+   * A dial that started on an older epoch must not close sockets anymore.
+   * That close is what the browser reports as an empty WebSocket error.
+   */
+  private bunkerDialEpoch = 0;
+  /** True when the last openDirectRelay died before a handshake could finish. */
+  private lastOpenWasInstantAbort = false;
+  /** Nested sign/RPC dials. Background warm must stay out until this is 0. */
+  private signerDialDepth = 0;
   /** True when the in-flight dial will not try Amber defaults after the URI wave. */
   private bunkerDialUriOnly = false;
   /** True while sign_event is dialing the rest of Amber's bunker relays. */
@@ -1493,11 +1503,32 @@ export class RemoteSignerManager {
    * then returned before a socket existed (relay status "missing").
    */
   reviveForDial(): void {
+    // Always drop leftover dials. A remount sets released, then revive clears
+    // it, and the old dial was still calling close() on the new sockets.
+    this.abandonBunkerDials();
     if (!this.released) return;
     console.warn(
       "[RemoteSigner] Dedicated signer pool was released by a remount — opening it again for this sign"
     );
     this.released = false;
+  }
+
+  private abandonBunkerDials(): void {
+    this.bunkerDialEpoch += 1;
+  }
+
+  private bunkerDialIsCurrent(epoch: number): boolean {
+    return epoch === this.bunkerDialEpoch && !this.released;
+  }
+
+  private beginSignerDial(): void {
+    this.signerDialDepth += 1;
+    this.signerDialBusy = true;
+  }
+
+  private endSignerDial(): void {
+    if (this.signerDialDepth > 0) this.signerDialDepth -= 1;
+    this.signerDialBusy = this.signerDialDepth > 0;
   }
 
   isReleased(): boolean {
@@ -1653,14 +1684,24 @@ export class RemoteSignerManager {
       // URI-only, one socket at a time. A second full warm here used to
       // resetDirectPool and dial every bunker host in parallel while the Code
       // tab was still subscribing — every socket landed CLOSED before Push.
-      void this.warmBunkerTransportQuietly({
-        budgetMs: BUNKER_BOOTSTRAP_WARM_BUDGET_MS,
-        uriFirstOnly: true,
-      })
-        .catch(() => undefined)
-        .finally(() => {
-          this.startBunkerKeepalive();
-        });
+      // Wait out the hydration pass. React #418 remounts this provider and
+      // the dial that already started gets its sockets closed (empty error).
+      const startWarm = () => {
+        if (this.released || !this.session?.userPubkey) return;
+        void this.warmBunkerTransportQuietly({
+          budgetMs: BUNKER_BOOTSTRAP_WARM_BUDGET_MS,
+          uriFirstOnly: true,
+        })
+          .catch(() => undefined)
+          .finally(() => {
+            this.startBunkerKeepalive();
+          });
+      };
+      if (typeof window !== "undefined") {
+        window.setTimeout(startWarm, 50);
+      } else {
+        startWarm();
+      }
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
       this.rpcHealthy = false;
@@ -2090,6 +2131,7 @@ export class RemoteSignerManager {
    * Stop this instance's sockets without clearing the saved Amber session.
    */
   releaseOnUnmount() {
+    this.abandonBunkerDials();
     this.released = true;
     this.stopBunkerKeepalive();
     this.detachBunkerTransportRecovery();
@@ -2476,7 +2518,10 @@ export class RemoteSignerManager {
 
     pushDedicatedBunkerDial();
     let settled: Promise<string[]> | null = null;
+    const epoch = this.bunkerDialEpoch;
+    const live = () => this.bunkerDialIsCurrent(epoch);
     const dial = (async () => {
+      if (!live()) return [];
       const uriRelays = getSessionUriRelays(session);
       if (!session.uriRelays || session.uriRelays.length === 0) {
         session.uriRelays = uriRelays;
@@ -2584,6 +2629,7 @@ export class RemoteSignerManager {
         const anyLive = Object.values(snapBeforeReset).some(
           (status) => status === 0 || status === 1
         );
+        if (!live()) return [];
         if (!anyLive) {
           this.resetDirectPool();
           await new Promise((r) => setTimeout(r, 400));
@@ -2707,9 +2753,11 @@ export class RemoteSignerManager {
     this.rpcHealthy = false;
     this.healthProbeInFlight = null;
     this.bunkerWarmInFlight = null;
+    this.abandonBunkerDials();
     this.bunkerDialInFlight = null;
     this.lastPublishMeta = undefined;
     this.lastSignAttempted = [];
+    this.signerDialDepth = 0;
     this.signerDialBusy = false;
     this.lastSignEventEnvelopes = [];
     this.completedRpcIds = [];
@@ -2763,7 +2811,9 @@ export class RemoteSignerManager {
   private async replaceDirectPoolIfFullyClosed(
     relays: string[]
   ): Promise<boolean> {
+    const epoch = this.bunkerDialEpoch;
     const snap = await this.snapshotDirectRelayStatuses(relays);
+    if (!this.bunkerDialIsCurrent(epoch)) return false;
     const anyLive = Object.values(snap).some(
       (status) => status === 0 || status === 1
     );
@@ -2867,11 +2917,16 @@ export class RemoteSignerManager {
     budgetMs = BUNKER_RELAY_OPEN_BUDGET_MS
   ): Promise<boolean> {
     const started = Date.now();
-    if (this.released) {
-      console.warn(
-        "[RemoteSigner] Dedicated signer pool is released — not dialing",
-        normalizeRelayUrl(url)
-      );
+    const epoch = this.bunkerDialEpoch;
+    const live = () => this.bunkerDialIsCurrent(epoch);
+    this.lastOpenWasInstantAbort = false;
+    if (!live()) {
+      if (this.released) {
+        console.warn(
+          "[RemoteSigner] Dedicated signer pool is released — not dialing",
+          normalizeRelayUrl(url)
+        );
+      }
       return false;
     }
     const remaining = () => Math.max(0, budgetMs - (Date.now() - started));
@@ -2905,6 +2960,7 @@ export class RemoteSignerManager {
           if (bunkerRelayShouldKeepWaiting(relay.status)) return false;
         }
         // CLOSED/CLOSING only. Drop so ensureRelay can open a new socket.
+        if (!live()) return false;
         this.dropDirectRelay(url);
         relay = null;
       }
@@ -2953,9 +3009,11 @@ export class RemoteSignerManager {
             if (bunkerRelayShouldKeepWaiting(inFlight.status)) return false;
           } else if (bunkerRelayIsOpen(inFlight?.status)) {
             return true;
-          } else if (inFlight) {
+          } else if (inFlight && live()) {
             this.dropDirectRelay(url);
           }
+          if (!live()) return false;
+          this.lastOpenWasInstantAbort = elapsed < BUNKER_INSTANT_ABORT_MS;
           console.warn(
             `[RemoteSigner] openDirectRelay first pass failed for ${url}:`,
             error instanceof Error ? error.message : error
@@ -2963,6 +3021,7 @@ export class RemoteSignerManager {
           if (elapsed < BUNKER_INSTANT_ABORT_MS && remaining() > 2000) {
             await new Promise((r) => setTimeout(r, 1500));
           }
+          if (!live()) return false;
         }
       }
     } catch (error) {
@@ -2982,13 +3041,14 @@ export class RemoteSignerManager {
       );
       if (waited) return true;
       if (bunkerRelayShouldKeepWaiting(leftover.status)) return false;
+      if (!live()) return false;
       this.dropDirectRelay(url);
     }
     if (remaining() < 1500) {
       const current = this.getDirectRelayFromPool(url);
       if (bunkerRelayShouldKeepWaiting(current?.status)) return false;
       const open = bunkerRelayIsOpen(current?.status);
-      if (!open) this.dropDirectRelay(url);
+      if (!open && live()) this.dropDirectRelay(url);
       return open;
     }
     if (
@@ -2996,6 +3056,7 @@ export class RemoteSignerManager {
     ) {
       return false;
     }
+    if (!live()) return false;
     const retryStarted = Date.now();
     try {
       this.dropDirectRelay(url);
@@ -3023,12 +3084,14 @@ export class RemoteSignerManager {
         }
         if (bunkerRelayShouldKeepWaiting(inFlight.status)) return false;
       }
+      if (!live()) return false;
+      this.lastOpenWasInstantAbort = retryElapsed < BUNKER_INSTANT_ABORT_MS;
       console.warn(
         `[RemoteSigner] openDirectRelay retry failed for ${url}:`,
         error instanceof Error ? error.message : error
       );
       const still = this.getDirectRelayFromPool(url);
-      if (!bunkerRelayShouldKeepWaiting(still?.status)) {
+      if (live() && !bunkerRelayShouldKeepWaiting(still?.status)) {
         this.dropDirectRelay(url);
       }
       if (retryElapsed < BUNKER_INSTANT_ABORT_MS && remaining() > 1000) {
@@ -3052,20 +3115,46 @@ export class RemoteSignerManager {
       (u) => u.startsWith("wss://") && bunkerMayUseRelay(u)
     );
     if (targets.length === 0) return [];
+    const epoch = this.bunkerDialEpoch;
     const open: string[] = [];
     let idx = 0;
+    let instantAborts = 0;
     const workers = Array.from(
       { length: Math.min(concurrency, targets.length) },
       async () => {
         while (idx < targets.length) {
+          if (!this.bunkerDialIsCurrent(epoch)) return;
           const url = targets[idx++];
           if (!url) break;
           if (await this.openDirectRelay(url, budgetMs)) {
             open.push(url);
+            instantAborts = 0;
             // Bootstrap stops at the first OPEN. sign_event passes the full
             // list length so every Amber bunker relay is tried.
             if (open.length >= stopAfterOpen) return;
+            continue;
           }
+          if (!this.lastOpenWasInstantAbort) {
+            instantAborts = 0;
+            continue;
+          }
+          instantAborts += 1;
+          if (instantAborts < 2) continue;
+          // Two hosts died before the handshake. The next hosts will die the
+          // same way while the page is still closing sockets. Wait, then try
+          // one relay instead of walking the whole bunker list.
+          console.warn(
+            "[RemoteSigner] Browser aborted bunker sockets before they opened — waiting, then retrying one relay"
+          );
+          idx = targets.length;
+          await this.waitForMainPoolIdle(4000);
+          await new Promise((r) => setTimeout(r, 1000));
+          if (!this.bunkerDialIsCurrent(epoch)) return;
+          const retryUrl = targets[0];
+          if (retryUrl && (await this.openDirectRelay(retryUrl, budgetMs))) {
+            open.push(retryUrl);
+          }
+          return;
         }
       }
     );
@@ -3368,7 +3457,6 @@ export class RemoteSignerManager {
     session: RemoteSignerSession,
     uriRelays: string[]
   ): Promise<string[]> {
-    this.signerDialBusy = true;
     this.reviveForDial();
     pushDedicatedBunkerDial();
     try {
@@ -3460,7 +3548,6 @@ export class RemoteSignerManager {
       return open;
     } finally {
       popDedicatedBunkerDial();
-      this.signerDialBusy = false;
     }
   }
 
@@ -4186,6 +4273,11 @@ export class RemoteSignerManager {
     params: unknown[],
     timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<any> {
+    // One owner for the bunker pool until Amber answers. A keepalive or a
+    // leftover page-load dial was closing each socket as the next one opened.
+    this.abandonBunkerDials();
+    this.beginSignerDial();
+    try {
     // Repair the dedicated NIP-46 transport first — dead sockets silently
     // swallow requests AND responses (the "push fails silently" symptom).
     // Do not addRelay bunker URLs into the app pool (socket starvation).
@@ -4236,7 +4328,7 @@ export class RemoteSignerManager {
       dual: encrypted.dualScheme,
     });
     const shouldDualPublish = !!dualEvent;
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       let listenRefresh: ReturnType<typeof setInterval> | null = null;
       let signPublishSettled = false;
       let signPublishAcked = false;
@@ -4549,6 +4641,9 @@ export class RemoteSignerManager {
         }
       })();
     });
+    } finally {
+      this.endSignerDial();
+    }
   }
 
   private applyNip07Adapter() {
