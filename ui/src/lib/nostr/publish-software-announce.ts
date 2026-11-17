@@ -284,14 +284,8 @@ async function signOfficialGittrProof(args: {
   ) {
     return { status: "skipped" };
   }
-  const existing = await findAuthorizingApkProof({
-    subscribe: args.subscribe,
-    relays: args.relays,
-    signerPubkeyHex: args.signerPubkeyHex,
-    certificateDer: der,
-    certificateHash: hash,
-  });
-  if (existing.ok) return { status: "present" };
+  // An older proof on nos.lol is not enough. Zapstore drops a new app unless
+  // this proof is in the same publish as the release, so always sign a fresh one.
 
   const createdAt = Math.floor(Date.now() / 1000);
   let body: IdentityProofResponse;

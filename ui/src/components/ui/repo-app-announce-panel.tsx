@@ -398,18 +398,31 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       certificateHash: hash,
     }).then((check) => {
       if (cancel) return;
-      if (check.ok) {
+      const officialCi =
+        isOfficialGittr && hash.toLowerCase() === GITTR_CI_CERT_SHA256;
+      if (check.ok && !officialCi) {
         setProofState("ok");
         setProofHint(null);
         return;
       }
+      if (officialCi) {
+        setProofState("needed");
+        setProofHint(
+          announceZapstoreProofMessage({
+            reason: "missing",
+            certificateHash: hash,
+            officialGittr: true,
+          })
+        );
+        return;
+      }
+      if (check.ok) return;
       setProofState("needed");
       setProofHint(
         announceZapstoreProofMessage({
           reason: check.reason,
           certificateHash: hash,
-          officialGittr:
-            isOfficialGittr && hash.toLowerCase() === GITTR_CI_CERT_SHA256,
+          officialGittr: false,
         })
       );
     });
