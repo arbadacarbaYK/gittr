@@ -1720,6 +1720,14 @@ export default function ProjectsPage() {
             <Folder className="h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
             Projects
           </h1>
+          <p className="mt-1 text-xs text-gray-500">
+            <Link
+              href="/help#projects"
+              className="text-purple-400 hover:text-purple-300 hover:underline"
+            >
+              Help → Kanban
+            </Link>
+          </p>
           {(syncingGithub || githubImportNote || pushNote) && (
             <p className="mt-1 text-xs text-gray-400">
               {pushing

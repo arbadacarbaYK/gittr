@@ -404,14 +404,8 @@ export default function HelpPage() {
           </li>
           <li>
             <strong className="text-white">Kanban &amp; milestones</strong> —
-            Projects with Kanban and Roadmap. Milestones on the repo.{" "}
-            <Link
-              href="/projects"
-              className="text-purple-400 hover:text-purple-300"
-            >
-              /projects
-            </Link>
-            .{" "}
+            ToDo boards on a repo. Push publishes them to Nostr. A GitHub
+            project can fill the board first.{" "}
             <Link
               href="#projects"
               className="text-purple-400 hover:text-purple-300"
@@ -3961,24 +3955,41 @@ export default function HelpPage() {
 
             <HelpTopic id="projects" title={<>Projects, Kanban, milestones</>}>
               <p>
-                Each repo has a <strong>ToDo</strong> tab (Projects) with{" "}
-                <strong>Kanban</strong> and <strong>Roadmap</strong> views.
-                Owners and maintainers edit the board here.{" "}
-                <strong>Push to Nostr</strong> publishes it as a general kanban
-                board (kinds 30301 and 30302) linked to this repo. Issues and
-                pull requests sit on that board as cards; closing a ticket
-                moves its card to Done and does not require the forge. A GitHub
-                project can fill the board first. Later edits stay on Nostr —
-                gittr does not write them back to GitHub, GitLab, Codeberg, or
-                Gitea. <strong>Milestones</strong> stay in repo Settings and on
-                the issues and pull requests. Open{" "}
+                Each repo has a <strong>ToDo</strong> tab. It is the kanban
+                for that repo, with a <strong>Roadmap</strong> view beside it.
+                Owners and maintainers edit the board. Everyone else can read
+                it once it has been pushed.
+              </p>
+              <p className="mt-2">
+                <strong>Push to Nostr</strong> publishes the board (kind 30301)
+                and its cards (kind 30302). That is the general kanban draft
+                also used by Kanbanstr, with this repo’s address on the board.
+                The same events can show up in another kanban app. A personal
+                board that is not tied to a repo does not appear on this tab.
+              </p>
+              <p className="mt-2">
+                Issues and pull requests sit on the board as cards. Closing or
+                merging a ticket moves its card to Done. Dragging a card does
+                not close the ticket.
+              </p>
+              <p className="mt-2">
+                A GitHub project can fill the board the first time you open
+                ToDo. After that, edits stay on gittr and Push sends them to
+                Nostr. GitHub, GitLab, Codeberg, and Gitea are not updated.
+                GitLab, Codeberg, and Gitea do not import a project board;
+                create one here and push it.
+              </p>
+              <p className="mt-2">
+                <strong>Milestones</strong> stay in repo Settings and on the
+                issues and pull requests. They are a label on the ticket, not
+                a separate board. Open{" "}
                 <Link
                   href="/projects"
                   className="text-purple-400 hover:text-purple-300"
                 >
                   /projects
                 </Link>{" "}
-                for every board in this browser.
+                for every board saved in this browser.
               </p>
             </HelpTopic>
 

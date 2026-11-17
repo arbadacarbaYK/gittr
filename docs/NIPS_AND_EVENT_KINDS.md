@@ -188,6 +188,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Forge import is one-way.** GitHub Projects V2 still fills the tab. After that, edits stay on gittr and Push publishes them to Nostr. GitHub, GitLab, Codeberg, and Gitea are not written back. A later GitHub refresh appends new items and does not reset cards on a board that was already pushed. GitLab, Codeberg, and Gitea have no project import; create a board here and push it to Nostr.
 - **This browser** keeps `gittr_projects__*` as a cache, including unpublished edits. Relay copies fill in when they are newer and the board is not dirty.
 - **Not used:** GitPlaza list kinds 37733/37734 ([nips#1804](https://github.com/nostr-protocol/nips/pull/1804)) and Headway’s provisional 30619/30620 (those numbers are already used by other apps).
+- **Relay:** `relay.gittr.space` (Pyramid) must allow kinds **30301** and **30302** in both the allowed list and `open_kinds_spec`, plus kind **5** when a board or card is deleted. **Blossom does not store these events.** Card text is on the Nostr event. Blossom is only for file bytes (Pages, images).
 - **Helper write-up**: `gittr-helper-tools/snippets/todos-discussions-kanban/`.
 
 ### Kind 30617 clone URLs (`git.gittr.space`)
@@ -405,7 +406,7 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30023, 30078, 30617, 30618, 9735, 9806]
+allowed_kinds = [0, 1, 5, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30023, 30078, 30301, 30302, 30617, 30618, 9735, 9806]
 ```
 
 ```yaml
@@ -434,6 +435,8 @@ relay:
         1985,
         10018,
         10317,
+        30301,
+        30302,
         30617,
         30618,
         9735,
@@ -468,6 +471,8 @@ relay:
 | 10018 | NIP-51       | Git Repositories List  | Followed repositories list                    |
 | 10317 | NIP-34       | User GRASP List        | Preferred GRASP servers for NIP-34 activity   |
 | 30078 | NIP-78       | Notification prefs     | `d=gittr/notifications` channels+events       |
+| 30301 | draft 1665   | Kanban board           | Repo or personal board                        |
+| 30302 | draft 1665   | Kanban card            | Card or tracker for an issue/PR               |
 | 30617 | NIP-34       | Repository Metadata    | Repository announcements (primary)            |
 | 30618 | NIP-34       | Repository State       | Repository state (required for ngit clients)  |
 | 9735  | NIP-57       | Zaps                   | Lightning payments                            |
