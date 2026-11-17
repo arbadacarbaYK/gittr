@@ -166,6 +166,12 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(appTs).toContain("android");
     const appFs = built.app.tags.filter((t) => t[0] === "f").map((t) => t[1]);
     expect(appFs).toContain("android-arm64-v8a");
+    expect(built.asset.tags.find((t) => t[0] === "f")?.[1]).toBe(
+      "android-arm64-v8a"
+    );
+    expect(
+      built.release.tags.filter((t) => t[0] === "f").map((t) => t[1])
+    ).toContain("android-arm64-v8a");
     expect(appFs).toContain("windows-amd64");
   });
 

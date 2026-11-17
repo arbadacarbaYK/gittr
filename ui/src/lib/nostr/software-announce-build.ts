@@ -210,6 +210,7 @@ function buildAssetEvent(
     ["version", version],
   ];
   if (nip.f) tags.push(["f", nip.f]);
+  else if (isApkFile(file)) tags.push(["f", "android-arm64-v8a"]);
   if (file.size > 0) tags.push(["size", String(file.size)]);
   const certHash = isApkFile(file)
     ? validApkCertificateHash(file.apkCertificateHash)
@@ -388,6 +389,7 @@ export function buildSoftwareAnnounceEvents(
       ["i", appId],
       ["version", version],
       ["c", "main"],
+      ...[...platformFs].map((f) => ["f", f]),
     ],
     pubkey: "",
   };
