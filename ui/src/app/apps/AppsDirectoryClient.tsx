@@ -553,7 +553,11 @@ export function AppsDirectoryClient({
     const startLiveDeletionWatch = () => {
       if (!subscribe || cancelled || leavingRef.current || cleaned) return;
       const unsub = subscribe(
-        [{ kinds: [5], limit: 800 }],
+        [
+          { kinds: [5], "#k": ["32267"], limit: 400 },
+          { kinds: [5], "#k": ["30063"], limit: 400 },
+          { kinds: [5], limit: 800 },
+        ],
         relays,
         (event: NostrEventLike) => {
           if (cancelled || leavingRef.current) return;
@@ -589,6 +593,18 @@ export function AppsDirectoryClient({
               ? deletedEventAuthorsRef.current.get(eid)
               : undefined;
             if (delAuthor && delAuthor === (event.pubkey || "").toLowerCase()) {
+              finishLoading();
+              return;
+            }
+            const dTag = (event.tags || []).find(
+              (t) => t[0] === "d" && typeof t[1] === "string"
+            )?.[1];
+            const address = dTag
+              ? `32267:${(
+                  event.pubkey || ""
+                ).toLowerCase()}:${dTag}`.toLowerCase()
+              : "";
+            if (address && deletedAddressKeysRef.current.has(address)) {
               finishLoading();
               return;
             }
@@ -661,6 +677,44 @@ export function AppsDirectoryClient({
     ingestDeletionEvent,
     scheduleCatalogFlush,
   ]);
+
+  const deletionAuthorKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const app of apps) {
+      const pk = (app.pubkey || "").toLowerCase();
+      if (/^[0-9a-f]{64}$/.test(pk)) ids.add(pk);
+    }
+    return [...ids].sort().join(",");
+  }, [apps]);
+
+  useEffect(() => {
+    if (!subscribe || !deletionAuthorKey || leavingRef.current) return;
+    const authors = deletionAuthorKey.split(",");
+    const filters: Record<string, unknown>[] = [];
+    for (let i = 0; i < authors.length; i += 40) {
+      filters.push({
+        kinds: [5],
+        authors: authors.slice(i, i + 40),
+        limit: 200,
+      });
+    }
+    const unsub = subscribe(
+      filters,
+      relays,
+      (event: NostrEventLike) => {
+        if (leavingRef.current) return;
+        ingestDeletionEvent(event);
+      },
+      400
+    );
+    return () => {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    };
+  }, [deletionAuthorKey, subscribe, relays, relaysKey, ingestDeletionEvent]);
 
   useEffect(() => {
     if (leavingRef.current) return;

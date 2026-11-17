@@ -298,8 +298,12 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   }, [repoName]);
 
   useEffect(() => {
+    if (isOfficialGittr) {
+      setAppId(GITTR_ANDROID_APP_ID);
+      return;
+    }
     setAppId((prev) => {
-      if (prev && !(isOfficialGittr && !prev.includes("."))) return prev;
+      if (prev) return prev;
       return resolveAnnounceAppId({
         existingAppId,
         repo: repoName,
@@ -481,7 +485,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       const result = await publishSoftwareAnnounce({
         input: {
           forge: forgeForPublish,
-          appId: appId.trim(),
+          appId: isOfficialGittr ? GITTR_ANDROID_APP_ID : appId.trim(),
           appName: appName.trim(),
           summary: summaryForNip82Announce({
             repo: repoName,
@@ -788,30 +792,22 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 App id
               </span>
               <Input
-                value={appId}
-                onChange={(e) => setAppId(e.target.value)}
+                value={isOfficialGittr ? GITTR_ANDROID_APP_ID : appId}
+                onChange={(e) => {
+                  if (!isOfficialGittr) setAppId(e.target.value);
+                }}
+                readOnly={isOfficialGittr}
                 placeholder="com.example.app"
                 className="h-8 text-xs"
               />
               {isOfficialGittr ? (
                 <p className="text-[10px] leading-snug text-zinc-500">
-                  Keep{" "}
+                  This stays{" "}
                   <code className="rounded bg-zinc-900 px-1">
                     {GITTR_ANDROID_APP_ID}
-                  </code>{" "}
-                  — that matches the Android package. Changing it publishes a
-                  second listing.
-                  {(existingAppId || "").trim() &&
-                  (existingAppId || "").trim() !== GITTR_ANDROID_APP_ID ? (
-                    <>
-                      {" "}
-                      Already live as{" "}
-                      <code className="rounded bg-zinc-900 px-1">
-                        {(existingAppId || "").trim()}
-                      </code>
-                      . Keep that id unless you delete the old announce first.
-                    </>
-                  ) : null}
+                  </code>
+                  , the Android package. The title people see is the display
+                  name. A different id would publish a second app.
                 </p>
               ) : (existingAppId || "").trim() ? (
                 <p className="text-[10px] leading-snug text-zinc-500">

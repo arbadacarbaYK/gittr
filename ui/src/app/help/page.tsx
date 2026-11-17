@@ -3796,8 +3796,11 @@ export default function HelpPage() {
                 the same Nostr app list gittr already counts — Zapstore’s relay
                 is just where most kind 32267 events live, not a second counter
                 added on top. Owner{" "}
-                <strong className="text-white">Remove listing</strong> is NIP-09
-                and hides that author’s card; it does not shrink Zapstore’s
+                <strong className="text-white">Remove listing</strong> sends a
+                delete for that package id. Apps and the profile drop that
+                card once the Apps relays store it. The git repo and the APK
+                file stay. The card title is the display name; gittr’s own
+                package id stays space.gittr.app. It does not shrink Zapstore’s
                 catalog. Zapstore only answers 50 app events per request, so{" "}
                 <strong className="text-white">Listed</strong> keeps climbing
                 for a short while as gittr walks older pages. The hub keeps a

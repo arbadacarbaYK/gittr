@@ -23,6 +23,7 @@ import {
   preferOwnerSoftwareApps,
   safeHttpUrlTag,
   slimSoftwareAppForCatalog,
+  softwareAnnounceDeletionTags,
   sortSoftwareAppsByCreatedAt,
 } from "./nip82-software";
 
@@ -432,6 +433,22 @@ describe("omitDeletedSoftwareApps", () => {
     })!;
     const a = `32267:${owner}:app.id`;
     expect(omitDeletedSoftwareApps([listed], {}, [a])).toHaveLength(0);
+  });
+});
+
+describe("softwareAnnounceDeletionTags", () => {
+  it("names the app address, not only one event id", () => {
+    const owner = "aa".repeat(32);
+    const tags = softwareAnnounceDeletionTags({
+      eventIds: ["ab".repeat(32)],
+      ownerPubkeyHex: owner,
+      appIds: ["space.gittr.app"],
+      releaseDTags: ["space.gittr.app@1.0.2"],
+    });
+    expect(tags).toContainEqual(["e", "ab".repeat(32)]);
+    expect(tags).toContainEqual(["a", `32267:${owner}:space.gittr.app`]);
+    expect(tags).toContainEqual(["a", `30063:${owner}:space.gittr.app@1.0.2`]);
+    expect(tags).toContainEqual(["k", "32267"]);
   });
 });
 

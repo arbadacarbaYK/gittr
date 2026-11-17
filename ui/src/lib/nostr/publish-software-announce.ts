@@ -16,6 +16,7 @@ import {
 import { type ForgeReleaseAsset, isApkAssetName } from "../repo/forge-releases";
 import { GITTR_CI_CERT_SHA256 } from "../repo/gittr-android-app";
 
+import { softwareAnnounceDeletionTags } from "./nip82-software";
 import {
   KIND_APK_IDENTITY_PROOF,
   findAuthorizingApkProof,
@@ -34,6 +35,7 @@ import {
 } from "./software-announce-build";
 import {
   RELAY_ZAPSTORE,
+  SOFTWARE_CATALOG_RELAYS,
   relaysForSoftwareCatalog,
 } from "./software-catalog-relays";
 
@@ -721,6 +723,8 @@ export async function publishSoftwareAnnounce(
  */
 export async function deleteSoftwareAnnounceEvents(args: {
   eventIds: string[];
+  appIds?: string[];
+  releaseDTags?: string[];
   ownerPubkeyHex: string;
   defaultRelays: string[];
   resolveSigner: () => Promise<{
@@ -756,7 +760,12 @@ export async function deleteSoftwareAnnounceEvents(args: {
     created_at: now,
     content:
       "Delete NIP-82 software announce (app/release/asset); repo unchanged.",
-    tags: ids.map((id) => ["e", id]),
+    tags: softwareAnnounceDeletionTags({
+      eventIds: ids,
+      ownerPubkeyHex: signerPubkey,
+      appIds: args.appIds || [],
+      releaseDTags: args.releaseDTags,
+    }),
     pubkey: "",
   };
   const signed = await signer.signEvent({ ...unsigned, pubkey: signerPubkey });
@@ -768,6 +777,21 @@ export async function deleteSoftwareAnnounceEvents(args: {
     relays,
     12_000
   );
+  const catalogHosts = SOFTWARE_CATALOG_RELAYS.map((url) => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  });
+  const onCatalog = result.confirmedRelays.some((url) =>
+    catalogHosts.some((host) => url.toLowerCase().includes(host))
+  );
+  if (!onCatalog) {
+    throw new Error(
+      "The delete did not reach the Apps relays, so the public list can still show this app. Try Remove listing again."
+    );
+  }
   return {
     deletionEventId: signed.id,
     confirmedRelays: result.confirmedRelays,

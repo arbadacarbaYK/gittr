@@ -543,6 +543,43 @@ export function mergeSoftwareApps(
 
 const SOFTWARE_NIP09_A = /^(32267|30063|3063):[0-9a-f]{64}:.+/i;
 
+/**
+ * NIP-09 tags for a software listing. `e` tags name the copies we found.
+ * `a` tags name the replaceable app and release, so Apps and profile hide
+ * the listing even when a relay still returns an older event id.
+ */
+export function softwareAnnounceDeletionTags(args: {
+  eventIds: string[];
+  ownerPubkeyHex: string;
+  appIds: string[];
+  releaseDTags?: string[];
+}): string[][] {
+  const owner = (args.ownerPubkeyHex || "").toLowerCase();
+  const tags: string[][] = [];
+  for (const id of args.eventIds) {
+    if (/^[0-9a-f]{64}$/i.test(id)) tags.push(["e", id.toLowerCase()]);
+  }
+  const appIds = [
+    ...new Set(args.appIds.map((id) => (id || "").trim()).filter(Boolean)),
+  ];
+  for (const appId of appIds) {
+    tags.push(["a", `32267:${owner}:${appId}`]);
+  }
+  const releaseDs = [
+    ...new Set(
+      (args.releaseDTags || []).map((d) => (d || "").trim()).filter(Boolean)
+    ),
+  ];
+  for (const d of releaseDs) {
+    tags.push(["a", `30063:${owner}:${d}`]);
+  }
+  if (appIds.length > 0) tags.push(["k", String(KIND_SOFTWARE_APPLICATION)]);
+  if (releaseDs.length > 0) tags.push(["k", String(KIND_SOFTWARE_RELEASE)]);
+  if (tags.some((t) => t[0] === "e"))
+    tags.push(["k", String(KIND_SOFTWARE_ASSET)]);
+  return tags;
+}
+
 /** NIP-09 kind 5 `e` / `a` tags that point at app, release, or asset events. */
 export function collectNip09SoftwareDeletions(event: {
   kind?: number;

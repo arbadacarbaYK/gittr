@@ -217,12 +217,17 @@ export async function collectSoftwareAnnounceIdsForAppIds(args: {
   subscribe: SubscribeFn;
   relays: string[];
   timeoutMs?: number;
-}): Promise<{ eventIds: string[]; appIdsFound: string[] }> {
+}): Promise<{
+  eventIds: string[];
+  appIdsFound: string[];
+  releaseDTags: string[];
+}> {
   const owner = args.ownerPubkeyHex.toLowerCase();
   const want = [
     ...new Set(args.appIds.map((id) => (id || "").trim()).filter(Boolean)),
   ];
-  if (want.length === 0) return { eventIds: [], appIdsFound: [] };
+  if (want.length === 0)
+    return { eventIds: [], appIdsFound: [], releaseDTags: [] };
   const timeoutMs = args.timeoutMs ?? 10_000;
   const catalogRelays = relaysForSoftwareCatalog(args.relays);
 
@@ -270,7 +275,15 @@ export async function collectSoftwareAnnounceIdsForAppIds(args: {
       ...releaseAndAsset.map((e) => e.id).filter(Boolean),
     ]),
   ];
-  return { eventIds, appIdsFound: foundD };
+  const releaseDTags = [
+    ...new Set(
+      releaseAndAsset
+        .filter((ev) => ev.kind === KIND_SOFTWARE_RELEASE)
+        .map((ev) => readTag(ev, "d"))
+        .filter((d): d is string => Boolean(d))
+    ),
+  ];
+  return { eventIds, appIdsFound: foundD, releaseDTags };
 }
 
 export async function deleteSoftwareAnnounceForAppId(args: {
@@ -300,6 +313,8 @@ export async function deleteSoftwareAnnounceForAppId(args: {
   }
   const result = await deleteSoftwareAnnounceEvents({
     eventIds: found.eventIds,
+    appIds: [appId, ...found.appIdsFound],
+    releaseDTags: found.releaseDTags,
     ownerPubkeyHex: args.ownerPubkeyHex,
     defaultRelays: args.defaultRelays,
     resolveSigner: args.resolveSigner,
@@ -403,6 +418,7 @@ export async function deleteRepoRelatedAnnounces(args: {
       try {
         await deleteSoftwareAnnounceEvents({
           eventIds: found.appEventIds,
+          appIds: found.appIds,
           ownerPubkeyHex: args.ownerPubkeyHex,
           defaultRelays: args.defaultRelays,
           resolveSigner: args.resolveSigner,

@@ -256,7 +256,6 @@ async function fetchCatalogFromRelays(
         if (isPublisherBlocklisted(event.pubkey)) return;
         if (event.kind === KIND_SOFTWARE_APPLICATION) {
           rawApps.push(event);
-          if (authorScoped) maybeEarlyExit();
           return;
         }
         if (event.kind === KIND_SOFTWARE_RELEASE) {
@@ -647,9 +646,7 @@ export default async function handler(
     // page waits, including sign-in and repo opens.
     if (summary && !author) {
       await ensureDiskCatalog();
-      const apps = sortSoftwareAppsByCreatedAt(
-        globalCache?.catalog.apps || []
-      )
+      const apps = sortSoftwareAppsByCreatedAt(globalCache?.catalog.apps || [])
         .slice(0, 12)
         .map((a) => ({
           pubkey: a.pubkey,
@@ -672,10 +669,7 @@ export default async function handler(
       ? await fetchCatalogFromRelays(CATALOG_RELAYS, author)
       : await getGlobalCatalog();
     if (catalog.apps.length > 0) {
-      res.setHeader(
-        "Cache-Control",
-        author ? "public, s-maxage=60, stale-while-revalidate=120" : "no-store"
-      );
+      res.setHeader("Cache-Control", author ? "private, no-store" : "no-store");
     } else {
       res.setHeader("Cache-Control", "no-store");
     }
