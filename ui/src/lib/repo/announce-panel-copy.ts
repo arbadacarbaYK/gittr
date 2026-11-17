@@ -94,7 +94,7 @@ export function announceZapstoreProofMessage(args: {
     args.officialGittr &&
     (args.reason === "missing" || args.reason === "expired")
   ) {
-    return "Nothing else to install. Press Publish on Nostr. Amber asks you to approve the ownership proof first, then the app listing. That is the certificate step. The repo Push button does not send the app to Zapstore.";
+    return "Nothing else to install. Press Publish on Nostr. Your signer — Amber or the browser extension — approves the ownership proof and the app listing together. The repo Push button does not send the app to Zapstore.";
   }
   switch (args.reason) {
     case "unreadable-cert":
@@ -126,7 +126,7 @@ export function announceOwnershipProofTitle(args: {
 
 export function announceZapstoreFooterCopy(officialGittr = false): string {
   if (officialGittr) {
-    return "Zapstore lists this app only after a proof that the APK signing certificate is yours. Publish signs that proof with gittr’s release certificate, then publishes the listing. Also keep zapstore.yaml at the repo root.";
+    return "Zapstore lists this app only after a proof that the APK signing certificate is yours. Publish signs that proof with gittr’s release certificate and sends it with the listing. Amber and a browser extension both work. Also keep zapstore.yaml at the repo root.";
   }
   return "Zapstore lists an Android app only after a one-time proof that the signing certificate is yours (run zsp and choose “Prove it’s yours”; the keystore stays on your computer). Also commit zapstore.yaml at the source repo root with pubkey, repository, and images: for screenshots.";
 }

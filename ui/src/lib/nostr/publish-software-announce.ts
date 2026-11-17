@@ -145,6 +145,75 @@ async function confirmOnRelays(args: {
   });
 }
 
+/**
+ * Zapstore accepts a new app's ownership proof only in the same publish as
+ * its release. Subscribe first, then send every event before waiting.
+ */
+async function confirmTogether(args: {
+  publish: PublishSoftwareAnnounceArgs["publish"];
+  subscribe: PublishSoftwareAnnounceArgs["subscribe"];
+  events: NostrEvent[];
+  relays: string[];
+  mustSeeOnZapstore: string[];
+  timeoutMs?: number;
+}): Promise<{ relays: string[]; zapstoreEventIds: string[] }> {
+  const timeoutMs = args.timeoutMs ?? 25_000;
+  const ids = args.events.map((event) => event.id).filter(Boolean);
+  return new Promise((resolve) => {
+    const seen = new Map<string, string[]>();
+    let settled = false;
+    let unsub: (() => void) | undefined;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      const relays: string[] = [];
+      const zapstoreEventIds: string[] = [];
+      for (const [eventId, urls] of seen) {
+        for (const url of urls) {
+          if (!relays.includes(url)) relays.push(url);
+          if (relayIsZapstore(url) && !zapstoreEventIds.includes(eventId)) {
+            zapstoreEventIds.push(eventId);
+          }
+        }
+      }
+      resolve({ relays, zapstoreEventIds });
+    };
+    const zapstoreHas = (eventId: string) =>
+      (seen.get(eventId) || []).some(relayIsZapstore);
+    const timer = setTimeout(finish, timeoutMs);
+    try {
+      unsub = args.subscribe(
+        [{ ids }],
+        args.relays,
+        (event, _after, relayURL) => {
+          const id = (event as { id?: string })?.id;
+          if (!relayURL || !id) return;
+          const urls = seen.get(id) || [];
+          if (!urls.includes(relayURL)) urls.push(relayURL);
+          seen.set(id, urls);
+          if (args.mustSeeOnZapstore.every(zapstoreHas)) finish();
+        }
+      );
+    } catch {
+      finish();
+      return;
+    }
+    for (const event of args.events) {
+      try {
+        args.publish(event, args.relays);
+      } catch {
+        /* the echo still counts if another path delivered it */
+      }
+    }
+  });
+}
+
 async function requireApkOwnershipProof(args: {
   file: ForgeReleaseAsset;
   signerPubkeyHex: string;
@@ -186,19 +255,22 @@ type IdentityProofResponse = {
 };
 
 /**
- * gittr's own APK is signed with the public CI certificate. Publishing that
- * listing also publishes the kind 30509 proof, so the owner does not run zsp
- * by hand. The certificate signature comes from the server; Amber signs the
- * Nostr event.
+ * gittr's own APK is signed with the public CI certificate. The certificate
+ * signature comes from the server. Amber or a NIP-07 extension signs the
+ * kind 30509 event. Zapstore rejects that proof until the release is sent
+ * with it, so this only signs. The caller publishes it in the same batch.
  */
-async function ensureOfficialGittrProof(args: {
+async function signOfficialGittrProof(args: {
   file: ForgeReleaseAsset;
   signerPubkeyHex: string;
   relays: string[];
   subscribe: PublishSoftwareAnnounceArgs["subscribe"];
-  publish: PublishSoftwareAnnounceArgs["publish"];
   sign: (event: UnsignedAnnounceEvent) => Promise<NostrEvent>;
-}): Promise<"published" | "present" | "skipped"> {
+}): Promise<
+  | { status: "skipped" }
+  | { status: "present" }
+  | { status: "signed"; event: NostrEvent }
+> {
   const hash = validApkCertificateHash(args.file.apkCertificateHash);
   const der = standardBase64ToBytes(args.file.apkCertificateDerBase64 || "");
   if (
@@ -206,7 +278,7 @@ async function ensureOfficialGittrProof(args: {
     args.signerPubkeyHex !== GITTR_OWNER_PUBKEY_HEX ||
     !der
   ) {
-    return "skipped";
+    return { status: "skipped" };
   }
   const existing = await findAuthorizingApkProof({
     subscribe: args.subscribe,
@@ -215,7 +287,7 @@ async function ensureOfficialGittrProof(args: {
     certificateDer: der,
     certificateHash: hash,
   });
-  if (existing.ok) return "present";
+  if (existing.ok) return { status: "present" };
 
   const createdAt = Math.floor(Date.now() / 1000);
   let body: IdentityProofResponse;
@@ -276,20 +348,7 @@ async function ensureOfficialGittrProof(args: {
       "gittr built an ownership proof that does not match this APK."
     );
   }
-  const signed = await args.sign(unsigned);
-  const confirmed = await confirmOnRelays({
-    publish: args.publish,
-    subscribe: args.subscribe,
-    event: signed,
-    relays: args.relays,
-    requireZapstore: true,
-  });
-  if (!confirmed.some(relayIsZapstore)) {
-    throw new Error(
-      "Zapstore’s relay did not accept the ownership proof. Publish again in a moment."
-    );
-  }
-  return "published";
+  return { status: "signed", event: await args.sign(unsigned) };
 }
 
 type ListedEvent = { id?: string; kind?: number; tags?: string[][] };
@@ -388,16 +447,18 @@ export async function publishSoftwareAnnounce(
     const withPubkey = { ...unsigned, pubkey: signerPubkey };
     return signer.signEvent(withPubkey);
   };
+  let proofWithRelease: NostrEvent | null = null;
   if (primaryIsApk) {
-    const officialProof = await ensureOfficialGittrProof({
+    const officialProof = await signOfficialGittrProof({
       file: primaryPreview,
       signerPubkeyHex: signerPubkey,
       relays,
       subscribe: args.subscribe,
-      publish: args.publish,
       sign,
     });
-    if (officialProof !== "published") {
+    if (officialProof.status === "signed") {
+      proofWithRelease = officialProof.event;
+    } else if (officialProof.status === "skipped") {
       await requireApkOwnershipProof({
         file: primaryPreview,
         signerPubkeyHex: signerPubkey,
@@ -500,7 +561,39 @@ export async function publishSoftwareAnnounce(
     }
   };
   const landed: string[] = [];
-  for (const ev of publishedAssets) {
+  if (proofWithRelease) {
+    const together = [
+      ...publishedAssets,
+      signedRelease,
+      signedApp,
+      proofWithRelease,
+    ];
+    const togetherResult = await confirmTogether({
+      publish: args.publish,
+      subscribe: args.subscribe,
+      events: together,
+      relays,
+      mustSeeOnZapstore: [
+        signedPrimary.id,
+        signedRelease.id,
+        proofWithRelease.id,
+      ],
+    });
+    remember(togetherResult.relays);
+    const zapstoreKept = new Set(togetherResult.zapstoreEventIds);
+    if (
+      !zapstoreKept.has(signedPrimary.id) ||
+      !zapstoreKept.has(signedRelease.id) ||
+      !zapstoreKept.has(proofWithRelease.id)
+    ) {
+      await withdraw(together.map((event) => event.id));
+      throw new Error(
+        "Zapstore’s relay did not keep this release with its ownership proof. Publish again in a moment."
+      );
+    }
+    landed.push(...publishedAssets.map((event) => event.id));
+  }
+  for (const ev of proofWithRelease ? [] : publishedAssets) {
     const mustLand = zapstoreListing && eventIsApk(ev);
     const urls = await confirmOnRelays({
       publish: args.publish,
@@ -519,28 +612,36 @@ export async function publishSoftwareAnnounce(
     landed.push(ev.id);
   }
 
-  const releaseUrls = await confirmOnRelays({
-    publish: args.publish,
-    subscribe: args.subscribe,
-    event: signedRelease,
-    relays,
-    requireZapstore: zapstoreListing,
-  });
+  const releaseUrls = proofWithRelease
+    ? []
+    : await confirmOnRelays({
+        publish: args.publish,
+        subscribe: args.subscribe,
+        event: signedRelease,
+        relays,
+        requireZapstore: zapstoreListing,
+      });
   remember(releaseUrls);
-  if (zapstoreListing && !releaseUrls.some(relayIsZapstore)) {
+  if (
+    !proofWithRelease &&
+    zapstoreListing &&
+    !releaseUrls.some(relayIsZapstore)
+  ) {
     await withdraw([signedRelease.id, ...landed]);
     throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
   }
 
-  const appUrls = await confirmOnRelays({
-    publish: args.publish,
-    subscribe: args.subscribe,
-    event: signedApp,
-    relays,
-    requireZapstore: zapstoreListing,
-  });
+  const appUrls = proofWithRelease
+    ? []
+    : await confirmOnRelays({
+        publish: args.publish,
+        subscribe: args.subscribe,
+        event: signedApp,
+        relays,
+        requireZapstore: zapstoreListing,
+      });
   remember(appUrls);
-  if (zapstoreListing && !appUrls.some(relayIsZapstore)) {
+  if (!proofWithRelease && zapstoreListing && !appUrls.some(relayIsZapstore)) {
     await withdraw([signedApp.id, signedRelease.id, ...landed]);
     throw new Error(announceZapstoreProofMessage({ reason: "relay-rejected" }));
   }
