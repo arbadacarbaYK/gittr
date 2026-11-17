@@ -9,6 +9,7 @@ import {
   type NostrEventLike,
   type ParsedSoftwareApp,
   type ParsedSoftwareRelease,
+  collapseSoftwareAppsToLatestPerRepo,
   collectNip09SoftwareDeletions,
   gittrRepoPathFromNip34A,
   gittrRepoPathFromRepositoryUrl,
@@ -184,6 +185,51 @@ describe("gittrRepoPath from NIP-82 apps", () => {
       ],
     });
     expect(parsed?.gittrRepoPath).toBe(expected);
+  });
+});
+
+describe("collapseSoftwareAppsToLatestPerRepo", () => {
+  it("keeps the newer package id for the same repository", () => {
+    const owner = "aa".repeat(32);
+    const repo = "https://github.com/arbadacarbaYK/gittr";
+    const older = parseSoftwareApp({
+      id: "a".repeat(64),
+      pubkey: owner,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 10,
+      content: "",
+      tags: [
+        ["d", "space.gittr.app"],
+        ["name", "gittr"],
+        ["repository", repo],
+      ],
+    })!;
+    const newer = parseSoftwareApp({
+      id: "b".repeat(64),
+      pubkey: owner,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 20,
+      content: "",
+      tags: [
+        ["d", "gittr"],
+        ["name", "gittr"],
+        ["repository", repo],
+      ],
+    })!;
+    const other = parseSoftwareApp({
+      id: "c".repeat(64),
+      pubkey: owner,
+      kind: KIND_SOFTWARE_APPLICATION,
+      created_at: 30,
+      content: "",
+      tags: [
+        ["d", "com.other.app"],
+        ["name", "Other"],
+        ["repository", "https://github.com/other/app"],
+      ],
+    })!;
+    const out = collapseSoftwareAppsToLatestPerRepo([older, newer, other]);
+    expect(out.map((a) => a.appId).sort()).toEqual(["com.other.app", "gittr"]);
   });
 });
 

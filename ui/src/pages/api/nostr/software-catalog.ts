@@ -6,6 +6,7 @@ import {
   type ParsedSoftwareApp,
   type ParsedSoftwareRelease,
   appDedupKey,
+  collapseSoftwareAppsToLatestPerRepo,
   collectNip09SoftwareDeletions,
   dedupeSoftwareApps,
   mergeDeletedEventAuthors,
@@ -295,7 +296,9 @@ async function fetchCatalogFromRelays(
   apps = sortSoftwareAppsByCreatedAt(apps);
   const deletionAuthors = Object.fromEntries(deletedEventAuthors);
   const deletionAddrs = [...deletedAddressKeys];
-  apps = omitDeletedSoftwareApps(apps, deletionAuthors, deletionAddrs);
+  apps = collapseSoftwareAppsToLatestPerRepo(
+    omitDeletedSoftwareApps(apps, deletionAuthors, deletionAddrs)
+  );
 
   const toRecord = (m: Map<string, ParsedSoftwareRelease[]>) => {
     const out: Record<string, ParsedSoftwareRelease[]> = {};
@@ -430,10 +433,12 @@ function mergeCatalogResponse(
     : !!previous?.zapstoreBackfillDone &&
       until === (previous?.zapstoreUntil ?? until);
   return {
-    apps: omitDeletedSoftwareApps(
-      mergeSoftwareApps(previous?.apps, incoming.apps),
-      deletedEventAuthors,
-      deletedAddressKeys
+    apps: collapseSoftwareAppsToLatestPerRepo(
+      omitDeletedSoftwareApps(
+        mergeSoftwareApps(previous?.apps, incoming.apps),
+        deletedEventAuthors,
+        deletedAddressKeys
+      )
     ),
     releasesByApp: omitDeletedReleaseRecords(
       mergeReleaseRecords(previous?.releasesByApp, incoming.releasesByApp),
@@ -493,10 +498,12 @@ async function ensureDiskCatalog(): Promise<void> {
         globalCache = {
           at: snap.at,
           catalog: repairZapstoreCursor({
-            apps: omitDeletedSoftwareApps(
-              snap.apps,
-              snap.deletedEventAuthors || {},
-              snap.deletedAddressKeys || []
+            apps: collapseSoftwareAppsToLatestPerRepo(
+              omitDeletedSoftwareApps(
+                snap.apps,
+                snap.deletedEventAuthors || {},
+                snap.deletedAddressKeys || []
+              )
             ),
             releasesByApp: snap.releasesByApp || {},
             releasesByAppId: snap.releasesByAppId || {},

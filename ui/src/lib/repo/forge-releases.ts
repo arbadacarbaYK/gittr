@@ -118,7 +118,13 @@ export function resolveAnnounceAppId(args: {
   const suggested = suggestAppIdFromRepo(args.repo, args.ownerPubkeyHex);
   const existing = (args.existingAppId || "").trim();
   if (!existing) return suggested;
-  if (isOfficialGittrAndroidRepo(args) && !existing.includes(".")) {
+  // All-caps display name accidentally stored as an id. A real published
+  // id such as `gittr` is kept so the next publish does not fork the old package.
+  if (
+    isOfficialGittrAndroidRepo(args) &&
+    existing === existing.toUpperCase() &&
+    existing.toLowerCase() === (args.repo || "").trim().toLowerCase()
+  ) {
     return suggested;
   }
   return existing;

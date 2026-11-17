@@ -298,10 +298,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   }, [repoName]);
 
   useEffect(() => {
-    if (isOfficialGittr) {
-      setAppId(GITTR_ANDROID_APP_ID);
-      return;
-    }
     setAppId((prev) => {
       if (prev) return prev;
       return resolveAnnounceAppId({
@@ -310,7 +306,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         ownerPubkeyHex,
       });
     });
-  }, [existingAppId, repoName, ownerPubkeyHex, isOfficialGittr]);
+  }, [existingAppId, repoName, ownerPubkeyHex]);
 
   useEffect(() => {
     if (isOfficialGittr) setPinToNgitBlossom(true);
@@ -485,7 +481,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       const result = await publishSoftwareAnnounce({
         input: {
           forge: forgeForPublish,
-          appId: isOfficialGittr ? GITTR_ANDROID_APP_ID : appId.trim(),
+          appId: appId.trim(),
           appName: appName.trim(),
           summary: summaryForNip82Announce({
             repo: repoName,
@@ -792,22 +788,15 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                 App id
               </span>
               <Input
-                value={isOfficialGittr ? GITTR_ANDROID_APP_ID : appId}
-                onChange={(e) => {
-                  if (!isOfficialGittr) setAppId(e.target.value);
-                }}
-                readOnly={isOfficialGittr}
+                value={appId}
+                onChange={(e) => setAppId(e.target.value)}
                 placeholder="com.example.app"
                 className="h-8 text-xs"
               />
               {isOfficialGittr ? (
                 <p className="text-[10px] leading-snug text-zinc-500">
-                  This stays{" "}
-                  <code className="rounded bg-zinc-900 px-1">
-                    {GITTR_ANDROID_APP_ID}
-                  </code>
-                  , the Android package. The title people see is the display
-                  name. A different id would publish a second app.
+                  Apps and your profile show the newest id for this repo. The
+                  current one is the line under the title on the card.
                 </p>
               ) : (existingAppId || "").trim() ? (
                 <p className="text-[10px] leading-snug text-zinc-500">

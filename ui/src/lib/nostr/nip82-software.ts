@@ -439,6 +439,74 @@ export function appDedupKey(pubkey: string, appId: string): string {
   return `${pubkey}:${appId}`;
 }
 
+function normalizeSoftwareRepositoryUrl(url?: string): string {
+  const raw = (url || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    const path = u.pathname
+      .replace(/\.git$/i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+    return `${host}${path}`;
+  } catch {
+    return raw
+      .toLowerCase()
+      .replace(/\.git$/i, "")
+      .replace(/\/+$/, "");
+  }
+}
+
+function softwareAppRepoKeys(app: ParsedSoftwareApp): string[] {
+  const owner = (app.pubkey || "").toLowerCase();
+  const keys: string[] = [];
+  if (app.gittrRepoPath) {
+    keys.push(`${owner}|path|${app.gittrRepoPath.toLowerCase()}`);
+  }
+  const repo = normalizeSoftwareRepositoryUrl(app.repository);
+  if (repo) keys.push(`${owner}|repo|${repo}`);
+  if (keys.length === 0)
+    keys.push(`${owner}|id|${(app.appId || "").toLowerCase()}`);
+  return keys;
+}
+
+/**
+ * One card per source repo. A newer package id replaces the older one
+ * (space.gittr.app then gittr is still one app).
+ */
+export function collapseSoftwareAppsToLatestPerRepo(
+  apps: ParsedSoftwareApp[] | undefined | null
+): ParsedSoftwareApp[] {
+  const list = (apps || []).filter((app) => app?.pubkey && app?.appId);
+  const parent = list.map((_, i) => i);
+  const find = (i: number): number => {
+    const current = parent[i] ?? i;
+    if (current !== i) parent[i] = find(current);
+    return parent[i] ?? i;
+  };
+  const union = (a: number, b: number) => {
+    parent[find(a)] = find(b);
+  };
+  const seen = new Map<string, number>();
+  list.forEach((app, i) => {
+    for (const key of softwareAppRepoKeys(app)) {
+      const prev = seen.get(key);
+      if (prev == null) seen.set(key, i);
+      else union(prev, i);
+    }
+  });
+  const best = new Map<number, ParsedSoftwareApp>();
+  list.forEach((app, i) => {
+    const root = find(i);
+    const prev = best.get(root);
+    if (!prev || (app.createdAt || 0) >= (prev.createdAt || 0)) {
+      best.set(root, app);
+    }
+  });
+  return sortSoftwareAppsByCreatedAt([...best.values()]);
+}
+
 export function softwareAppBelongsToOwner(
   app: ParsedSoftwareApp,
   ownerHex: string

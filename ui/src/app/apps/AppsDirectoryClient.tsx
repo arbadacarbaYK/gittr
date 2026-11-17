@@ -22,6 +22,7 @@ import {
   type ParsedSoftwareAsset,
   type ParsedSoftwareRelease,
   appDedupKey,
+  collapseSoftwareAppsToLatestPerRepo,
   collectNip09SoftwareDeletions,
   dedupeSoftwareApps,
   mergeSoftwareApps,
@@ -251,10 +252,12 @@ export function AppsDirectoryClient({
     if (leavingRef.current) return;
     const map = dedupeSoftwareApps(rawAppEventsRef.current);
     setApps(
-      omitDeletedSoftwareApps(
-        sortSoftwareAppsByCreatedAt(Array.from(map.values())),
-        deletedEventAuthorsRef.current,
-        deletedAddressKeysRef.current
+      collapseSoftwareAppsToLatestPerRepo(
+        omitDeletedSoftwareApps(
+          sortSoftwareAppsByCreatedAt(Array.from(map.values())),
+          deletedEventAuthorsRef.current,
+          deletedAddressKeysRef.current
+        )
       )
     );
   }, []);
@@ -417,10 +420,12 @@ export function AppsDirectoryClient({
       }
       if (data.apps?.length) {
         setApps((prev) =>
-          omitDeletedSoftwareApps(
-            mergeSoftwareApps(prev, data.apps),
-            deletedEventAuthorsRef.current,
-            deletedAddressKeysRef.current
+          collapseSoftwareAppsToLatestPerRepo(
+            omitDeletedSoftwareApps(
+              mergeSoftwareApps(prev, data.apps),
+              deletedEventAuthorsRef.current,
+              deletedAddressKeysRef.current
+            )
           )
         );
         for (const a of data.apps) {

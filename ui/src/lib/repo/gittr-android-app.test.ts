@@ -79,7 +79,7 @@ describe("official gittr Android announce", () => {
     );
   });
 
-  it("ignores stored display names like GITTR for the official package id", () => {
+  it("ignores an all-caps display name, and keeps a published gittr id", () => {
     expect(
       resolveAnnounceAppId({
         existingAppId: "GITTR",
@@ -87,6 +87,13 @@ describe("official gittr Android announce", () => {
         ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
       })
     ).toBe(GITTR_ANDROID_APP_ID);
+    expect(
+      resolveAnnounceAppId({
+        existingAppId: "gittr",
+        repo: "gittr",
+        ownerPubkeyHex: GITTR_OWNER_PUBKEY_HEX,
+      })
+    ).toBe("gittr");
     expect(
       resolveAnnounceAppId({
         existingAppId: GITTR_LEGACY_SUGGESTED_APP_ID,
