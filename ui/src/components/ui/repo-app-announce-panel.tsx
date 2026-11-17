@@ -155,6 +155,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [forge, setForge] = useState<ForgeReleasesOk | null>(null);
   const [appId, setAppId] = useState("");
+  const appIdTouchedRef = useRef(false);
   const [appName, setAppName] = useState(repoName);
   const [selectedAssetUrl, setSelectedAssetUrl] = useState<string>("");
   const [publishResult, setPublishResult] = useState<{
@@ -203,7 +204,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         }
         setForge(data);
         setAppId((prev) => {
-          if (prev) return prev;
+          if (appIdTouchedRef.current && prev) return prev;
           return resolveAnnounceAppId({
             existingAppId,
             repo: data.repo,
@@ -298,14 +299,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   }, [repoName]);
 
   useEffect(() => {
-    setAppId((prev) => {
-      if (prev) return prev;
-      return resolveAnnounceAppId({
+    if (appIdTouchedRef.current) return;
+    setAppId(
+      resolveAnnounceAppId({
         existingAppId,
         repo: repoName,
         ownerPubkeyHex,
-      });
-    });
+      })
+    );
   }, [existingAppId, repoName, ownerPubkeyHex]);
 
   useEffect(() => {
@@ -802,7 +803,10 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               </span>
               <Input
                 value={appId}
-                onChange={(e) => setAppId(e.target.value)}
+                onChange={(e) => {
+                  appIdTouchedRef.current = true;
+                  setAppId(e.target.value);
+                }}
                 placeholder="com.example.app"
                 className="h-8 text-xs"
               />

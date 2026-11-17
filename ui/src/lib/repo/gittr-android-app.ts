@@ -43,8 +43,8 @@ export const GITTR_OFFICIAL_APP_TOPICS = [
 export const GITTR_LEGACY_SUGGESTED_APP_ID = "space.gittr.gittr";
 
 /**
- * First gittr announce used the display name as `d` (a second listing).
- * Your Apps can NIP-09-delete this without touching `space.gittr.app`.
+ * First gittr announce used the all-caps display name as `d`.
+ * The lowercase id `gittr` is a real package and must not be treated as stray.
  */
 export const GITTR_STRAY_APP_IDS = ["GITTR"] as const;
 

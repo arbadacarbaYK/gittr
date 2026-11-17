@@ -93,14 +93,14 @@ export function pickListedAppForRepo(
 }
 
 /**
- * Local announce wins (next Push). Catalog fills in for visitors who never
- * announced in this browser. Stray `GITTR` is ignored.
+ * The live catalog id wins. A stored id from an older package stays only
+ * until the catalog answers. Stray `GITTR` is ignored.
  */
 export function resolveRepoAppId(
   localAnnouncedAppId?: string | null,
   catalogAppId?: string | null
 ): string | null {
-  for (const raw of [localAnnouncedAppId, catalogAppId]) {
+  for (const raw of [catalogAppId, localAnnouncedAppId]) {
     const id = (raw || "").trim();
     if (id && !isStraySoftwareAppId(id)) return id;
   }

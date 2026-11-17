@@ -26,6 +26,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useMetadata from "@/lib/nostr/useMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { hasWriteAccess } from "@/lib/repo-permissions";
+import { resolveRepoAppId } from "@/lib/repos/listed-app-for-repo";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   type RepoFileEntry,
@@ -33,6 +34,7 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { useListedAppForRepo } from "@/lib/repos/use-listed-app-for-repo";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -114,6 +116,12 @@ export default function RepoReleasesPage({
     string | undefined
   >();
   const [announceTag, setAnnounceTag] = useState<string | null>(null);
+  const listedApp = useListedAppForRepo({
+    ownerPubkeyHex,
+    repoName: resolvedParams.repo,
+    entity: resolvedParams.entity,
+  });
+  const announceAppId = resolveRepoAppId(announcedAppId, listedApp?.appId);
 
   const forgeSourceLinked = Boolean(
     sourceUrl &&
@@ -878,7 +886,7 @@ export default function RepoReleasesPage({
             repoName={resolvedParams.repo}
             repoSummary={repoSummary}
             repoTopics={repoTopics}
-            existingAppId={announcedAppId}
+            existingAppId={announceAppId}
             repoLogoUrl={repoLogoUrl || repoLogo}
             cloneUrls={repoClone}
             repoFiles={repoFiles}

@@ -24365,13 +24365,14 @@ export function RepoCodePage() {
                               (repo as { topics?: string[] } | null)?.topics ||
                               []
                             }
-                            existingAppId={
+                            existingAppId={resolveRepoAppId(
                               (repoData as { announcedAppId?: string } | null)
                                 ?.announcedAppId ||
-                              (repo as { announcedAppId?: string } | null)
-                                ?.announcedAppId ||
-                              null
-                            }
+                                (repo as { announcedAppId?: string } | null)
+                                  ?.announcedAppId ||
+                                null,
+                              catalogAppId
+                            )}
                             repoLogoUrl={
                               (repoData as { logoUrl?: string } | null)
                                 ?.logoUrl ||

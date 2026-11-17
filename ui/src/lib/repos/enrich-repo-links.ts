@@ -144,9 +144,10 @@ export function removeStaleAutoLinks(
 }
 
 export function isStraySoftwareAppId(appId?: string | null): boolean {
-  const id = (appId || "").trim().toLowerCase();
+  const id = (appId || "").trim();
   if (!id) return false;
-  return GITTR_STRAY_APP_IDS.some((s) => s.toLowerCase() === id);
+  // Only the accidental all-caps display name. The published id `gittr` is real.
+  return GITTR_STRAY_APP_IDS.some((s) => s === id);
 }
 
 /** True when the visible label is the old `App (package.id)` form. */

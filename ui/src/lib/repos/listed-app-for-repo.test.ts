@@ -127,10 +127,8 @@ describe("pickListedAppForRepo", () => {
 });
 
 describe("resolveRepoAppId", () => {
-  it("prefers the local announce over the catalog", () => {
-    expect(resolveRepoAppId("space.gittr.buhogo", "com.other.app")).toBe(
-      "space.gittr.buhogo"
-    );
+  it("prefers the live catalog id over a stored older package", () => {
+    expect(resolveRepoAppId("space.gittr.app", "gittr")).toBe("gittr");
   });
 
   it("uses the catalog when this browser never announced", () => {
