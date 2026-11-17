@@ -101,16 +101,21 @@ describe("projectsForTab", () => {
     source: "local" as const,
   };
 
-  it("shows only GitHub boards on forge-backed repos", () => {
+  it("shows imported and local boards together", () => {
     expect(
       projectsForTab([github, local], "forge-readonly").map((p) => p.id)
-    ).toEqual(["gh-project-abc"]);
-  });
-
-  it("shows only local boards on nostr-only repos", () => {
+    ).toEqual(["gh-project-abc", "project-1"]);
     expect(
       projectsForTab([github, local], "nostr-local").map((p) => p.id)
-    ).toEqual(["project-1"]);
+    ).toEqual(["gh-project-abc", "project-1"]);
+  });
+
+  it("hides a board the user removed", () => {
+    expect(
+      projectsForTab([{ ...local, hidden: true }, github], "nostr-local").map(
+        (p) => p.id
+      )
+    ).toEqual(["gh-project-abc"]);
   });
 
   it("keeps local boards when GitHub sync replaces GH boards", () => {
@@ -122,5 +127,51 @@ describe("projectsForTab", () => {
     expect(merged.find((p) => p.id === "gh-project-abc")?.name).toBe(
       "GitHub refreshed"
     );
+  });
+
+  it("does not reset a published GitHub board when GitHub is opened again", () => {
+    const published = {
+      ...github,
+      nostrD: "gittr--gh-project-abc",
+      items: [
+        {
+          id: "gh-item-1",
+          title: "Stay put",
+          status: "in_progress",
+          githubItemId: "ITEM1",
+        },
+      ],
+    };
+    const merged = mergeGithubProjectsIntoLocal(
+      [published],
+      [
+        {
+          ...github,
+          items: [
+            {
+              id: "gh-item-1",
+              title: "Stay put",
+              status: "todo",
+              githubItemId: "ITEM1",
+            },
+            {
+              id: "gh-item-2",
+              title: "New on GitHub",
+              status: "todo",
+              githubItemId: "ITEM2",
+            },
+          ],
+        },
+      ]
+    );
+    const board = merged.find((p) => p.id === "gh-project-abc");
+    const items = board?.items as Array<{
+      githubItemId?: string;
+      status?: string;
+    }>;
+    expect(items.find((item) => item.githubItemId === "ITEM1")?.status).toBe(
+      "in_progress"
+    );
+    expect(items.some((item) => item.githubItemId === "ITEM2")).toBe(true);
   });
 });

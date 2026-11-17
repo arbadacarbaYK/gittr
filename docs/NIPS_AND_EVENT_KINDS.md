@@ -181,13 +181,14 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Writes (Settings → Profile)**: save publishes **kind 0** (metadata) **and** **kind 10011** (identities) together — not one instead of the other.
 - **UI**: Settings → Profile → Verified Identities; GitHub OAuth on Settings → SSH Keys can prefill a github claim before you save Profile
 
-### Projects / Kanban (no finalized NIP yet)
+### Projects / Kanban (draft NIP-100, kinds 30301 / 30302)
 
-- **gittr ToDo tab** (`/{entity}/{repo}/projects`): **Forge-backed** repos (GitHub/GitLab/Codeberg/Gitea `source`) show the forge board **read-only** (GitHub Projects V2 import). gittr does **not** write cards back, and does **not** mix this-browser boards into that view. **Nostr-only** repos keep boards in this browser (`gittr_projects__*`, including legacy `gittr_projects_<entity>_<repo>`). There is no kanban NIP yet, so there is no Nostr copy to choose; restart keeps the same browser’s board. **Quick Add from Open Issues** lists the same currently-open tickets as the Issues tab (GitHub + Nostr). Closed tickets drop off when GitHub refetch or NIP-34 status events (1630/1631/1632) update `localStorage`.
-- **Policy**: if the git source is a forge, ToDo/Discussions **show the forge copy only** (read-only). If the repo is Nostr-only, ToDo is this-browser (until a kanban NIP exists) and Discussions are NIP-23 with a **Nostr vs this-browser** switch when both copies exist. Do **not** write column moves back to GitHub.
-- **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
-- **Future GitHub write-back**: optional **user GitHub OAuth** (not a new kind) when NIP-39 / upstream identity matches — see helper-tools `snippets/github-oauth-writeback/`. Keep Nostr as collaboration truth; OAuth is a forge bridge.
-- **Helper write-up for a future NIP**: `gittr-helper-tools/snippets/todos-discussions-kanban/` (surfaces, rules, suggested event shape).
+- **gittr ToDo tab** (`/{entity}/{repo}/projects`): Kanban and Roadmap for one repo. **Push sends the board to Nostr** as kind **30301** (board) and **30302** (cards), the draft in [nips#1665](https://github.com/nostr-protocol/nips/pull/1665) (same text as Kanbanstr’s `NIP-100.md`). The board’s `a` tag is the repo announcement `30617:<owner>:<repo>`. Card `s` is the column **id** (`todo`, `in_progress`, `done`), not the column title. A personal board with no repo `a` tag is out of this tab.
+- **Issues and pull requests** stay kinds **1621** / **1618**. On the board they are tracker cards (`k` + `e`) when the ticket is a Nostr event id. A GitHub `issue-N` / `pr-N` is a normal card with an `issue` or `pr` tag. Closed or merged status (1631/1632, or a cached closed/merged row) moves the card to Done. A newer open status moves it out of Done only — In Progress stays while the ticket is open. Dragging a card does not close the ticket.
+- **Forge import is one-way.** GitHub Projects V2 still fills the tab. After that, edits stay on gittr and Push publishes them to Nostr. GitHub, GitLab, Codeberg, and Gitea are not written back. A later GitHub refresh appends new items and does not reset cards on a board that was already pushed. GitLab, Codeberg, and Gitea have no project import; create a board here and push it to Nostr.
+- **This browser** keeps `gittr_projects__*` as a cache, including unpublished edits. Relay copies fill in when they are newer and the board is not dirty.
+- **Not used:** GitPlaza list kinds 37733/37734 ([nips#1804](https://github.com/nostr-protocol/nips/pull/1804)) and Headway’s provisional 30619/30620 (those numbers are already used by other apps).
+- **Helper write-up**: `gittr-helper-tools/snippets/todos-discussions-kanban/`.
 
 ### Kind 30617 clone URLs (`git.gittr.space`)
 

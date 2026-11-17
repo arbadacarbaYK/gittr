@@ -45,6 +45,13 @@ export const KIND_CODE_SNIPPET = 1337; // NIP-C0: Code snippets
 export const KIND_NSITE_ROOT = 15128;
 /** NIP-5A: Named site manifest (addressable per pubkey + `d`). */
 export const KIND_NSITE_NAMED = 35128;
+/**
+ * Kanban board (draft NIP-100 / nips#1665). Addressable.
+ * Column ids live on the board; card status uses the column id, not the title.
+ */
+export const KIND_KANBAN_BOARD = 30301;
+/** Kanban card (draft NIP-100 / nips#1665). Addressable. May track a NIP-34 issue or PR. */
+export const KIND_KANBAN_CARD = 30302;
 
 function requireNip34Field(
   value: string | undefined,

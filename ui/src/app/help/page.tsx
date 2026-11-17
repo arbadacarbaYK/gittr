@@ -3962,22 +3962,23 @@ export default function HelpPage() {
             <HelpTopic id="projects" title={<>Projects, Kanban, milestones</>}>
               <p>
                 Each repo has a <strong>ToDo</strong> tab (Projects) with{" "}
-                <strong>Kanban</strong> and <strong>Roadmap</strong> views. If
-                the git source is GitHub/GitLab/Codeberg, gittr shows that
-                forge’s board <strong>read-only</strong> — it does not write
-                cards back, and it does not keep a second this-browser board in
-                that view (that is why notes seemed to vanish after a restart).
-                Nostr-only repos keep the board in this browser until a kanban
-                NIP exists; drag cards to update status.{" "}
-                <strong>Milestones</strong> live in repo Settings and on
-                issues/PRs. Open{" "}
+                <strong>Kanban</strong> and <strong>Roadmap</strong> views.
+                Owners and maintainers edit the board here.{" "}
+                <strong>Push to Nostr</strong> publishes it as a general kanban
+                board (kinds 30301 and 30302) linked to this repo. Issues and
+                pull requests sit on that board as cards; closing a ticket
+                moves its card to Done and does not require the forge. A GitHub
+                project can fill the board first. Later edits stay on Nostr —
+                gittr does not write them back to GitHub, GitLab, Codeberg, or
+                Gitea. <strong>Milestones</strong> stay in repo Settings and on
+                the issues and pull requests. Open{" "}
                 <Link
                   href="/projects"
                   className="text-purple-400 hover:text-purple-300"
                 >
                   /projects
                 </Link>{" "}
-                for the aggregated board.
+                for every board in this browser.
               </p>
             </HelpTopic>
 

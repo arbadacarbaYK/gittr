@@ -66,20 +66,25 @@ export default function UserProjectsPage() {
           );
 
           projects.forEach((project: any) => {
-            if (project.status === "active" && project.items.length > 0) {
-              aggregated.push({
-                repoId: `${repo.entity}/${repo.repo || repo.slug}`,
-                repoName: repo.name || repo.repo || repo.slug,
-                projectId: project.id,
-                projectName: project.name,
-                items: project.items.map((item: any) => ({
-                  id: item.id,
-                  title: item.title,
-                  status: item.status,
-                  type: item.type,
-                })),
-              });
+            if (
+              project.hidden ||
+              project.status !== "active" ||
+              project.items.length === 0
+            ) {
+              return;
             }
+            aggregated.push({
+              repoId: `${repo.entity}/${repo.repo || repo.slug}`,
+              repoName: repo.name || repo.repo || repo.slug,
+              projectId: project.id,
+              projectName: project.name,
+              items: project.items.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                status: item.status,
+                type: item.type,
+              })),
+            });
           });
         } catch {}
       });

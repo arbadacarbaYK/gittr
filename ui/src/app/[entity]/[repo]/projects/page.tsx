@@ -14,9 +14,27 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  KIND_DELETION,
+  KIND_KANBAN_BOARD,
+  KIND_KANBAN_CARD,
+} from "@/lib/nostr/events";
+import {
   NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
+import { repoAnnouncementAddress } from "@/lib/payments/nip57-zap";
+import {
+  applyTicketStatuses,
+  parseKanbanBoardEvent,
+  parseKanbanCardEvent,
+  parseKanbanDeletion,
+  upsertRelayKanbanBoard,
+} from "@/lib/projects/kanban-nip";
+import {
+  publishKanbanBoard,
+  publishKanbanBoardDeletion,
+} from "@/lib/projects/publish-kanban";
 import {
   isGithubProject,
   loadProjects,
@@ -32,7 +50,10 @@ import {
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h } from "@/lib/utils/date-format";
-import { readRepoIssuesFromLocalStorage } from "@/lib/utils/entity-normalizer";
+import {
+  readRepoIssuesFromLocalStorage,
+  readRepoPullsFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import {
   issueOrPrListRef,
@@ -67,6 +88,12 @@ interface Project {
   view: "kanban" | "roadmap"; // View mode
   source?: "github" | "local";
   githubProjectId?: string;
+  nostrD?: string;
+  nostrAuthor?: string;
+  nostrUpdatedAt?: number;
+  nostrDirty?: boolean;
+  nostrBoardHash?: string;
+  hidden?: boolean;
 }
 
 interface ProjectItem {
@@ -84,6 +111,7 @@ interface ProjectItem {
   author?: string;
   source?: "github" | "local";
   githubItemId?: string;
+  publishedHash?: string;
 }
 
 function normalizeProjects(stored: Project[]): Project[] {
@@ -135,6 +163,7 @@ export default function ProjectsPage() {
     pubkey: currentUserPubkey,
     remoteSigner,
     subscribe,
+    publish,
     defaultRelays,
   } = useNostrContext();
 
@@ -158,6 +187,8 @@ export default function ProjectsPage() {
   const [githubImportNote, setGithubImportNote] = useState<string | null>(null);
   const [tabMode, setTabMode] = useState<CollaborationTabMode | null>(null);
   const [forgeLabel, setForgeLabel] = useState("GitHub");
+  const [pushNote, setPushNote] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
 
   const reloadProjects = useCallback(() => {
     try {
@@ -231,7 +262,7 @@ export default function ProjectsPage() {
         if (mode === "forge-readonly" && !isGithubCollaborationUrl(url)) {
           if (!cancelled) {
             setGithubImportNote(
-              "This repo’s git source is on a forge. ToDo shows the forge board only (read-only). gittr does not write Projects back, and only GitHub Projects V2 can be imported here."
+              "This forge has no project import. A board you create here pushes to Nostr only."
             );
           }
           return;
@@ -239,7 +270,7 @@ export default function ProjectsPage() {
         if (mode === "nostr-local") {
           if (!cancelled) {
             setGithubImportNote(
-              "Nostr-only repo — ToDo boards stay in this browser (there is no kanban NIP yet)."
+              "Boards push to Nostr and stay in this browser as a cache."
             );
           }
           return;
@@ -250,9 +281,9 @@ export default function ProjectsPage() {
           reloadProjects();
           setGithubImportNote(
             result.imported > 0
-              ? `Synced ${result.imported} GitHub Project${
+              ? `Imported ${result.imported} GitHub Project${
                   result.imported === 1 ? "" : "s"
-                } (read-only). gittr does not write back to GitHub.`
+                }. Edits push to Nostr, not back to GitHub.`
               : "No GitHub Projects on this repo (or none visible to the token)."
           );
         } else if (result.error && result.error !== "not-github") {
@@ -292,6 +323,152 @@ export default function ProjectsPage() {
     };
   }, [loadOpenIssues]);
 
+  useEffect(() => {
+    const apply = () => {
+      const tickets = new Map<string, string>();
+      const remember = (row: { id?: string; status?: string }) => {
+        if (!row?.id || !row.status) return;
+        tickets.set(String(row.id), String(row.status));
+        tickets.set(String(row.id).toLowerCase(), String(row.status));
+      };
+      for (const row of readRepoIssuesFromLocalStorage(entity, repo) as Array<{
+        id?: string;
+        status?: string;
+      }>) {
+        remember(row);
+      }
+      for (const row of readRepoPullsFromLocalStorage(entity, repo) as Array<{
+        id?: string;
+        status?: string;
+      }>) {
+        remember(row);
+      }
+      if (tickets.size === 0) return;
+      const stored = loadProjects(entity, repo);
+      let changed = false;
+      const next = stored.map((board) => {
+        const applied = applyTicketStatuses(
+          (board.items || []) as ProjectItem[],
+          tickets
+        );
+        if (!applied.changed) return board;
+        changed = true;
+        return { ...board, items: applied.items, nostrDirty: true };
+      });
+      if (!changed) return;
+      persistProjects(entity, repo, next);
+      setProjects(projectsForTab(next, tabMode || "nostr-local") as Project[]);
+    };
+    apply();
+    window.addEventListener("gittr:issue-updated", apply);
+    window.addEventListener("gittr:pr-updated", apply);
+    return () => {
+      window.removeEventListener("gittr:issue-updated", apply);
+      window.removeEventListener("gittr:pr-updated", apply);
+    };
+  }, [entity, repo, tabMode]);
+
+  const repoNostrAddress = useCallback(() => {
+    try {
+      const repos = loadStoredRepos();
+      const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const owner = rec ? getRepoOwnerPubkey(rec, entity) : null;
+      return owner ? repoAnnouncementAddress(owner, repo) : null;
+    } catch {
+      return null;
+    }
+  }, [entity, repo]);
+
+  useEffect(() => {
+    const repoAddress = repoNostrAddress();
+    if (!repoAddress || !subscribe || !defaultRelays?.length) return;
+    const boards = new Map<string, ReturnType<typeof parseKanbanBoardEvent>>();
+    const cards: NonNullable<ReturnType<typeof parseKanbanCardEvent>>[] = [];
+    const deleted = new Set<string>();
+    let cardUnsub: (() => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      let list = loadProjects(entity, repo);
+      for (const address of deleted) {
+        if (address.startsWith(`${KIND_KANBAN_BOARD}:`)) {
+          list = list.map((row) => {
+            const coord =
+              row.nostrAuthor && row.nostrD
+                ? `${KIND_KANBAN_BOARD}:${row.nostrAuthor}:${row.nostrD}`
+                : "";
+            return coord === address ? { ...row, hidden: true } : row;
+          });
+        }
+      }
+      for (const board of boards.values()) {
+        if (!board) continue;
+        if (deleted.has(`${KIND_KANBAN_BOARD}:${board.author}:${board.d}`)) {
+          continue;
+        }
+        const visibleCards = cards.filter(
+          (card) => !deleted.has(`${KIND_KANBAN_CARD}:${card.author}:${card.d}`)
+        );
+        list = upsertRelayKanbanBoard(list, board, visibleCards);
+      }
+      persistProjects(entity, repo, list);
+      setProjects(projectsForTab(list, tabMode || "nostr-local") as Project[]);
+    };
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(flush, 250);
+    };
+    const subscribeCards = () => {
+      const coords = [...boards.values()]
+        .filter((board): board is NonNullable<typeof board> => !!board)
+        .map((board) => `${KIND_KANBAN_BOARD}:${board.author}:${board.d}`);
+      cardUnsub?.();
+      if (coords.length === 0) return;
+      cardUnsub = subscribe(
+        [{ kinds: [KIND_KANBAN_CARD], "#a": coords, limit: 200 }],
+        defaultRelays,
+        (event) => {
+          const card = parseKanbanCardEvent(event);
+          if (!card) return;
+          const key = `${card.author}:${card.d}`;
+          const index = cards.findIndex(
+            (row) => `${row.author}:${row.d}` === key
+          );
+          if (index >= 0) cards[index] = card;
+          else cards.push(card);
+          schedule();
+        }
+      );
+    };
+    const boardUnsub = subscribe(
+      [
+        {
+          kinds: [KIND_KANBAN_BOARD, KIND_DELETION],
+          "#a": [repoAddress],
+          limit: 40,
+        },
+      ],
+      defaultRelays,
+      (event) => {
+        const deletion = parseKanbanDeletion(event);
+        if (deletion) {
+          deletion.addresses.forEach((address) => deleted.add(address));
+          schedule();
+          return;
+        }
+        const board = parseKanbanBoardEvent(event);
+        if (!board || board.repoAddress !== repoAddress) return;
+        boards.set(`${board.author}:${board.d}`, board);
+        subscribeCards();
+        schedule();
+      }
+    );
+    return () => {
+      if (timer) clearTimeout(timer);
+      boardUnsub?.();
+      cardUnsub?.();
+    };
+  }, [defaultRelays, entity, repo, repoNostrAddress, subscribe, tabMode]);
+
   // Check if user has write access (owner or maintainer) - required for create/edit/delete
   useEffect(() => {
     try {
@@ -314,25 +491,92 @@ export default function ProjectsPage() {
   }, [entity, repo, currentUserPubkey]);
 
   const project = projects.find((p) => p.id === selectedProject);
-  const isGithubBoard =
-    !!project &&
-    (project.source === "github" || project.id.startsWith("gh-project-"));
-  /** Local boards are editable on Nostr-only repos. Forge boards are read-only. */
-  const canEditBoard = hasWrite && !isGithubBoard && tabMode === "nostr-local";
+  const isGithubBoard = !!project && isGithubProject(project);
+  /** Owners and maintainers edit here. Push sends the board to Nostr. */
+  const canEditBoard = hasWrite;
 
   const saveProjects = useCallback(
-    (updated: Project[]) => {
+    (updated: Project[], dirtyId?: string) => {
       const stored = loadProjects(entity, repo);
-      const githubKept = stored.filter((p) => isGithubProject(p));
-      const localKept = stored.filter((p) => !isGithubProject(p));
-      const next =
-        tabMode === "forge-readonly"
-          ? [...updated.filter((p) => isGithubProject(p)), ...localKept]
-          : [...githubKept, ...updated.filter((p) => !isGithubProject(p))];
+      const hidden = stored.filter(
+        (row) => row.hidden && !updated.some((next) => next.id === row.id)
+      );
+      const next = [
+        ...updated.map((row) =>
+          dirtyId && row.id === dirtyId ? { ...row, nostrDirty: true } : row
+        ),
+        ...hidden,
+      ];
       persistProjects(entity, repo, next);
       setProjects(projectsForTab(next, tabMode || "nostr-local") as Project[]);
     },
     [entity, repo, tabMode]
+  );
+
+  const pushBoard = useCallback(
+    async (
+      board: Project,
+      options?: { cardIds?: string[]; removed?: ProjectItem[] }
+    ) => {
+      const repoAddress = repoNostrAddress();
+      if (!repoAddress) {
+        setPushNote(
+          "Saved in this browser. This repo is not on Nostr yet, so the board cannot be pushed."
+        );
+        return;
+      }
+      const signer = await resolveNostrSigner({ remoteSigner });
+      if (!signer || !publish) {
+        setPushNote(
+          "Saved in this browser. Sign in to push this board to Nostr."
+        );
+        return;
+      }
+      setPushing(true);
+      setPushNote("Pushing to Nostr…");
+      try {
+        const stored = loadProjects(entity, repo);
+        const current =
+          (stored.find((row) => row.id === board.id) as Project | undefined) ||
+          board;
+        const result = await publishKanbanBoard({
+          project: { ...current, ...board, items: board.items },
+          repoName: repo,
+          repoAddress,
+          signer,
+          publish,
+          relays: defaultRelays,
+          removedItems: options?.removed,
+          cardIds: options?.cardIds,
+        });
+        const next = stored.some((row) => row.id === board.id)
+          ? stored.map((row) => (row.id === board.id ? result.project : row))
+          : [...stored, result.project];
+        persistProjects(entity, repo, next);
+        setProjects(
+          projectsForTab(next, tabMode || "nostr-local") as Project[]
+        );
+        setPushNote(
+          result.signed > 0 ? "Pushed to Nostr." : "Already on Nostr."
+        );
+      } catch (error) {
+        console.warn("[Projects] Nostr push failed:", error);
+        setPushNote(
+          "Saved in this browser. The Nostr push did not finish — use Push to try again."
+        );
+      } finally {
+        setPushing(false);
+      }
+    },
+    [
+      defaultRelays,
+      entity,
+      publish,
+      remoteSigner,
+      repo,
+      repoNostrAddress,
+      tabMode,
+    ]
   );
 
   const handleCreateProject = async () => {
@@ -347,14 +591,6 @@ export default function ProjectsPage() {
       return;
     }
 
-    if (tabMode === "forge-readonly") {
-      alert(
-        `This repo’s git source is on ${forgeLabel}. ToDo is a read-only mirror — add cards on ${forgeLabel}.`
-      );
-      return;
-    }
-
-    // Get private key for signing (required for project creation)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
     if (!signingCreds) {
       alert(NO_SIGNING_METHOD_MESSAGE);
@@ -380,8 +616,9 @@ export default function ProjectsPage() {
       source: "local",
     };
     const updated = [...projects, newProject];
-    saveProjects(updated);
+    saveProjects(updated, newProject.id);
     setSelectedProject(newProject.id);
+    void pushBoard(newProject, { cardIds: [] });
   };
 
   const handleAddItem = (
@@ -391,11 +628,7 @@ export default function ProjectsPage() {
   ) => {
     if (!project) return;
     if (!canEditBoard) {
-      alert(
-        tabMode === "forge-readonly" || isGithubBoard
-          ? `This board lives on ${forgeLabel}. gittr shows it read-only and does not write back.`
-          : "Only owners and maintainers can add items to this board."
-      );
+      alert("Only owners and maintainers can add items to this board.");
       return;
     }
 
@@ -417,7 +650,10 @@ export default function ProjectsPage() {
     const updated = projects.map((p) =>
       p.id === project.id ? { ...p, items: [...p.items, newItem] } : p
     );
-    saveProjects(updated);
+    saveProjects(updated, project.id);
+    void pushBoard(updated.find((p) => p.id === project.id) || project, {
+      cardIds: [newItem.id],
+    });
 
     if (type === "note") {
       setEditingItem(newItem.id);
@@ -457,8 +693,10 @@ export default function ProjectsPage() {
           }
         : p
     );
-    saveProjects(updated);
+    saveProjects(updated, project.id);
     setDraggedItem(null);
+    const next = updated.find((p) => p.id === project.id);
+    if (next) void pushBoard(next, { cardIds: [draggedItem.id] });
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -490,12 +728,16 @@ export default function ProjectsPage() {
 
     if (!confirm(warningMessage)) return;
 
+    const removed = project.items.find((item) => item.id === itemId);
     const updated = projects.map((p) =>
       p.id === project.id
         ? { ...p, items: p.items.filter((item) => item.id !== itemId) }
         : p
     );
-    saveProjects(updated);
+    saveProjects(updated, project.id);
+    const next = updated.find((p) => p.id === project.id);
+    if (next)
+      void pushBoard(next, { cardIds: [], removed: removed ? [removed] : [] });
     if (editingItem === itemId) {
       setEditingItem(null);
     }
@@ -514,12 +756,7 @@ export default function ProjectsPage() {
     }
 
     const target = projects.find((p) => p.id === projectId);
-    if (target?.source === "github" || target?.id.startsWith("gh-project-")) {
-      alert(
-        "GitHub Projects are read-only mirrors. They refresh from GitHub when you open this tab."
-      );
-      return;
-    }
+    if (!target) return;
 
     // Get private key for signing (required for project deletion)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
@@ -567,7 +804,35 @@ export default function ProjectsPage() {
     if (!confirm(warningMessage)) return;
 
     const updated = projects.filter((p) => p.id !== projectId);
-    saveProjects(updated);
+    const stored = loadProjects(entity, repo).map((row) =>
+      row.id === projectId ? { ...row, hidden: true, nostrDirty: false } : row
+    );
+    if (!stored.some((row) => row.id === projectId)) {
+      stored.push({ ...projectToDelete, hidden: true, nostrDirty: false });
+    }
+    persistProjects(entity, repo, stored);
+    setProjects(projectsForTab(stored, tabMode || "nostr-local") as Project[]);
+    const repoAddress = repoNostrAddress();
+      if (repoAddress && projectToDelete.nostrD && publish) {
+      const signer = await resolveNostrSigner({ remoteSigner });
+      if (signer) {
+        try {
+          await publishKanbanBoardDeletion({
+            project: projectToDelete,
+            repoAddress,
+            signer,
+            publish,
+            relays: defaultRelays,
+          });
+          setPushNote("Board removed on Nostr.");
+        } catch (error) {
+          console.warn("[Projects] Board deletion was not published:", error);
+          setPushNote(
+            "Board hidden in this browser. Nostr delete did not finish."
+          );
+        }
+      }
+    }
 
     // If deleted project was selected, select first remaining or null
     if (selectedProject === projectId) {
@@ -591,14 +856,6 @@ export default function ProjectsPage() {
       return;
     }
 
-    if (isGithubBoard) {
-      alert(
-        "GitHub Projects are read-only mirrors. Create a local project to edit cards."
-      );
-      return;
-    }
-
-    // Get private key for signing (required for project edits)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
     if (!signingCreds) {
       alert(NO_SIGNING_METHOD_MESSAGE);
@@ -633,7 +890,9 @@ export default function ProjectsPage() {
           }
         : p
     );
-    saveProjects(updated);
+    saveProjects(updated, project.id);
+    const nextBoard = updated.find((p) => p.id === project.id);
+    if (nextBoard) void pushBoard(nextBoard, { cardIds: [itemId] });
     setEditingItem(null);
     setEditingTitle("");
     setEditingContent("");
@@ -671,14 +930,12 @@ export default function ProjectsPage() {
     }
 
     const target = projects.find((p) => p.id === projectId);
-    if (target?.source === "github" || target?.id.startsWith("gh-project-")) {
-      alert("GitHub Project titles are read-only here.");
+    if (!target) {
       setEditingProjectName(null);
       setEditingProjectNameValue("");
       return;
     }
 
-    // Get private key for signing (required for project edits)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
     if (!signingCreds) {
       alert(NO_SIGNING_METHOD_MESSAGE);
@@ -700,7 +957,9 @@ export default function ProjectsPage() {
     const updated = projects.map((p) =>
       p.id === projectId ? { ...p, name: editingProjectNameValue.trim() } : p
     );
-    saveProjects(updated);
+    saveProjects(updated, projectId);
+    const next = updated.find((p) => p.id === projectId);
+    if (next) void pushBoard(next, { cardIds: [] });
     setEditingProjectName(null);
     setEditingProjectNameValue("");
   };
@@ -1461,15 +1720,20 @@ export default function ProjectsPage() {
             <Folder className="h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
             Projects
           </h1>
-          {(syncingGithub || githubImportNote) && (
+          {(syncingGithub || githubImportNote || pushNote) && (
             <p className="mt-1 text-xs text-gray-400">
-              {syncingGithub ? "Syncing GitHub Projects…" : githubImportNote}
+              {pushing
+                ? "Pushing to Nostr…"
+                : pushNote ||
+                  (syncingGithub
+                    ? "Syncing GitHub Projects…"
+                    : githubImportNote)}
             </p>
           )}
-          {tabMode === "forge-readonly" && (
+          {isGithubBoard && (
             <p className="mt-1 text-xs text-amber-400/90">
-              Viewing {forgeLabel} Projects (read-only). gittr does not write
-              boards back to the forge.
+              Imported from {forgeLabel}. Push sends your edits to Nostr, not
+              back to the forge.
             </p>
           )}
         </div>
@@ -1489,10 +1753,19 @@ export default function ProjectsPage() {
               )}
             </Button>
           )}
-          {hasWrite && tabMode === "nostr-local" && (
-            <Button onClick={handleCreateProject}>
+          {hasWrite && (
+            <Button onClick={handleCreateProject} disabled={pushing}>
               <Plus className="mr-2 h-4 w-4" />
               New Project
+            </Button>
+          )}
+          {hasWrite && project && (
+            <Button
+              variant="outline"
+              disabled={pushing}
+              onClick={() => void pushBoard(project)}
+            >
+              Push to Nostr
             </Button>
           )}
         </div>
@@ -1503,14 +1776,16 @@ export default function ProjectsPage() {
         {projects.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#383B42] bg-[#171B21] px-3 py-2">
             <span className="text-sm text-gray-400">
-              {tabMode === "forge-readonly"
-                ? `No ${forgeLabel} Projects visible here`
-                : hasWrite
-                ? "No projects yet"
-                : "No projects on this repo yet"}
+              {hasWrite
+                ? "No board yet. Create one and push it to Nostr."
+                : "No board on this repo yet"}
             </span>
-            {hasWrite && tabMode === "nostr-local" && (
-              <Button size="sm" onClick={handleCreateProject}>
+            {hasWrite && (
+              <Button
+                size="sm"
+                onClick={handleCreateProject}
+                disabled={pushing}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 Create
               </Button>
@@ -1602,7 +1877,7 @@ export default function ProjectsPage() {
 
           {canEditBoard && (
             <div className="mt-3 space-y-0.5 text-xs text-gray-500">
-              <p>Drag items between columns to update status</p>
+              <p>Drag a card to move it. Push sends the board to Nostr.</p>
               <p>Click items to edit title and notes</p>
             </div>
           )}

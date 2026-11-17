@@ -10,6 +10,16 @@ export type StoredProject = {
   view: "kanban" | "roadmap";
   source?: "github" | "local";
   githubProjectId?: string;
+  /** Kind 30301 `d` tag once this board has been published. */
+  nostrD?: string;
+  nostrAuthor?: string;
+  /** Unix seconds of the last board event we trust. */
+  nostrUpdatedAt?: number;
+  /** Local edits not yet signed. Relay ingest must not overwrite these. */
+  nostrDirty?: boolean;
+  nostrBoardHash?: string;
+  /** User removed the board here. GitHub import must not bring it back. */
+  hidden?: boolean;
 };
 
 function normalizeEntityForProjectKey(entity: string): string {
@@ -136,21 +146,59 @@ export function persistProjects(
   return true;
 }
 
+function itemMatchKey(item: unknown): string | null {
+  if (!item || typeof item !== "object") return null;
+  const row = item as { id?: string; githubItemId?: string };
+  if (row.githubItemId) return `gh:${row.githubItemId}`;
+  if (row.id) return `id:${row.id}`;
+  return null;
+}
+
+/**
+ * GitHub is a one-way seed. A board already published to Nostr keeps its
+ * cards; new GitHub items are appended. Unpublished mirrors still refresh.
+ */
 export function mergeGithubProjectsIntoLocal(
   local: StoredProject[],
   fromGithub: StoredProject[]
 ): StoredProject[] {
-  const keptLocal = local.filter((p) => !isGithubProject(p));
-  return [...fromGithub, ...keptLocal];
+  const hiddenIds = new Set(
+    local.filter((row) => row.hidden).map((row) => row.id)
+  );
+  const previousGithub = local.filter((row) => isGithubProject(row));
+  const keptLocal = local.filter((row) => !isGithubProject(row));
+  const refreshed = fromGithub
+    .filter((incoming) => !hiddenIds.has(incoming.id))
+    .map((incoming) => {
+      const prev = previousGithub.find(
+        (row) =>
+          row.id === incoming.id ||
+          (row.githubProjectId &&
+            row.githubProjectId === incoming.githubProjectId)
+      );
+      if (!prev?.nostrD && !prev?.nostrDirty) return incoming;
+      const seen = new Set(
+        (prev.items || [])
+          .map(itemMatchKey)
+          .filter((key): key is string => !!key)
+      );
+      const extras = (incoming.items || []).filter((item) => {
+        const key = itemMatchKey(item);
+        return key ? !seen.has(key) : true;
+      });
+      return {
+        ...prev,
+        items: [...(prev.items || []), ...extras],
+      };
+    });
+  const hiddenRows = local.filter((row) => row.hidden && isGithubProject(row));
+  return [...refreshed, ...keptLocal, ...hiddenRows];
 }
 
-/** Forge-backed tabs show GitHub boards only; Nostr-only tabs keep local boards. */
+/** Hidden boards stay in storage so a forge refresh cannot resurrect them. */
 export function projectsForTab(
   list: StoredProject[],
-  mode: "forge-readonly" | "nostr-local"
+  _mode: "forge-readonly" | "nostr-local"
 ): StoredProject[] {
-  if (mode === "forge-readonly") {
-    return list.filter((p) => isGithubProject(p));
-  }
-  return list.filter((p) => !isGithubProject(p));
+  return list.filter((row) => !row.hidden);
 }

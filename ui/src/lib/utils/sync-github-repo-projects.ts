@@ -1,10 +1,7 @@
 /**
- * Import GitHub Projects V2 into the repo ToDo/Kanban tab (read-only from source).
- * GitHub boards are replaced each sync. Local boards stay in storage but are
- * hidden on forge-backed repos (ToDo shows the forge copy only).
- *
- * No finalized Nostr NIP for git kanban yet — we mirror GH like Issues and keep
- * board state in localStorage until a draft (#1665 / #1804 / Headway) settles.
+ * Import GitHub Projects V2 into the repo ToDo tab as a one-way seed.
+ * Edits are published to Nostr (kinds 30301/30302), not written back to GitHub.
+ * A board that already has a Nostr id keeps its cards across later imports.
  */
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
