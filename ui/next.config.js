@@ -3,6 +3,9 @@ const nextConfig = {
   // Optional: GITTR_DIST_DIR for a side-build while `yarn dev` owns `.next`.
   // This file is the config Next loads (not next.config.mjs).
   distDir: process.env.GITTR_DIST_DIR || ".next",
+  experimental: {
+    agentUpgrade: "security",
+  },
   reactStrictMode: true,
   // Keep AVIF out of /_next/image even if a newer sharp would allow it
   // (GHSA-2xp9-vwfh-vxw4). gittr only uses next/image for local SVG logos.
