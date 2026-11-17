@@ -3957,8 +3957,9 @@ export default function HelpPage() {
               <p>
                 Each repo has a <strong>ToDo</strong> tab. It is the kanban
                 for that repo, with a <strong>Roadmap</strong> view beside it.
-                Owners and maintainers edit the board. Everyone else can read
-                it once it has been pushed.
+                Owners and maintainers edit the board. The board stays in this
+                browser until you press <strong>Push to Nostr</strong>. Everyone
+                else can read it once that push has finished.
               </p>
               <p className="mt-2">
                 <strong>Push to Nostr</strong> publishes the board (kind 30301)

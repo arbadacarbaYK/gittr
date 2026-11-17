@@ -17,6 +17,8 @@ export type StoredProject = {
   nostrUpdatedAt?: number;
   /** Local edits not yet signed. Relay ingest must not overwrite these. */
   nostrDirty?: boolean;
+  /** Cards removed locally that still need a kind 5 on the next Push. */
+  pendingDeletions?: unknown[];
   nostrBoardHash?: string;
   /** User removed the board here. GitHub import must not bring it back. */
   hidden?: boolean;

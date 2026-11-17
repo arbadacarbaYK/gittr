@@ -4,7 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -94,6 +94,7 @@ interface Project {
   nostrDirty?: boolean;
   nostrBoardHash?: string;
   hidden?: boolean;
+  pendingDeletions?: ProjectItem[];
 }
 
 interface ProjectItem {
@@ -189,6 +190,7 @@ export default function ProjectsPage() {
   const [forgeLabel, setForgeLabel] = useState("GitHub");
   const [pushNote, setPushNote] = useState<string | null>(null);
   const [pushing, setPushing] = useState(false);
+  const pushInFlight = useRef(false);
 
   const reloadProjects = useCallback(() => {
     try {
@@ -532,8 +534,12 @@ export default function ProjectsPage() {
         );
         return;
       }
+      if (pushInFlight.current) return;
+      pushInFlight.current = true;
       setPushing(true);
-      setPushNote("Pushing to Nostr…");
+      setPushNote(
+        "Waiting for your signer. Approve it on your phone or in the extension."
+      );
       try {
         const stored = loadProjects(entity, repo);
         const current =
@@ -549,9 +555,13 @@ export default function ProjectsPage() {
           removedItems: options?.removed,
           cardIds: options?.cardIds,
         });
+        const published = {
+          ...result.project,
+          pendingDeletions: [],
+        };
         const next = stored.some((row) => row.id === board.id)
-          ? stored.map((row) => (row.id === board.id ? result.project : row))
-          : [...stored, result.project];
+          ? stored.map((row) => (row.id === board.id ? published : row))
+          : [...stored, published];
         persistProjects(entity, repo, next);
         setProjects(
           projectsForTab(next, tabMode || "nostr-local") as Project[]
@@ -565,6 +575,7 @@ export default function ProjectsPage() {
           "Saved in this browser. The Nostr push did not finish — use Push to try again."
         );
       } finally {
+        pushInFlight.current = false;
         setPushing(false);
       }
     },
@@ -618,7 +629,7 @@ export default function ProjectsPage() {
     const updated = [...projects, newProject];
     saveProjects(updated, newProject.id);
     setSelectedProject(newProject.id);
-    void pushBoard(newProject, { cardIds: [] });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
   };
 
   const handleAddItem = (
@@ -651,9 +662,7 @@ export default function ProjectsPage() {
       p.id === project.id ? { ...p, items: [...p.items, newItem] } : p
     );
     saveProjects(updated, project.id);
-    void pushBoard(updated.find((p) => p.id === project.id) || project, {
-      cardIds: [newItem.id],
-    });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
 
     if (type === "note") {
       setEditingItem(newItem.id);
@@ -695,8 +704,7 @@ export default function ProjectsPage() {
     );
     saveProjects(updated, project.id);
     setDraggedItem(null);
-    const next = updated.find((p) => p.id === project.id);
-    if (next) void pushBoard(next, { cardIds: [draggedItem.id] });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -731,13 +739,18 @@ export default function ProjectsPage() {
     const removed = project.items.find((item) => item.id === itemId);
     const updated = projects.map((p) =>
       p.id === project.id
-        ? { ...p, items: p.items.filter((item) => item.id !== itemId) }
+        ? {
+            ...p,
+            items: p.items.filter((item) => item.id !== itemId),
+            pendingDeletions:
+              project.nostrD && removed
+                ? [...(p.pendingDeletions || []), removed]
+                : p.pendingDeletions,
+          }
         : p
     );
     saveProjects(updated, project.id);
-    const next = updated.find((p) => p.id === project.id);
-    if (next)
-      void pushBoard(next, { cardIds: [], removed: removed ? [removed] : [] });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
     if (editingItem === itemId) {
       setEditingItem(null);
     }
@@ -891,8 +904,7 @@ export default function ProjectsPage() {
         : p
     );
     saveProjects(updated, project.id);
-    const nextBoard = updated.find((p) => p.id === project.id);
-    if (nextBoard) void pushBoard(nextBoard, { cardIds: [itemId] });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
     setEditingItem(null);
     setEditingTitle("");
     setEditingContent("");
@@ -958,8 +970,7 @@ export default function ProjectsPage() {
       p.id === projectId ? { ...p, name: editingProjectNameValue.trim() } : p
     );
     saveProjects(updated, projectId);
-    const next = updated.find((p) => p.id === projectId);
-    if (next) void pushBoard(next, { cardIds: [] });
+    setPushNote("Saved in this browser. Press Push to Nostr when it should be public.");
     setEditingProjectName(null);
     setEditingProjectNameValue("");
   };
@@ -1731,7 +1742,7 @@ export default function ProjectsPage() {
           {(syncingGithub || githubImportNote || pushNote) && (
             <p className="mt-1 text-xs text-gray-400">
               {pushing
-                ? "Pushing to Nostr…"
+                ? "Waiting for your signer. Approve it on your phone or in the extension."
                 : pushNote ||
                   (syncingGithub
                     ? "Syncing GitHub Projects…"
@@ -1769,11 +1780,21 @@ export default function ProjectsPage() {
           )}
           {hasWrite && project && (
             <Button
-              variant="outline"
+              variant={
+                project.nostrDirty ||
+                !project.nostrD ||
+                (project.pendingDeletions?.length || 0) > 0
+                  ? "default"
+                  : "outline"
+              }
               disabled={pushing}
-              onClick={() => void pushBoard(project)}
+              onClick={() =>
+                void pushBoard(project, {
+                  removed: project.pendingDeletions,
+                })
+              }
             >
-              Push to Nostr
+              {pushing ? "Waiting for signer…" : "Push to Nostr"}
             </Button>
           )}
         </div>
