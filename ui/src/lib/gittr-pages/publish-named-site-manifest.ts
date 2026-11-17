@@ -11,6 +11,12 @@ import {
   pickManifestFileBytes,
   uint8Equal,
 } from "@/lib/gittr-pages/manifest-file-bytes";
+import {
+  GITTR_PAGES_AUTH_HEADER_MAX,
+  nostrAuthorizationHeaderLength,
+  pagesPublishTooManyFilesMessage,
+  withSignedAuthStandIn,
+} from "@/lib/gittr-pages/blossom-auth-header-limit";
 import { isGittrPagesManifestPath } from "@/lib/gittr-pages/pages-manifest-paths";
 import { savePagesManifestOnDirectory } from "@/lib/gittr-pages/publish-event-to-relay";
 import {
@@ -368,6 +374,33 @@ function buildUnsignedBlossomUploadAuth(params: {
     id: "",
     sig: "",
   };
+}
+
+let cachedMaxUploadFiles: number | null = null;
+
+/** Largest distinct blob count whose kind 24242 header stays under nginx's 8 KB line. */
+export function maxGittrPagesUploadFiles(): number {
+  if (cachedMaxUploadFiles != null) return cachedMaxUploadFiles;
+  const pubkeyHex = "ab".repeat(32);
+  const headerFor = (n: number) => {
+    const hashes = Array.from({ length: n }, (_, i) =>
+      i.toString(16).padStart(64, "0")
+    );
+    return nostrAuthorizationHeaderLength(
+      withSignedAuthStandIn(
+        buildUnsignedBlossomUploadAuth({ pubkeyHex, sha256Hex: hashes })
+      )
+    );
+  };
+  let lo = 1;
+  let hi = 200;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (headerFor(mid) <= GITTR_PAGES_AUTH_HEADER_MAX) lo = mid;
+    else hi = mid - 1;
+  }
+  cachedMaxUploadFiles = lo;
+  return lo;
 }
 
 type MergedManifestFile = {
@@ -852,6 +885,13 @@ export async function publishNamedSiteManifest(
 
   const allHashes = staged.map((s) => s.sha256);
   const distinctHashCount = new Set(allHashes).size;
+  const maxFiles = maxGittrPagesUploadFiles();
+  if (distinctHashCount > maxFiles) {
+    return {
+      ok: false,
+      error: pagesPublishTooManyFilesMessage(distinctHashCount, maxFiles),
+    };
+  }
   onProgress?.(
     `Signing one Blossom upload token (kind 24242) for ${staged.length} file(s)…`
   );

@@ -1,3 +1,7 @@
+import {
+  isNginxAuthHeaderTooLarge,
+  nginxAuthHeaderTooLargeMessage,
+} from "@/lib/gittr-pages/blossom-auth-header-limit";
 import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 import {
   blossomAuthServerHosts,
@@ -214,6 +218,15 @@ export async function POST(req: Request) {
     );
     // Forward 4xx/5xx from Blossom so the client can distinguish 401 vs 503 vs 502.
     const outStatus = st >= 400 && st < 600 ? st : 502;
+    if (isNginxAuthHeaderTooLarge(st, text)) {
+      return NextResponse.json(
+        {
+          error: "This page has too many files for one publish",
+          hint: nginxAuthHeaderTooLargeMessage(),
+        },
+        { status: 400 }
+      );
+    }
     let hint: string | undefined;
     if (st === 401) {
       const bodyText = text.toLowerCase();
