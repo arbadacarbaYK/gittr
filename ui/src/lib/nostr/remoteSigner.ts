@@ -1383,6 +1383,11 @@ export class RemoteSignerManager {
   private bunkerDialEpoch = 0;
   /** True when the last openDirectRelay died before a handshake could finish. */
   private lastOpenWasInstantAbort = false;
+  /**
+   * The browser rejected every bunker handshake before it started.
+   * Further dials fail the same way. Signing goes through the server.
+   */
+  private browserBunkerBlocked = false;
   /** Nested sign/RPC dials. Background warm must stay out until this is 0. */
   private signerDialDepth = 0;
   /** True when the in-flight dial will not try Amber defaults after the URI wave. */
@@ -2316,6 +2321,7 @@ export class RemoteSignerManager {
   }
 
   private async warmDedicatedPool(session: RemoteSignerSession) {
+    if (this.browserBunkerBlocked) return;
     // Code-tab HTTP (clone/list/file-content) can saturate browser sockets so
     // every bunker dial lands CLOSED. Free collisions and keep the page
     // relays down until signEvent finishes — restoring them in this finally
@@ -2337,6 +2343,12 @@ export class RemoteSignerManager {
       await this.holdPageRelaysForBunkerDial();
     }
     let open = await this.ensureBunkerSocketsOpen(session);
+    if (this.browserBunkerBlocked) {
+      console.warn(
+        "[RemoteSigner] This browser cannot open relay sockets. Amber will be reached through gittr's server."
+      );
+      return;
+    }
     if (open.length === 0) {
       console.warn(
         "[RemoteSigner] First bunker dial closed every relay — freeing page sockets and trying fast relays"
@@ -2670,6 +2682,7 @@ export class RemoteSignerManager {
           dialBudget
         )
       );
+      if (this.browserBunkerBlocked) return open;
       if (open.length > 0) {
         console.log("[RemoteSigner] Serial bunker dial ready", {
           open: open.map((u) => normalizeRelayUrl(u)),
@@ -2702,7 +2715,9 @@ export class RemoteSignerManager {
         if (open.length > 0) return open;
       }
 
-      if (this.released || waves.retry.length === 0) return open;
+      if (this.browserBunkerBlocked || this.released || waves.retry.length === 0) {
+        return open;
+      }
 
       // One quiet retry of relays we have not already dialed.
       // Drop CLOSED cache entries first — nostr-tools ensureRelay returns them
@@ -3140,20 +3155,16 @@ export class RemoteSignerManager {
           }
           instantAborts += 1;
           if (instantAborts < 2) continue;
-          // Two hosts died before the handshake. The next hosts will die the
-          // same way while the page is still closing sockets. Wait, then try
-          // one relay instead of walking the whole bunker list.
-          console.warn(
-            "[RemoteSigner] Browser aborted bunker sockets before they opened — waiting, then retrying one relay"
-          );
-          idx = targets.length;
-          await this.waitForMainPoolIdle(4000);
-          await new Promise((r) => setTimeout(r, 1000));
-          if (!this.bunkerDialIsCurrent(epoch)) return;
-          const retryUrl = targets[0];
-          if (retryUrl && (await this.openDirectRelay(retryUrl, budgetMs))) {
-            open.push(retryUrl);
+          // Two hosts died before the handshake. Walking the rest of the
+          // list fails the same way. The server publishes the signing
+          // request instead.
+          if (!this.browserBunkerBlocked) {
+            this.browserBunkerBlocked = true;
+            console.warn(
+              "[RemoteSigner] This browser cannot open relay sockets. Amber will be reached through gittr's server."
+            );
           }
+          idx = targets.length;
           return;
         }
       }
@@ -3386,7 +3397,7 @@ export class RemoteSignerManager {
     topUp?: boolean;
     topUpAll?: boolean;
   }) {
-    if (this.released) return;
+    if (this.released || this.browserBunkerBlocked) return;
     const session = this.session;
     if (!session?.userPubkey) return;
     // Do not unsub/resub bunker listen while Push is waiting on Amber,
@@ -3569,6 +3580,7 @@ export class RemoteSignerManager {
     dialTargets?: string[],
     opts?: { quiet?: boolean; coverUri?: boolean }
   ): Promise<string[]> {
+    if (this.browserBunkerBlocked) return [];
     const quiet = !!opts?.quiet;
     const softWarn = (...args: unknown[]) => {
       if (quiet) {
@@ -3608,6 +3620,7 @@ export class RemoteSignerManager {
       // to call ensureRelay on that same cache and report no OPEN sockets.
       await this.replaceDirectPoolIfFullyClosed(targets);
     }
+    if (this.browserBunkerBlocked) return [];
 
     const alreadyOpen = await this.listDirectOpenRelays(targets);
     const alreadyNorm = new Set(alreadyOpen.map(normalizeRelayUrl));
@@ -3650,6 +3663,7 @@ export class RemoteSignerManager {
         uriOpen.forEach((u) => alreadyNorm.add(normalizeRelayUrl(u)));
       }
     }
+    if (this.browserBunkerBlocked) return [];
 
     let preferredOpen = preferUriOpenRelays(
       await this.listDirectOpenRelays(targets),
@@ -4267,6 +4281,74 @@ export class RemoteSignerManager {
     }
   }
 
+  private async publishNip46ThroughServer(
+    events: any[],
+    relays: string[],
+    timeoutMs: number,
+    stillPending: () => boolean,
+    onAcked: () => void
+  ): Promise<{ acked: boolean } | null> {
+    if (typeof window === "undefined" || events.length === 0 || relays.length === 0) {
+      return null;
+    }
+    let ticket = "";
+    try {
+      const res = await fetch("/api/nostr/nip46-exchange", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ events, relays }),
+      });
+      if (!res.ok) {
+        console.warn(
+          "[RemoteSigner] gittr's server could not take the signing request",
+          res.status
+        );
+        return null;
+      }
+      const body = (await res.json()) as { ticket?: unknown };
+      ticket = typeof body.ticket === "string" ? body.ticket : "";
+    } catch {
+      return null;
+    }
+    if (!ticket) return null;
+    console.log("[RemoteSigner] Asking Amber through gittr's server", {
+      relays: relays.length,
+    });
+    const started = Date.now();
+    // The page timer adds a short grace after a relay accepts the request.
+    // Keep asking the server through that grace so Amber's reply is not dropped.
+    const waitMs = timeoutMs + 15000;
+    let acked = false;
+    while (Date.now() - started < waitMs) {
+      if (!stillPending()) return { acked: true };
+      try {
+        const poll = await fetch(
+          `/api/nostr/nip46-exchange?ticket=${encodeURIComponent(ticket)}`
+        );
+        if (!poll.ok) return acked ? { acked } : null;
+        const body = (await poll.json()) as {
+          events?: unknown[];
+          acked?: boolean;
+          failed?: boolean;
+        };
+        if (body.acked) {
+          acked = true;
+          onAcked();
+        }
+        const incoming = Array.isArray(body.events) ? body.events : [];
+        for (const ev of incoming) {
+          await this.handleIncomingEvent(ev);
+        }
+        if (!stillPending()) return { acked: true };
+        if (body.failed && !acked) return null;
+      } catch {
+        return acked ? { acked } : null;
+      }
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    return { acked };
+  }
+
   private async sendRequest(
     session: RemoteSignerSession,
     method: string,
@@ -4281,15 +4363,24 @@ export class RemoteSignerManager {
     // Repair the dedicated NIP-46 transport first — dead sockets silently
     // swallow requests AND responses (the "push fails silently" symptom).
     // Do not addRelay bunker URLs into the app pool (socket starvation).
-    const openDirect = await this.ensureDirectTransport(
-      session,
-      undefined,
-      method === "sign_event" ? { coverUri: true } : undefined
-    );
-    if (openDirect.length === 0) {
-      throw new Error(
-        "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
+    // When the browser aborts every handshake, skip that dial. The server
+    // publishes the same encrypted request to Amber's relays.
+    let openDirect: string[] = [];
+    if (this.browserBunkerBlocked) {
+      console.warn(
+        "[RemoteSigner] Reaching Amber through gittr's server"
       );
+    } else {
+      openDirect = await this.ensureDirectTransport(
+        session,
+        undefined,
+        method === "sign_event" ? { coverUri: true } : undefined
+      );
+      if (openDirect.length === 0 && !this.browserBunkerBlocked) {
+        throw new Error(
+          "Could not open any bunker relay to reach Amber. Keep Amber open/unlocked on your phone, check mobile data/Wi‑Fi, then try again."
+        );
+      }
     }
     const id = randomRequestId();
     const payload = JSON.stringify({
@@ -4390,7 +4481,7 @@ export class RemoteSignerManager {
         },
         timeout,
       });
-      if (method === "sign_event") {
+      if (method === "sign_event" && !this.browserBunkerBlocked) {
         listenRefresh = setInterval(() => {
           if (!this.pending.has(id)) {
             finishListen();
@@ -4452,6 +4543,45 @@ export class RemoteSignerManager {
       // response can arrive before we track `id`, causing dropped acks/timeouts.
       void (async () => {
         try {
+          if (this.browserBunkerBlocked) {
+            const bridgeRelays = uniqueNormalizedRelays([
+              ...getSessionUriRelays(session),
+              GITTR_BUNKER_RELAY,
+            ])
+              .filter((url) => url.startsWith("wss://"))
+              .slice(0, 8);
+            requestEvent = buildRpcEvent(encrypted.primary);
+            const bridged = await this.publishNip46ThroughServer(
+              [requestEvent],
+              bridgeRelays,
+              timeoutMs,
+              () => this.pending.has(id),
+              () => {
+                signPublishAcked = true;
+                signPublishSettled = true;
+              }
+            );
+            if (!this.pending.has(id)) return;
+            if (bridged?.acked) {
+              signPublishAcked = true;
+              signPublishSettled = true;
+              this.lastPublishMeta = {
+                method,
+                urls: bridgeRelays,
+                acked: true,
+                uriRelays: getSessionUriRelays(session),
+              };
+              console.log(
+                "[RemoteSigner] Relay accepted the signing request through gittr's server"
+              );
+              return;
+            }
+            throw new Error(
+              bridged
+                ? "Amber did not answer. Keep Amber open and unlocked, then try again."
+                : "Could not reach Amber through gittr's server. Keep Amber open and unlocked, then try again."
+            );
+          }
           // Publish NIP-46 only on directPool — app relaypool publish would
           // dial bunker hosts again and fight for the same browser sockets.
           // Prefer Amber URI/signer relays among OPEN sockets.
