@@ -5,6 +5,7 @@
  */
 import { parseGiteaCompatibleRepo } from "../repos/gitea-forge";
 
+import { apkVersionCodeFromZip } from "./apk-manifest";
 import {
   apkCertificateHashHex,
   apkSigningCertificateFromBlock,
@@ -32,6 +33,11 @@ export type ForgeReleaseAsset = {
   apkCertificateHash?: string;
   /** Same certificate, standard base64, so the browser can check the proof. */
   apkCertificateDerBase64?: string;
+  /**
+   * Android manifest versionCode, decimal. Zapstore refuses an APK file
+   * event that does not include this.
+   */
+  apkVersionCode?: string;
 };
 
 export type ForgeRelease = {
@@ -396,6 +402,19 @@ async function readUrlByteRange(
   }
 }
 
+async function readApkVersionCode(
+  url: string,
+  digested: DigestedDownload
+): Promise<string | undefined> {
+  const code = await apkVersionCodeFromZip({
+    tail: digested.tail,
+    tailStart: digested.tailStart,
+    fileSize: digested.size,
+    readRange: (start, endInclusive) => readUrlByteRange(url, start, endInclusive),
+  }).catch(() => null);
+  return code && /^[1-9][0-9]{0,9}$/.test(code) ? code : undefined;
+}
+
 async function readApkCertificate(
   url: string,
   digested: DigestedDownload
@@ -459,10 +478,12 @@ async function maybeHashApks(
     const cert = await readApkCertificate(a.downloadUrl, digested).catch(
       () => undefined
     );
+    const apkVersionCode = await readApkVersionCode(a.downloadUrl, digested);
     out.push({
       ...a,
       sha256: digested.sha256,
       ...(cert || {}),
+      ...(apkVersionCode ? { apkVersionCode } : {}),
     });
   }
   return out;
@@ -809,6 +830,9 @@ export async function fetchForgeReleasesForAnnounce(options: {
           : {}),
         ...(hashed.apkCertificateDerBase64
           ? { apkCertificateDerBase64: hashed.apkCertificateDerBase64 }
+          : {}),
+        ...(hashed.apkVersionCode
+          ? { apkVersionCode: hashed.apkVersionCode }
           : {}),
       };
     });

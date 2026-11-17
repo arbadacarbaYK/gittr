@@ -46,9 +46,14 @@ function sampleForge(opts?: {
   const includeApk = opts?.apk !== false;
   const assets: ForgeReleaseAsset[] = [];
   if (includeApk) {
-    assets.push(
-      asset("app-release.apk", "https://example.com/app-release.apk", SHA_APK)
-    );
+    assets.push({
+      ...asset(
+        "app-release.apk",
+        "https://example.com/app-release.apk",
+        SHA_APK
+      ),
+      apkVersionCode: "10002",
+    });
   }
   if (opts?.includeSecondApk) {
     assets.push(
@@ -169,6 +174,12 @@ describe("buildSoftwareAnnounceEvents", () => {
     expect(built.asset.tags.find((t) => t[0] === "f")?.[1]).toBe(
       "android-arm64-v8a"
     );
+    expect(built.asset.tags.find((t) => t[0] === "version_code")?.[1]).toBe(
+      "10002"
+    );
+    expect(
+      built.release.tags.find((t) => t[0] === "version_code")?.[1]
+    ).toBe("10002");
     expect(
       built.release.tags.filter((t) => t[0] === "f").map((t) => t[1])
     ).toContain("android-arm64-v8a");

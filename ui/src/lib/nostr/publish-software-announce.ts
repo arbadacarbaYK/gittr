@@ -501,6 +501,14 @@ export async function publishSoftwareAnnounce(
     ownerPubkeyHex: args.input.ownerPubkeyHex || args.ownerPubkeyHex,
     excludeAssetUrls,
   });
+  if (
+    isApkAssetName(built.primary.name, built.primary.contentType) &&
+    !/^[1-9][0-9]{0,9}$/.test(built.primary.apkVersionCode || "")
+  ) {
+    throw new Error(
+      "This APK has no Android version code yet. Reload the release, then publish again."
+    );
+  }
 
   const signedPrimary = await sign(built.asset);
   const signedExtras: NostrEvent[] = [];

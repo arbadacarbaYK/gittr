@@ -211,6 +211,9 @@ function buildAssetEvent(
   ];
   if (nip.f) tags.push(["f", nip.f]);
   else if (isApkFile(file)) tags.push(["f", "android-arm64-v8a"]);
+  if (isApkFile(file) && /^[1-9][0-9]{0,9}$/.test(file.apkVersionCode || "")) {
+    tags.push(["version_code", file.apkVersionCode as string]);
+  }
   if (file.size > 0) tags.push(["size", String(file.size)]);
   const certHash = isApkFile(file)
     ? validApkCertificateHash(file.apkCertificateHash)
@@ -390,6 +393,10 @@ export function buildSoftwareAnnounceEvents(
       ["version", version],
       ["c", "main"],
       ...[...platformFs].map((f) => ["f", f]),
+      ...(isApkFile(primary) &&
+      /^[1-9][0-9]{0,9}$/.test(primary.apkVersionCode || "")
+        ? [["version_code", primary.apkVersionCode as string]]
+        : []),
     ],
     pubkey: "",
   };
