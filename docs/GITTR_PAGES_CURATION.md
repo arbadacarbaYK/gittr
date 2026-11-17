@@ -12,6 +12,8 @@ hzrd149 did **not** invent kind `10000`. It is **[NIP-51](https://github.com/nos
 
 What **we** added on top: apply the same mutes on **`manifests.json`**, merge **`PUBLISHER_BLOCKLIST`** into the operator’s kind `10000` via **`scripts/publish-curation-mutelist.cjs`**, and **`GITTR_SYNC_MUTED_PUBKEYS`** on deploy until relays have caught up (`src/helpers/gittr-muted-pubkeys.ts`).
 
+A muted pubkey is **not served**. `*.pages.gittr.space` returns **410** before any blob is fetched, including snapshot hostnames once the event author is known. Hiding the directory row is not enough: Pages streams files from whatever Blossom server the site lists, so a blossom.gittr.space upload ban still left the site online on Hetzner’s IP. Blossom upload restrictions and Pages serving are separate. Blocking a publisher means the blocklist (gateway env) **and** a gateway rebuild, then restart. An exact nginx `server_name` returning 410 is the extra lock for a hostname that must stay dead even if the gateway is briefly on the old image.
+
 hzrd149’s gateway **does not publish** mute lists — only **reads** them. Optional **`CACHE_RELAYS=ws://localhost:4869`** caches fetched events; it is not a publish pipeline. gittr publishes to the public relays in `NOSTR_RELAYS` when you run the publish script.
 
 ## Merge vs replace (like follow list)

@@ -21,3 +21,9 @@ export function getPagesDirectoryMutedPubkeys(): Set<string> {
   }
   return muted;
 }
+
+/** Serving gate: muted publishers get 410, not a directory-only hide. */
+export function isPagesPubkeyMuted(pubkey: string | undefined | null): boolean {
+  if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return false;
+  return getPagesDirectoryMutedPubkeys().has(pubkey.toLowerCase());
+}
