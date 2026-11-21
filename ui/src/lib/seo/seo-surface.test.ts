@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   jsonLdScriptHtml,
+  nostrGitFaqJsonLd,
   softwareApplicationJsonLd,
   softwareSourceCodeJsonLd,
   websiteJsonLd,
 } from "./json-ld";
 import {
   HOME_CARD_PATH,
+  NOSTR_GIT_DESCRIPTION,
+  NOSTR_GIT_FAQ,
   SITE_DESCRIPTION_DEFAULT,
   SITE_TITLE_DEFAULT,
 } from "./site-copy";
@@ -88,6 +91,20 @@ describe("json-ld", () => {
     expect(jsonLdScriptHtml({ x: "</script><p>" })).toContain(
       "\\u003c/script>"
     );
+  });
+
+  it("explains why nostr git exists in everyday language", () => {
+    expect(NOSTR_GIT_DESCRIPTION.length).toBeLessThanOrEqual(160);
+    expect(NOSTR_GIT_DESCRIPTION.toLowerCase()).toContain("nostr git");
+    expect(NOSTR_GIT_DESCRIPTION).not.toMatch(/NIP-34/);
+    expect(NOSTR_GIT_FAQ.map((item) => item.name).join(" ")).toMatch(/Forgejo/);
+    const faq = nostrGitFaqJsonLd();
+    const entities = faq.mainEntity as {
+      name: string;
+      acceptedAnswer: { text: string };
+    }[];
+    expect(entities).toHaveLength(NOSTR_GIT_FAQ.length);
+    expect(entities[0]?.acceptedAnswer.text).toBe(NOSTR_GIT_FAQ[0]?.text);
   });
 
   it("keeps the homepage card on discovery, not hosting", () => {

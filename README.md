@@ -1,6 +1,6 @@
 # [gittr.space](https://gittr.space)
 
-**gittr** is a website for git on Nostr ([NIP-34](https://gittr.space/nostr-git)). Issues, pull requests, and the repo announcement are signed events. The git files sit on the Nostr git servers listed under **Nostr Backups**. Name the one you run under **Settings → Relays**. gittr is one of those servers when its address is on that list.
+**gittr** is a website for git on Nostr. Big hosts go down and can take a repository offline. A Forgejo or Gitea box at home keeps the files, but other people cannot find it, and there is no public way to support the author. [Why Nostr git](https://gittr.space/nostr-git) is the plain-language version of that. Under the hood the announcements, issues, and pull requests are signed events ([NIP-34](https://gittr.space/nostr-git)). The git files sit on the Nostr git servers listed under **Nostr Backups**. Name the one you run under **Settings → Relays**. gittr is one of those servers when its address is on that list.
 
 [gittr.space](https://gittr.space) · [Pages](https://pages.gittr.space) · [Apps](https://gittr.space/apps) · [Help](https://gittr.space/help) · [Relay](https://relay.gittr.space)
 

@@ -1,4 +1,8 @@
-import { SITE_DESCRIPTION_DEFAULT } from "./site-copy";
+import {
+  NOSTR_GIT_DESCRIPTION,
+  NOSTR_GIT_FAQ,
+  SITE_DESCRIPTION_DEFAULT,
+} from "./site-copy";
 
 export type JsonLdRecord = Record<string, unknown>;
 
@@ -68,10 +72,9 @@ export function nostrGitArticleJsonLd(siteUrl: string): JsonLdRecord {
   return {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    headline: "What is Nostr git?",
-    name: "Nostr git hosting on gittr",
-    description:
-      "Nostr git (NIP-34) publishes repository announcements, issues, and pull requests as signed events. gittr is web hosting for that protocol.",
+    headline: "Why Nostr git",
+    name: "Why Nostr git",
+    description: NOSTR_GIT_DESCRIPTION,
     url,
     mainEntityOfPage: url,
     author: { "@type": "Organization", name: "gittr", url: origin },
@@ -83,32 +86,14 @@ export function nostrGitFaqJsonLd(): JsonLdRecord {
   return {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: [
-      {
-        "@type": "Question",
-        name: "What is Nostr git?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Nostr git is git collaboration over Nostr. Repository names, issues, and pull requests are signed events (NIP-34). Git objects still live on clone hosts such as git.gittr.space or other GRASP servers.",
-        },
+    mainEntity: NOSTR_GIT_FAQ.map((item) => ({
+      "@type": "Question",
+      name: item.name,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.text,
       },
-      {
-        "@type": "Question",
-        name: "What is gittr?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "gittr is Nostr git hosting: a web forge to mirror repositories, run issues and PRs, publish Pages, browse Nostr apps, and fund work with Lightning bounties.",
-        },
-      },
-      {
-        "@type": "Question",
-        name: "How do I clone a gittr repository?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Use the clone URL on the repo page — typically SSH or HTTPS to git.gittr.space — or any other clone host listed on the Nostr announcement.",
-        },
-      },
-    ],
+    })),
   };
 }
 

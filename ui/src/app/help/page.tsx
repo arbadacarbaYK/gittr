@@ -208,7 +208,7 @@ export default function HelpPage() {
             href="/nostr-git"
             className="text-purple-400 hover:text-purple-300 underline"
           >
-            What is Nostr git?
+            Why Nostr git?
           </Link>
         </p>
         <p className="text-gray-400 max-w-3xl mt-3 text-sm">

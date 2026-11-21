@@ -1248,7 +1248,7 @@ export default function HomePage({
                   href="/nostr-git"
                   className="text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
                 >
-                  What is Nostr git?
+                  Why Nostr git?
                 </Link>
               </p>
             </div>

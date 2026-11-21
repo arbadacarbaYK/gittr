@@ -1,13 +1,13 @@
 # gittr
 
-> Nostr git hosting on https://gittr.space — repositories, issues, pull requests, Pages, apps, and Lightning bounties.
+> Why Nostr git: big hosts go down and can take a repo offline. A home Forgejo or Gitea server is hard for anyone else to find. Nostr git keeps repos, pages, and apps findable in every compatible client, with a backup on each push.
 
-gittr is a web forge for git on Nostr (NIP-34 / GRASP). Repo names, issues, and PRs are signed events on relays. Git objects live on clone hosts such as git.gittr.space.
+gittr is a web forge for git on Nostr (NIP-34 / GRASP). Repo names, issues, and PRs are signed events on relays. Git objects live on clone hosts such as git.gittr.space. The same Nostr key opens a project in any Nostr git, pages, or apps client. App listings can show how close the author is to people you follow, and they link back to the source.
 
 ## Product
 
 - Home: https://gittr.space
-- What is Nostr git: https://gittr.space/nostr-git
+- Why Nostr git: https://gittr.space/nostr-git
 - Explore public repos: https://gittr.space/explore
 - Nostr apps catalog: https://gittr.space/apps
 - Published Pages: https://gittr.space/pages

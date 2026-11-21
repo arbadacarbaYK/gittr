@@ -30,8 +30,32 @@ export const NEW_DESCRIPTION =
 export const HELP_DESCRIPTION =
   "Help for gittr — Nostr git hosting. Mirror repos, clone over SSH or HTTPS, run issues and PRs, publish Pages, list apps, and pay Lightning bounties.";
 
+/** ~155 chars. Plain language: why the page exists. Protocol names stay in the page body. */
 export const NOSTR_GIT_DESCRIPTION =
-  "What is Nostr git? NIP-34 publishes repos, issues, and pull requests as signed events. gittr is web hosting for git on Nostr, with clone servers, Pages, and apps.";
+  "GitHub can go down or take a repo offline. A home git server is hard to find. Nostr git keeps your repos, pages, and apps findable, backed up, and yours.";
+
+/**
+ * Visible on /nostr-git and copied into FAQPage JSON-LD.
+ * Answers stay in everyday language; NIP names live in the page’s developer section.
+ */
+export const NOSTR_GIT_FAQ: readonly { name: string; text: string }[] = [
+  {
+    name: "Why is Nostr git needed?",
+    text: "Big git hosts go down, and they can take a repository offline. When that happens the code, the issues, and the project page disappear together. Nostr git keeps the project findable in every compatible client, with a copy written to Nostr git servers on each push.",
+  },
+  {
+    name: "Why isn't a Forgejo or Gitea server enough?",
+    text: "A Forgejo or Gitea server you run yourself keeps the files on hardware you control. It does not put the project on a map other people can search, and visitors have no public way to support the person who built it.",
+  },
+  {
+    name: "How can I tell an app is really from someone I trust?",
+    text: "App stores do not show your web of trust. On Nostr, a logged-in visitor sees how close the author is to people they already follow, and the listing links back to the repository so the app can be checked against the code. No central store has to approve the listing.",
+  },
+  {
+    name: "If I use gittr, is my project stuck on gittr?",
+    text: "Repos, pages, and apps stay visible in any Nostr git, pages, or apps client. The same Nostr key opens them everywhere. gittr is one of those clients, and the software is free and open source.",
+  },
+];
 
 export const BOUNTY_HUNT_DESCRIPTION =
   "Lightning bounties on Nostr git issues. Hunt open gittr bounties and get paid in sats when a pull request is merged.";
